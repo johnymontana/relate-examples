@@ -1,0 +1,40 @@
+model.txt: gliner-rs's WASM build in Node, held to the Python gliner2 reference (G5-G11)
+build      gliner-rs 4fa741e (v0.3.1); its .wasm bytes depend on the build host, so this file pins its behaviour (D4)
+weights    fastino/gliner2.5-small-v1 @ 7132dc4, every file matches ci/gliner2.5-small-v1.sha256
+reference  data/reference/gliner2-small.json: gliner2 2.0.0, torch 2.14.1 (CPU, 1 thread), the same weights
+schema     the page's for create-context-graph's Financial Services (pipeline.modelSchema): entities person, organization, location, event, account ("financial account in financial services"), transaction ("financial transaction in financial services"), decision ("decision in financial services"), policy ("regulation in financial services"), security ("financial instrument in financial services");
+           relations "person works for organization", "organization located at location", "person participated in event", "person owns account", "transaction transferred to account", "transaction transferred from account", "transaction involves security", "decision caused transaction", "decision applied policy policy", "decision advised by person", "person manages account", "decision preceded by decision"
+           the same as the page asks now: yes
+options    threshold 0.10 (the inference cache's floor, D7); the checkpoint's overlap policy (flat)
+
+parity: the same span and edge sets as the reference; the largest score difference, bucketed (G7)
+case         tokens  spans  edges  sets       max |score diff|
+sentence-1       17      4      3  identical  < 1e-5
+sentence-2       26      6      2  identical  < 1e-5
+sentence-3       26      5      3  identical  < 1e-5
+sentence-4       23      5      4  identical  < 1e-5
+body             92     17      9  identical  < 1e-5
+offsets          11      2      2  identical  < 1e-5
+two-labels       26      7      0  identical  < 1e-5
+long            736     32      0  identical  < 1e-5
+
+repeat: a second call on the same model returns the same JSON string, byte for byte (G7)
+8 of 8 cases identical
+
+offsets: Unicode code points, not the UTF-16 units JS strings index by (G11)
+text "🚀 Zoë Müller owns account ACC-2207.": 35 code points, 36 UTF-16 units
+person   "Zoë Müller"   code points 2..12, UTF-16 3..13, p 0.993
+account  "ACC-2207"     code points 26..34, UTF-16 27..35, p 0.834
+slicing the JS string at utf16Index(start)..utf16Index(end) gives each mention's text: yes
+
+two labels on one span: gliner-rs scores each label on its own (G11)
+two-labels  83..104 "discretionary mandate": decision 0.693, policy 0.140 (entities only)
+sentence-2  83..104 "discretionary mandate": decision 0.583, policy 0.254 (entities and relations)
+sentence-4  81..101 "investment committee": organization 0.988, location 0.401 (entities and relations)
+
+long input collapses: gliner-rs's WASM API does not chunk (G10)
+8 copies of the body, 736 tokens, entities only; a (copy, gold entity) pair counts when found with its gold type
+pairs found at p >= 0.50: 24 of 64
+pairs found at p >= 0.10: 24 of 64
+for comparison, at p >= 0.50 with relations in the schema: the four sentences one by one 8 of 8, the body as one text 8 of 8
+pin G10: holds, at most half the pairs are found

@@ -1,0 +1,5 @@
+out/
+work/
+web/vendor/
+dist/
+node_modules/

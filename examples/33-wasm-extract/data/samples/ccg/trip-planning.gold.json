@@ -1,0 +1,31 @@
+{
+  "entities": [
+    {"name": "Lucas Moreau", "type": "Person"},
+    {"name": "Valtorre Trails", "type": "Organization"},
+    {"name": "Vila Real", "type": "Location"},
+    {"name": "Douro Harvest Fair", "type": "Event"},
+    {"name": "Douro Weekend itinerary", "type": "Itinerary"},
+    {"name": "Porto", "type": "Destination"},
+    {"name": "Pinhao", "type": "Destination"},
+    {"name": "Casa Lunares Hotel", "type": "Hotel"},
+    {"name": "Quinta das Alvas", "type": "Hotel"},
+    {"name": "Terraced Vineyard Hike", "type": "Activity"},
+    {"name": "Douro River Cruise", "type": "Activity"},
+    {"name": "Port Lodge Tour", "type": "Activity"},
+    {"name": "Taberna do Tavik restaurant", "type": "Restaurant"},
+    {"name": "October guest review", "type": "Review"}
+  ],
+  "relations": [
+    {"source": "Lucas Moreau", "target": "Valtorre Trails", "type": "WORKS_FOR"},
+    {"source": "Valtorre Trails", "target": "Vila Real", "type": "LOCATED_AT"},
+    {"source": "Lucas Moreau", "target": "Douro Harvest Fair", "type": "PARTICIPATED_IN"},
+    {"source": "Douro Weekend itinerary", "target": "Porto", "type": "INCLUDES_DESTINATION"},
+    {"source": "Douro Weekend itinerary", "target": "Pinhao", "type": "INCLUDES_DESTINATION"},
+    {"source": "Douro Weekend itinerary", "target": "Casa Lunares Hotel", "type": "BOOKED_AT"},
+    {"source": "Douro Weekend itinerary", "target": "Quinta das Alvas", "type": "BOOKED_AT"},
+    {"source": "Terraced Vineyard Hike", "target": "Douro Weekend itinerary", "type": "PART_OF_TRIP"},
+    {"source": "Douro River Cruise", "target": "Douro Weekend itinerary", "type": "PART_OF_TRIP"},
+    {"source": "Taberna do Tavik restaurant", "target": "Casa Lunares Hotel", "type": "NEAR"},
+    {"source": "Casa Lunares Hotel", "target": "October guest review", "type": "REVIEWED_BY"}
+  ]
+}

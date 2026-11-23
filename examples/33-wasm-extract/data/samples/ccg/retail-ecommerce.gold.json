@@ -1,0 +1,30 @@
+{
+  "entities": [
+    {"name": "Nora Vance", "type": "Person"},
+    {"name": "Kettlewick Home", "type": "Organization"},
+    {"name": "Leeds", "type": "Location"},
+    {"name": "Spring Kitchen Sale", "type": "Event"},
+    {"name": "Customer 88213", "type": "Customer"},
+    {"name": "kitchen order", "type": "Order"},
+    {"name": "teapot order", "type": "Order"},
+    {"name": "Tollan Electric Kettle", "type": "Product"},
+    {"name": "Tollan Toaster", "type": "Product"},
+    {"name": "Tollan Glass Teapot", "type": "Product"},
+    {"name": "Tollan Milk Frother", "type": "Product"},
+    {"name": "Breakfast Bundle campaign", "type": "Campaign"},
+    {"name": "kettle review", "type": "Review"}
+  ],
+  "relations": [
+    {"source": "Nora Vance", "target": "Kettlewick Home", "type": "WORKS_FOR"},
+    {"source": "Kettlewick Home", "target": "Leeds", "type": "LOCATED_AT"},
+    {"source": "Nora Vance", "target": "Spring Kitchen Sale", "type": "PARTICIPATED_IN"},
+    {"source": "Customer 88213", "target": "kitchen order", "type": "PURCHASED"},
+    {"source": "kitchen order", "target": "Tollan Electric Kettle", "type": "CONTAINS"},
+    {"source": "kitchen order", "target": "Tollan Toaster", "type": "CONTAINS"},
+    {"source": "Customer 88213", "target": "teapot order", "type": "PURCHASED"},
+    {"source": "teapot order", "target": "Tollan Glass Teapot", "type": "CONTAINS"},
+    {"source": "Customer 88213", "target": "Tollan Milk Frother", "type": "BROWSED"},
+    {"source": "Customer 88213", "target": "Breakfast Bundle campaign", "type": "TARGETED_BY"},
+    {"source": "kettle review", "target": "Tollan Electric Kettle", "type": "REVIEW_OF"}
+  ]
+}

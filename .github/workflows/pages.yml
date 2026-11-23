@@ -1,0 +1,107 @@
+# Builds the browser-examples site (site/build.mjs: each examples/*/site.json example's dist/, plus
+# the index page) and publishes it on GitHub Pages as this repository's project site:
+# https://<owner>.github.io/relate-examples/ (example 33 at /relate-examples/33-wasm-extract/).
+# Pages serves the files as they are, with no custom headers: each page carries its own
+# Content-Security-Policy <meta>, and site/build.mjs refuses a page without one. site/README.md
+# is the contract; examples/33-wasm-extract/harness/serve.mjs --site emulates what Pages serves.
+# It deploys only what CI has passed: it runs when the examples workflow completes successfully for a
+# push to main, and builds that run's commit (workflow_run.head_sha), never a later one. A manual
+# workflow_dispatch builds the commit it is started on.
+# Setup: Settings > Pages > Source: GitHub Actions.
+name: pages
+on:
+  workflow_run:
+    workflows: [examples]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pages
+  cancel-in-progress: false   # never cut a deployment short
+defaults:
+  run:
+    shell: bash
+jobs:
+  build:
+    # A workflow_run fires for every completion: deploy only a successful run of a push to main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/33-wasm-extract/package-lock.json
+
+      # gliner-rs v0.3.1 built to WASM, as the examples workflow builds it (the same cache keys, so
+      # either workflow's build serves the other): Rust 1.97.1 with the wasm32 target on a miss.
+      - name: Restore the gliner-rs WASM build
+        id: gliner-wasm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/gliner-wasm
+          key: gliner-wasm-${{ runner.os }}-4fa741e-${{ hashFiles('scripts/build-gliner-wasm.sh') }}
+      - name: Restore wasm-pack and wasm-bindgen
+        id: wasm-tools
+        if: steps.gliner-wasm.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/wasm-tools
+          key: wasm-tools-${{ runner.os }}-4fa741e-${{ hashFiles('scripts/build-gliner-wasm.sh') }}
+      - if: steps.gliner-wasm.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@766a42937d994bd78bb4591385445c188ccb3f09  # 1.97.1 branch (toolchain: 1.97.1 in its action.yml)
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build gliner-rs to WASM
+        run: scripts/build-gliner-wasm.sh
+      - if: steps.gliner-wasm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/gliner-wasm
+          key: ${{ steps.gliner-wasm.outputs.cache-primary-key }}
+      - if: steps.gliner-wasm.outputs.cache-hit != 'true' && steps.wasm-tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/wasm-tools
+          key: ${{ steps.wasm-tools.outputs.cache-primary-key }}
+
+      # 33's npm packages (@relate/relate-wasm among them, pinned with its integrity) and the NVL
+      # vendor bundle. The site never ships the GLiNER weights: the page fetches them from the Hub.
+      - name: Example 33's npm packages and the NVL vendor bundle
+        run: |
+          npm ci --omit=peer --prefix examples/33-wasm-extract
+          npm run --prefix examples/33-wasm-extract vendor
+      # Runs each example's own build (33: npm run build), checks every page's CSP <meta> and
+      # relative URLs, and writes site/dist/ with the index page and .nojekyll.
+      - name: Build site/dist
+        run: node site/build.mjs
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
+        with:
+          path: site/dist
+          # .nojekyll is the only dot file site/build.mjs writes; without this input the action drops it.
+          include-hidden-files: "true"
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1

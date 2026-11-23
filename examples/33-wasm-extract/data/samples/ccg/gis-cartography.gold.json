@@ -1,0 +1,29 @@
+{
+  "entities": [
+    {"name": "Nadia Ferrante", "type": "Person"},
+    {"name": "Larkspur GIS Office", "type": "Organization"},
+    {"name": "Iowa City", "type": "Location"},
+    {"name": "Spring Flood Mapathon", "type": "Event"},
+    {"name": "Flood Atlas project", "type": "MapProject"},
+    {"name": "Hydrology layer", "type": "Layer"},
+    {"name": "Flood Zones layer", "type": "Layer"},
+    {"name": "Mill Creek channel", "type": "Feature"},
+    {"name": "Bracken Dam spillway", "type": "Feature"},
+    {"name": "Mill Creek floodplain", "type": "Feature"},
+    {"name": "spring field survey", "type": "Survey"},
+    {"name": "autumn field survey", "type": "Survey"}
+  ],
+  "relations": [
+    {"source": "Nadia Ferrante", "target": "Larkspur GIS Office", "type": "WORKS_FOR"},
+    {"source": "Larkspur GIS Office", "target": "Iowa City", "type": "LOCATED_AT"},
+    {"source": "Nadia Ferrante", "target": "Spring Flood Mapathon", "type": "PARTICIPATED_IN"},
+    {"source": "Flood Atlas project", "target": "Hydrology layer", "type": "INCLUDES_LAYER"},
+    {"source": "Flood Atlas project", "target": "Flood Zones layer", "type": "INCLUDES_LAYER"},
+    {"source": "Hydrology layer", "target": "Mill Creek channel", "type": "CONTAINS"},
+    {"source": "Hydrology layer", "target": "Bracken Dam spillway", "type": "CONTAINS"},
+    {"source": "Flood Zones layer", "target": "Mill Creek floodplain", "type": "CONTAINS"},
+    {"source": "Mill Creek channel", "target": "spring field survey", "type": "SURVEYED_BY"},
+    {"source": "Bracken Dam spillway", "target": "spring field survey", "type": "SURVEYED_BY"},
+    {"source": "Mill Creek floodplain", "target": "spring field survey", "type": "SURVEYED_BY"}
+  ]
+}

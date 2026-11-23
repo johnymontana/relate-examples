@@ -1,0 +1,29 @@
+{
+  "entities": [
+    {"name": "Lena Hart", "type": "Person"},
+    {"name": "Pale Lantern Studios", "type": "Organization"},
+    {"name": "Montreal", "type": "Location"},
+    {"name": "Autumn Raid Cup", "type": "Event"},
+    {"name": "Player 4471", "type": "Player"},
+    {"name": "Player 5208", "type": "Player"},
+    {"name": "Brannoc", "type": "Character"},
+    {"name": "Ilsabet", "type": "Character"},
+    {"name": "Sunken Bastion quest", "type": "Quest"},
+    {"name": "Drowned Bell quest", "type": "Quest"},
+    {"name": "Tidecaller Shield", "type": "Item"},
+    {"name": "Gloomfen Lantern", "type": "Item"}
+  ],
+  "relations": [
+    {"source": "Lena Hart", "target": "Pale Lantern Studios", "type": "WORKS_FOR"},
+    {"source": "Pale Lantern Studios", "target": "Montreal", "type": "LOCATED_AT"},
+    {"source": "Lena Hart", "target": "Autumn Raid Cup", "type": "PARTICIPATED_IN"},
+    {"source": "Player 4471", "target": "Brannoc", "type": "PLAYS"},
+    {"source": "Player 5208", "target": "Ilsabet", "type": "PLAYS"},
+    {"source": "Sunken Bastion quest", "target": "Tidecaller Shield", "type": "REWARDS"},
+    {"source": "Drowned Bell quest", "target": "Gloomfen Lantern", "type": "REWARDS"},
+    {"source": "Brannoc", "target": "Sunken Bastion quest", "type": "COMPLETED"},
+    {"source": "Ilsabet", "target": "Drowned Bell quest", "type": "COMPLETED"},
+    {"source": "Brannoc", "target": "Tidecaller Shield", "type": "OWNS"},
+    {"source": "Ilsabet", "target": "Gloomfen Lantern", "type": "OWNS"}
+  ]
+}

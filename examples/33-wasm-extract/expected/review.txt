@@ -1,0 +1,119 @@
+# Review: verdicts are graph state, latest wins (D10 rule 7; harness/run.mjs)
+On the financial-services store, its sample. A verdict names its target by key, so it outlives the
+target node; the gate takes the latest per target (ORDER BY ts DESC, seq DESC, then head(collect())).
+
+## before: the gate at the defaults
+review item (the highest-scoring): "Arjun Mehta" -[MANAGES]-> "ACC-2207" 0.342, review by band
+kept claim (the lowest-scoring):   "Rebalancing Decision" -[APPLIED_POLICY]-> "Concentration Limit Policy" 0.402, keep by band
+  review item: review by band; no typed edge
+  kept claim: keep by band; (Rebalancing Decision)-[:APPLIED_POLICY]->(Concentration Limit Policy)
+
+## accept the review item, reject the kept claim; re-gate; re-publish
+verdicts v1 (claim, accept) and v2 (claim, reject)
+  review item: keep by verdict; (Arjun Mehta)-[:MANAGES]->(ACC-2207)
+  kept claim: drop by verdict; no typed edge
+  published generation 3: 10 relationships
+
+## re-extract the document: its trace is deleted and extracted again (the cache answers)
+forgetDocument: 30 claims, 50 mentions, 13 sentences, 1 sections, 2 runs deleted; verdicts left: 2
+extracted again: 0 inferences, 13 cache hits; gated and published (generation 4)
+verdicts re-attached to the new nodes (ON edges): 2 of 2
+  review item: keep by verdict; (Arjun Mehta)-[:MANAGES]->(ACC-2207)
+  kept claim: drop by verdict; no typed edge
+
+## the latest verdict wins
+v3: reject the item accepted by v1
+  review item: drop by verdict; no typed edge
+v4: accept it again
+  review item: keep by verdict; (Arjun Mehta)-[:MANAGES]->(ACC-2207)
+verdicts on it, oldest first: v1 accept, v3 reject, v4 accept
+
+## a verdict on a mention: rejecting a kept name unanchors the claims that joined it (rule 3)
+mention "TX-4471" (Transaction) 0.624, keep by band: 3 claims join it; unanchored claims in the document: 3
+v5 (mention, reject): the mention is drop by verdict; 0 claims join it; unanchored claims: 6
+  published generation 7: 12 entities, 9 relationships
+
+## the rule invariant holds with verdicts in the store
+the Cypher gate equals the JS gate: yes
+
+## rule 3's cap: a claim with an end in review waits in review; a verdict on that end, or on the claim, lifts it
+On the agent-memory store (create-context-graph): the highest-scoring claim decided by end-in-review, and its end in review.
+at the defaults:
+  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: review by end-in-review; no typed edge
+  its end "billing agent" (Agent) 0.936: review by type-margin
+accept the end (a mention verdict): the claim joins a kept mention and the band decides it:
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each
+  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: keep by band; (billing agent:Agent)-[:REASONED_ABOUT]->(Brennan Freight entity:Entity)
+  its end "billing agent" (Agent) 0.936: keep by verdict
+instead, accept the claim: the end in review it joined is kept with it (claim-verdict):
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each
+  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: keep by verdict; (billing agent:Agent)-[:REASONED_ABOUT]->(Brennan Freight entity:Entity)
+  its end "billing agent" (Agent) 0.936: keep by claim-verdict
+then reject the end: the mention's own verdict wins, the claim is unanchored (rule 3) and keeps nothing:
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each
+  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: drop by unanchored; no typed edge
+  its end "billing agent" (Agent) 0.936: drop by verdict
+the verdicts deleted and the store re-gated: back to the defaults:
+  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: review by end-in-review; no typed edge
+  its end "billing agent" (Agent) 0.936: review by type-margin
+
+## an accepted claim keeps the two mentions it joined, and nothing else (claim-verdict)
+On the scripted store (gate.txt). An accepted claim keeps its ends in review only when both anchor, the pair is legal and
+the ends are two entities; rejecting an end it joined unanchors it, and no other mention is kept in that end's place.
+After each step: the rule invariant (every configuration), the audits, and the mentions kept by claim-verdict that no kept
+claim joins (a published entity without its edge).
+
+both ends in review:
+  claim "Mira Holt" -[USES]-> "Pulse Monitor" 0.950: review by end-in-review; no typed edge
+  ends "Mira Holt" (Patient) 0.450: review by band; entity Patient:MIRA_HOLT not published; "Pulse Monitor" (Device) 0.450: review by band; entity Device:PULSE_MONITOR not published
+accept the claim: both ends are kept with it, and its edge is published:
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Mira Holt" -[USES]-> "Pulse Monitor" 0.950: keep by verdict; (Patient:MIRA_HOLT)-[:USES]->(Device:PULSE_MONITOR)
+  ends "Mira Holt" (Patient) 0.450: keep by claim-verdict; entity Patient:MIRA_HOLT published; "Pulse Monitor" (Device) 0.450: keep by claim-verdict; entity Device:PULSE_MONITOR published
+then reject its head: the claim is unanchored, and its tail goes back to review (no entity without the edge):
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Mira Holt" -[USES]-> "Pulse Monitor" 0.950: drop by unanchored; no typed edge
+  ends "Mira Holt" (Patient) 0.450: drop by verdict; entity Patient:MIRA_HOLT not published; "Pulse Monitor" (Device) 0.450: review by band; entity Device:PULSE_MONITOR not published
+
+an end inside two mentions in review, "Ida Lund" (the smaller, which it joins) and "Dr. Ida Lund":
+accept the claim: the mention it joined is kept with it:
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Ida Lund" -[USES]-> "Heart Pump" 0.900: keep by verdict; (Patient:IDA_LUND)-[:USES]->(Device:HEART_PUMP)
+  "Ida Lund" (Patient) 0.450: keep by claim-verdict; entity Patient:IDA_LUND published; "Dr. Ida Lund" (Patient) 0.420: review by band; entity Patient:IDA_LUND published
+then reject "Ida Lund": the claim is unanchored, and "Dr. Ida Lund" is not kept in its place:
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Ida Lund" -[USES]-> "Heart Pump" 0.900: drop by unanchored; no typed edge
+  "Ida Lund" (Patient) 0.450: drop by verdict; entity Patient:IDA_LUND not published; "Dr. Ida Lund" (Patient) 0.420: review by band; entity Patient:IDA_LUND not published
+
+an accepted claim that rule 4 drops keeps neither end:
+accept "Kai Moss" -[WORKS_FOR]-> "Bay Labs":
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Kai Moss" -[WORKS_FOR]-> "Bay Labs" 0.900: drop by illegal; no typed edge
+  its end "Kai Moss" (Patient) 0.460: review by pole-specific; entity Patient:KAI_MOSS not published
+accept "Eva Sund" -[REFERRED]-> "Eva Sund":
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Eva Sund" -[REFERRED]-> "Eva Sund" 0.900: drop by self-loop; no typed edge
+  its end "Eva Sund" (Patient) 0.450: review by band; entity Patient:EVA_SUND not published
+
+a hedged claim waits for a verdict like any claim in review; accepting it publishes its edge, rejecting it drops it:
+  claim "Gus Hale" -[VISITED]-> "Oak Clinic" 0.900: review by hedged; no typed edge
+accept it:
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Gus Hale" -[VISITED]-> "Oak Clinic" 0.900: keep by verdict; (Patient:GUS_HALE)-[:VISITED]->(Clinic:OAK)
+then reject it (the latest verdict wins):
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Gus Hale" -[VISITED]-> "Oak Clinic" 0.900: drop by verdict; no typed edge
+
+a claim joined by name: rejecting the mention it joined unanchors it, as rejecting a containing mention does:
+  claim "Tod Fry" -[TREATED_AT]-> "the Ash Clinic" 0.900: keep by band; (Patient:TOD_FRY)-[:TREATED_AT]->(Clinic:ASH)
+  its tail "Ash Clinic" (Clinic) 0.900: keep by band; entity Clinic:ASH published
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  claim "Tod Fry" -[TREATED_AT]-> "the Ash Clinic" 0.900: drop by unanchored; no typed edge
+  its tail "Ash Clinic" (Clinic) 0.900: drop by verdict; entity Clinic:ASH not published
+
+a name kept as two kinds (rule 2b): accepting the mention sent to review keeps both, as two entities:
+  "Rae Holm" (Person) 0.950: review by other-kind; entity Person:RAE_HOLM not published; "Rae Holm" (Patient) 0.900: keep by band; entity Patient:RAE_HOLM published
+  claim "Rae Holm" -[WORKS_FOR]-> "Bay Labs" 0.900: review by end-in-review; no typed edge
+  the Cypher gate equals the JS gate: yes; audits: 0 rows each; claim-verdict mentions no kept claim joins: 0
+  "Rae Holm" (Person) 0.950: keep by verdict; entity Person:RAE_HOLM published; "Rae Holm" (Patient) 0.900: keep by band; entity Patient:RAE_HOLM published
+  claim "Rae Holm" -[WORKS_FOR]-> "Bay Labs" 0.900: keep by band; (Person:RAE_HOLM)-[:WORKS_FOR]->(Organization:BAY_LABS)

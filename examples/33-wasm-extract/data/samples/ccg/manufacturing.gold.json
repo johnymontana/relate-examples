@@ -1,0 +1,32 @@
+{
+  "entities": [
+    {"name": "Dorota Wilk", "type": "Person"},
+    {"name": "Kestrelbrook Motors", "type": "Organization"},
+    {"name": "Gdansk", "type": "Location"},
+    {"name": "line audit", "type": "Event"},
+    {"name": "Work order WO-5531", "type": "WorkOrder"},
+    {"name": "Work order WO-5532", "type": "WorkOrder"},
+    {"name": "Press P-220", "type": "Machine"},
+    {"name": "Press P-310", "type": "Machine"},
+    {"name": "Part B-7", "type": "Part"},
+    {"name": "Orlik Castings", "type": "Supplier"},
+    {"name": "Part GH-3", "type": "Part"},
+    {"name": "Talbridge Polymers", "type": "Supplier"},
+    {"name": "August quality report", "type": "QualityReport"},
+    {"name": "gearbox production line", "type": "ProductionLine"},
+    {"name": "housing production line", "type": "ProductionLine"}
+  ],
+  "relations": [
+    {"source": "Dorota Wilk", "target": "Kestrelbrook Motors", "type": "WORKS_FOR"},
+    {"source": "Kestrelbrook Motors", "target": "Gdansk", "type": "LOCATED_AT"},
+    {"source": "Dorota Wilk", "target": "line audit", "type": "PARTICIPATED_IN"},
+    {"source": "Part B-7", "target": "Orlik Castings", "type": "SUPPLIED_BY"},
+    {"source": "Part GH-3", "target": "Talbridge Polymers", "type": "SUPPLIED_BY"},
+    {"source": "Part B-7", "target": "Part GH-3", "type": "ASSEMBLED_FROM"},
+    {"source": "August quality report", "target": "Dorota Wilk", "type": "REPORTED_BY"},
+    {"source": "Work order WO-5531", "target": "gearbox production line", "type": "PRODUCED_ON"},
+    {"source": "Work order WO-5532", "target": "housing production line", "type": "PRODUCED_ON"},
+    {"source": "Press P-220", "target": "gearbox production line", "type": "OPERATED_BY"},
+    {"source": "Press P-310", "target": "housing production line", "type": "OPERATED_BY"}
+  ]
+}

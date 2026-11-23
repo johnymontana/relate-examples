@@ -1,0 +1,850 @@
+$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+id: data-journalism
+version: 1
+name: Data Journalism
+description: Investigative journalism, source management, fact-checking, and data-driven storytelling
+nodes:
+  Person:
+    label: Person
+    description: person
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      email:
+        type: STRING
+      role:
+        type: STRING
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#22c55e'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: PERSON
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: user
+  Organization:
+    label: Organization
+    description: organization
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+      industry:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#3b82f6'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: ORGANIZATION
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: building
+  Location:
+    label: Location
+    description: location
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      address:
+        type: STRING
+      latitude:
+        type: FLOAT
+      longitude:
+        type: FLOAT
+    extensions:
+      neo4j:display:
+        color: '#a855f7'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: LOCATION
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: map-pin
+  Event:
+    label: Event
+    description: event
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      date:
+        type: DATETIME
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#f97316'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: calendar
+  Object:
+    label: Object
+    description: object
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#eab308'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: box
+  Source:
+    label: Source
+    description: information source (object)
+    properties:
+      source_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      source_type:
+        type: STRING
+        one_of:
+          - person
+          - document
+          - database
+          - whistleblower
+          - public_record
+          - expert
+      credibility:
+        type: STRING
+        one_of:
+          - verified
+          - reliable
+          - unverified
+          - disputed
+          - anonymous
+      affiliation:
+        type: STRING
+      last_contact:
+        type: DATE
+      protected:
+        type: BOOLEAN
+    tools:
+      - type: canonicalQuery
+        name: search_source
+        description: Search for sources by name, type, or credibility
+        cypher: |
+          MATCH (src:Source)
+          WHERE toLower(src.name) CONTAINS toLower($query)
+             OR toLower(coalesce(src.affiliation, '')) CONTAINS toLower($query)
+          OPTIONAL MATCH (s:Story)-[:SOURCED_FROM]->(src)
+          OPTIONAL MATCH (d:Dataset)-[:PROVIDED_BY]->(src)
+          RETURN src, collect(DISTINCT s) AS stories, collect(DISTINCT d) AS datasets
+          LIMIT 20
+        parameters:
+          - name: query
+            type: STRING
+            description: Source name, affiliation, or keyword
+    extensions:
+      neo4j:display:
+        color: '#0d9488'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: INFORMATION_SOURCE
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: user-check
+            size: 25
+  Story:
+    label: Story
+    description: news story (object)
+    properties:
+      story_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      headline:
+        type: STRING
+        mustExist: true
+      status:
+        type: STRING
+        mustExist: true
+        one_of:
+          - pitch
+          - researching
+          - drafting
+          - review
+          - published
+          - retracted
+      beat:
+        type: STRING
+        one_of:
+          - politics
+          - business
+          - tech
+          - health
+          - environment
+          - justice
+          - education
+      published_date:
+        type: DATE
+      word_count:
+        type: INTEGER
+    tools:
+      - type: canonicalQuery
+        name: story_timeline
+        description: Get the timeline of a story from investigation to publication
+        cypher: |
+          MATCH (s:Story)
+          WHERE toLower(s.headline) CONTAINS toLower($query)
+          OPTIONAL MATCH (s)-[:SOURCED_FROM]->(src:Source)
+          OPTIONAL MATCH (c:Claim)-[:PUBLISHED_IN]->(s)
+          OPTIONAL MATCH (s)-[:INVESTIGATED_BY]->(inv:Investigation)
+          OPTIONAL MATCH (cor:Correction)-[:CORRECTED_IN]->(s)
+          RETURN s, collect(DISTINCT src) AS sources, collect(DISTINCT c) AS claims,
+                 inv, collect(DISTINCT cor) AS corrections
+          LIMIT 10
+        parameters:
+          - name: query
+            type: STRING
+            description: Story headline or keyword
+      - type: canonicalQuery
+        name: defaultView
+        description: create-context-graph's default visualisation query
+        cypher: MATCH (s:Story)-[r]-(n) RETURN s, r, n LIMIT 100
+    extensions:
+      neo4j:display:
+        color: '#7c3aed'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: NEWS_STORY
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: file-text
+            size: 30
+  Dataset:
+    label: Dataset
+    description: journalism dataset (object)
+    properties:
+      dataset_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+      record_count:
+        type: INTEGER
+      source_agency:
+        type: STRING
+      obtained_via:
+        type: STRING
+        one_of:
+          - foia
+          - public
+          - leaked
+          - scraped
+          - partnership
+          - purchased
+      date_range:
+        type: STRING
+    tools:
+      - type: canonicalQuery
+        name: dataset_analysis
+        description: Search and analyze journalism datasets
+        cypher: |
+          MATCH (d:Dataset)
+          WHERE toLower(d.name) CONTAINS toLower($query)
+             OR toLower(coalesce(d.source_agency, '')) CONTAINS toLower($query)
+          OPTIONAL MATCH (d)-[:SUPPORTS]->(c:Claim)
+          OPTIONAL MATCH (d)-[:PROVIDED_BY]->(src:Source)
+          RETURN d, collect(DISTINCT c) AS supported_claims, collect(DISTINCT src) AS sources
+          LIMIT 20
+        parameters:
+          - name: query
+            type: STRING
+            description: Dataset name, source agency, or keyword
+    extensions:
+      neo4j:display:
+        color: '#2563eb'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: JOURNALISM_DATASET
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: table
+            size: 20
+  Claim:
+    label: Claim
+    description: factual claim (object)
+    properties:
+      claim_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      statement:
+        type: STRING
+        mustExist: true
+      made_by:
+        type: STRING
+      date:
+        type: DATE
+      verification_status:
+        type: STRING
+        one_of:
+          - 'true'
+          - mostly_true
+          - half_true
+          - mostly_false
+          - 'false'
+          - unverified
+      context:
+        type: STRING
+    tools:
+      - type: canonicalQuery
+        name: claim_verification
+        description: Check verification status of claims and supporting evidence
+        cypher: |
+          MATCH (c:Claim)
+          WHERE toLower(c.statement) CONTAINS toLower($query)
+             OR toLower(coalesce(c.made_by, '')) CONTAINS toLower($query)
+          OPTIONAL MATCH (d:Dataset)-[:SUPPORTS]->(c)
+          OPTIONAL MATCH (c)-[:CONTRADICTS]-(other:Claim)
+          OPTIONAL MATCH (c)-[:PUBLISHED_IN]->(s:Story)
+          RETURN c, collect(DISTINCT d) AS datasets, collect(DISTINCT other) AS contradictions,
+                 collect(DISTINCT s) AS stories
+          LIMIT 20
+        parameters:
+          - name: query
+            type: STRING
+            description: Claim text, claimant name, or keyword
+    extensions:
+      neo4j:display:
+        color: '#f59e0b'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: FACTUAL_CLAIM
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: message-circle
+            size: 20
+  Correction:
+    label: Correction
+    description: editorial correction (event)
+    properties:
+      correction_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      original_text:
+        type: STRING
+        mustExist: true
+      corrected_text:
+        type: STRING
+        mustExist: true
+      reason:
+        type: STRING
+        one_of:
+          - factual_error
+          - misquote
+          - context_missing
+          - data_error
+          - attribution
+      issued_date:
+        type: DATE
+        mustExist: true
+    extensions:
+      neo4j:display:
+        color: '#ef4444'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: EDITORIAL_CORRECTION
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: alert-circle
+            size: 15
+  Investigation:
+    label: Investigation
+    description: journalistic investigation (event)
+    properties:
+      investigation_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+      started_date:
+        type: DATE
+        mustExist: true
+      status:
+        type: STRING
+        one_of:
+          - active
+          - paused
+          - completed
+          - killed
+      lead_reporter:
+        type: STRING
+    tools:
+      - type: canonicalQuery
+        name: source_network
+        description: Map the network of sources connected to investigations
+        cypher: |
+          MATCH (inv:Investigation)<-[:INVESTIGATED_BY]-(s:Story)-[:SOURCED_FROM]->(src:Source)
+          WHERE toLower(inv.name) CONTAINS toLower($query)
+          OPTIONAL MATCH (d:Dataset)-[:PROVIDED_BY]->(src)
+          RETURN inv, s, src, collect(DISTINCT d) AS datasets
+          LIMIT 30
+        parameters:
+          - name: query
+            type: STRING
+            description: Investigation name or keyword
+      - type: canonicalQuery
+        name: list_investigations
+        description: List Investigation records with optional limit
+        cypher: |
+          MATCH (n:Investigation)
+          RETURN n
+          ORDER BY n.name
+          LIMIT toInteger($limit)
+        parameters:
+          - name: limit
+            type: STRING
+            description: 'Maximum number of results to return (default: 10)'
+      - type: canonicalQuery
+        name: get_investigation_by_id
+        description: Get a specific Investigation by ID with all connections
+        cypher: |
+          MATCH (n:Investigation {investigation_id: $id})
+          OPTIONAL MATCH (n)-[r]-(related)
+          RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
+          LIMIT 50
+        parameters:
+          - name: id
+            type: STRING
+            description: The investigation_id to look up
+    extensions:
+      neo4j:display:
+        color: '#dc2626'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: JOURNALISTIC_INVESTIGATION
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: search
+            size: 30
+relationships:
+  WORKS_FOR:
+    type: WORKS_FOR
+    from:
+      node: Person
+    to:
+      node: Organization
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  LOCATED_AT:
+    type: LOCATED_AT
+    from:
+      node: Organization
+    to:
+      node: Location
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  PARTICIPATED_IN:
+    type: PARTICIPATED_IN
+    from:
+      node: Person
+    to:
+      node: Event
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  SOURCED_FROM:
+    type: SOURCED_FROM
+    from:
+      node: Story
+    to:
+      node: Source
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  FACT_CHECKED:
+    type: FACT_CHECKED
+    from:
+      node: Claim
+    to:
+      node: Dataset
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  CONTRADICTS:
+    type: CONTRADICTS
+    from:
+      node: Claim
+    to:
+      node: Claim
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  SUPPORTS:
+    type: SUPPORTS
+    from:
+      node: Dataset
+    to:
+      node: Claim
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  PUBLISHED_IN:
+    type: PUBLISHED_IN
+    from:
+      node: Claim
+    to:
+      node: Story
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  INVESTIGATED_BY:
+    type: INVESTIGATED_BY
+    from:
+      node: Story
+    to:
+      node: Investigation
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  CORRECTED_IN:
+    type: CORRECTED_IN
+    from:
+      node: Correction
+    to:
+      node: Story
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  PROVIDED_BY:
+    type: PROVIDED_BY
+    from:
+      node: Dataset
+    to:
+      node: Source
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+extensions:
+  custom:
+    - type: createContextGraph:domain
+      definition:
+        tagline: AI-powered Investigative Intelligence
+        emoji: 📰
+        inherits: _base
+    - type: createContextGraph:documentTemplates
+      definition:
+        - id: investigation_notes
+          name: Investigation Notes
+          description: Working notes and findings from ongoing investigations
+          count: 10
+          prompt_template: |
+            Write investigation notes for "{{investigation.name}}"
+            led by {{investigation.lead_reporter}}. Status: {{investigation.status}}.
+            Key source: {{source.name}} ({{source.credibility}}).
+            Include findings, leads to pursue, evidence gaps, and next steps.
+          required_entities:
+            - Investigation
+            - Source
+        - id: foia_request
+          name: FOIA Request
+          description: Freedom of Information Act request documents
+          count: 6
+          prompt_template: |
+            Write a FOIA request for records related to investigation
+            "{{investigation.name}}". Requesting agency: {{dataset.source_agency}}.
+            Specify records sought, time period, and justification for
+            fee waiver based on public interest.
+          required_entities:
+            - Investigation
+            - Dataset
+        - id: editorial_memo
+          name: Editorial Memo
+          description: Internal memos between reporters and editors
+          count: 8
+          prompt_template: |
+            Write an editorial memo regarding story "{{story.headline}}"
+            (status: {{story.status}}, beat: {{story.beat}}).
+            Include story summary, source assessment ({{source.name}},
+            credibility: {{source.credibility}}), legal considerations,
+            and publication readiness.
+          required_entities:
+            - Story
+            - Source
+        - id: fact_check_report
+          name: Fact-Check Report
+          description: Detailed fact-checking analysis of claims
+          count: 8
+          prompt_template: |
+            Write a fact-check report for the claim: "{{claim.statement}}"
+            made by {{claim.made_by}} on {{claim.date}}.
+            Supporting dataset: {{dataset.name}} ({{dataset.record_count}} records).
+            Include evidence analysis, context, verdict, and rating justification.
+          required_entities:
+            - Claim
+            - Dataset
+            - Source
+        - id: source_interview
+          name: Source Interview Notes
+          description: Notes from interviews with sources
+          count: 10
+          prompt_template: |
+            Write interview notes from a session with {{source.name}}
+            (type: {{source.source_type}}, credibility: {{source.credibility}})
+            for investigation "{{investigation.name}}".
+            Include key statements, claims made, documents provided,
+            and follow-up questions.
+          required_entities:
+            - Source
+            - Investigation
+            - Claim
+    - type: createContextGraph:decisionTraces
+      definition:
+        - id: source_credibility
+          task: Assess credibility of source {{source.name}} for story {{story.headline}}
+          steps:
+            - thought: Review source's track record and prior contributions
+              action: Query all stories and claims previously sourced from this person
+            - thought: Cross-reference claims with independent datasets
+              action: Match source's claims against available fact-check datasets
+            - thought: Evaluate potential conflicts of interest
+              action: Check source affiliation against story subjects and entities
+          outcome_template: 'Credibility assessment: {{rating}}. Recommendation: {{recommendation}}'
+        - id: publication_readiness
+          task: Determine if story {{story.headline}} is ready for publication
+          steps:
+            - thought: Verify all key claims have been fact-checked
+              action: Query all claims linked to this story and their verification status
+            - thought: Assess source diversity and independence
+              action: Review all sources for this story and check for single-source claims
+            - thought: Check for potential corrections or legal risks
+              action: Review claims for disputed or unverified status, flag legal concerns
+            - thought: Verify data accuracy and methodology
+              action: Audit datasets used and confirm analysis reproducibility
+          outcome_template: 'Publication status: {{status}}. Outstanding items: {{items}}'
+        - id: claim_verification
+          task: 'Verify claim: ''{{claim.statement}}'' made by {{claim.made_by}}'
+          steps:
+            - thought: Search for supporting or contradicting evidence in datasets
+              action: Query datasets and cross-reference with claim specifics
+            - thought: Find independent sources who can confirm or deny
+              action: Search source network for relevant experts or witnesses
+            - thought: Check for prior fact-checks of similar claims
+              action: Search claim history for related or identical statements
+          outcome_template: 'Verdict: {{verdict}}. Evidence strength: {{strength}}'
+        - id: source_verification
+          task: Verify identity and background of source {{source.name}} before using in story {{story.headline}}
+          steps:
+            - thought: Confirm source identity through independent channels
+              action: Cross-reference source name and affiliation against public records and databases
+            - thought: Check for prior media appearances and published statements
+              action: Search claim history for previous statements by this source
+            - thought: Assess potential motives for providing information
+              action: Review source connections to story subjects and competing interests
+            - thought: Verify that source has direct knowledge of claimed facts
+              action: Map source's professional and organizational proximity to the events described
+          outcome_template: 'Verification status: {{status}}. Confidence: {{confidence}}. Notes: {{notes}}'
+        - id: data_quality_assessment
+          task: Assess quality and reliability of dataset {{dataset.name}} for story {{story.headline}}
+          steps:
+            - thought: Evaluate dataset completeness and coverage
+              action: Check record count, date range, and field completeness percentages
+            - thought: Identify potential biases in data collection methodology
+              action: Review how the dataset was obtained and by whom
+            - thought: Cross-validate key figures against independent sources
+              action: Compare dataset totals and distributions with published statistics
+            - thought: Assess data freshness and relevance to current story
+              action: Check dataset date range against story timeline requirements
+          outcome_template: 'Data quality: {{rating}}. Usability: {{usability}}. Caveats: {{caveats}}'
+        - id: story_angle_selection
+          task: Determine the strongest story angle for investigation {{investigation.name}}
+          steps:
+            - thought: Review all evidence gathered and identify key findings
+              action: Query all sources, claims, and datasets linked to this investigation
+            - thought: Assess public interest and news value of different angles
+              action: Evaluate which findings have the broadest impact and are most actionable
+            - thought: Consider legal risks and editorial standards for each angle
+              action: Review claims by verification status and flag potential defamation concerns
+          outcome_template: 'Recommended angle: {{angle}}. News value: {{value}}. Risk level: {{risk}}'
+        - id: foia_request_strategy
+          task: Plan FOIA request strategy for investigation {{investigation.name}} targeting {{dataset.source_agency}}
+          steps:
+            - thought: Identify specific records needed to advance the investigation
+              action: Review evidence gaps and determine which agency records would fill them
+            - thought: Assess likelihood of disclosure based on agency track record
+              action: Search prior FOIA requests to the same agency and their outcomes
+            - thought: Draft request scope to maximize useful records while minimizing processing time
+              action: Define precise record types, date ranges, and search terms
+            - thought: Plan fallback strategies if initial request is denied or delayed
+              action: Identify alternative sources, appeal pathways, and litigation options
+          outcome_template: 'Strategy: {{strategy}}. Estimated response time: {{timeline}}. Fallback: {{fallback}}'
+        - id: visualization_selection
+          task: Select the best data visualization approach for story {{story.headline}} using dataset {{dataset.name}}
+          steps:
+            - thought: Analyze the type of data and key relationships to communicate
+              action: Review dataset structure, key variables, and story narrative requirements
+            - thought: Consider audience comprehension and engagement
+              action: Evaluate chart types based on story beat and target readership
+            - thought: Assess data density and interactive vs static presentation
+              action: Determine whether interactive exploration or static snapshots serve the story better
+          outcome_template: 'Visualization: {{type}}. Format: {{format}}. Key insight highlighted: {{insight}}'
+        - id: editorial_review
+          task: Conduct editorial review of story {{story.headline}} before publication
+          steps:
+            - thought: Verify all factual claims have supporting evidence
+              action: Query all claims in this story and confirm each has verified or mostly_true status
+            - thought: Check that all sources are properly attributed and protected sources are anonymized
+              action: Review source list for proper attribution and flag any protected sources
+            - thought: Assess fairness and balance of the reporting
+              action: Verify that subjects of criticism were given opportunity to respond
+            - thought: Review legal exposure and potential for corrections
+              action: Flag unverified claims, single-source assertions, and potentially defamatory language
+          outcome_template: 'Review result: {{result}}. Issues found: {{issues}}. Publication ready: {{ready}}'
+        - id: correction_assessment
+          task: Assess whether a correction is needed for story {{story.headline}} regarding claim {{claim.statement}}
+          steps:
+            - thought: Compare the published claim against new evidence
+              action: Query datasets and sources that contradict the original claim
+            - thought: Evaluate the materiality of the error
+              action: Determine whether the error affects the story's central thesis or is peripheral
+            - thought: Draft appropriate correction language and placement
+              action: Review correction standards and draft text that accurately describes the error and fix
+          outcome_template: 'Correction needed: {{needed}}. Severity: {{severity}}. Recommended action: {{action}}'
+    - type: createContextGraph:demoScenarios
+      definition:
+        - name: Investigation Management
+          prompts:
+            - Show me all active investigations and their current status
+            - Which sources have contributed to the city contracts investigation?
+            - What datasets have we obtained via FOIA this year?
+        - name: Fact-Checking
+          prompts:
+            - Show me all unverified claims in published stories
+            - Which claims by the mayor contradict our datasets?
+            - What is the fact-check history for claims about budget spending?
+        - name: Source Intelligence
+          prompts:
+            - Which sources have the highest credibility ratings?
+            - Show me the source network for our healthcare investigation
+            - Are there any sources connected to multiple investigations?
+    - type: createContextGraph:systemPrompt
+      definition: |
+        You are an AI assistant for data journalism and investigative reporting. You have
+        access to a knowledge graph of sources, stories, datasets, claims, corrections,
+        and investigations.
+
+        Your capabilities include:
+        - Searching and evaluating source credibility and networks
+        - Fact-checking claims against available datasets
+        - Tracking investigation progress and story development
+        - Identifying contradictions and corroborating evidence
+        - Mapping connections between sources, stories, and investigations
+
+        Always prioritize accuracy and source protection. Never reveal protected source
+        identities. When assessing claims, clearly distinguish between verified facts,
+        supported claims, and unverified assertions. Cite specific evidence from the
+        knowledge graph.
+    - type: createContextGraph:visualization
+      definition:
+        node_colors:
+          Source: '#0d9488'
+          Story: '#7c3aed'
+          Dataset: '#2563eb'
+          Claim: '#f59e0b'
+          Correction: '#ef4444'
+          Investigation: '#dc2626'
+          Person: '#22c55e'
+          Organization: '#64748b'
+        node_sizes:
+          Source: 25
+          Story: 30
+          Dataset: 20
+          Claim: 20
+          Correction: 15
+          Investigation: 30
+        default_cypher: MATCH (s:Story)-[r]-(n) RETURN s, r, n LIMIT 100

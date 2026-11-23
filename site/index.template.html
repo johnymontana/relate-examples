@@ -1,0 +1,50 @@
+<!doctype html>
+<!-- The site's index page. site/build.mjs replaces the EXAMPLES placeholder below with one
+     <li> per examples/*/site.json, sorted by path; everything else is copied as is. Keep
+     every URL relative: the site may be served from a sub-path. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'self'; object-src 'none'; form-action 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Relate browser examples</title>
+  <meta name="description" content="Runnable Relate examples that run entirely in your browser: an embedded openCypher graph database compiled to WebAssembly.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Relate browser examples</h1>
+      <p>
+        Relate is an embedded openCypher graph database. On these pages it runs as WebAssembly
+        inside your browser tab: no server holds your data, and nothing you type is sent anywhere
+        except the downloads each example lists.
+      </p>
+    </header>
+
+    <ul class="examples">
+{{EXAMPLES}}
+    </ul>
+
+    <section class="browser">
+      <h2>What your browser needs</h2>
+      <ul>
+        <li>WebAssembly, ES module workers and the Origin Private File System, with
+          synchronous access handles in workers. Current Chrome and Edge are tested; Firefox
+          should work; Safari is untested.</li>
+        <li>Storage. Each example keeps its databases and any downloaded model files in this
+          site's storage, under names prefixed with the example's number, so examples never
+          share or overwrite each other's data. Clear them from the example's own page or
+          from your browser's site settings.</li>
+        <li>A desktop-sized window. The pages are not designed for phones.</li>
+      </ul>
+      <p>
+        Every page states what it is about to download, and how large it is, before it
+        downloads it. Pages that cannot run in your browser say why instead of failing midway.
+      </p>
+    </section>
+  </main>
+</body>
+</html>

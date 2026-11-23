@@ -1,0 +1,32 @@
+{
+  "cybersecurity": {
+    "source": "VULN-1182",
+    "type": "AFFECTS",
+    "target": "ARCHIVE-01 server"
+  },
+  "financial-services": {
+    "source": "Growth Review Decision",
+    "type": "ADVISED_BY",
+    "target": "Tomas Lind"
+  },
+  "healthcare": {
+    "source": "Dr. Kofi Mensah",
+    "type": "PRESCRIBED",
+    "target": "empagliflozin"
+  },
+  "manufacturing": {
+    "source": "Part SR-4",
+    "type": "SUPPLIED_BY",
+    "target": "Kesselbrook Foundry"
+  },
+  "product-management": {
+    "source": "Map Tile Cache",
+    "type": "MEASURED_BY",
+    "target": "Sync Success Rate"
+  },
+  "wildlife-management": {
+    "source": "lion",
+    "type": "INHABITS",
+    "target": "Mwiru Woodland"
+  }
+}

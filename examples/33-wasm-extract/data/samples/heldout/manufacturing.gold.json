@@ -1,0 +1,32 @@
+{
+  "entities": [
+    {"name": "Anke Vogel", "type": "Person"},
+    {"name": "Rheinfeld Pumps", "type": "Organization"},
+    {"name": "Dortmund", "type": "Location"},
+    {"name": "spring quality audit", "type": "Event"},
+    {"name": "Work order WO-8120", "type": "WorkOrder"},
+    {"name": "Line 7", "type": "ProductionLine"},
+    {"name": "Work order WO-8121", "type": "WorkOrder"},
+    {"name": "Line 8", "type": "ProductionLine"},
+    {"name": "Press P-505", "type": "Machine"},
+    {"name": "Lathe L-220", "type": "Machine"},
+    {"name": "Part VB-12", "type": "Part"},
+    {"name": "Kesselbrook Foundry", "type": "Supplier"},
+    {"name": "Part SR-4", "type": "Part"},
+    {"name": "Norrland Seals", "type": "Supplier"},
+    {"name": "Quality report QR-1190", "type": "QualityReport"}
+  ],
+  "relations": [
+    {"source": "Anke Vogel", "target": "Rheinfeld Pumps", "type": "WORKS_FOR"},
+    {"source": "Rheinfeld Pumps", "target": "Dortmund", "type": "LOCATED_AT"},
+    {"source": "Anke Vogel", "target": "spring quality audit", "type": "PARTICIPATED_IN"},
+    {"source": "Work order WO-8120", "target": "Line 7", "type": "PRODUCED_ON"},
+    {"source": "Work order WO-8121", "target": "Line 8", "type": "PRODUCED_ON"},
+    {"source": "Press P-505", "target": "Line 7", "type": "OPERATED_BY"},
+    {"source": "Lathe L-220", "target": "Line 8", "type": "OPERATED_BY"},
+    {"source": "Part VB-12", "target": "Kesselbrook Foundry", "type": "SUPPLIED_BY"},
+    {"source": "Part SR-4", "target": "Norrland Seals", "type": "SUPPLIED_BY"},
+    {"source": "Part VB-12", "target": "Part SR-4", "type": "ASSEMBLED_FROM"},
+    {"source": "Quality report QR-1190", "target": "Anke Vogel", "type": "REPORTED_BY"}
+  ]
+}

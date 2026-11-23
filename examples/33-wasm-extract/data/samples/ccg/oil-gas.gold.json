@@ -1,0 +1,28 @@
+{
+  "entities": [
+    {"name": "Brady Kowalski", "type": "Person"},
+    {"name": "Midland", "type": "Location"},
+    {"name": "spring safety stand-down", "type": "Event"},
+    {"name": "Well Corsair 14-2H", "type": "Well"},
+    {"name": "Varrow Shale formation", "type": "Formation"},
+    {"name": "Well Corsair 15-1H", "type": "Well"},
+    {"name": "Lower Varrow Reservoir", "type": "Reservoir"},
+    {"name": "Permit DP-2026-4471", "type": "Permit"},
+    {"name": "Heater treater HT-5", "type": "Equipment"},
+    {"name": "Ashby Sand formation", "type": "Formation"},
+    {"name": "Sablerock Energy", "type": "Organization"},
+    {"name": "Permit DP-2026-4472", "type": "Permit"}
+  ],
+  "relations": [
+    {"source": "Brady Kowalski", "target": "spring safety stand-down", "type": "PARTICIPATED_IN"},
+    {"source": "Well Corsair 14-2H", "target": "Varrow Shale formation", "type": "DRILLED_IN"},
+    {"source": "Well Corsair 15-1H", "target": "Varrow Shale formation", "type": "DRILLED_IN"},
+    {"source": "Well Corsair 14-2H", "target": "Lower Varrow Reservoir", "type": "PRODUCES_FROM"},
+    {"source": "Well Corsair 15-1H", "target": "Lower Varrow Reservoir", "type": "PRODUCES_FROM"},
+    {"source": "Permit DP-2026-4471", "target": "Well Corsair 14-2H", "type": "PERMITTED_FOR"},
+    {"source": "Heater treater HT-5", "target": "Brady Kowalski", "type": "MAINTAINED_BY"},
+    {"source": "Brady Kowalski", "target": "Sablerock Energy", "type": "WORKS_FOR"},
+    {"source": "Sablerock Energy", "target": "Midland", "type": "LOCATED_AT"},
+    {"source": "Permit DP-2026-4472", "target": "Well Corsair 15-1H", "type": "PERMITTED_FOR"}
+  ]
+}

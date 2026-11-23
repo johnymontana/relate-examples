@@ -1,0 +1,27 @@
+{
+  "entities": [
+    {"name": "Daniel Osei", "type": "Person"},
+    {"name": "Blue Ridge Homes", "type": "Organization"},
+    {"name": "Asheville", "type": "Location"},
+    {"name": "Grace Whitfield", "type": "Person"},
+    {"name": "June open house", "type": "Event"},
+    {"name": "Juniper Lane house", "type": "Property"},
+    {"name": "Montford", "type": "Neighborhood"},
+    {"name": "Birch Street house", "type": "Property"},
+    {"name": "MLS-30418 listing", "type": "Listing"},
+    {"name": "Blue Ridge agent", "type": "Agent"},
+    {"name": "June transaction", "type": "Transaction"},
+    {"name": "buyer's agent", "type": "Agent"}
+  ],
+  "relations": [
+    {"source": "Daniel Osei", "target": "Blue Ridge Homes", "type": "WORKS_FOR"},
+    {"source": "Blue Ridge Homes", "target": "Asheville", "type": "LOCATED_AT"},
+    {"source": "Grace Whitfield", "target": "June open house", "type": "PARTICIPATED_IN"},
+    {"source": "Juniper Lane house", "target": "Montford", "type": "LOCATED_IN"},
+    {"source": "Juniper Lane house", "target": "Birch Street house", "type": "COMPARABLE_TO"},
+    {"source": "MLS-30418 listing", "target": "Juniper Lane house", "type": "LISTING_FOR"},
+    {"source": "MLS-30418 listing", "target": "Blue Ridge agent", "type": "LISTED_BY"},
+    {"source": "June transaction", "target": "Grace Whitfield", "type": "SOLD_TO"},
+    {"source": "June transaction", "target": "buyer's agent", "type": "REPRESENTED_BY"}
+  ]
+}

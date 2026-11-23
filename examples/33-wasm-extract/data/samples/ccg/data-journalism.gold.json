@@ -1,0 +1,30 @@
+{
+  "entities": [
+    {"name": "Leona Marsh", "type": "Person"},
+    {"name": "Callow Valley Courier", "type": "Organization"},
+    {"name": "Harlow", "type": "Location"},
+    {"name": "Harlow budget hearing", "type": "Event"},
+    {"name": "Glen Haddow", "type": "Person"},
+    {"name": "repair claim", "type": "Claim"},
+    {"name": "Bridges Left Behind story", "type": "Story"},
+    {"name": "bridge inspection dataset", "type": "Dataset"},
+    {"name": "backlog claim", "type": "Claim"},
+    {"name": "Span Decay investigation", "type": "Investigation"},
+    {"name": "April correction", "type": "Correction"},
+    {"name": "state records source", "type": "Source"},
+    {"name": "roads office source", "type": "Source"}
+  ],
+  "relations": [
+    {"source": "Leona Marsh", "target": "Callow Valley Courier", "type": "WORKS_FOR"},
+    {"source": "Callow Valley Courier", "target": "Harlow", "type": "LOCATED_AT"},
+    {"source": "Leona Marsh", "target": "Harlow budget hearing", "type": "PARTICIPATED_IN"},
+    {"source": "Glen Haddow", "target": "Harlow budget hearing", "type": "PARTICIPATED_IN"},
+    {"source": "repair claim", "target": "Bridges Left Behind story", "type": "PUBLISHED_IN"},
+    {"source": "repair claim", "target": "bridge inspection dataset", "type": "FACT_CHECKED"},
+    {"source": "bridge inspection dataset", "target": "backlog claim", "type": "SUPPORTS"},
+    {"source": "backlog claim", "target": "repair claim", "type": "CONTRADICTS"},
+    {"source": "Bridges Left Behind story", "target": "Span Decay investigation", "type": "INVESTIGATED_BY"},
+    {"source": "April correction", "target": "Bridges Left Behind story", "type": "CORRECTED_IN"},
+    {"source": "bridge inspection dataset", "target": "state records source", "type": "PROVIDED_BY"}
+  ]
+}

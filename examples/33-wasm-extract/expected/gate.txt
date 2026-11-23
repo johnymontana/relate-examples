@@ -1,0 +1,156 @@
+# The gate in Cypher, held to two invariants (D10; harness/run.mjs)
+
+## the floor invariant: cutoffs never need the model (D7)
+Every candidate at p >= 0.10 is stored. For each threshold t, the stored candidates with p >= t (a Cypher
+query on the store) must equal what gliner-rs returns when run at threshold t on the same sentence:
+entity spans with their labels, and relation edges with their spans. A difference is a row below.
+Sentences: the first sentence of every fixture that has one and of every sample (a fixed subset, for runtime), with its
+ontology. Thresholds: 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90.
+289 of 304 (sentence, threshold) pairs equal
+  markup t=0.20: stored only: R WORKS_FOR 0-12 25-50
+  markup t=0.20: gliner-rs only: R WORKS_FOR 2-11 25-50
+  markup t=0.30: stored only: R WORKS_FOR 0-12 25-50
+  markup t=0.30: gliner-rs only: R WORKS_FOR 2-11 26-44
+  markup t=0.40: stored only: R WORKS_FOR 0-12 25-50
+  markup t=0.40: gliner-rs only: R WORKS_FOR 2-11 26-44
+  markup t=0.50: stored only: R WORKS_FOR 0-12 25-50
+  markup t=0.50: gliner-rs only: R WORKS_FOR 2-11 26-44
+  markup t=0.60: stored only: R WORKS_FOR 0-12 25-50
+  markup t=0.60: gliner-rs only: R WORKS_FOR 2-11 26-44
+  markup t=0.70: stored only: R WORKS_FOR 0-12 25-50
+  markup t=0.70: gliner-rs only: R WORKS_FOR 2-11 26-44
+  pronouns t=0.20: stored only: E Location 11-21
+  pronouns t=0.20: gliner-rs only: E Location 11-29
+  pronouns t=0.30: stored only: E Location 11-21
+  pronouns t=0.30: gliner-rs only: E Location 11-29
+  pronouns t=0.40: stored only: E Location 11-21
+  pronouns t=0.40: gliner-rs only: E Location 11-29
+  pronouns t=0.50: gliner-rs only: E Location 11-29
+  overlap t=0.20: stored only: R WORKS_FOR 6-36 6-36
+  overlap t=0.20: gliner-rs only: R WORKS_FOR 6-36 6-31
+  overlap t=0.30: stored only: E Location 6-12
+  overlap t=0.30: gliner-rs only: E Location 53-71
+  overlap t=0.30: gliner-rs only: E Location 6-16
+  overlap t=0.40: stored only: E Location 6-12
+  overlap t=0.40: gliner-rs only: E Location 6-16
+  overlap t=0.40: gliner-rs only: R MANAGES 53-71 6-36
+  overlap t=0.50: stored only: E Location 6-12
+  overlap t=0.50: gliner-rs only: E Location 6-16
+  unknown t=0.30: stored only: R PARTICIPATED_IN 0-11 12-31
+  unknown t=0.30: gliner-rs only: R PARTICIPATED_IN 0-11 20-31
+The differences are gliner-rs decoding, not storage: with the flat overlap policy an entity span picked at
+the floor can give way to a longer overlapping one once the lower-scoring candidates are gone, and a
+relation's head or tail span is picked per threshold (under every overlap policy). A cutoff in the store
+filters what the floor found and never re-decodes, so these spans differ from a fresh call at that threshold.
+
+## the rule invariant: the Cypher gate equals a plain-JS gate over the raw JSON (D10)
+Each store's gate (store.gateStatements, rules 1-7 in Cypher) against jsGate in harness/run.mjs, which
+reads only the cached raw JSON, the ontology (its kinds' poles from the parsed YAML) and the verdicts. Compared:
+every mention's band and rule, every claim's band, rule, joined entity keys and hedge cue. Run at the defaults, with each
+rule switched off, and with rule 2's POLE preference off (pole margin null), on every create-context-graph store and
+on the fixtures' store.
+agent-memory: 66 mentions, 38 claims, 0 pole-specific, 2 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+conservation: 44 mentions, 19 claims, 1 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+cybersecurity: 64 mentions, 42 claims, 1 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+data-journalism: 49 mentions, 37 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+digital-twin: 48 mentions, 30 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+education: 61 mentions, 39 claims, 7 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+financial-services: 50 mentions, 30 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+gaming: 50 mentions, 39 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+genai-llm-ops: 49 mentions, 35 claims, 1 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+gis-cartography: 58 mentions, 37 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+golf-sports: 53 mentions, 34 claims, 3 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+government: 60 mentions, 33 claims, 1 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+healthcare: 67 mentions, 30 claims, 2 pole-specific, 2 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+hospitality: 75 mentions, 38 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+legal: 53 mentions, 36 claims, 2 pole-specific, 2 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+manufacturing: 61 mentions, 56 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+oil-gas: 48 mentions, 26 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+options-intelligence: 35 mentions, 21 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+personal-knowledge: 61 mentions, 36 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+product-management: 43 mentions, 28 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+real-estate: 49 mentions, 35 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+retail-ecommerce: 58 mentions, 25 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+scientific-research: 55 mentions, 34 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+software-engineering: 59 mentions, 41 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+trip-planning: 67 mentions, 35 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+vacation-industry: 43 mentions, 21 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+wildlife-management: 48 mentions, 34 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+fixtures: 112 mentions, 57 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+
+## edge cases the bundled data does not reach, under the same invariant
+A generic Ontology Graph Spec v1 document (harness/fixtures.mjs GENERIC_YAML: no createContextGraph envelope, so its kinds are
+asked by label text with each node's own description and its links between their endpoints, at the same defaults): a
+symmetric link (PARTNER_OF, Company to Company) and a listed name with no canonical form (東京: names.js keeps ASCII letters
+and digits only, E3), through the edgextract:symmetric and edgextract:gazetteer extensions; a pronoun the model may type as Person.
+format generic; asked (pipeline.modelSchema): "person: A named person.", "company: A named company or business.", "location";
+  "person founded company", "person works for company", "company partner of company", "person invested in company or company invested in company", "company headquartered in location"
+4 sentences, 4 inferences
+  mention drop   no-name     s0 "東京" (Location) 1.000
+  mention drop   no-name     s0 "東京" (Location) 0.504
+  mention drop   no-name     s3 "She" (Person) 0.951
+  claim keep   band        s1 "Acme Inc" -[PARTNER_OF]-> "Northwind" 0.559
+  claim keep   band        s2 "Northwind" -[PARTNER_OF]-> "Acme Inc" 0.849
+published PARTNER_OF (symmetric: one edge per pair, the smaller key first): Company:ACME_INC -> Company:NORTHWIND (2 claims)
+after accepting the PARTNER_OF claims in review: Company:ACME_INC -> Company:NORTHWIND (2 claims)
+the Cypher gate equals the JS gate, at the defaults, with each rule off and with the POLE preference off: yes
+the audits (queries/audit-*.cypher) on this store: 0 rows each
+
+## a scripted model: boundaries the real model does not reach, under the same invariant
+A create-context-graph ontology of its own on _base.yaml (scripted: Patient and Visitor specialise Person, Clinic
+Organization, Venue Location; USES and VISITED have two legal pairs each, TREATED_AT and VISITED share Patient -> Clinic),
+and a model that answers each sentence from a script (harness/run.mjs SCRIPTED), at the create-context-graph defaults.
+review.txt puts verdicts on the same store.
+asked as (pipeline.modelSchema): Person "person", Organization "organization", Location "location", Event "event", Patient "patient", Clinic "clinic", Venue "venue", Device "device", Visitor "visitor"; not asked: Object
+rule 2 at the pole margin 0.250: "Ola Berg" Person 0.750, Patient 0.500 (exactly at the margin): Patient wins, keep by pole-specific
+rule 2 at the pole margin 0.250: "Per Vik" Person 0.750, Patient 0.490 (just past the margin): Person wins, keep by band
+rule 2 with two specialisations within the margin: "Lia Dorn" Person 0.800, Patient 0.700, Visitor 0.600: Patient wins, keep by pole-specific
+rule 2 never gives the words to a specialisation at or under its drop cutoff (0.300): "Noor Vale" Person 0.400, Patient 0.180: Person wins, review by band
+rule 4 by exact pairs: VISITED is Patient -> Clinic and Event -> Venue; "Rosa Vint" (Patient) -[VISITED]-> "Pier Six" (Venue): drop by illegal (domain x range would allow it)
+rule 6 at the relation margin 0.050: "Bo Ek" -> "Bay Clinic", two links 0.02 apart: TREATED_AT 0.900 review by ambiguous, VISITED 0.880 review by ambiguous
+  "Fay Orr" -> "Elm Clinic", 0.06 apart: TREATED_AT 0.900 keep by band, VISITED 0.840 review by ambiguous
+rule 6, one way and back: REFERRED is one-way; "Cy Lam" -> "Dee Moe" and back: Cy Lam: REFERRED 0.900 review by reversed; Dee Moe: REFERRED 0.850 review by reversed
+rule 5's hedge cap (a cue from the sentence's start to the end of the later span): "Gus Hale never visited Oak Clinic.": VISITED 0.900 review by hedged (cue "never");
+  "Lou Pak may visit Fen Clinic.": VISITED 0.900 review by hedged (cue "may"); "Ned Ash could not visit Fen Clinic." (two cues, the first in HEDGE_CUES' order kept): VISITED 0.900 review by hedged (cue "not");
+  "Ivy Roe was treated at Oak Clinic, not at home." (after both spans): TREATED_AT 0.900 keep by band;
+  "In May, Jon Bly was treated at Fen Clinic." ("may" and "no" are cues in lower case only): TREATED_AT 0.900 keep by band
+rule 3's name join (no mention contains the end; one of its sentence has its canonical name): "Tod Fry" -[TREATED_AT]-> "the Ash Clinic" -> Clinic:ASH: keep by band;
+  "Wes Pell" -[TREATED_AT]-> "at the Birch Clinic" -> Clinic:BIRCH: keep by band (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> "the Pine Clinic ward" -> nothing: drop by unanchored
+  "by Zed Pry" -[REFERRED]-> "Dov Kim" (Zed Pry: Person 0.600 dropped by one-kind, Patient 0.450 review by pole-specific): head Patient:ZED_PRY, review by end-in-review
+rule 2b, one kind per name in the store: "Rae Holm": Patient 0.900 (key Patient:RAE_HOLM) keep by band, Person 0.950 (key Person:RAE_HOLM) review by other-kind (kept as Patient);
+  its claims: VISITED keep by band, WORKS_FOR review by end-in-review
+  "Kit Moor", two base kinds: Organization 0.800 (key Organization:KIT_MOOR) keep by band, Location 0.700 (key Location:KIT_MOOR) review by other-kind (kept as Organization)
+  "Gull Rock venue", one plain name under two keys: Venue 0.800 (key Venue:GULL_ROCK) keep by band, Location 0.900 (key Location:GULL_ROCK_VENUE) review by other-kind (kept as Venue)
+  "Una Pike" inside "Dr. Una Pike", one key: Patient 0.900 (key Patient:UNA_PIKE) keep by band; Person 0.950 (key Person:UNA_PIKE) drop by other-kind (kept as Patient)
+the entity key (names.js entityName): "device D-77" and "D-77" (Device): Device 0.900 (key Device:D_77) keep by band; Device 0.900 (key Device:D_77) keep by band; published as Device:D_77 (display "device D-77", 2 mentions)
+  "Dr. Ida Lund" and "Ida Lund" (Patient): keys Patient:IDA_LUND and Patient:IDA_LUND
+the Cypher gate equals the JS gate, at the defaults, with each rule off and with the POLE preference off: yes
+the audits on this store: 0 rows each

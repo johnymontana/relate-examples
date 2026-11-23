@@ -1,0 +1,29 @@
+{
+  "entities": [
+    {"name": "Rosa Delgado", "type": "Person"},
+    {"name": "Corvane Hospitality Group", "type": "Organization"},
+    {"name": "Sacramento", "type": "Location"},
+    {"name": "Sacramento wage clinic", "type": "Event"},
+    {"name": "26-CV-0419", "type": "Case"},
+    {"name": "Corvane wage matter", "type": "Matter"},
+    {"name": "Meridian Wage Payment Act", "type": "Statute"},
+    {"name": "Meridian Code 226", "type": "Statute"},
+    {"name": "Master Services Agreement", "type": "Contract"},
+    {"name": "motion to compel", "type": "Filing"},
+    {"name": "March 4 hearing", "type": "Hearing"}
+  ],
+  "relations": [
+    {"source": "Rosa Delgado", "target": "Corvane Hospitality Group", "type": "WORKS_FOR"},
+    {"source": "Corvane Hospitality Group", "target": "Sacramento", "type": "LOCATED_AT"},
+    {"source": "Rosa Delgado", "target": "Sacramento wage clinic", "type": "PARTICIPATED_IN"},
+    {"source": "Rosa Delgado", "target": "26-CV-0419", "type": "PARTY_TO"},
+    {"source": "26-CV-0419", "target": "Corvane wage matter", "type": "BELONGS_TO"},
+    {"source": "Meridian Wage Payment Act", "target": "26-CV-0419", "type": "APPLIES_TO"},
+    {"source": "Meridian Code 226", "target": "26-CV-0419", "type": "APPLIES_TO"},
+    {"source": "Master Services Agreement", "target": "Corvane wage matter", "type": "GOVERNS"},
+    {"source": "motion to compel", "target": "Meridian Wage Payment Act", "type": "CITES"},
+    {"source": "motion to compel", "target": "Meridian Code 226", "type": "CITES"},
+    {"source": "March 4 hearing", "target": "Sacramento", "type": "HELD_AT"},
+    {"source": "March 4 hearing", "target": "26-CV-0419", "type": "SCHEDULED_FOR"}
+  ]
+}

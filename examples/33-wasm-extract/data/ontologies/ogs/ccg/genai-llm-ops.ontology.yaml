@@ -1,0 +1,809 @@
+$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+id: genai-llm-ops
+version: 1
+name: GenAI & LLM Ops
+description: Machine learning model lifecycle, experiment tracking, prompt engineering, and deployment management
+nodes:
+  Person:
+    label: Person
+    description: person
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      email:
+        type: STRING
+      role:
+        type: STRING
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#22c55e'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: PERSON
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: user
+  Organization:
+    label: Organization
+    description: organization
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+      industry:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#3b82f6'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: ORGANIZATION
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: building
+  Location:
+    label: Location
+    description: location
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      address:
+        type: STRING
+      latitude:
+        type: FLOAT
+      longitude:
+        type: FLOAT
+    extensions:
+      neo4j:display:
+        color: '#a855f7'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: LOCATION
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: map-pin
+  Event:
+    label: Event
+    description: event
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      date:
+        type: DATETIME
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#f97316'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: calendar
+  Object:
+    label: Object
+    description: object
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#eab308'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: box
+  Model:
+    label: Model
+    description: ml model (object)
+    properties:
+      model_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      architecture:
+        type: STRING
+        one_of:
+          - transformer
+          - diffusion
+          - cnn
+          - rnn
+          - moe
+          - rl_agent
+      parameter_count:
+        type: FLOAT
+      version:
+        type: STRING
+      status:
+        type: STRING
+        one_of:
+          - training
+          - evaluating
+          - staging
+          - production
+          - deprecated
+    tools:
+      - type: canonicalQuery
+        name: search_model
+        description: Search for ML models by name, architecture, or status
+        cypher: |
+          MATCH (m:Model)
+          WHERE toLower(m.name) CONTAINS toLower($query)
+             OR toLower(coalesce(m.architecture, '')) CONTAINS toLower($query)
+          OPTIONAL MATCH (m)-[r]-(related)
+          RETURN m, type(r) AS rel_type, related
+          LIMIT 20
+        parameters:
+          - name: query
+            type: STRING
+            description: Model name, architecture, or keyword to search for
+      - type: canonicalQuery
+        name: experiment_comparison
+        description: Compare results across multiple experiments for a model
+        cypher: |
+          MATCH (m:Model {name: $model_name})<-[:PRODUCED_BY]-(e:Experiment)
+          OPTIONAL MATCH (m)-[:SCORED_IN]->(ev:Evaluation)
+          OPTIONAL MATCH (e)-[:USED_PROMPT]->(p:Prompt)
+          RETURN e, ev, p
+          ORDER BY e.started_at DESC
+          LIMIT 20
+        parameters:
+          - name: model_name
+            type: STRING
+            description: Name of the model to compare experiments for
+      - type: canonicalQuery
+        name: eval_metrics
+        description: Get evaluation metrics and scores for a specific model version
+        cypher: |
+          MATCH (m:Model {name: $model_name})-[:SCORED_IN]->(ev:Evaluation)
+          OPTIONAL MATCH (m)-[:EVALUATED_ON]->(d:Dataset)
+          RETURN m, ev, d
+          ORDER BY ev.date DESC
+          LIMIT 20
+        parameters:
+          - name: model_name
+            type: STRING
+            description: Name of the model to get evaluation metrics for
+      - type: canonicalQuery
+        name: deployment_history
+        description: View deployment history and status for models
+        cypher: |
+          MATCH (m:Model)-[:DEPLOYED_TO]->(dep:Deployment)
+          WHERE m.name = $model_name OR $model_name = ''
+          RETURN m.name, dep.deployment_id, dep.environment, dep.deployed_at, dep.status
+          ORDER BY dep.deployed_at DESC
+          LIMIT 20
+        parameters:
+          - name: model_name
+            type: STRING
+            description: Model name to filter deployments (empty for all)
+      - type: canonicalQuery
+        name: list_models
+        description: List ML model records with optional limit
+        cypher: |
+          MATCH (n:Model)
+          RETURN n
+          ORDER BY n.name
+          LIMIT toInteger($limit)
+        parameters:
+          - name: limit
+            type: STRING
+            description: 'Maximum number of results to return (default: 10)'
+      - type: canonicalQuery
+        name: get_model_by_id
+        description: Get a specific model by ID with all connections
+        cypher: |
+          MATCH (n:Model {model_id: $id})
+          OPTIONAL MATCH (n)-[r]-(related)
+          RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
+          LIMIT 50
+        parameters:
+          - name: id
+            type: STRING
+            description: The model_id to look up
+      - type: canonicalQuery
+        name: defaultView
+        description: create-context-graph's default visualisation query
+        cypher: MATCH (m:Model)-[r]-(n) RETURN m, r, n LIMIT 100
+    extensions:
+      neo4j:display:
+        color: '#7c3aed'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: ML_MODEL
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: cpu
+            size: 30
+  Experiment:
+    label: Experiment
+    description: ml experiment (event)
+    properties:
+      experiment_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      hypothesis:
+        type: STRING
+      started_at:
+        type: DATETIME
+        mustExist: true
+      completed_at:
+        type: DATETIME
+      status:
+        type: STRING
+        one_of:
+          - running
+          - completed
+          - failed
+          - cancelled
+    extensions:
+      neo4j:display:
+        color: '#d946ef'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: ML_EXPERIMENT
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: flask-conical
+            size: 25
+  Dataset:
+    label: Dataset
+    description: data asset (object)
+    properties:
+      dataset_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      size_gb:
+        type: FLOAT
+      record_count:
+        type: INTEGER
+      format:
+        type: STRING
+        one_of:
+          - parquet
+          - jsonl
+          - csv
+          - tfrecord
+          - arrow
+      domain:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#06b6d4'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: DATA_ASSET
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: database
+            size: 20
+  Prompt:
+    label: Prompt
+    description: prompt template (object)
+    properties:
+      prompt_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      template:
+        type: STRING
+      version:
+        type: STRING
+      category:
+        type: STRING
+        one_of:
+          - system
+          - user
+          - few_shot
+          - chain_of_thought
+          - tool_use
+    tools:
+      - type: canonicalQuery
+        name: prompt_analysis
+        description: Analyze prompt performance across experiments
+        cypher: |
+          MATCH (p:Prompt)<-[:USED_PROMPT]-(e:Experiment)
+          WHERE toLower(p.name) CONTAINS toLower($query)
+             OR toLower(coalesce(p.category, '')) CONTAINS toLower($query)
+          OPTIONAL MATCH (e)<-[:PRODUCED_BY]-(m:Model)-[:SCORED_IN]->(ev:Evaluation)
+          RETURN p, e, m, ev
+          ORDER BY ev.score DESC
+          LIMIT 20
+        parameters:
+          - name: query
+            type: STRING
+            description: Prompt name or category to search for
+    extensions:
+      neo4j:display:
+        color: '#ec4899'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: PROMPT_TEMPLATE
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: message-square
+            size: 20
+  Evaluation:
+    label: Evaluation
+    description: model evaluation (event)
+    properties:
+      eval_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      metric:
+        type: STRING
+        one_of:
+          - accuracy
+          - f1
+          - bleu
+          - rouge
+          - perplexity
+          - human_preference
+      score:
+        type: FLOAT
+      date:
+        type: DATETIME
+        mustExist: true
+    extensions:
+      neo4j:display:
+        color: '#10b981'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: MODEL_EVALUATION
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: bar-chart-2
+            size: 20
+  Deployment:
+    label: Deployment
+    description: model deployment (event)
+    properties:
+      deployment_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      environment:
+        type: STRING
+        mustExist: true
+        one_of:
+          - development
+          - staging
+          - canary
+          - production
+      endpoint_url:
+        type: STRING
+      deployed_at:
+        type: DATETIME
+        mustExist: true
+      status:
+        type: STRING
+        one_of:
+          - active
+          - draining
+          - rolled_back
+          - terminated
+    extensions:
+      neo4j:display:
+        color: '#0891b2'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: MODEL_DEPLOYMENT
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: rocket
+            size: 25
+relationships:
+  WORKS_FOR:
+    type: WORKS_FOR
+    from:
+      node: Person
+    to:
+      node: Organization
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  LOCATED_AT:
+    type: LOCATED_AT
+    from:
+      node: Organization
+    to:
+      node: Location
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  PARTICIPATED_IN:
+    type: PARTICIPATED_IN
+    from:
+      node: Person
+    to:
+      node: Event
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  FINE_TUNED_FROM:
+    type: FINE_TUNED_FROM
+    from:
+      node: Model
+    to:
+      node: Model
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  EVALUATED_ON:
+    type: EVALUATED_ON
+    from:
+      node: Model
+    to:
+      node: Dataset
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  DEPLOYED_TO:
+    type: DEPLOYED_TO
+    from:
+      node: Model
+    to:
+      node: Deployment
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  USED_PROMPT:
+    type: USED_PROMPT
+    from:
+      node: Experiment
+    to:
+      node: Prompt
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  TRAINED_ON:
+    type: TRAINED_ON
+    from:
+      node: Model
+    to:
+      node: Dataset
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  COMPARED_WITH:
+    type: COMPARED_WITH
+    from:
+      node: Evaluation
+    to:
+      node: Evaluation
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  PRODUCED_BY:
+    type: PRODUCED_BY
+    from:
+      node: Model
+    to:
+      node: Experiment
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  SCORED_IN:
+    type: SCORED_IN
+    from:
+      node: Model
+    to:
+      node: Evaluation
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+extensions:
+  custom:
+    - type: createContextGraph:domain
+      definition:
+        tagline: AI-powered ML Operations Intelligence
+        emoji: 🤖
+        inherits: _base
+    - type: createContextGraph:documentTemplates
+      definition:
+        - id: experiment_log
+          name: Experiment Log
+          description: Detailed log of ML experiment runs and observations
+          count: 10
+          prompt_template: |
+            Write an experiment log entry for experiment "{{experiment.name}}"
+            testing model {{model.name}} on dataset {{dataset.name}}.
+            Hypothesis: {{experiment.hypothesis}}.
+            Started: {{experiment.started_at}}. Include observations, metrics, and next steps.
+          required_entities:
+            - Model
+            - Experiment
+            - Dataset
+        - id: eval_report
+          name: Evaluation Report
+          description: Comprehensive model evaluation and benchmark results
+          count: 8
+          prompt_template: |
+            Write an evaluation report for model {{model.name}} (v{{model.version}})
+            evaluated on {{dataset.name}} using {{evaluation.metric}}.
+            Score: {{evaluation.score}}. Compare against baseline and previous versions.
+          required_entities:
+            - Model
+            - Evaluation
+            - Dataset
+        - id: deployment_runbook
+          name: Deployment Runbook
+          description: Step-by-step deployment procedures and rollback plans
+          count: 6
+          prompt_template: |
+            Write a deployment runbook for deploying model {{model.name}}
+            to {{deployment.environment}} at {{deployment.endpoint_url}}.
+            Include pre-deployment checks, deployment steps, monitoring, and rollback procedures.
+          required_entities:
+            - Model
+            - Deployment
+        - id: model_card
+          name: Model Card
+          description: Documentation of model capabilities, limitations, and intended use
+          count: 6
+          prompt_template: |
+            Write a model card for {{model.name}} ({{model.architecture}},
+            {{model.parameter_count}} parameters). Include intended use, training data
+            ({{dataset.name}}), evaluation results, limitations, and ethical considerations.
+          required_entities:
+            - Model
+            - Dataset
+            - Evaluation
+        - id: prompt_engineering_notes
+          name: Prompt Engineering Notes
+          description: Notes on prompt design, iteration, and performance
+          count: 8
+          prompt_template: |
+            Write prompt engineering notes for prompt "{{prompt.name}}"
+            (category: {{prompt.category}}) used in experiment {{experiment.name}}
+            with model {{model.name}}. Document design rationale, iterations tried,
+            and observed impact on output quality.
+          required_entities:
+            - Prompt
+            - Experiment
+            - Model
+    - type: createContextGraph:decisionTraces
+      definition:
+        - id: model_promotion
+          task: Decide whether to promote model {{model.name}} from staging to production
+          steps:
+            - thought: Review evaluation metrics across all benchmarks
+              action: Query all evaluations for this model and compare against production baseline
+            - thought: Check for regression on critical safety and fairness metrics
+              action: Compare safety evaluation scores with minimum thresholds
+            - thought: Assess infrastructure readiness and cost implications
+              action: Review deployment resource requirements and latency benchmarks
+            - thought: Evaluate rollback plan and monitoring coverage
+              action: Verify rollback procedures and alerting are in place
+          outcome_template: 'Decision: {{decision}} promotion based on {{rationale}}'
+        - id: experiment_direction
+          task: Determine next experiment direction after {{experiment.name}} results
+          steps:
+            - thought: Analyze which hyperparameters had the most impact
+              action: Query experiment results and correlate with configuration changes
+            - thought: Identify gaps in current evaluation coverage
+              action: Review which benchmarks and datasets have not been tested
+            - thought: Compare with state-of-the-art approaches
+              action: Search for similar experiments and their outcomes
+          outcome_template: 'Next experiment: {{plan}} targeting {{metric}} improvement'
+        - id: prompt_optimization
+          task: Optimize prompt {{prompt.name}} for improved {{metric}} on {{model.name}}
+          steps:
+            - thought: Analyze current prompt failure modes
+              action: Query evaluation results filtered by error categories
+            - thought: Review successful prompt patterns from similar tasks
+              action: Search prompt library for high-performing templates in same category
+            - thought: Design A/B test for prompt variants
+              action: Create experiment comparing top prompt candidates
+          outcome_template: 'Optimized prompt: {{result}} with {{improvement}}% gain'
+        - id: dataset_quality_review
+          task: Assess quality of training dataset {{dataset.name}} for model {{model.name}}
+          steps:
+            - thought: Evaluate dataset size and coverage relative to training requirements
+              action: Query dataset metadata and compare against model architecture needs
+            - thought: Check for known biases or data quality issues
+              action: Review papers that previously used this dataset and reported limitations
+            - thought: Assess data freshness and domain relevance
+              action: Compare dataset domain and date range against model's intended use case
+            - thought: Identify potential data contamination with evaluation sets
+              action: Cross-reference dataset records against evaluation benchmark contents
+          outcome_template: 'Quality assessment: {{assessment}}. Issues: {{issues}}. Recommendation: {{recommendation}}'
+        - id: cost_optimization
+          task: Optimize inference costs for model {{model.name}} deployed at {{deployment.endpoint_url}}
+          steps:
+            - thought: Analyze current inference volume and cost breakdown
+              action: Query deployment metrics for request volume, latency, and compute utilization
+            - thought: Evaluate model distillation or quantization opportunities
+              action: Check if smaller model variants achieve acceptable quality on evaluation benchmarks
+            - thought: Assess batching and caching strategies
+              action: Analyze request patterns for cache hit potential and batch optimization
+          outcome_template: 'Cost reduction: {{reduction}}% via {{strategy}} with {{quality_impact}} quality impact'
+        - id: safety_evaluation
+          task: Evaluate safety characteristics of model {{model.name}} before production deployment
+          steps:
+            - thought: Run model against safety benchmark suite
+              action: Query evaluation results filtered by safety-related metrics
+            - thought: Identify failure modes and high-risk prompt categories
+              action: Analyze evaluation failures by error type and input category
+            - thought: Assess guardrail coverage and effectiveness
+              action: Review prompt templates for system prompts and safety instructions
+            - thought: Compare against regulatory and policy requirements
+              action: Check compliance with safety thresholds and deployment guidelines
+          outcome_template: 'Safety score: {{score}}. Gaps: {{gaps}}. Deployment ready: {{ready}}'
+        - id: model_regression_diagnosis
+          task: Diagnose performance regression in model {{model.name}} v{{model.version}}
+          steps:
+            - thought: Compare evaluation scores against the previous version baseline
+              action: Query evaluations for current and prior model versions side by side
+            - thought: Identify which benchmarks and metrics declined
+              action: Find evaluations where scores dropped below previous version
+            - thought: Trace regression to training data or hyperparameter changes
+              action: Compare experiment configurations between the two versions
+            - thought: Determine whether to fix forward or roll back
+              action: Assess severity of regression vs cost of rollback and retraining
+          outcome_template: 'Regression root cause: {{cause}}. Affected metrics: {{metrics}}. Action: {{action}}'
+        - id: fine_tuning_strategy
+          task: Determine optimal fine-tuning approach for adapting {{model.name}} to new domain
+          steps:
+            - thought: Assess base model capabilities on the target domain
+              action: Query evaluation scores on domain-relevant benchmarks
+            - thought: Evaluate available domain-specific training data
+              action: Search datasets matching the target domain and assess size and quality
+            - thought: Compare full fine-tuning vs parameter-efficient approaches
+              action: Review experiment results for similar adaptations and compute requirements
+            - thought: Plan evaluation strategy for the fine-tuned model
+              action: Identify appropriate benchmarks and design validation experiment
+          outcome_template: 'Strategy: {{approach}} using {{dataset}} with estimated {{improvement}}% improvement'
+        - id: ab_test_decision
+          task: Decide winner of A/B test between prompt {{prompt.name}} variants for model {{model.name}}
+          steps:
+            - thought: Compare evaluation scores across the prompt variants
+              action: Query experiment results for each variant and their evaluation metrics
+            - thought: Assess statistical significance of observed differences
+              action: Review sample sizes and confidence intervals for key metrics
+            - thought: Consider secondary metrics and edge case performance
+              action: Check for quality regressions on safety, latency, or cost metrics
+          outcome_template: 'Winner: {{variant}} with {{metric}} improvement of {{improvement}}% (p={{p_value}})'
+    - type: createContextGraph:demoScenarios
+      definition:
+        - name: Model Lifecycle
+          prompts:
+            - Show me all models currently in production and their evaluation scores
+            - What experiments led to the latest version of our summarization model?
+            - Compare the performance of GPT-4 fine-tune vs our custom model on the QA benchmark
+        - name: Experiment Tracking
+          prompts:
+            - What experiments have been run this month and what were the outcomes?
+            - Show me the training data lineage for model llm-v3.2
+            - Which prompts performed best in the customer support evaluation?
+        - name: Deployment Operations
+          prompts:
+            - What is the deployment history for our production endpoint?
+            - Show me all models that were rolled back in the last 30 days
+            - What evaluations were run before the latest production deployment?
+    - type: createContextGraph:systemPrompt
+      definition: |
+        You are an AI assistant for ML operations and LLM lifecycle management. You have
+        access to a comprehensive knowledge graph tracking models, experiments, datasets,
+        prompts, evaluations, and deployments.
+
+        Your capabilities include:
+        - Tracking model lineage and fine-tuning history
+        - Comparing experiment results and evaluation metrics
+        - Analyzing prompt engineering patterns and performance
+        - Reviewing deployment history and production readiness
+        - Identifying trends and regressions across model versions
+
+        Always provide data-driven insights. When recommending actions, reference specific
+        evaluation scores, experiment outcomes, and deployment metrics from the knowledge graph.
+    - type: createContextGraph:visualization
+      definition:
+        node_colors:
+          Model: '#7c3aed'
+          Experiment: '#d946ef'
+          Dataset: '#06b6d4'
+          Prompt: '#ec4899'
+          Evaluation: '#10b981'
+          Deployment: '#0891b2'
+          Person: '#22c55e'
+          Organization: '#64748b'
+        node_sizes:
+          Model: 30
+          Experiment: 25
+          Dataset: 20
+          Prompt: 20
+          Evaluation: 20
+          Deployment: 25
+        default_cypher: MATCH (m:Model)-[r]-(n) RETURN m, r, n LIMIT 100

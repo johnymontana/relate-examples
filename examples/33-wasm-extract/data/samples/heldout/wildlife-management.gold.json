@@ -1,0 +1,29 @@
+{
+  "entities": [
+    {"name": "Joseph Mwangi", "type": "Person"},
+    {"name": "Mwiru Wildlife Trust", "type": "Organization"},
+    {"name": "Garissa", "type": "Location"},
+    {"name": "wet-season bird count", "type": "Event"},
+    {"name": "Grevy's zebra", "type": "Species"},
+    {"name": "Mwiru Woodland", "type": "Habitat"},
+    {"name": "lesser kudu", "type": "Species"},
+    {"name": "lion", "type": "Species"},
+    {"name": "Drought", "type": "Threat"},
+    {"name": "Charcoal burning", "type": "Threat"},
+    {"name": "Sighting SG-4410", "type": "Sighting"},
+    {"name": "Camera CT-21", "type": "Camera"}
+  ],
+  "relations": [
+    {"source": "Joseph Mwangi", "target": "Mwiru Wildlife Trust", "type": "WORKS_FOR"},
+    {"source": "Mwiru Wildlife Trust", "target": "Garissa", "type": "LOCATED_AT"},
+    {"source": "Joseph Mwangi", "target": "wet-season bird count", "type": "PARTICIPATED_IN"},
+    {"source": "Grevy's zebra", "target": "Mwiru Woodland", "type": "INHABITS"},
+    {"source": "lesser kudu", "target": "Mwiru Woodland", "type": "INHABITS"},
+    {"source": "lion", "target": "Grevy's zebra", "type": "PREYS_ON"},
+    {"source": "Drought", "target": "Grevy's zebra", "type": "THREATENS"},
+    {"source": "Charcoal burning", "target": "lesser kudu", "type": "THREATENS"},
+    {"source": "Sighting SG-4410", "target": "Camera CT-21", "type": "CAPTURED_BY"},
+    {"source": "Sighting SG-4410", "target": "Joseph Mwangi", "type": "OBSERVED_BY"},
+    {"source": "Camera CT-21", "target": "Mwiru Woodland", "type": "MONITORS"}
+  ]
+}

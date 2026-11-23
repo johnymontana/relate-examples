@@ -1,0 +1,1418 @@
+# Extraction in Node (harness/run.mjs): gliner2.5-small-v1 through gliner-rs, Relate 1.2.0 WASM in memory
+model fastino/gliner2.5-small-v1 @ 7132dc4, gliner-rs@4fa741e; every candidate at p >= 0.10 is cached and stored (D7)
+create-context-graph's ontologies are asked by label text ("maintenance record"), "<subtype> in <domain>" for a domain kind,
+base kinds bare, a base kind no link names and a domain kind covers not asked, links between their endpoints ("person works
+for organization"); sections of about 3000 bytes
+gliner-rs ran on worker threads first, each question once (harness/infer.mjs); three answers asked again on this thread: identical
+one store per ontology (D14): the 27 create-context-graph domains with a sample, and one for the harness's 12 fixtures
+(harness/fixtures.mjs: edge cases, with the financial-services ontology); the fixtures, then the samples (samples.json order); each
+document is extracted, gated and published
+default gate (store.defaultGate, gliner2.5-small-v1; every ontology): entity keep 0.500 drop 0.300; relation keep 0.350 drop 0.200;
+  type margin 0.050; relation margin 0.050; pole margin 0.250
+rules: 0 no-name (a pronoun or no canonical name), 1 gazetteer, 2 one-kind / type-margin / pole-specific, 2b other-kind,
+       3 unanchored / end-in-review, 4 illegal / self-loop, 5 band / hedged, 6 ambiguous / reversed, 7 verdict / claim-verdict.
+       A line: band, rule, sentence (s<idx>), then
+       "text" (KIND) p or "head" -[REL]-> "tail" p
+Each document is listed as the gate leaves its store after the last document (the gate runs per store).
+
+# The harness's fixtures: edge cases, each a document in the fixtures' store, with the financial-services ontology (harness/fixtures.mjs)
+They follow the cases edgextract's golden set covered, written for this domain; no gold. Listed: every mention and claim.
+
+## fixtures: markup (harness/fixtures.mjs markup)
+bold names, list items and a version number (edgextract 01_edgequake, 02_ollama)
+4 sentences, 1 section; 4 inferences, 0 cache hits
+mentions: keep 7, review 0, drop 3 (dropped by band 3)
+  keep   band        s0 "Calder Bay Capital" (Organization) 0.996
+  keep   band        s0 "Leeds" (Location) 0.990
+  keep   band        s0 "Mira Holt" (Person) 0.999
+  keep   band        s1 "ACC-5120" (Account) 0.719
+  keep   band        s1 "Mira Holt" (Person) 0.997
+  keep   band        s2 "ACC-5120" (Account) 0.825
+  keep   band        s2 "Tomas Reyes" (Person) 0.997
+  drop   band        s0 "asset manager" (Account) 0.111
+  drop   band        s3 "Version 2.4" (Decision) 0.168
+  drop   band        s3 "onboarding form" (Decision) 0.161
+claims: keep 4, review 2, drop 1 (dropped by band 1)
+  keep   band        s0 "**Mira Holt*" -[WORKS_FOR]-> "*Calder Bay Capital**, an" 0.757
+  keep   band        s0 "Calder Bay Capital" -[LOCATED_AT]-> "Leeds" 0.480
+  keep   band        s1 "Mira Holt" -[MANAGES]-> "account ACC-5120" 0.721
+  keep   band        s2 "Tomas Reyes" -[OWNS]-> "account ACC-5120" 0.765
+  review ambiguous   s1 "Mira Holt" -[OWNS]-> "account ACC-5120" 0.644
+  review ambiguous   s2 "Tomas Reyes" -[MANAGES]-> "account ACC-5120" 0.513
+  drop   band        s0 "*Mira Holt**" -[WORKS_FOR]-> "*Calder Bay Capital**, an" 0.110
+
+## fixtures: fence (harness/fixtures.mjs fence)
+names inside a code fence are not sentences (edgextract 06_fence)
+3 sentences, 1 section; 3 inferences, 0 cache hits
+lines inside the fence (3) found in a sentence: none
+mentions: keep 1, review 3, drop 7 (dropped by band 3, one-kind 4)
+  keep   band        s2 "Ingrid Sol" (Person) 0.846
+  review band        s0 "desk" (Organization) 0.437
+  review band        s0 "export" (Event) 0.316
+  review band        s1 "fence" (Location) 0.412
+  drop   band        s1 "inside the fence" (Organization) 0.196
+  drop   band        s2 "fence" (Location) 0.282
+  drop   band        s2 "prose" (Policy) 0.162
+  drop   one-kind    s0 "desk" (Location) 0.156
+  drop   one-kind    s0 "export" (Location) 0.108
+  drop   one-kind    s2 "Ingrid Sol" (Organization) 0.212
+  drop   one-kind    s2 "fence" (Organization) 0.277
+claims: keep 0, review 0, drop 1 (dropped by unanchored 1)
+  drop   unanchored  s2 "Ingrid Sol" -[WORKS_FOR]-> "fence" 0.139
+
+## fixtures: negation (harness/fixtures.mjs negation)
+negated claims, which the model does not read as negated (edgextract 05_negation)
+2 sentences, 1 section; 2 inferences, 0 cache hits
+mentions: keep 3, review 1, drop 3 (dropped by band 2, one-kind 1)
+  keep   band        s0 "Calder Bay Capital" (Organization) 0.887
+  keep   band        s1 "Pell Street Partners" (Organization) 0.987
+  keep   band        s1 "Tomas Reyes" (Person) 0.997
+  review band        s0 "ACC-7741" (Account) 0.484
+  drop   band        s0 "Calder" (Person) 0.110
+  drop   band        s1 "Pell" (Location) 0.217
+  drop   one-kind    s0 "Calder Bay Capital" (Location) 0.579
+claims: keep 0, review 1, drop 3 (dropped by illegal 3)
+  review hedged      s1 "Tomas Reyes" -[WORKS_FOR]-> "Pell Street Partners" 0.629
+  drop   illegal     s0 "Calder Bay Capital" -[LOCATED_AT]-> "Calder Bay" 0.253
+  drop   illegal     s0 "Calder Bay Capital" -[MANAGES]-> "account ACC-7741" 0.233
+  drop   illegal     s0 "Calder Bay Capital" -[OWNS]-> "account ACC-7741" 0.247
+
+## fixtures: hedge (harness/fixtures.mjs hedge)
+hedged claims beside a plain one (edgextract 12_hedge)
+3 sentences, 1 section; 3 inferences, 0 cache hits
+mentions: keep 4, review 2, drop 3 (dropped by one-kind 3)
+  keep   band        s0 "Tomas Reyes" (Person) 0.993
+  keep   band        s1 "Ingrid Sol" (Person) 0.966
+  keep   band        s2 "Calder Bay Capital" (Organization) 0.932
+  keep   band        s2 "Mira Holt" (Person) 0.997
+  review band        s0 "ACC-3310" (Account) 0.395
+  review type-margin s1 "Calder Bay Capital" (Organization) 0.751
+  drop   one-kind    s1 "Calder Bay Capital" (Location) 0.729
+  drop   one-kind    s1 "Ingrid Sol" (Organization) 0.261
+  drop   one-kind    s2 "Calder Bay Capital" (Location) 0.784
+claims: keep 1, review 3, drop 4 (dropped by illegal 4)
+  keep   band        s2 "Mira Holt" -[WORKS_FOR]-> "Calder Bay Capital" 0.517
+  review band        s0 "Tomas Reyes" -[MANAGES]-> "ACC-3310" 0.346
+  review band        s1 "Ingrid Sol" -[WORKS_FOR]-> "Calder Bay Capital" 0.312
+  review hedged      s0 "Tomas Reyes" -[OWNS]-> "ACC-3310" 0.411
+  drop   illegal     s1 "Ingrid Sol" -[LOCATED_AT]-> "Calder Bay Capital" 0.291
+  drop   illegal     s1 "Ingrid Sol" -[PARTICIPATED_IN]-> "Calder Bay Capital" 0.314
+  drop   illegal     s2 "Calder Bay Capital" -[LOCATED_AT]-> "Calder Bay Capital" 0.136
+  drop   illegal     s2 "Mira Holt" -[LOCATED_AT]-> "Calder Bay Capital" 0.227
+
+## fixtures: pronouns (harness/fixtures.mjs pronouns)
+pronouns have no canonical name and drop at rule 0 (edgextract 10_pronouns)
+4 sentences, 1 section; 4 inferences, 0 cache hits
+mentions: keep 4, review 1, drop 9 (dropped by band 5, no-name 3, one-kind 1)
+  keep   band        s0 "Calder Bay Capital" (Organization) 0.777
+  keep   band        s1 "ACC-5120" (Account) 0.699
+  keep   band        s2 "Linden Bond Fund" (Account) 0.777
+  keep   band        s3 "Mira Holt" (Person) 0.989
+  review band        s0 "Calder Bay" (Location) 0.493
+  drop   band        s0 "Capital" (Location) 0.170
+  drop   band        s2 "Linden" (Location) 0.250
+  drop   band        s3 "confirmed the move" (Decision) 0.199
+  drop   band        s3 "confirmed" (Event) 0.106
+  drop   band        s3 "move" (Event) 0.258
+  drop   no-name     s0 "She" (Person) 0.979
+  drop   no-name     s1 "They" (Person) 0.813
+  drop   no-name     s2 "It" (Person) 0.423
+  drop   one-kind    s2 "Linden Bond Fund" (Organization) 0.153
+claims: keep 0, review 0, drop 9 (dropped by illegal 1, unanchored 8)
+  drop   illegal     s0 "Calder Bay Capital" -[LOCATED_AT]-> "Calder Bay Capital" 0.155
+  drop   unanchored  s0 "She" -[ADVISED_BY]-> "Calder Bay Capital" 0.206
+  drop   unanchored  s0 "She" -[PARTICIPATED_IN]-> "Calder Bay Capital" 0.402
+  drop   unanchored  s0 "She" -[WORKS_FOR]-> "Calder Bay Capital" 0.355
+  drop   unanchored  s1 "They" -[MANAGES]-> "account ACC-5120" 0.376
+  drop   unanchored  s1 "They" -[OWNS]-> "account ACC-5120" 0.399
+  drop   unanchored  s2 "It" -[MANAGES]-> "Linden Bond Fund" 0.258
+  drop   unanchored  s2 "It" -[OWNS]-> "Linden Bond Fund" 0.277
+  drop   unanchored  s3 "Mira Holt" -[PARTICIPATED_IN]-> "confirmed the move" 0.190
+
+## fixtures: overlap (harness/fixtures.mjs overlap)
+overlapping names: one span inside another (edgextract 09_overlap)
+2 sentences, 1 section; 2 inferences, 0 cache hits
+mentions: keep 5, review 0, drop 14 (dropped by band 8, one-kind 6)
+  keep   band        s0 "Calder Bay Capital" (Organization) 0.917
+  keep   band        s0 "Calder Bay Capital" (Organization) 0.968
+  keep   band        s0 "Calder" (Location) 0.522
+  keep   band        s1 "Calder Bay" (Organization) 0.727
+  keep   band        s1 "Calder Bay" (Organization) 0.861
+  drop   band        s0 "Bay" (Location) 0.214
+  drop   band        s0 "Bay" (Location) 0.218
+  drop   band        s0 "Calder" (Location) 0.241
+  drop   band        s0 "Capital" (Location) 0.109
+  drop   band        s0 "Capital" (Location) 0.128
+  drop   band        s0 "Growth Fund" (Account) 0.103
+  drop   band        s1 "Capital" (Location) 0.145
+  drop   band        s1 "firm" (Organization) 0.125
+  drop   one-kind    s0 "Calder Bay Capital" (Person) 0.303
+  drop   one-kind    s0 "Calder Bay Capital" (Person) 0.731
+  drop   one-kind    s1 "Calder Bay" (Location) 0.379
+  drop   one-kind    s1 "Calder Bay" (Location) 0.387
+  drop   one-kind    s1 "Calder Bay" (Person) 0.149
+  drop   one-kind    s1 "Calder Bay" (Person) 0.322
+claims: keep 0, review 0, drop 6 (dropped by unanchored 6)
+  drop   unanchored  s0 "Calder Bay Capital Growth Fund" -[LOCATED_AT]-> "Calder Bay Capital" 0.261
+  drop   unanchored  s0 "Calder Bay Capital Growth Fund" -[WORKS_FOR]-> "Calder Bay Capital Growth Fund" 0.250
+  drop   unanchored  s0 "Calder Bay Capital Growth" -[MANAGES]-> "Calder Bay Capital Growth Fund" 0.380
+  drop   unanchored  s0 "Calder Bay Capital" -[OWNS]-> "Calder Bay Capital Growth Fund" 0.316
+  drop   unanchored  s1 "Calder Bay Capital" -[LOCATED_AT]-> "Calder Bay" 0.127
+  drop   unanchored  s1 "Calder Bay" -[LOCATED_AT]-> "Calder Bay Capital" 0.107
+
+## fixtures: injection (harness/fixtures.mjs injection)
+an instruction in the text is only text (edgextract 08_injection)
+2 sentences, 1 section; 2 inferences, 0 cache hits
+mentions: keep 4, review 0, drop 5 (dropped by band 3, one-kind 2)
+  keep   band        s0 "password hunter2" (Organization) 0.963
+  keep   band        s1 "Calder Bay Capital" (Organization) 0.846
+  keep   band        s1 "Leeds" (Location) 0.967
+  keep   band        s1 "extractor" (Person) 0.968
+  drop   band        s0 "Ignore previous instructions" (Decision) 0.214
+  drop   band        s1 "The extractor still reads only the kinds the ontology names, and" (Decision) 0.197
+  drop   band        s1 "ontology" (Account) 0.170
+  drop   one-kind    s0 "password hunter2" (Person) 0.138
+  drop   one-kind    s1 "ontology" (Organization) 0.158
+claims: keep 1, review 0, drop 1 (dropped by band 1)
+  keep   band        s1 "Calder Bay Capital" -[LOCATED_AT]-> "Leeds" 0.368
+  drop   band        s1 "extractor" -[WORKS_FOR]-> "Calder Bay Capital" 0.199
+
+## fixtures: unknown (harness/fixtures.mjs unknown)
+names of kinds the ontology lacks: a film, a drug, a disease (edgextract's unknown, film and medicine samples)
+3 sentences, 1 section; 3 inferences, 0 cache hits
+mentions: keep 5, review 2, drop 5 (dropped by band 3, one-kind 2)
+  keep   band        s0 "Leeds" (Location) 0.956
+  keep   band        s0 "Tomas Reyes" (Person) 0.997
+  keep   band        s0 "cinema" (Organization) 0.585
+  keep   band        s1 "Metformin" (Person) 0.525
+  keep   band        s2 "Orion Labs" (Organization) 0.983
+  review band        s0 "Oppenheimer" (Transaction) 0.440
+  review other-kind  s2 "Calder Bay Capital" (Location) 0.935
+  drop   band        s0 "watched Oppenheimer" (Event) 0.270
+  drop   band        s1 "type 2 diabetes" (Account) 0.170
+  drop   band        s2 "invested" (Event) 0.117
+  drop   one-kind    s1 "Metformin" (Organization) 0.460
+  drop   one-kind    s2 "Orion Labs" (Person) 0.276
+claims: keep 0, review 2, drop 9 (dropped by band 1, illegal 5, unanchored 3)
+  review band        s0 "cinema" -[LOCATED_AT]-> "Leeds" 0.279
+  review band        s2 "Orion Labs" -[LOCATED_AT]-> "Calder Bay Capital" 0.311
+  drop   band        s0 "Tomas Reyes" -[WORKS_FOR]-> "cinema" 0.178
+  drop   illegal     s0 "Oppenheimer" -[TRANSFERRED_FROM]-> "Leeds" 0.170
+  drop   illegal     s0 "Oppenheimer" -[TRANSFERRED_TO]-> "Leeds" 0.164
+  drop   illegal     s0 "Tomas Reyes" -[WORKS_FOR]-> "Leeds" 0.137
+  drop   illegal     s2 "Orion Labs" -[OWNS]-> "Calder Bay Capital" 0.297
+  drop   illegal     s2 "Orion Labs" -[WORKS_FOR]-> "**Orion Labs**" 0.109
+  drop   unanchored  s0 "Tomas Reyes" -[PARTICIPATED_IN]-> "watched Oppenheimer" 0.351
+  drop   unanchored  s1 "Metformin" -[MANAGES]-> "type 2 diabetes" 0.230
+  drop   unanchored  s1 "Metformin" -[OWNS]-> "type 2 diabetes" 0.210
+
+## fixtures: event (harness/fixtures.mjs event)
+front matter, and an event (edgextract 07_event)
+2 sentences, 1 section; 2 inferences, 0 cache hits
+mentions: keep 6, review 0, drop 3 (dropped by one-kind 3)
+  keep   band        s0 "Leeds Wealth Forum" (Event) 0.975
+  keep   band        s0 "Leeds" (Location) 0.999
+  keep   band        s0 "Leeds" (Location) 0.999
+  keep   band        s1 "Leeds Wealth Forum" (Event) 0.964
+  keep   band        s1 "Leeds" (Location) 0.681
+  keep   band        s1 "Mira Holt" (Person) 0.999
+  drop   one-kind    s0 "Leeds" (Organization) 0.251
+  drop   one-kind    s0 "Leeds" (Organization) 0.585
+  drop   one-kind    s1 "Leeds" (Organization) 0.438
+claims: keep 1, review 0, drop 3 (dropped by illegal 3)
+  keep   band        s1 "Mira Holt" -[PARTICIPATED_IN]-> "Leeds Wealth Forum" 0.749
+  drop   illegal     s0 "Leeds Wealth Forum" -[LOCATED_AT]-> "Leeds" 0.563
+  drop   illegal     s1 "Leeds Wealth Forum" -[LOCATED_AT]-> "Leeds" 0.210
+  drop   illegal     s1 "Mira Holt" -[WORKS_FOR]-> "Leeds Wealth" 0.252
+
+## fixtures: selfloop (harness/fixtures.mjs selfloop)
+a claim whose two ends are one name (edgextract 11_selfloop)
+2 sentences, 1 section; 2 inferences, 0 cache hits
+mentions: keep 3, review 1, drop 2 (dropped by band 2)
+  keep   band        s0 "Decision D-210" (Decision) 0.750
+  keep   band        s0 "decision D-210" (Decision) 0.675
+  keep   band        s1 "Decision D-211" (Decision) 0.681
+  review band        s1 "decision D-210" (Decision) 0.382
+  drop   band        s0 "minutes" (Policy) 0.247
+  drop   band        s0 "typo" (Event) 0.108
+claims: keep 0, review 1, drop 4 (dropped by illegal 2, self-loop 1, unanchored 1)
+  review band        s1 "Decision D-211" -[PRECEDED_BY]-> "decision D-210" 0.331
+  drop   illegal     s0 "Decision D-210" -[ADVISED_BY]-> "decision D-210" 0.120
+  drop   illegal     s1 "Decision D-211" -[ADVISED_BY]-> "decision D-210" 0.127
+  drop   self-loop   s0 "Decision D-210" -[PRECEDED_BY]-> "decision D-210" 0.279
+  drop   unanchored  s0 "Decision D-210" -[APPLIED_POLICY]-> "minutes" 0.111
+
+## fixtures: empty (harness/fixtures.mjs empty)
+a document that names no one (edgextract 04_none)
+2 sentences, 1 section; 2 inferences, 0 cache hits
+mentions: keep 3, review 1, drop 2 (dropped by band 1, one-kind 1)
+  keep   band        s0 "people" (Person) 0.554
+  keep   band        s1 "the committee" (Organization) 0.847
+  keep   band        s1 "the desk" (Organization) 0.889
+  review band        s0 "firms" (Person) 0.449
+  drop   band        s1 "desk" (Location) 0.104
+  drop   one-kind    s0 "firms" (Organization) 0.194
+claims: keep 0, review 0, drop 0 (dropped by none)
+
+## fixtures: blank (harness/fixtures.mjs blank)
+a document with no sentence at all: front matter and a heading only
+0 sentences, 0 sections; 0 inferences, 0 cache hits
+mentions: keep 0, review 0, drop 0 (dropped by none)
+claims: keep 0, review 0, drop 0 (dropped by none)
+
+# create-context-graph's samples: one synthetic document per domain, each in its domain's store (data/samples/ccg/)
+Labels and links are the domain's own (Person, Account, WORKS_FOR). Listed: kept mentions, and kept and review claims;
+the rest are counted by band and rule (gate.txt holds every candidate to the JS gate).
+
+## agent-memory: agent-memory (data/samples/ccg/agent-memory.md)
+13 sentences, 1 section; 13 inferences, 0 cache hits
+mentions: keep 23, review 7, drop 36 (dropped by band 11, one-kind 25)
+  in review by band 5, type-margin 2
+  keep   band        s0 "Mara Okafor" (Person) 0.993
+  keep   band        s0 "Okapi Freight Lines" (Organization) 0.989
+  keep   band        s1 "Okapi Freight Lines" (Organization) 0.951
+  keep   band        s1 "Rotterdam" (Location) 0.981
+  keep   band        s2 "billing support session" (Session) 0.955
+  keep   band        s2 "surcharge conversation" (Conversation) 0.850
+  keep   band        s3 "billing agent" (Agent) 0.907
+  keep   band        s3 "carrier dispute memory" (Memory) 0.923
+  keep   band        s4 "billing agent" (Agent) 0.887
+  keep   band        s4 "surcharge cap memory" (Memory) 0.923
+  keep   band        s5 "billing agent" (Agent) 0.930
+  keep   band        s5 "rate lookup call" (ToolCall) 0.727
+  keep   band        s6 "rate lookup call" (ToolCall) 0.537
+  keep   band        s6 "surcharge conversation" (Conversation) 0.699
+  keep   band        s7 "billing agent" (Agent) 0.920
+  keep   band        s7 "invoice search call" (ToolCall) 0.705
+  keep   band        s8 "surcharge conversation" (Conversation) 0.681
+  keep   band        s9 "Brennan Freight entity" (Entity) 0.726
+  keep   band        s9 "carrier dispute memory" (Memory) 0.633
+  keep   band        s10 "Brennan Freight entity" (Entity) 0.838
+  keep   band        s11 "Brennan Freight entity" (Entity) 0.637
+  keep   band        s11 "surcharge conversation" (Conversation) 0.616
+  keep   band        s12 "diesel index" (Entity) 0.573
+claims: keep 9, review 3, drop 26 (dropped by illegal 19, unanchored 7)
+  keep   band        s0 "Mara Okafor" -[WORKS_FOR]-> "Okapi Freight Lines" 0.695
+  keep   band        s1 "Okapi Freight Lines" -[LOCATED_AT]-> "Rotterdam" 0.425
+  keep   band        s2 "surcharge conversation" -[PART_OF_SESSION]-> "billing support session" 0.456
+  keep   band        s3 "billing agent" -[REMEMBERED]-> "carrier dispute memory" 0.587
+  keep   band        s4 "billing agent" -[REMEMBERED]-> "surcharge cap memory" 0.596
+  keep   band        s5 "billing agent" -[INVOKED]-> "rate lookup call" 0.497
+  keep   band        s6 "rate lookup call" -[TRIGGERED_BY]-> "surcharge conversation" 0.378
+  keep   band        s7 "billing agent" -[INVOKED]-> "invoice search call" 0.427
+  keep   band        s9 "carrier dispute memory" -[REFERENCED]-> "Brennan Freight entity" 0.436
+  review band        s11 "surcharge conversation" -[EXTRACTED]-> "Brennan Freight entity" 0.271
+  review end-in-review s8 "invoice search call" -[TRIGGERED_BY]-> "surcharge conversation" 0.397
+  review end-in-review s10 "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448
+
+## conservation: conservation (data/samples/ccg/conservation.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 20, review 3, drop 21 (dropped by band 5, one-kind 16)
+  in review by band 1, pole-specific 1, type-margin 1
+  keep   band        s0 "Fenmoor Ecology" (Organization) 0.980
+  keep   band        s0 "Imogen Pell" (Person) 0.998
+  keep   band        s1 "Fen Bioblitz 2026" (Event) 0.906
+  keep   band        s1 "Imogen Pell" (Person) 0.998
+  keep   band        s2 "Kellen marsh orchid" (Species) 0.857
+  keep   band        s2 "Marrow Fen nature reserve" (Site) 0.629
+  keep   band        s3 "Ashby fen skipper" (Species) 0.752
+  keep   band        s3 "Marrow Fen nature reserve" (Site) 0.523
+  keep   band        s4 "Ashby fen skipper" (Species) 0.893
+  keep   band        s4 "Victor Haske" (Person) 0.992
+  keep   band        s5 "Fenland Restoration Program" (Program) 0.937
+  keep   band        s5 "HHG-2024 grant" (Funding) 0.857
+  keep   band        s6 "Fenland Restoration Program" (Program) 0.932
+  keep   band        s6 "Kellen marsh orchid" (Species) 0.960
+  keep   band        s7 "Fen Water Programme" (Program) 0.922
+  keep   band        s7 "HHG-2024 grant" (Funding) 0.841
+  keep   band        s8 "Fen Water Programme" (Program) 0.965
+  keep   band        s8 "Kellen marsh orchid" (Species) 0.962
+  keep   band        s9 "Kellen marsh orchid" (Species) 0.827
+  keep   band        s11 "Fen Water Programme" (Program) 0.921
+claims: keep 9, review 2, drop 8 (dropped by illegal 8)
+  keep   band        s0 "Imogen Pell" -[WORKS_FOR]-> "Fenmoor Ecology" 0.777
+  keep   band        s1 "Imogen Pell" -[PARTICIPATED_IN]-> "Fen Bioblitz 2026" 0.679
+  keep   band        s2 "Kellen marsh orchid" -[PROTECTED_IN]-> "Marrow Fen nature reserve" 0.717
+  keep   band        s3 "Ashby fen skipper" -[PROTECTED_IN]-> "Marrow Fen nature reserve" 0.676
+  keep   band        s4 "Victor Haske" -[THREATENS]-> "Ashby fen skipper" 0.725
+  keep   band        s5 "Fenland Restoration Program" -[FUNDED_BY]-> "HHG-2024 grant" 0.404
+  keep   band        s6 "Fenland Restoration Program" -[BENEFITS]-> "Kellen marsh orchid" 0.531
+  keep   band        s7 "Fen Water Programme" -[FUNDED_BY]-> "HHG-2024 grant" 0.423
+  keep   band        s8 "Fen Water Programme" -[BENEFITS]-> "Kellen marsh orchid" 0.583
+  review band        s11 "Fen Water Programme" -[BENEFITS]-> "Ashby fen skipper" 0.207
+  review end-in-review s9 "MV-06 monitoring visit" -[MONITORS]-> "Kellen marsh orchid" 0.455
+
+## cybersecurity: cybersecurity (data/samples/ccg/cybersecurity.md)
+13 sentences, 1 section; 13 inferences, 0 cache hits
+mentions: keep 26, review 2, drop 36 (dropped by band 11, one-kind 25)
+  in review by band 2
+  keep   band        s0 "Larchmont Mutual" (Organization) 0.980
+  keep   band        s0 "Priya Venkat" (Person) 0.994
+  keep   band        s1 "Bucharest" (Location) 0.979
+  keep   band        s1 "Larchmont Mutual" (Organization) 0.932
+  keep   band        s2 "IR-2026-031 incident" (Incident) 0.680
+  keep   band        s2 "Priya Venkat" (Person) 0.961
+  keep   band        s3 "AL-88213 alert" (Alert) 0.770
+  keep   band        s3 "Bucharest" (Location) 0.960
+  keep   band        s4 "AL-88213 alert" (Alert) 0.735
+  keep   band        s4 "HR-APP-01 server" (Asset) 0.613
+  keep   band        s5 "AL-88213 alert" (Alert) 0.751
+  keep   band        s5 "IR-2026-031 incident" (Incident) 0.692
+  keep   band        s6 "HR-APP-01 server" (Asset) 0.856
+  keep   band        s6 "VULN-0447" (Vulnerability) 0.854
+  keep   band        s7 "HR-APP-01 server" (Asset) 0.880
+  keep   band        s7 "Tomasz Brenner" (Person) 0.992
+  keep   band        s8 "HR-APP-01 server" (Asset) 0.801
+  keep   band        s8 "Larchmont Mutual" (Organization) 0.983
+  keep   band        s9 "IR-2026-031 incident" (Incident) 0.681
+  keep   band        s10 "CTL-12 control" (Control) 0.549
+  keep   band        s10 "VULN-0447" (Vulnerability) 0.708
+  keep   band        s11 "CTL-12 control" (Control) 0.636
+  keep   band        s11 "HR-APP-01 server" (Asset) 0.754
+  keep   band        s12 "PAY-DB-02 server" (Asset) 0.847
+  keep   band        s12 "VULN-0447" (Vulnerability) 0.777
+  keep   pole-specific s9 "Copper Lantern" (ThreatActor) 0.745
+claims: keep 12, review 0, drop 30 (dropped by band 1, illegal 29)
+  keep   band        s0 "Priya Venkat" -[WORKS_FOR]-> "Larchmont Mutual" 0.568
+  keep   band        s1 "Larchmont Mutual" -[LOCATED_AT]-> "Bucharest" 0.389
+  keep   band        s2 "The IR-2026-031 incident" -[ASSIGNED_TO]-> "Priya Venkat" 0.504
+  keep   band        s3 "AL-88213 alert" -[ORIGINATES_FROM]-> "Bucharest" 0.436
+  keep   band        s4 "AL-88213 alert" -[TARGETS]-> "HR-APP-01 server" 0.387
+  keep   band        s5 "AL-88213 alert" -[TRIGGERED]-> "IR-2026-031 incident" 0.370
+  keep   band        s6 "VULN-0447" -[AFFECTS]-> "HR-APP-01 server" 0.505
+  keep   band        s7 "Tomasz Brenner" -[OWNS]-> "HR-APP-01 server" 0.724
+  keep   band        s8 "HR-APP-01 server" -[BELONGS_TO]-> "Larchmont Mutual" 0.407
+  keep   band        s9 "IR-2026-031 incident" -[ATTRIBUTED_TO]-> "Copper Lantern" 0.527
+  keep   band        s10 "CTL-12 control" -[MITIGATES]-> "VULN-0447" 0.470
+  keep   band        s11 "CTL-12 control" -[PROTECTS]-> "HR-APP-01 server" 0.449
+
+## data-journalism: data-journalism (data/samples/ccg/data-journalism.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 27, review 2, drop 20 (dropped by band 8, one-kind 12)
+  in review by band 2
+  keep   band        s0 "Callow Valley Courier" (Organization) 0.927
+  keep   band        s0 "Callow Valley" (Location) 0.867
+  keep   band        s0 "Leona Marsh" (Person) 0.998
+  keep   band        s1 "Callow Valley Courier" (Organization) 0.841
+  keep   band        s1 "Harlow" (Location) 0.983
+  keep   band        s2 "Harlow budget hearing" (Event) 0.975
+  keep   band        s2 "Harlow" (Location) 0.699
+  keep   band        s2 "Leona Marsh" (Person) 0.998
+  keep   band        s3 "Glen Haddow" (Person) 0.999
+  keep   band        s3 "Harlow budget hearing" (Event) 0.972
+  keep   band        s3 "Harlow" (Location) 0.733
+  keep   band        s4 "Bridges Left Behind story" (Story) 0.500
+  keep   band        s4 "repair claim" (Claim) 0.914
+  keep   band        s5 "bridge inspection dataset" (Dataset) 0.852
+  keep   band        s5 "repair claim" (Claim) 0.860
+  keep   band        s6 "backlog claim" (Claim) 0.882
+  keep   band        s6 "bridge inspection dataset" (Dataset) 0.799
+  keep   band        s7 "repair claim" (Claim) 0.661
+  keep   band        s8 "Bridges Left Behind story" (Story) 0.778
+  keep   band        s8 "Span Decay investigation" (Investigation) 0.917
+  keep   band        s9 "April correction" (Correction) 0.649
+  keep   band        s9 "Bridges Left Behind story" (Story) 0.922
+  keep   band        s10 "bridge inspection dataset" (Dataset) 0.924
+  keep   band        s10 "state records source" (Source) 0.899
+  keep   band        s10 "state records" (Organization) 0.558
+  keep   band        s11 "bridge inspection dataset" (Dataset) 0.898
+  keep   band        s11 "roads office" (Organization) 0.924
+claims: keep 9, review 2, drop 26 (dropped by band 1, illegal 21, self-loop 2, unanchored 2)
+  keep   band        s0 "Leona Marsh" -[WORKS_FOR]-> "Callow Valley Courier" 0.489
+  keep   band        s2 "Leona Marsh" -[PARTICIPATED_IN]-> "Harlow budget hearing" 0.685
+  keep   band        s3 "Glen Haddow" -[PARTICIPATED_IN]-> "Harlow budget hearing" 0.675
+  keep   band        s4 "repair claim" -[PUBLISHED_IN]-> "the Bridges Left Behind story" 0.536
+  keep   band        s5 "repair claim" -[FACT_CHECKED]-> "bridge inspection dataset" 0.412
+  keep   band        s6 "The bridge inspection dataset" -[SUPPORTS]-> "backlog claim" 0.594
+  keep   band        s8 "Bridges Left Behind story" -[INVESTIGATED_BY]-> "Span Decay investigation" 0.492
+  keep   band        s9 "April correction" -[CORRECTED_IN]-> "the Bridges Left Behind story" 0.366
+  keep   band        s10 "bridge inspection dataset" -[PROVIDED_BY]-> "the state records source" 0.440
+  review band        s1 "Callow Valley Courier" -[LOCATED_AT]-> "Harlow" 0.320
+  review hedged      s11 "bridge inspection dataset" -[PROVIDED_BY]-> "roads office source" 0.421
+
+## digital-twin: digital-twin (data/samples/ccg/digital-twin.md)
+14 sentences, 1 section; 14 inferences, 0 cache hits
+mentions: keep 28, review 2, drop 18 (dropped by band 4, one-kind 14)
+  in review by band 2
+  keep   band        s0 "Harwick Data Centres" (Organization) 0.996
+  keep   band        s0 "Siobhan Reilly" (Person) 0.999
+  keep   band        s1 "Dublin" (Location) 0.992
+  keep   band        s1 "Harwick Data Centres" (Organization) 0.973
+  keep   band        s2 "May shutdown drill" (Event) 0.976
+  keep   band        s2 "Siobhan Reilly" (Person) 0.999
+  keep   band        s3 "Cooling Loop B" (System) 0.825
+  keep   band        s3 "Pump P-12" (Asset) 0.865
+  keep   band        s4 "Cooling Loop B" (System) 0.738
+  keep   band        s4 "Valve V-7" (Asset) 0.847
+  keep   band        s5 "Pump P-12" (Asset) 0.828
+  keep   band        s5 "sensor VS-118" (Sensor) 0.973
+  keep   band        s6 "Valve V-7" (Asset) 0.799
+  keep   band        s6 "sensor TS-204" (Sensor) 0.972
+  keep   band        s7 "Sensor VS-118" (Sensor) 0.972
+  keep   band        s7 "peak vibration reading" (Reading) 0.817
+  keep   band        s8 "Sensor TS-204" (Sensor) 0.952
+  keep   band        s8 "high temperature reading" (Reading) 0.871
+  keep   band        s9 "peak vibration reading" (Reading) 0.731
+  keep   band        s9 "pump vibration alert" (Alert) 0.845
+  keep   band        s10 "Pump P-12" (Asset) 0.884
+  keep   band        s10 "pump vibration alert" (Alert) 0.884
+  keep   band        s11 "Pump P-12" (Asset) 0.562
+  keep   band        s11 "pump maintenance record" (MaintenanceRecord) 0.732
+  keep   band        s12 "pump maintenance record" (MaintenanceRecord) 0.829
+  keep   band        s12 "pump vibration alert" (Alert) 0.862
+  keep   band        s13 "Valve V-7" (Asset) 0.533
+  keep   band        s13 "pump vibration alert" (Alert) 0.817
+claims: keep 12, review 1, drop 17 (dropped by band 1, illegal 16)
+  keep   band        s0 "Siobhan Reilly" -[WORKS_FOR]-> "Harwick Data Centres" 0.845
+  keep   band        s1 "Harwick Data Centres" -[LOCATED_AT]-> "Dublin" 0.711
+  keep   band        s2 "Siobhan Reilly" -[PARTICIPATED_IN]-> "May shutdown drill" 0.697
+  keep   band        s3 "Pump P-12" -[PART_OF]-> "Cooling Loop B" 0.649
+  keep   band        s4 "Valve V-7" -[PART_OF]-> "Cooling Loop B" 0.712
+  keep   band        s5 "Pump P-12" -[MONITORED_BY]-> "sensor VS-118" 0.568
+  keep   band        s6 "Valve V-7" -[MONITORED_BY]-> "sensor TS-204" 0.628
+  keep   band        s7 "Sensor VS-118" -[GENERATED]-> "peak vibration reading" 0.614
+  keep   band        s8 "Sensor TS-204" -[GENERATED]-> "high temperature reading" 0.637
+  keep   band        s10 "pump vibration alert" -[CAUSED_BY]-> "Pump P-12" 0.420
+  keep   band        s11 "pump maintenance record" -[MAINTAINED]-> "Pump P-12" 0.444
+  keep   band        s12 "pump maintenance record" -[FOLLOWED_UP]-> "pump vibration alert" 0.455
+  review band        s9 "peak vibration reading" -[TRIGGERED]-> "pump vibration alert" 0.202
+
+## education: education (data/samples/ccg/education.md)
+15 sentences, 1 section; 15 inferences, 0 cache hits
+mentions: keep 26, review 6, drop 29 (dropped by band 9, one-kind 20)
+  in review by band 4, other-kind 2
+  keep   band        s0 "Linden Hill College" (Organization) 0.952
+  keep   band        s0 "Portland" (Location) 0.991
+  keep   band        s1 "Helen Marsh" (Person) 0.998
+  keep   band        s1 "Linden Hill College" (Organization) 0.992
+  keep   band        s2 "Autumn Research Showcase" (Event) 0.905
+  keep   band        s3 "Autumn Research Showcase" (Event) 0.908
+  keep   band        s4 "Regression Methods" (Course) 0.776
+  keep   band        s5 "Introductory Statistics" (Course) 0.814
+  keep   band        s6 "Fall 2026" (Term) 0.737
+  keep   band        s6 "Regression Methods" (Course) 0.839
+  keep   band        s7 "Introductory Statistics" (Course) 0.784
+  keep   band        s7 "Spring 2026" (Term) 0.790
+  keep   band        s8 "Portland" (Location) 0.995
+  keep   band        s8 "Regression Methods" (Course) 0.636
+  keep   band        s9 "Regression Methods" (Course) 0.949
+  keep   band        s10 "Regression Methods" (Course) 0.937
+  keep   band        s11 "Regression Methods" (Course) 0.590
+  keep   band        s12 "S-3391" (Submission) 0.907
+  keep   band        s13 "S-3391" (Submission) 0.889
+  keep   pole-specific s2 "Tomas Ferreira" (Student) 0.855
+  keep   pole-specific s3 "Maya Okoye" (Student) 0.844
+  keep   pole-specific s4 "Ruth Calloway" (Instructor) 0.809
+  keep   pole-specific s5 "Ruth Calloway" (Instructor) 0.855
+  keep   pole-specific s9 "Tomas Ferreira" (Student) 0.901
+  keep   pole-specific s10 "Maya Okoye" (Student) 0.886
+  keep   pole-specific s14 "Tomas Ferreira" (Student) 0.885
+claims: keep 11, review 0, drop 28 (dropped by illegal 24, unanchored 4)
+  keep   band        s0 "Linden Hill College" -[LOCATED_AT]-> "Portland" 0.449
+  keep   band        s1 "Helen Marsh" -[WORKS_FOR]-> "Linden Hill College" 0.667
+  keep   band        s2 "Tomas Ferreira" -[ATTENDED]-> "Autumn Research Showcase" 0.573
+  keep   band        s3 "Maya Okoye" -[ATTENDED]-> "Autumn Research Showcase" 0.544
+  keep   band        s4 "Ruth Calloway" -[TEACHES]-> "Regression Methods" 0.598
+  keep   band        s5 "Ruth Calloway" -[TEACHES]-> "Introductory Statistics" 0.549
+  keep   band        s6 "Regression Methods" -[OFFERED_IN]-> "Fall 2026" 0.484
+  keep   band        s7 "Introductory Statistics" -[OFFERED_IN]-> "Spring 2026" 0.411
+  keep   band        s8 "Regression Methods" -[HELD_AT]-> "Portland" 0.781
+  keep   band        s9 "Tomas Ferreira" -[ENROLLED_IN]-> "Regression Methods" 0.746
+  keep   band        s10 "Maya Okoye" -[ENROLLED_IN]-> "Regression Methods" 0.680
+
+## financial-services: financial-services (data/samples/ccg/financial-services.md)
+13 sentences, 1 section; 13 inferences, 0 cache hits
+mentions: keep 24, review 1, drop 25 (dropped by band 11, one-kind 14)
+  in review by band 1
+  keep   band        s0 "Dana Whitlock" (Person) 0.998
+  keep   band        s0 "Halvorsen Pryce Partners" (Organization) 0.986
+  keep   band        s1 "Colm Brady" (Person) 0.998
+  keep   band        s1 "Halvorsen Pryce Partners" (Organization) 0.988
+  keep   band        s2 "Edinburgh" (Location) 0.987
+  keep   band        s2 "Halvorsen Pryce Partners" (Organization) 0.930
+  keep   band        s3 "ACC-2207" (Account) 0.821
+  keep   band        s3 "Arjun Mehta" (Person) 0.999
+  keep   band        s4 "ACC-1980" (Account) 0.696
+  keep   band        s4 "Arjun Mehta" (Person) 0.998
+  keep   band        s5 "ACC-2207" (Account) 0.901
+  keep   band        s5 "Arjun Mehta" (Person) 0.973
+  keep   band        s5 "Colm Brady" (Person) 0.992
+  keep   band        s6 "Rebalancing Decision" (Decision) 0.901
+  keep   band        s6 "TX-4471" (Transaction) 0.705
+  keep   band        s7 "KWB-2031" (Security) 0.825
+  keep   band        s7 "TX-4471" (Transaction) 0.624
+  keep   band        s8 "Concentration Limit Policy" (Policy) 0.962
+  keep   band        s8 "Rebalancing Decision" (Decision) 0.834
+  keep   band        s9 "Colm Brady" (Person) 0.999
+  keep   band        s9 "Rebalancing Decision" (Decision) 0.900
+  keep   band        s10 "Rebalancing Decision" (Decision) 0.783
+  keep   band        s11 "Colm Brady" (Person) 0.998
+  keep   band        s11 "Trim Decision" (Decision) 0.766
+claims: keep 10, review 3, drop 17 (dropped by illegal 13, self-loop 1, unanchored 3)
+  keep   band        s0 "Dana Whitlock" -[WORKS_FOR]-> "Halvorsen Pryce Partners" 0.660
+  keep   band        s1 "Colm Brady" -[WORKS_FOR]-> "Halvorsen Pryce Partners" 0.686
+  keep   band        s2 "Halvorsen Pryce Partners" -[LOCATED_AT]-> "Edinburgh" 0.485
+  keep   band        s3 "Arjun Mehta" -[OWNS]-> "ACC-2207" 0.743
+  keep   band        s4 "Arjun Mehta" -[OWNS]-> "ACC-1980" 0.463
+  keep   band        s5 "Colm Brady" -[MANAGES]-> "ACC-2207" 0.700
+  keep   band        s6 "Rebalancing Decision" -[CAUSED]-> "TX-4471" 0.446
+  keep   band        s7 "TX-4471" -[INVOLVES]-> "KWB-2031" 0.472
+  keep   band        s8 "Rebalancing Decision" -[APPLIED_POLICY]-> "Concentration Limit Policy" 0.402
+  keep   band        s9 "Rebalancing Decision" -[ADVISED_BY]-> "Colm Brady" 0.639
+  review band        s3 "Arjun Mehta" -[MANAGES]-> "ACC-2207" 0.342
+  review band        s4 "Arjun Mehta" -[MANAGES]-> "ACC-1980" 0.257
+  review band        s5 "Arjun Mehta" -[OWNS]-> "ACC-2207" 0.327
+
+## gaming: gaming (data/samples/ccg/gaming.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 24, review 0, drop 26 (dropped by band 10, one-kind 16)
+  in review by none
+  keep   band        s0 "Lena Hart" (Person) 0.998
+  keep   band        s0 "Pale Lantern Studios" (Organization) 0.994
+  keep   band        s1 "Montreal" (Location) 0.993
+  keep   band        s1 "Pale Lantern Studios" (Organization) 0.958
+  keep   band        s2 "Autumn Raid Cup" (Event) 0.975
+  keep   band        s2 "Lena Hart" (Person) 0.996
+  keep   band        s3 "Brannoc" (Character) 0.976
+  keep   band        s3 "Player 4471" (Player) 0.857
+  keep   band        s4 "Ilsabet" (Character) 0.970
+  keep   band        s4 "Player 5208" (Player) 0.829
+  keep   band        s5 "Sunken Bastion quest" (Quest) 0.868
+  keep   band        s5 "Tidecaller Shield" (Item) 0.950
+  keep   band        s6 "Drowned Bell quest" (Quest) 0.827
+  keep   band        s6 "Gloomfen Lantern" (Item) 0.868
+  keep   band        s7 "Brannoc" (Character) 0.962
+  keep   band        s7 "Sunken Bastion quest" (Quest) 0.928
+  keep   band        s8 "Drowned Bell quest" (Quest) 0.904
+  keep   band        s8 "Ilsabet" (Character) 0.943
+  keep   band        s9 "Brannoc" (Character) 0.948
+  keep   band        s9 "Tidecaller Shield" (Item) 0.984
+  keep   band        s10 "Gloomfen Lantern" (Item) 0.983
+  keep   band        s10 "Ilsabet" (Character) 0.926
+  keep   band        s11 "Brannoc" (Character) 0.973
+  keep   band        s11 "Drowned Bell quest" (Quest) 0.896
+claims: keep 11, review 3, drop 25 (dropped by illegal 23, self-loop 2)
+  keep   band        s0 "Lena Hart" -[WORKS_FOR]-> "Pale Lantern Studios" 0.798
+  keep   band        s1 "Pale Lantern Studios" -[LOCATED_AT]-> "Montreal" 0.691
+  keep   band        s2 "Lena Hart" -[PARTICIPATED_IN]-> "Autumn Raid Cup" 0.766
+  keep   band        s3 "Player 4471" -[PLAYS]-> "Brannoc" 0.592
+  keep   band        s4 "Player 5208" -[PLAYS]-> "Ilsabet" 0.532
+  keep   band        s5 "Sunken Bastion quest" -[REWARDS]-> "Tidecaller Shield" 0.415
+  keep   band        s6 "The Drowned Bell quest" -[REWARDS]-> "Gloomfen Lantern" 0.450
+  keep   band        s7 "Brannoc" -[COMPLETED]-> "Sunken Bastion quest" 0.833
+  keep   band        s8 "Ilsabet" -[COMPLETED]-> "Drowned Bell quest" 0.823
+  keep   band        s9 "Brannoc" -[OWNS]-> "Tidecaller Shield" 0.767
+  keep   band        s10 "Ilsabet" -[OWNS]-> "Gloomfen Lantern" 0.805
+  review ambiguous   s9 "Brannoc" -[EQUIPPED]-> "Tidecaller Shield" 0.630
+  review ambiguous   s10 "Ilsabet" -[EQUIPPED]-> "Gloomfen Lantern" 0.664
+  review hedged      s11 "Brannoc" -[COMPLETED]-> "Drowned Bell quest" 0.824
+
+## genai-llm-ops: genai-llm-ops (data/samples/ccg/genai-llm-ops.md)
+11 sentences, 1 section; 11 inferences, 0 cache hits
+mentions: keep 20, review 4, drop 25 (dropped by band 13, one-kind 12)
+  in review by band 3, other-kind 1
+  keep   band        s0 "Amara Lindqvist" (Person) 0.999
+  keep   band        s0 "Fallowmere Insurance" (Organization) 0.995
+  keep   band        s1 "Fallowmere Insurance" (Organization) 0.883
+  keep   band        s1 "Stockholm" (Location) 0.991
+  keep   band        s2 "Amara Lindqvist" (Person) 0.999
+  keep   band        s2 "Q3 Model Review" (Event) 0.930
+  keep   band        s3 "Claims Notes Corpus" (Dataset) 0.979
+  keep   band        s3 "Skerry-7B Claims model" (Model) 0.823
+  keep   band        s4 "EXP-118 experiment" (Experiment) 0.727
+  keep   band        s4 "Skerry-7B Claims model" (Model) 0.834
+  keep   band        s5 "EXP-118 experiment" (Experiment) 0.565
+  keep   band        s5 "triage prompt" (Prompt) 0.739
+  keep   band        s6 "Claims Notes Corpus" (Dataset) 0.923
+  keep   band        s6 "Skerry-7B Claims model" (Model) 0.810
+  keep   band        s7 "Skerry-7B Claims model" (Model) 0.785
+  keep   band        s9 "Skerry-7B Claims model" (Model) 0.753
+  keep   band        s9 "production deployment" (Deployment) 0.853
+  keep   band        s10 "Claims Notes Corpus" (Dataset) 0.970
+  keep   band        s10 "Skerry-7B base model" (Model) 0.912
+  keep   pole-specific s7 "August evaluation" (Evaluation) 0.591
+claims: keep 9, review 4, drop 22 (dropped by illegal 19, self-loop 2, unanchored 1)
+  keep   band        s0 "Amara Lindqvist" -[WORKS_FOR]-> "Fallowmere Insurance" 0.740
+  keep   band        s1 "Fallowmere Insurance" -[LOCATED_AT]-> "Stockholm" 0.467
+  keep   band        s2 "Amara Lindqvist" -[PARTICIPATED_IN]-> "Q3 Model Review" 0.677
+  keep   band        s3 "Skerry-7B Claims model" -[TRAINED_ON]-> "the Claims Notes Corpus." 0.520
+  keep   band        s4 "Skerry-7B Claims model" -[PRODUCED_BY]-> "the EXP-118 experiment" 0.531
+  keep   band        s5 "EXP-118 experiment" -[USED_PROMPT]-> "triage prompt" 0.399
+  keep   band        s6 "Skerry-7B Claims model" -[EVALUATED_ON]-> "Claims Notes Corpus" 0.538
+  keep   band        s7 "Skerry-7B Claims model" -[SCORED_IN]-> "August evaluation" 0.412
+  keep   band        s9 "The Skerry-7B Claims model" -[DEPLOYED_TO]-> "production deployment" 0.526
+  review ambiguous   s6 "Skerry-7B Claims model" -[TRAINED_ON]-> "Claims Notes Corpus" 0.454
+  review band        s3 "Skerry-7B Claims model" -[EVALUATED_ON]-> "Claims Notes Corpus" 0.334
+  review hedged      s10 "Skerry-7B base model" -[EVALUATED_ON]-> "Claims Notes Corpus" 0.442
+  review hedged      s10 "Skerry-7B base model" -[TRAINED_ON]-> "the Claims Notes Corpus." 0.587
+
+## gis-cartography: gis-cartography (data/samples/ccg/gis-cartography.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 27, review 5, drop 26 (dropped by band 14, one-kind 12)
+  in review by band 5
+  keep   band        s0 "Larkspur GIS Office" (Organization) 0.948
+  keep   band        s0 "Nadia Ferrante" (Person) 0.999
+  keep   band        s1 "Iowa City" (Location) 0.992
+  keep   band        s1 "Larkspur GIS Office" (Organization) 0.882
+  keep   band        s2 "Nadia Ferrante" (Person) 0.998
+  keep   band        s2 "Spring Flood Mapathon" (Event) 0.959
+  keep   band        s3 "Flood Atlas project" (MapProject) 0.785
+  keep   band        s3 "Hydrology" (Layer) 0.651
+  keep   band        s4 "Flood Atlas project" (MapProject) 0.800
+  keep   band        s4 "Flood Zones" (Layer) 0.851
+  keep   band        s5 "Hydrology layer" (Layer) 0.888
+  keep   band        s5 "Mill Creek channel" (Feature) 0.931
+  keep   band        s6 "Bracken Dam spillway" (Feature) 0.760
+  keep   band        s6 "Bracken Dam" (Location) 0.538
+  keep   band        s6 "Hydrology layer" (Layer) 0.919
+  keep   band        s7 "Flood Zones layer" (Layer) 0.575
+  keep   band        s7 "Mill Creek floodplain" (Feature) 0.912
+  keep   band        s8 "Mill Creek channel" (Feature) 0.864
+  keep   band        s8 "spring field survey" (Survey) 0.937
+  keep   band        s9 "Bracken Dam spillway" (Feature) 0.602
+  keep   band        s9 "Bracken Dam" (Location) 0.594
+  keep   band        s9 "spring field survey" (Survey) 0.933
+  keep   band        s10 "Mill Creek floodplain" (Feature) 0.892
+  keep   band        s10 "spring field survey" (Survey) 0.939
+  keep   band        s11 "Bracken Dam spillway" (Feature) 0.607
+  keep   band        s11 "Bracken Dam" (Location) 0.560
+  keep   band        s11 "autumn field survey" (Survey) 0.861
+claims: keep 10, review 1, drop 26 (dropped by band 2, illegal 24)
+  keep   band        s0 "Nadia Ferrante" -[WORKS_FOR]-> "Larkspur GIS Office" 0.578
+  keep   band        s1 "Larkspur GIS Office" -[LOCATED_AT]-> "Iowa City" 0.486
+  keep   band        s2 "Nadia Ferrante" -[PARTICIPATED_IN]-> "Spring Flood Mapathon" 0.604
+  keep   band        s4 "Flood Atlas project" -[INCLUDES_LAYER]-> "Flood Zones layer" 0.573
+  keep   band        s5 "Hydrology layer" -[CONTAINS]-> "Mill Creek channel" 0.562
+  keep   band        s6 "Hydrology layer" -[CONTAINS]-> "Bracken Dam spillway" 0.516
+  keep   band        s7 "Flood Zones layer" -[CONTAINS]-> "Mill Creek floodplain" 0.421
+  keep   band        s8 "Mill Creek channel" -[SURVEYED_BY]-> "spring field survey" 0.512
+  keep   band        s9 "Bracken Dam spillway" -[SURVEYED_BY]-> "spring field survey" 0.419
+  keep   band        s10 "Mill Creek floodplain" -[SURVEYED_BY]-> "spring field survey" 0.489
+  review hedged      s11 "Bracken Dam spillway" -[SURVEYED_BY]-> "autumn field survey" 0.410
+
+## golf-sports: golf-sports (data/samples/ccg/golf-sports.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 24, review 3, drop 26 (dropped by band 8, one-kind 18)
+  in review by band 3
+  keep   band        s0 "Kingsbarrow Golf Club" (Organization) 0.986
+  keep   band        s0 "Theo Marchetti" (Person) 0.999
+  keep   band        s1 "Kingsbarrow Golf Club" (Organization) 0.942
+  keep   band        s1 "St Andrews" (Location) 0.979
+  keep   band        s2 "Club Pro-Am" (Event) 0.907
+  keep   band        s2 "Theo Marchetti" (Person) 0.995
+  keep   band        s3 "Kingsbarrow Links course" (Course) 0.890
+  keep   band        s4 "17th hole" (Hole) 0.918
+  keep   band        s4 "Kingsbarrow Links course" (Course) 0.845
+  keep   band        s5 "18th hole" (Hole) 0.917
+  keep   band        s5 "Kingsbarrow Links course" (Course) 0.845
+  keep   band        s6 "Kingsbarrow Links course" (Course) 0.867
+  keep   band        s6 "third round" (Round) 0.940
+  keep   band        s7 "Kingsbarrow Links course" (Course) 0.862
+  keep   band        s7 "final round" (Round) 0.877
+  keep   band        s8 "Harrow Cup tournament" (Tournament) 0.752
+  keep   band        s8 "third round" (Round) 0.853
+  keep   band        s9 "Harrow Cup tournament" (Tournament) 0.729
+  keep   band        s9 "final round" (Round) 0.640
+  keep   band        s10 "Aoife Brennan" (Person) 0.981
+  keep   band        s11 "Westmoor Heath course" (Course) 0.670
+  keep   pole-specific s3 "Harrow Cup tournament" (Tournament) 0.661
+  keep   pole-specific s10 "Harrow Cup tournament" (Tournament) 0.594
+  keep   pole-specific s11 "Harrow Cup tournament" (Tournament) 0.567
+claims: keep 8, review 3, drop 23 (dropped by illegal 23)
+  keep   band        s0 "Theo Marchetti" -[WORKS_FOR]-> "Kingsbarrow Golf Club" 0.703
+  keep   band        s1 "Kingsbarrow Golf Club" -[LOCATED_AT]-> "St Andrews" 0.414
+  keep   band        s2 "Theo Marchetti" -[PARTICIPATED_IN]-> "Club Pro-Am" 0.549
+  keep   band        s3 "Kingsbarrow Links course" -[HOSTS]-> "Harrow Cup tournament" 0.528
+  keep   band        s4 "17th hole" -[PART_OF_COURSE]-> "Kingsbarrow Links course" 0.429
+  keep   band        s5 "18th hole" -[PART_OF_COURSE]-> "Kingsbarrow Links course" 0.430
+  keep   band        s6 "third round" -[PLAYED_AT]-> "Kingsbarrow Links course" 0.459
+  keep   band        s7 "final round" -[PLAYED_AT]-> "Kingsbarrow Links course" 0.428
+  review band        s8 "third round" -[ROUND_IN_TOURNAMENT]-> "Harrow Cup tournament" 0.273
+  review band        s9 "final round" -[ROUND_IN_TOURNAMENT]-> "Harrow Cup tournament" 0.240
+  review band        s11 "Westmoor Heath course" -[HOSTS]-> "Harrow Cup tournament" 0.283
+
+## government: government (data/samples/ccg/government.md)
+13 sentences, 1 section; 13 inferences, 0 cache hits
+mentions: keep 26, review 1, drop 33 (dropped by band 9, one-kind 24)
+  in review by band 1
+  keep   band        s0 "Hendrik Saari" (Person) 0.994
+  keep   band        s0 "Northvale Power Cooperative" (Organization) 0.961
+  keep   band        s1 "Duluth" (Location) 0.978
+  keep   band        s1 "Northvale Power Cooperative" (Organization) 0.825
+  keep   band        s2 "Hendrik Saari" (Person) 0.996
+  keep   band        s2 "Winter Readiness Summit" (Event) 0.983
+  keep   band        s3 "Home Heat Resilience Policy" (Policy) 0.596
+  keep   band        s3 "HomeEnergy Office" (Agency) 0.845
+  keep   band        s4 "Home Heat Assistance Program" (Program) 0.875
+  keep   band        s4 "Home Heat Resilience Policy" (Policy) 0.780
+  keep   band        s5 "Home Heat Resilience Policy" (Policy) 0.742
+  keep   band        s5 "Weatherization Program" (Program) 0.817
+  keep   band        s6 "Home Heat Assistance Program" (Program) 0.870
+  keep   band        s6 "HomeEnergy Office" (Agency) 0.864
+  keep   band        s7 "HomeEnergy Office" (Agency) 0.851
+  keep   band        s7 "Weatherization Program" (Program) 0.844
+  keep   band        s8 "HomeEnergy Office" (Agency) 0.807
+  keep   band        s8 "furnace repair service" (Service) 0.627
+  keep   band        s9 "Energy Crisis Hotline" (Program) 0.776
+  keep   band        s9 "HomeEnergy Office" (Agency) 0.779
+  keep   band        s10 "Duluth" (Location) 0.971
+  keep   band        s10 "HomeEnergy Office" (Agency) 0.730
+  keep   band        s11 "Ada Lund" (Person) 0.865
+  keep   band        s11 "Mariah Clay" (Citizen) 0.907
+  keep   band        s12 "Solar Rebate Program" (Program) 0.799
+  keep   pole-specific s12 "HomeEnergy Office" (Agency) 0.730
+claims: keep 10, review 2, drop 21 (dropped by illegal 20, self-loop 1)
+  keep   band        s0 "Hendrik Saari" -[WORKS_FOR]-> "Northvale Power Cooperative" 0.709
+  keep   band        s1 "Northvale Power Cooperative" -[LOCATED_AT]-> "Duluth" 0.396
+  keep   band        s2 "Hendrik Saari" -[PARTICIPATED_IN]-> "Winter Readiness Summit" 0.698
+  keep   band        s3 "HomeEnergy Office" -[ISSUES]-> "Home Heat Resilience Policy" 0.419
+  keep   band        s4 "Home Heat Resilience Policy" -[GOVERNS]-> "Home Heat Assistance Program" 0.410
+  keep   band        s5 "The Home Heat Resilience Policy" -[GOVERNS]-> "Weatherization Program" 0.406
+  keep   band        s6 "HomeEnergy Office" -[ADMINISTERS]-> "Home Heat Assistance Program" 0.422
+  keep   band        s7 "HomeEnergy Office" -[ADMINISTERS]-> "Weatherization Program" 0.477
+  keep   band        s8 "HomeEnergy Office" -[PROVIDES]-> "furnace repair service" 0.501
+  keep   band        s10 "HomeEnergy Office" -[SERVES]-> "Duluth" 0.447
+  review band        s9 "HomeEnergy Office" -[ADMINISTERS]-> "Energy Crisis Hotline" 0.272
+  review band        s12 "HomeEnergy Office" -[ADMINISTERS]-> "Solar Rebate Program" 0.224
+
+## healthcare: healthcare (data/samples/ccg/healthcare.md)
+13 sentences, 1 section; 13 inferences, 0 cache hits
+mentions: keep 24, review 4, drop 39 (dropped by band 10, one-kind 25, other-kind 4)
+  in review by band 3, other-kind 1
+  keep   band        s0 "Harrowgate Health" (Organization) 0.984
+  keep   band        s0 "Nadia Brook" (Person) 0.997
+  keep   band        s1 "Harrowgate Health" (Organization) 0.841
+  keep   band        s1 "Spokane" (Location) 0.963
+  keep   band        s2 "Nadia Brook" (Person) 0.995
+  keep   band        s2 "cardiology case conference" (Event) 0.989
+  keep   band        s3 "community-acquired pneumonia" (Diagnosis) 0.964
+  keep   band        s4 "atrial fibrillation" (Diagnosis) 0.967
+  keep   band        s5 "Dr. Imani Okafor" (Provider) 0.872
+  keep   band        s5 "Eleanor Vasquez" (Patient) 0.965
+  keep   band        s6 "Dr. Samuel Whitcombe" (Provider) 0.844
+  keep   band        s6 "Eleanor Vasquez" (Patient) 0.966
+  keep   band        s7 "Dr. Imani Okafor" (Provider) 0.593
+  keep   band        s7 "ceftriaxone" (Medication) 0.830
+  keep   band        s8 "Dr. Imani Okafor" (Provider) 0.543
+  keep   band        s8 "apixaban" (Medication) 0.868
+  keep   band        s9 "ketoconazole" (Medication) 0.602
+  keep   band        s10 "Anticoagulation therapy" (Organization) 0.605
+  keep   band        s10 "apixaban" (Medication) 0.920
+  keep   band        s11 "atrial fibrillation" (Diagnosis) 0.763
+  keep   band        s12 "admission" (Event) 0.680
+  keep   band        s12 "metoprolol" (Medication) 0.881
+  keep   pole-specific s3 "Eleanor Vasquez" (Patient) 0.799
+  keep   pole-specific s4 "Eleanor Vasquez" (Patient) 0.786
+claims: keep 9, review 3, drop 18 (dropped by illegal 16, self-loop 2)
+  keep   band        s0 "Nadia Brook" -[WORKS_FOR]-> "Harrowgate Health" 0.633
+  keep   band        s1 "Harrowgate Health" -[LOCATED_AT]-> "Spokane" 0.366
+  keep   band        s2 "Nadia Brook" -[PARTICIPATED_IN]-> "cardiology case conference" 0.661
+  keep   band        s3 "Eleanor Vasquez" -[DIAGNOSED_WITH]-> "community-acquired pneumonia" 0.545
+  keep   band        s4 "Eleanor Vasquez" -[DIAGNOSED_WITH]-> "atrial fibrillation" 0.692
+  keep   band        s5 "Eleanor Vasquez" -[TREATED_BY]-> "Dr. Imani Okafor" 0.635
+  keep   band        s6 "Eleanor Vasquez" -[TREATED_BY]-> "Dr. Samuel Whitcombe" 0.620
+  keep   band        s7 "Dr. Imani Okafor" -[PRESCRIBED]-> "ceftriaxone" 0.477
+  keep   band        s8 "Dr. Imani Okafor" -[PRESCRIBED]-> "apixaban" 0.426
+  review end-in-review s9 "Apixaban" -[CONTRAINDICATED_WITH]-> "ketoconazole" 0.519
+  review end-in-review s11 "Anticoagulation therapy" -[TREATS]-> "atrial fibrillation" 0.489
+  review hedged      s12 "Dr. Samuel Whitcombe" -[PRESCRIBED]-> "metoprolol" 0.444
+
+## hospitality: hospitality (data/samples/ccg/hospitality.md)
+13 sentences, 1 section; 13 inferences, 0 cache hits
+mentions: keep 24, review 5, drop 46 (dropped by band 13, no-name 6, one-kind 27)
+  in review by band 3, other-kind 1, type-margin 1
+  keep   band        s0 "Ines Moura" (Person) 0.997
+  keep   band        s0 "Ribeira Hotels Group" (Organization) 0.972
+  keep   band        s1 "Lisbon" (Location) 0.972
+  keep   band        s1 "Ribeira Hotels Group" (Organization) 0.920
+  keep   band        s2 "Ines Moura" (Person) 0.996
+  keep   band        s2 "Ribeira Wine Week" (Event) 0.986
+  keep   band        s3 "Tagus Suite" (Room) 0.840
+  keep   band        s3 "Vellardo Terrace Hotel" (Hotel) 0.846
+  keep   band        s4 "Room 412" (Room) 0.877
+  keep   band        s4 "Vellardo Terrace Hotel" (Hotel) 0.904
+  keep   band        s5 "October reservation" (Reservation) 0.878
+  keep   band        s6 "Guest 4471" (Guest) 0.647
+  keep   band        s6 "Vellardo Terrace Hotel" (Hotel) 0.874
+  keep   band        s7 "Guest 4502" (Guest) 0.758
+  keep   band        s7 "Vellardo Terrace Hotel" (Hotel) 0.876
+  keep   band        s8 "Guest 4471" (Guest) 0.684
+  keep   band        s8 "airport transfer service" (Service) 0.869
+  keep   band        s9 "Guest 4502" (Guest) 0.688
+  keep   band        s9 "laundry service" (Service) 0.954
+  keep   band        s10 "airport transfer service" (Service) 0.891
+  keep   band        s10 "concierge staff" (Staff) 0.948
+  keep   band        s11 "housekeeping staff" (Staff) 0.959
+  keep   band        s11 "laundry service" (Service) 0.971
+  keep   band        s12 "Ribeira Riverside Hotel" (Hotel) 0.800
+claims: keep 11, review 0, drop 27 (dropped by illegal 27)
+  keep   band        s0 "Ines Moura" -[WORKS_FOR]-> "Ribeira Hotels Group" 0.627
+  keep   band        s1 "Ribeira Hotels Group" -[LOCATED_AT]-> "Lisbon" 0.371
+  keep   band        s2 "Ines Moura" -[PARTICIPATED_IN]-> "Ribeira Wine Week" 0.709
+  keep   band        s3 "Tagus Suite" -[LOCATED_IN]-> "Vellardo Terrace Hotel" 0.488
+  keep   band        s4 "Room 412" -[LOCATED_IN]-> "Vellardo Terrace Hotel" 0.435
+  keep   band        s6 "Guest 4471" -[STAYED_AT]-> "Vellardo Terrace Hotel" 0.572
+  keep   band        s7 "Guest 4502" -[STAYED_AT]-> "Vellardo Terrace Hotel" 0.597
+  keep   band        s8 "Guest 4471" -[SERVED_BY]-> "the airport transfer service." 0.492
+  keep   band        s9 "Guest 4502" -[SERVED_BY]-> "laundry service" 0.491
+  keep   band        s10 "airport transfer service" -[DELIVERED_BY]-> "the concierge staff." 0.427
+  keep   band        s11 "laundry service" -[DELIVERED_BY]-> "housekeeping staff" 0.533
+
+## legal: legal (data/samples/ccg/legal.md)
+13 sentences, 1 section; 13 inferences, 0 cache hits
+mentions: keep 23, review 4, drop 26 (dropped by band 7, one-kind 19)
+  in review by band 4
+  keep   band        s0 "Corvane Hospitality Group" (Organization) 0.976
+  keep   band        s0 "Rosa Delgado" (Person) 0.996
+  keep   band        s1 "Corvane Hospitality Group" (Organization) 0.929
+  keep   band        s1 "Sacramento" (Location) 0.994
+  keep   band        s2 "Rosa Delgado" (Person) 0.997
+  keep   band        s2 "Sacramento wage clinic" (Event) 0.560
+  keep   band        s3 "26-CV-0419" (Case) 0.808
+  keep   band        s3 "Rosa Delgado" (Person) 0.997
+  keep   band        s4 "26-CV-0419" (Case) 0.556
+  keep   band        s4 "Corvane wage matter" (Matter) 0.708
+  keep   band        s5 "26-CV-0419" (Case) 0.699
+  keep   band        s5 "Meridian Wage Payment Act" (Statute) 0.839
+  keep   band        s6 "26-CV-0419" (Case) 0.777
+  keep   band        s6 "Meridian Code 226" (Statute) 0.907
+  keep   band        s7 "Corvane wage matter" (Matter) 0.823
+  keep   band        s7 "Master Services Agreement" (Contract) 0.672
+  keep   band        s8 "Meridian Wage Payment Act" (Statute) 0.780
+  keep   band        s9 "Meridian Code 226" (Statute) 0.823
+  keep   band        s10 "Sacramento" (Location) 0.995
+  keep   band        s12 "Corvane wage matter" (Matter) 0.772
+  keep   band        s12 "Meridian Wage Payment Act" (Statute) 0.775
+  keep   pole-specific s10 "March 4 hearing" (Hearing) 0.608
+  keep   pole-specific s11 "March 4 hearing" (Hearing) 0.550
+claims: keep 9, review 2, drop 25 (dropped by band 1, illegal 24)
+  keep   band        s0 "Rosa Delgado" -[WORKS_FOR]-> "Corvane Hospitality Group" 0.706
+  keep   band        s1 "Corvane Hospitality Group" -[LOCATED_AT]-> "Sacramento" 0.536
+  keep   band        s2 "Rosa Delgado" -[PARTICIPATED_IN]-> "Sacramento wage clinic" 0.650
+  keep   band        s3 "Rosa Delgado" -[PARTY_TO]-> "26-CV-0419" 0.406
+  keep   band        s4 "26-CV-0419" -[BELONGS_TO]-> "Corvane wage matter" 0.495
+  keep   band        s5 "Meridian Wage Payment Act" -[APPLIES_TO]-> "26-CV-0419" 0.502
+  keep   band        s6 "Meridian Code 226" -[APPLIES_TO]-> "26-CV-0419" 0.434
+  keep   band        s7 "Master Services Agreement" -[GOVERNS]-> "Corvane wage matter" 0.466
+  keep   band        s10 "March 4 hearing" -[HELD_AT]-> "Sacramento" 0.651
+  review end-in-review s8 "motion to compel" -[CITES]-> "Meridian Wage Payment Act" 0.527
+  review end-in-review s9 "motion to compel" -[CITES]-> "Meridian Code 226" 0.468
+
+## manufacturing: manufacturing (data/samples/ccg/manufacturing.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 21, review 5, drop 35 (dropped by band 14, one-kind 21)
+  in review by band 4, type-margin 1
+  keep   band        s0 "Dorota Wilk" (Person) 0.998
+  keep   band        s0 "Kestrelbrook Motors" (Organization) 0.993
+  keep   band        s1 "Gdansk" (Location) 0.988
+  keep   band        s1 "Kestrelbrook Motors" (Organization) 0.972
+  keep   band        s2 "Dorota Wilk" (Person) 0.999
+  keep   band        s2 "line audit" (Event) 0.964
+  keep   band        s3 "Work order WO-5531" (WorkOrder) 0.572
+  keep   band        s3 "gearbox production line" (ProductionLine) 0.891
+  keep   band        s4 "Work order WO-5532" (WorkOrder) 0.571
+  keep   band        s4 "housing production line" (ProductionLine) 0.910
+  keep   band        s5 "Press P-220" (Machine) 0.918
+  keep   band        s5 "gearbox production line" (ProductionLine) 0.865
+  keep   band        s6 "Press P-310" (Machine) 0.940
+  keep   band        s7 "Orlik Castings" (Supplier) 0.979
+  keep   band        s7 "Part B-7" (Part) 0.826
+  keep   band        s8 "Part GH-3" (Part) 0.744
+  keep   band        s8 "Talbridge Polymers" (Supplier) 0.974
+  keep   band        s10 "August quality report" (QualityReport) 0.804
+  keep   band        s10 "Dorota Wilk" (Person) 0.997
+  keep   band        s11 "Orlik Castings" (Supplier) 0.951
+  keep   band        s11 "Part GH-3" (Part) 0.734
+claims: keep 9, review 2, drop 45 (dropped by illegal 43, self-loop 2)
+  keep   band        s0 "Dorota Wilk" -[WORKS_FOR]-> "Kestrelbrook Motors" 0.789
+  keep   band        s1 "Kestrelbrook Motors" -[LOCATED_AT]-> "Gdansk" 0.621
+  keep   band        s2 "Dorota Wilk" -[PARTICIPATED_IN]-> "line audit" 0.701
+  keep   band        s3 "Work order WO-5531" -[PRODUCED_ON]-> "gearbox production line" 0.470
+  keep   band        s4 "Work order WO-5532" -[PRODUCED_ON]-> "housing production line" 0.605
+  keep   band        s5 "Press P-220" -[OPERATED_BY]-> "gearbox production line" 0.537
+  keep   band        s7 "Part B-7" -[SUPPLIED_BY]-> "Orlik Castings" 0.488
+  keep   band        s8 "Part GH-3" -[SUPPLIED_BY]-> "Talbridge Polymers" 0.371
+  keep   band        s10 "August quality report" -[REPORTED_BY]-> "Dorota Wilk" 0.710
+  review end-in-review s9 "Part B-7" -[ASSEMBLED_FROM]-> "Part GH-3" 0.369
+  review hedged      s11 "Part GH-3" -[SUPPLIED_BY]-> "Orlik Castings" 0.411
+
+## oil-gas: oil-gas (data/samples/ccg/oil-gas.md)
+11 sentences, 1 section; 11 inferences, 0 cache hits
+mentions: keep 20, review 3, drop 25 (dropped by band 18, one-kind 7)
+  in review by band 3
+  keep   band        s0 "Brady Kowalski" (Person) 0.999
+  keep   band        s0 "Sablerock Energy" (Organization) 0.996
+  keep   band        s1 "Midland" (Location) 0.992
+  keep   band        s1 "Sablerock Energy" (Organization) 0.956
+  keep   band        s2 "Brady Kowalski" (Person) 0.999
+  keep   band        s2 "spring safety stand-down" (Event) 0.964
+  keep   band        s3 "Varrow Shale formation" (Formation) 0.703
+  keep   band        s3 "Well Corsair 14-2H" (Well) 0.771
+  keep   band        s4 "Varrow Shale formation" (Formation) 0.700
+  keep   band        s4 "Well Corsair 15-1H" (Well) 0.768
+  keep   band        s5 "Lower Varrow Reservoir" (Reservoir) 0.747
+  keep   band        s5 "Well Corsair 14-2H" (Well) 0.797
+  keep   band        s6 "Lower Varrow Reservoir" (Reservoir) 0.750
+  keep   band        s6 "Well Corsair 15-1H" (Well) 0.794
+  keep   band        s7 "Permit DP-2026-4471" (Permit) 0.687
+  keep   band        s7 "Well Corsair 14-2H" (Well) 0.623
+  keep   band        s8 "Permit DP-2026-4472" (Permit) 0.675
+  keep   band        s8 "Well Corsair 15-1H" (Well) 0.588
+  keep   band        s9 "Brady Kowalski" (Person) 0.999
+  keep   band        s10 "Ashby Sand formation" (Formation) 0.556
+claims: keep 9, review 0, drop 17 (dropped by band 1, illegal 11, unanchored 5)
+  keep   band        s0 "Brady Kowalski" -[WORKS_FOR]-> "Sablerock Energy" 0.812
+  keep   band        s1 "Sablerock Energy" -[LOCATED_AT]-> "Midland" 0.577
+  keep   band        s2 "Brady Kowalski" -[PARTICIPATED_IN]-> "spring safety stand-down" 0.577
+  keep   band        s3 "Well Corsair 14-2H" -[DRILLED_IN]-> "Varrow Shale formation" 0.482
+  keep   band        s4 "Well Corsair 15-1H" -[DRILLED_IN]-> "Varrow Shale formation" 0.481
+  keep   band        s5 "Well Corsair 14-2H" -[PRODUCES_FROM]-> "Lower Varrow Reservoir" 0.382
+  keep   band        s6 "Well Corsair 15-1H" -[PRODUCES_FROM]-> "Lower Varrow Reservoir" 0.378
+  keep   band        s7 "Permit DP-2026-4471" -[PERMITTED_FOR]-> "Well Corsair 14-2H" 0.422
+  keep   band        s8 "Permit DP-2026-4472" -[PERMITTED_FOR]-> "Well Corsair 15-1H" 0.417
+
+## options-intelligence: options-intelligence (data/samples/ccg/options-intelligence.md)
+10 sentences, 1 section; 10 inferences, 0 cache hits
+mentions: keep 20, review 0, drop 15 (dropped by band 7, one-kind 8)
+  in review by none
+  keep   band        s0 "Corrowmere Capital" (Organization) 0.911
+  keep   band        s0 "Marcus Hale" (Person) 0.998
+  keep   band        s1 "Chicago" (Location) 0.976
+  keep   band        s1 "Corrowmere Capital" (Organization) 0.591
+  keep   band        s2 "March options review" (Event) 0.854
+  keep   band        s2 "Marcus Hale" (Person) 0.998
+  keep   band        s3 "bear regime" (Regime) 0.565
+  keep   band        s3 "bull regime" (Regime) 0.691
+  keep   band        s4 "bear regime" (Regime) 0.784
+  keep   band        s4 "bull regime" (Regime) 0.695
+  keep   band        s5 "bear regime" (Regime) 0.802
+  keep   band        s5 "straddle strategy" (Strategy) 0.943
+  keep   band        s6 "bull regime" (Regime) 0.811
+  keep   band        s6 "collar strategy" (Strategy) 0.916
+  keep   band        s7 "CPI market event" (MarketEvent) 0.668
+  keep   band        s7 "HLX put trade" (Trade) 0.617
+  keep   band        s8 "CPI market event" (MarketEvent) 0.669
+  keep   band        s8 "QRV call trade" (Trade) 0.536
+  keep   band        s9 "QRV call trade" (Trade) 0.556
+  keep   band        s9 "jobs report market event" (MarketEvent) 0.583
+claims: keep 9, review 2, drop 10 (dropped by illegal 7, self-loop 3)
+  keep   band        s0 "Marcus Hale" -[WORKS_FOR]-> "Corrowmere Capital" 0.651
+  keep   band        s1 "Corrowmere Capital" -[LOCATED_AT]-> "Chicago" 0.385
+  keep   band        s2 "Marcus Hale" -[PARTICIPATED_IN]-> "the March options review." 0.695
+  keep   band        s3 "The bull regime" -[FLIPPED_TO]-> "the bear regime" 0.472
+  keep   band        s4 "The bear regime" -[PRECEDED_BY]-> "the bull regime" 0.437
+  keep   band        s5 "straddle strategy" -[OPTIMAL_IN]-> "the bear regime" 0.618
+  keep   band        s6 "collar strategy" -[OPTIMAL_IN]-> "the bull regime" 0.636
+  keep   band        s7 "HLX put trade" -[TRIGGERED_BY]-> "CPI market event" 0.437
+  keep   band        s8 "QRV call trade" -[TRIGGERED_BY]-> "CPI market event" 0.439
+  review band        s3 "The bull regime" -[PRECEDED_BY]-> "bear regime" 0.270
+  review hedged      s9 "QRV call trade" -[TRIGGERED_BY]-> "jobs report market event" 0.378
+
+## personal-knowledge: personal-knowledge (data/samples/ccg/personal-knowledge.md)
+11 sentences, 1 section; 11 inferences, 0 cache hits
+mentions: keep 23, review 5, drop 33 (dropped by band 19, one-kind 14)
+  in review by band 5
+  keep   band        s0 "Ines Okafor" (Person) 0.994
+  keep   band        s0 "Thornbury Pottery Guild" (Organization) 0.978
+  keep   band        s0 "Thornbury" (Location) 0.737
+  keep   band        s1 "Bristol" (Location) 0.991
+  keep   band        s1 "Thornbury Pottery Guild" (Organization) 0.934
+  keep   band        s2 "Ines Okafor" (Person) 0.995
+  keep   band        s2 "Thornbury Craft Fair" (Event) 0.967
+  keep   band        s2 "Thornbury" (Location) 0.837
+  keep   band        s3 "kiln wash note" (Note) 0.841
+  keep   band        s3 "wood firing topic" (Topic) 0.781
+  keep   band        s4 "ash glazes topic" (Topic) 0.762
+  keep   band        s4 "glaze test note" (Note) 0.834
+  keep   band        s5 "wood firing topic" (Topic) 0.557
+  keep   band        s6 "Firebox Design bookmark" (Bookmark) 0.775
+  keep   band        s6 "kiln wash note" (Note) 0.602
+  keep   band        s7 "backyard kiln project" (Project) 0.845
+  keep   band        s7 "glaze test note" (Note) 0.772
+  keep   band        s8 "Firebox Design bookmark" (Bookmark) 0.918
+  keep   band        s8 "May journal entry" (JournalEntry) 0.789
+  keep   band        s9 "Cone Chart bookmark" (Bookmark) 0.896
+  keep   band        s9 "June journal entry" (JournalEntry) 0.796
+  keep   band        s10 "glaze test note" (Note) 0.821
+  keep   band        s10 "raku topic" (Topic) 0.683
+claims: keep 8, review 3, drop 25 (dropped by band 1, illegal 24)
+  keep   band        s0 "Ines Okafor" -[WORKS_FOR]-> "Thornbury Pottery Guild" 0.618
+  keep   band        s1 "Thornbury Pottery Guild" -[LOCATED_AT]-> "Bristol" 0.457
+  keep   band        s2 "Ines Okafor" -[PARTICIPATED_IN]-> "Thornbury Craft Fair" 0.726
+  keep   band        s3 "kiln wash note" -[TAGGED]-> "wood firing topic" 0.352
+  keep   band        s4 "glaze test note" -[TAGGED]-> "ash glazes topic" 0.361
+  keep   band        s7 "glaze test note" -[BELONGS_TO]-> "the backyard kiln project" 0.538
+  keep   band        s8 "May journal entry" -[INSPIRED_BY]-> "the Firebox Design bookmark." 0.521
+  keep   band        s9 "June journal entry" -[INSPIRED_BY]-> "the Cone Chart bookmark." 0.473
+  review band        s6 "kiln wash note" -[REFERENCES]-> "Firebox Design bookmark" 0.254
+  review end-in-review s5 "wood firing topic" -[RELATED_TO]-> "the ash glazes topic" 0.368
+  review hedged      s10 "glaze test note" -[TAGGED]-> "raku topic" 0.417
+
+## product-management: product-management (data/samples/ccg/product-management.md)
+11 sentences, 1 section; 11 inferences, 0 cache hits
+mentions: keep 21, review 6, drop 16 (dropped by band 5, one-kind 11)
+  in review by band 6
+  keep   band        s0 "Keiko Arai" (Person) 0.999
+  keep   band        s0 "Tallowmere Software" (Organization) 0.984
+  keep   band        s1 "Tallowmere Software" (Organization) 0.868
+  keep   band        s1 "Toronto" (Location) 0.993
+  keep   band        s2 "Keiko Arai" (Person) 0.998
+  keep   band        s2 "Q3 planning summit" (Event) 0.957
+  keep   band        s3 "Epic E-12" (Epic) 0.828
+  keep   band        s3 "Printer Pool Routing" (Feature) 0.921
+  keep   band        s4 "Bulk Label Export" (Feature) 0.900
+  keep   band        s4 "Epic E-12" (Epic) 0.775
+  keep   band        s5 "Epic E-12" (Epic) 0.828
+  keep   band        s5 "Objective O-3" (Objective) 0.722
+  keep   band        s6 "4.2 release" (Release) 0.661
+  keep   band        s6 "Printer Pool Routing" (Feature) 0.806
+  keep   band        s7 "4.2 release" (Release) 0.632
+  keep   band        s7 "Bulk Label Export" (Feature) 0.624
+  keep   band        s8 "Label Print Time" (Metric) 0.916
+  keep   band        s8 "Printer Pool Routing" (Feature) 0.845
+  keep   band        s9 "Export Success Rate" (Metric) 0.913
+  keep   band        s10 "4.1 release" (Release) 0.604
+  keep   band        s10 "Bulk Label Export" (Feature) 0.637
+claims: keep 9, review 2, drop 17 (dropped by illegal 17)
+  keep   band        s0 "Keiko Arai" -[WORKS_FOR]-> "Tallowmere Software" 0.723
+  keep   band        s1 "Tallowmere Software" -[LOCATED_AT]-> "Toronto" 0.652
+  keep   band        s2 "Keiko Arai" -[PARTICIPATED_IN]-> "Q3 planning summit" 0.686
+  keep   band        s3 "Printer Pool Routing" -[PRIORITIZED_IN]-> "Epic E-12" 0.495
+  keep   band        s4 "Bulk Label Export" -[PRIORITIZED_IN]-> "Epic E-12" 0.524
+  keep   band        s5 "Epic E-12" -[CONTRIBUTES_TO]-> "Objective O-3" 0.463
+  keep   band        s6 "Printer Pool Routing" -[PART_OF_RELEASE]-> "4.2 release" 0.425
+  keep   band        s7 "Bulk Label Export" -[PART_OF_RELEASE]-> "4.2 release" 0.407
+  keep   band        s8 "Printer Pool Routing" -[MEASURED_BY]-> "Label Print Time" 0.446
+  review band        s10 "Bulk Label Export" -[PART_OF_RELEASE]-> "4.1 release" 0.329
+  review end-in-review s9 "Bulk Label Export" -[MEASURED_BY]-> "Export Success Rate" 0.547
+
+## real-estate: real-estate (data/samples/ccg/real-estate.md)
+10 sentences, 1 section; 10 inferences, 0 cache hits
+mentions: keep 19, review 4, drop 26 (dropped by band 11, one-kind 15)
+  in review by band 3, type-margin 1
+  keep   band        s0 "Blue Ridge Homes" (Organization) 0.994
+  keep   band        s0 "Daniel Osei" (Person) 0.998
+  keep   band        s1 "Asheville" (Location) 0.948
+  keep   band        s1 "Blue Ridge Homes" (Organization) 0.788
+  keep   band        s2 "Grace Whitfield" (Person) 0.997
+  keep   band        s2 "June open house" (Event) 0.970
+  keep   band        s3 "Juniper Lane house" (Property) 0.533
+  keep   band        s3 "Montford" (Neighborhood) 0.872
+  keep   band        s4 "Birch Street house" (Property) 0.578
+  keep   band        s4 "Juniper Lane house" (Property) 0.883
+  keep   band        s5 "Juniper Lane house" (Property) 0.741
+  keep   band        s6 "Blue Ridge agent" (Agent) 0.927
+  keep   band        s6 "MLS-30418 listing" (Listing) 0.632
+  keep   band        s7 "Grace Whitfield" (Person) 0.868
+  keep   band        s7 "June transaction" (Transaction) 0.573
+  keep   band        s8 "June transaction" (Transaction) 0.639
+  keep   band        s8 "buyer" (Person) 0.513
+  keep   band        s8 "buyer's agent" (Agent) 0.956
+  keep   band        s9 "Birch Street house" (Property) 0.781
+claims: keep 8, review 2, drop 25 (dropped by illegal 23, unanchored 2)
+  keep   band        s0 "Daniel Osei" -[WORKS_FOR]-> "Blue Ridge Homes" 0.794
+  keep   band        s1 "Blue Ridge Homes" -[LOCATED_AT]-> "Asheville" 0.403
+  keep   band        s2 "Grace Whitfield" -[PARTICIPATED_IN]-> "June open house" 0.649
+  keep   band        s3 "Juniper Lane house" -[LOCATED_IN]-> "Montford" 0.476
+  keep   band        s4 "Juniper Lane house" -[COMPARABLE_TO]-> "Birch Street house" 0.652
+  keep   band        s6 "MLS-30418 listing" -[LISTED_BY]-> "the Blue Ridge agent." 0.440
+  keep   band        s7 "June transaction" -[SOLD_TO]-> "Grace Whitfield" 0.508
+  keep   band        s8 "June transaction" -[REPRESENTED_BY]-> "the buyer's agent." 0.415
+  review end-in-review s5 "MLS-30418 listing" -[LISTING_FOR]-> "Juniper Lane house" 0.446
+  review hedged      s9 "Birch Street house" -[LOCATED_IN]-> "Montford" 0.425
+
+## retail-ecommerce: retail-ecommerce (data/samples/ccg/retail-ecommerce.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 24, review 5, drop 29 (dropped by band 13, no-name 4, one-kind 12)
+  in review by band 5
+  keep   band        s0 "Kettlewick Home" (Organization) 0.993
+  keep   band        s0 "Nora Vance" (Person) 0.999
+  keep   band        s1 "Kettlewick Home" (Organization) 0.823
+  keep   band        s1 "Leeds" (Location) 0.962
+  keep   band        s2 "Nora Vance" (Person) 0.999
+  keep   band        s2 "Spring Kitchen Sale" (Event) 0.958
+  keep   band        s3 "Customer 88213" (Customer) 0.715
+  keep   band        s3 "kitchen order" (Order) 0.800
+  keep   band        s4 "Tollan Electric Kettle" (Product) 0.981
+  keep   band        s4 "kitchen order" (Order) 0.838
+  keep   band        s5 "Tollan Toaster" (Product) 0.972
+  keep   band        s5 "kitchen order" (Order) 0.785
+  keep   band        s6 "Customer 88213" (Customer) 0.714
+  keep   band        s6 "teapot order" (Order) 0.767
+  keep   band        s7 "Tollan Glass Teapot" (Product) 0.970
+  keep   band        s7 "teapot order" (Order) 0.864
+  keep   band        s8 "Customer 88213" (Customer) 0.728
+  keep   band        s8 "Tollan Milk Frother" (Product) 0.948
+  keep   band        s9 "Breakfast Bundle campaign" (Campaign) 0.770
+  keep   band        s9 "Customer 88213" (Customer) 0.704
+  keep   band        s10 "Tollan Electric Kettle" (Product) 0.858
+  keep   band        s10 "kettle review" (Review) 0.730
+  keep   band        s11 "Tollan Glass Teapot" (Product) 0.982
+  keep   band        s11 "kitchen order" (Order) 0.843
+claims: keep 10, review 2, drop 13 (dropped by illegal 13)
+  keep   band        s0 "Nora Vance" -[WORKS_FOR]-> "Kettlewick Home" 0.814
+  keep   band        s1 "Kettlewick Home" -[LOCATED_AT]-> "Leeds" 0.495
+  keep   band        s2 "Nora Vance" -[PARTICIPATED_IN]-> "Spring Kitchen Sale" 0.640
+  keep   band        s3 "Customer 88213" -[PURCHASED]-> "kitchen order" 0.380
+  keep   band        s4 "The kitchen order" -[CONTAINS]-> "Tollan Electric Kettle" 0.525
+  keep   band        s5 "The kitchen order" -[CONTAINS]-> "Tollan Toaster" 0.491
+  keep   band        s6 "Customer 88213" -[PURCHASED]-> "teapot order" 0.374
+  keep   band        s7 "teapot order" -[CONTAINS]-> "the Tollan Glass Teapot" 0.450
+  keep   band        s8 "Customer 88213" -[BROWSED]-> "the Tollan Milk Frother" 0.590
+  keep   band        s9 "Customer 88213" -[TARGETED_BY]-> "the Breakfast Bundle campaign." 0.442
+  review band        s10 "The kettle review" -[REVIEW_OF]-> "Tollan Electric Kettle" 0.280
+  review hedged      s11 "The kitchen order" -[CONTAINS]-> "Tollan Glass Teapot" 0.483
+
+## scientific-research: scientific-research (data/samples/ccg/scientific-research.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 23, review 4, drop 28 (dropped by band 13, one-kind 15)
+  in review by band 4
+  keep   band        s0 "Eastmoor University" (Organization) 0.970
+  keep   band        s0 "Halima Ouattara" (Person) 0.989
+  keep   band        s1 "Eastmoor University" (Organization) 0.843
+  keep   band        s1 "Nairobi" (Location) 0.970
+  keep   band        s2 "Halima Ouattara" (Person) 0.993
+  keep   band        s2 "Soil Ecology Congress" (Event) 0.990
+  keep   band        s3 "Jonas Berg" (Person) 0.993
+  keep   band        s3 "Soil Ecology Congress" (Event) 0.989
+  keep   band        s4 "Drought Roots paper" (Paper) 0.849
+  keep   band        s4 "Kitui Soil Moisture Dataset" (Dataset) 0.816
+  keep   band        s5 "Drought Roots paper" (Paper) 0.871
+  keep   band        s5 "Sorghum Yield Dataset" (Dataset) 0.867
+  keep   band        s6 "Root Atlas paper" (Paper) 0.693
+  keep   band        s7 "Kitui Soil Moisture Dataset" (Dataset) 0.925
+  keep   band        s7 "Lowland Drought experiment" (Experiment) 0.727
+  keep   band        s8 "Lowland Drought experiment" (Experiment) 0.897
+  keep   band        s8 "Soil Resilience Grant" (Grant) 0.964
+  keep   band        s9 "Dryland Futures Grant" (Grant) 0.927
+  keep   band        s9 "Highland Drought experiment" (Experiment) 0.913
+  keep   band        s10 "Highland Drought experiment" (Experiment) 0.624
+  keep   band        s10 "Lowland Drought experiment" (Experiment) 0.539
+  keep   band        s11 "Root Atlas paper" (Paper) 0.755
+  keep   band        s11 "Sorghum Yield Dataset" (Dataset) 0.814
+claims: keep 10, review 0, drop 24 (dropped by band 1, illegal 17, self-loop 4, unanchored 2)
+  keep   band        s0 "Halima Ouattara" -[WORKS_FOR]-> "Eastmoor University" 0.680
+  keep   band        s1 "Eastmoor University" -[LOCATED_AT]-> "Nairobi" 0.355
+  keep   band        s2 "Halima Ouattara" -[PARTICIPATED_IN]-> "Soil Ecology Congress" 0.711
+  keep   band        s3 "Jonas Berg" -[PARTICIPATED_IN]-> "Soil Ecology Congress" 0.697
+  keep   band        s4 "Drought Roots paper" -[USED_DATASET]-> "Kitui Soil Moisture Dataset" 0.391
+  keep   band        s5 "Drought Roots paper" -[USED_DATASET]-> "Sorghum Yield Dataset" 0.446
+  keep   band        s7 "Lowland Drought experiment" -[PRODUCED_DATASET]-> "Kitui Soil Moisture Dataset" 0.442
+  keep   band        s8 "Lowland Drought experiment" -[FUNDED_BY]-> "the Soil Resilience Grant." 0.455
+  keep   band        s9 "Highland Drought experiment" -[FUNDED_BY]-> "the Dryland Futures Grant." 0.438
+  keep   band        s10 "Highland Drought experiment" -[REPLICATED]-> "Lowland Drought experiment" 0.681
+
+## software-engineering: software-engineering (data/samples/ccg/software-engineering.md)
+15 sentences, 1 section; 15 inferences, 0 cache hits
+mentions: keep 29, review 2, drop 28 (dropped by band 10, one-kind 18)
+  in review by band 2
+  keep   band        s0 "Olu Bankole" (Person) 0.996
+  keep   band        s0 "Parcelvane" (Organization) 0.989
+  keep   band        s1 "Mei Tanaka" (Person) 0.995
+  keep   band        s1 "Parcelvane" (Organization) 0.989
+  keep   band        s2 "Lagos" (Location) 0.975
+  keep   band        s2 "Parcelvane" (Organization) 0.541
+  keep   band        s3 "Olu Bankole" (Person) 0.988
+  keep   band        s3 "PR #4519" (PullRequest) 0.767
+  keep   band        s4 "Mei Tanaka" (Person) 0.989
+  keep   band        s4 "PR #4519" (PullRequest) 0.595
+  keep   band        s5 "Issue #4470" (Issue) 0.747
+  keep   band        s5 "PR #4519" (PullRequest) 0.628
+  keep   band        s6 "PR #4519" (PullRequest) 0.806
+  keep   band        s6 "checkout repository" (Repository) 0.863
+  keep   band        s7 "Issue #4470" (Issue) 0.875
+  keep   band        s7 "checkout repository" (Repository) 0.876
+  keep   band        s8 "Issue #4470" (Issue) 0.888
+  keep   band        s8 "Mei Tanaka" (Person) 0.987
+  keep   band        s9 "Deployment D-881" (Deployment) 0.648
+  keep   band        s9 "PR #4519" (PullRequest) 0.575
+  keep   band        s10 "Deployment D-881" (Deployment) 0.748
+  keep   band        s10 "checkout service" (Service) 0.766
+  keep   band        s11 "D-881" (Deployment) 0.662
+  keep   band        s11 "INC-2207 incident" (Incident) 0.585
+  keep   band        s12 "INC-2207 incident" (Incident) 0.541
+  keep   band        s12 "checkout service" (Service) 0.906
+  keep   band        s13 "payments service" (Service) 0.810
+  keep   band        s14 "INC-2207 incident" (Incident) 0.531
+  keep   band        s14 "payments service" (Service) 0.882
+claims: keep 12, review 6, drop 23 (dropped by illegal 21, self-loop 1, unanchored 1)
+  keep   band        s0 "Olu Bankole" -[WORKS_FOR]-> "Parcelvane" 0.636
+  keep   band        s1 "Mei Tanaka" -[WORKS_FOR]-> "Parcelvane" 0.636
+  keep   band        s2 "Parcelvane" -[LOCATED_AT]-> "Lagos" 0.530
+  keep   band        s3 "Olu Bankole" -[AUTHORED]-> "PR #4519" 0.612
+  keep   band        s4 "Mei Tanaka" -[REVIEWED]-> "PR #4519" 0.627
+  keep   band        s5 "PR #4519" -[FIXES]-> "Issue #4470" 0.485
+  keep   band        s6 "PR #4519" -[TARGETS]-> "checkout repository" 0.391
+  keep   band        s7 "Issue #4470" -[BELONGS_TO]-> "checkout repository" 0.484
+  keep   band        s8 "Issue #4470" -[FILED_BY]-> "by Mei Tanaka" 0.548
+  keep   band        s9 "Deployment D-881" -[TRIGGERED_BY]-> "PR #4519" 0.509
+  keep   band        s10 "Deployment D-881" -[DEPLOYED_TO]-> "checkout service" 0.464
+  keep   band        s11 "Deployment D-881" -[CAUSED_INCIDENT]-> "INC-2207 incident" 0.372
+  review ambiguous   s3 "Olu Bankole" -[REVIEWED]-> "PR #4519" 0.405
+  review ambiguous   s4 "Mei Tanaka" -[AUTHORED]-> "PR #4519" 0.548
+  review ambiguous   s8 "Issue #4470" -[ASSIGNED_TO]-> "Mei Tanaka" 0.359
+  review band        s12 "INC-2207 incident" -[AFFECTED]-> "checkout service" 0.255
+  review band        s14 "INC-2207 incident" -[AFFECTED]-> "payments service" 0.212
+  review end-in-review s13 "checkout service" -[DEPENDS_ON]-> "the payments service." 0.520
+
+## trip-planning: trip-planning (data/samples/ccg/trip-planning.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 24, review 5, drop 38 (dropped by band 14, one-kind 24)
+  in review by band 3, type-margin 2
+  keep   band        s0 "Lucas Moreau" (Person) 0.999
+  keep   band        s0 "Valtorre Trails" (Organization) 0.988
+  keep   band        s1 "Valtorre Trails" (Organization) 0.772
+  keep   band        s1 "Vila Real" (Location) 0.975
+  keep   band        s2 "Douro Harvest Fair" (Event) 0.978
+  keep   band        s2 "Lucas Moreau" (Person) 0.998
+  keep   band        s3 "Douro Weekend itinerary" (Itinerary) 0.793
+  keep   band        s3 "Porto" (Destination) 0.817
+  keep   band        s4 "Douro Weekend itinerary" (Itinerary) 0.788
+  keep   band        s4 "Pinhao" (Destination) 0.844
+  keep   band        s5 "Casa Lunares Hotel" (Hotel) 0.847
+  keep   band        s5 "Douro Weekend itinerary" (Itinerary) 0.524
+  keep   band        s6 "Douro Weekend itinerary" (Itinerary) 0.536
+  keep   band        s6 "Quinta das Alvas" (Location) 0.926
+  keep   band        s7 "Douro Weekend itinerary" (Itinerary) 0.639
+  keep   band        s7 "Terraced Vineyard Hike" (Event) 0.881
+  keep   band        s8 "Douro River Cruise" (Event) 0.847
+  keep   band        s8 "Douro Weekend itinerary" (Itinerary) 0.695
+  keep   band        s9 "Casa Lunares Hotel" (Hotel) 0.904
+  keep   band        s9 "Taberna do Tavik restaurant" (Restaurant) 0.900
+  keep   band        s10 "Casa Lunares Hotel" (Hotel) 0.817
+  keep   band        s10 "October guest review" (Review) 0.943
+  keep   band        s11 "Douro Weekend itinerary" (Itinerary) 0.673
+  keep   band        s11 "Port Lodge Tour" (Event) 0.880
+claims: keep 8, review 0, drop 27 (dropped by illegal 27)
+  keep   band        s0 "Lucas Moreau" -[WORKS_FOR]-> "Valtorre Trails" 0.795
+  keep   band        s1 "Valtorre Trails" -[LOCATED_AT]-> "Vila Real" 0.492
+  keep   band        s2 "Lucas Moreau" -[PARTICIPATED_IN]-> "Douro Harvest Fair" 0.731
+  keep   band        s3 "Douro Weekend itinerary" -[INCLUDES_DESTINATION]-> "Porto" 0.459
+  keep   band        s4 "Douro Weekend itinerary" -[INCLUDES_DESTINATION]-> "Pinhao" 0.478
+  keep   band        s5 "Douro Weekend itinerary" -[BOOKED_AT]-> "Casa Lunares Hotel" 0.469
+  keep   band        s9 "The Taberna do Tavik restaurant" -[NEAR]-> "near Casa Lunares Hotel" 0.530
+  keep   band        s10 "Casa Lunares Hotel" -[REVIEWED_BY]-> "by the October guest review." 0.560
+
+## vacation-industry: vacation-industry (data/samples/ccg/vacation-industry.md)
+12 sentences, 1 section; 12 inferences, 0 cache hits
+mentions: keep 23, review 1, drop 19 (dropped by band 8, no-name 1, one-kind 10)
+  in review by band 1
+  keep   band        s0 "Kaimana Travel Group" (Organization) 0.985
+  keep   band        s0 "Kalani Akana" (Person) 0.998
+  keep   band        s1 "Kaimana Travel Group" (Organization) 0.965
+  keep   band        s1 "Lahaina" (Location) 0.990
+  keep   band        s2 "June booking" (Booking) 0.903
+  keep   band        s2 "Reef Point Resort" (Resort) 0.927
+  keep   band        s3 "Ocean Explorer Package" (Package) 0.843
+  keep   band        s3 "Reef Point Resort" (Resort) 0.886
+  keep   band        s4 "Family Reef Package" (Package) 0.817
+  keep   band        s4 "Reef Point Resort" (Resort) 0.909
+  keep   band        s5 "Guest 2207" (Guest) 0.641
+  keep   band        s5 "Ocean Explorer Package" (Package) 0.847
+  keep   band        s6 "Ocean Explorer Package" (Package) 0.871
+  keep   band        s6 "Reef Snorkel Tour" (Activity) 0.983
+  keep   band        s7 "Ocean Explorer Package" (Package) 0.859
+  keep   band        s7 "Sunset Canoe Tour" (Activity) 0.967
+  keep   band        s8 "Family Reef Package" (Package) 0.821
+  keep   band        s8 "Reef Snorkel Tour" (Activity) 0.980
+  keep   band        s9 "Reef Snorkel Tour" (Activity) 0.677
+  keep   band        s9 "Whale Season" (Season) 0.955
+  keep   band        s10 "Calm Water Season" (Season) 0.910
+  keep   band        s11 "Family Reef Package" (Package) 0.788
+  keep   band        s11 "Sunset Canoe Tour" (Activity) 0.960
+claims: keep 10, review 2, drop 9 (dropped by illegal 9)
+  keep   band        s0 "Kalani Akana" -[WORKS_FOR]-> "Kaimana Travel Group" 0.662
+  keep   band        s1 "Kaimana Travel Group" -[LOCATED_AT]-> "Lahaina" 0.452
+  keep   band        s2 "June booking" -[BOOKED_AT]-> "Reef Point Resort" 0.618
+  keep   band        s3 "Ocean Explorer Package" -[OFFERED_AT]-> "Reef Point Resort" 0.562
+  keep   band        s4 "Family Reef Package" -[OFFERED_AT]-> "Reef Point Resort" 0.533
+  keep   band        s5 "Ocean Explorer Package" -[PREFERRED_BY]-> "Guest 2207" 0.475
+  keep   band        s6 "Ocean Explorer Package" -[INCLUDES]-> "Reef Snorkel Tour" 0.412
+  keep   band        s7 "Ocean Explorer Package" -[INCLUDES]-> "Sunset Canoe Tour" 0.373
+  keep   band        s8 "Family Reef Package" -[INCLUDES]-> "Reef Snorkel Tour" 0.381
+  keep   band        s9 "Reef Snorkel Tour" -[AVAILABLE_IN]-> "Whale Season" 0.527
+  review band        s11 "Family Reef Package" -[INCLUDES]-> "Sunset Canoe Tour" 0.311
+  review end-in-review s10 "Sunset Canoe Tour" -[AVAILABLE_IN]-> "Calm Water Season" 0.373
+
+## wildlife-management: wildlife-management (data/samples/ccg/wildlife-management.md)
+13 sentences, 1 section; 13 inferences, 0 cache hits
+mentions: keep 24, review 6, drop 18 (dropped by band 3, one-kind 15)
+  in review by band 5, type-margin 1
+  keep   band        s0 "Sakuti Wildlife Trust" (Organization) 0.993
+  keep   band        s0 "Wanjiru Kamau" (Person) 0.998
+  keep   band        s1 "Laikipia" (Location) 0.989
+  keep   band        s1 "Sakuti Wildlife Trust" (Organization) 0.987
+  keep   band        s2 "Wanjiru Kamau" (Person) 0.988
+  keep   band        s2 "dry-season game count" (Event) 0.982
+  keep   band        s3 "African wild dog" (Species) 0.904
+  keep   band        s3 "Sakuti Riverine Belt" (Habitat) 0.869
+  keep   band        s4 "Sakuti Riverine Belt" (Habitat) 0.860
+  keep   band        s4 "impala" (Species) 0.965
+  keep   band        s5 "impala" (Species) 0.966
+  keep   band        s6 "African wild dog" (Species) 0.863
+  keep   band        s6 "impala" (Species) 0.740
+  keep   band        s7 "African wild dog" (Species) 0.919
+  keep   band        s7 "Livestock disease" (Threat) 0.882
+  keep   band        s8 "impala" (Species) 0.920
+  keep   band        s9 "Camera CT-09" (Camera) 0.814
+  keep   band        s9 "Sighting SG-3302" (Sighting) 0.523
+  keep   band        s10 "Sighting SG-3302" (Sighting) 0.523
+  keep   band        s10 "Wanjiru Kamau" (Person) 0.990
+  keep   band        s11 "Camera CT-11" (Camera) 0.820
+  keep   band        s11 "Sighting SG-3310" (Sighting) 0.542
+  keep   band        s12 "African wild dog" (Species) 0.934
+  keep   band        s12 "Ewaso Floodplain" (Location) 0.816
+claims: keep 10, review 1, drop 23 (dropped by illegal 22, unanchored 1)
+  keep   band        s0 "Wanjiru Kamau" -[WORKS_FOR]-> "Sakuti Wildlife Trust" 0.768
+  keep   band        s1 "Sakuti Wildlife Trust" -[LOCATED_AT]-> "Laikipia" 0.588
+  keep   band        s2 "Wanjiru Kamau" -[PARTICIPATED_IN]-> "dry-season game count" 0.694
+  keep   band        s3 "African wild dog" -[INHABITS]-> "Sakuti Riverine Belt" 0.610
+  keep   band        s4 "impala" -[INHABITS]-> "Sakuti Riverine Belt" 0.692
+  keep   band        s6 "The African wild dog" -[PREYS_ON]-> "impala" 0.393
+  keep   band        s7 "Livestock disease" -[THREATENS]-> "African wild dog" 0.576
+  keep   band        s9 "Sighting SG-3302" -[CAPTURED_BY]-> "Camera CT-09" 0.402
+  keep   band        s10 "Sighting SG-3302" -[OBSERVED_BY]-> "Wanjiru Kamau" 0.506
+  keep   band        s11 "Sighting SG-3310" -[CAPTURED_BY]-> "Camera CT-11" 0.422
+  review end-in-review s5 "impala" -[INHABITS]-> "Ewaso Floodplain" 0.708
+
+## the stores after the first pass (published typed graph)
+agent-memory: entities Agent 1, Conversation 1, Entity 2, Location 1, Memory 2, Organization 1, Person 1, Session 1, ToolCall 2; relationships INVOKED 2, LOCATED_AT 1, PART_OF_SESSION 1, REFERENCED 1, REMEMBERED 2, TRIGGERED_BY 1, WORKS_FOR 1
+conservation: entities Event 1, Funding 1, Organization 1, Person 2, Program 2, Site 1, Species 2; relationships BENEFITS 2, FUNDED_BY 2, PARTICIPATED_IN 1, PROTECTED_IN 2, THREATENS 1, WORKS_FOR 1
+cybersecurity: entities Alert 1, Asset 2, Control 1, Incident 1, Location 1, Organization 1, Person 2, ThreatActor 1, Vulnerability 1; relationships AFFECTS 1, ASSIGNED_TO 1, ATTRIBUTED_TO 1, BELONGS_TO 1, LOCATED_AT 1, MITIGATES 1, ORIGINATES_FROM 1, OWNS 1, PROTECTS 1, TARGETS 1, TRIGGERED 1, WORKS_FOR 1
+data-journalism: entities Claim 2, Correction 1, Dataset 1, Event 1, Investigation 1, Location 2, Organization 3, Person 2, Source 1, Story 1; relationships CORRECTED_IN 1, FACT_CHECKED 1, INVESTIGATED_BY 1, PARTICIPATED_IN 2, PROVIDED_BY 1, PUBLISHED_IN 1, SUPPORTS 1, WORKS_FOR 1
+digital-twin: entities Alert 1, Asset 2, Event 1, Location 1, MaintenanceRecord 1, Organization 1, Person 1, Reading 2, Sensor 2, System 1; relationships CAUSED_BY 1, FOLLOWED_UP 1, GENERATED 2, LOCATED_AT 1, MAINTAINED 1, MONITORED_BY 2, PARTICIPATED_IN 1, PART_OF 2, WORKS_FOR 1
+education: entities Course 2, Event 1, Instructor 1, Location 1, Organization 1, Person 1, Student 2, Submission 1, Term 2; relationships ATTENDED 2, ENROLLED_IN 2, HELD_AT 1, LOCATED_AT 1, OFFERED_IN 2, TEACHES 2, WORKS_FOR 1
+financial-services: entities Account 2, Decision 2, Location 1, Organization 1, Person 3, Policy 1, Security 1, Transaction 1; relationships ADVISED_BY 1, APPLIED_POLICY 1, CAUSED 1, INVOLVES 1, LOCATED_AT 1, MANAGES 1, OWNS 2, WORKS_FOR 2
+gaming: entities Character 2, Event 1, Item 2, Location 1, Organization 1, Person 1, Player 2, Quest 2; relationships COMPLETED 2, LOCATED_AT 1, OWNS 2, PARTICIPATED_IN 1, PLAYS 2, REWARDS 2, WORKS_FOR 1
+genai-llm-ops: entities Dataset 1, Deployment 1, Evaluation 1, Event 1, Experiment 1, Location 1, Model 2, Organization 1, Person 1, Prompt 1; relationships DEPLOYED_TO 1, EVALUATED_ON 1, LOCATED_AT 1, PARTICIPATED_IN 1, PRODUCED_BY 1, SCORED_IN 1, TRAINED_ON 1, USED_PROMPT 1, WORKS_FOR 1
+gis-cartography: entities Event 1, Feature 3, Layer 2, Location 2, MapProject 1, Organization 1, Person 1, Survey 2; relationships CONTAINS 3, INCLUDES_LAYER 1, LOCATED_AT 1, PARTICIPATED_IN 1, SURVEYED_BY 3, WORKS_FOR 1
+golf-sports: entities Course 2, Event 1, Hole 2, Location 1, Organization 1, Person 2, Round 2, Tournament 1; relationships HOSTS 1, LOCATED_AT 1, PARTICIPATED_IN 1, PART_OF_COURSE 2, PLAYED_AT 2, WORKS_FOR 1
+government: entities Agency 1, Citizen 1, Event 1, Location 1, Organization 1, Person 2, Policy 1, Program 4, Service 1; relationships ADMINISTERS 2, GOVERNS 2, ISSUES 1, LOCATED_AT 1, PARTICIPATED_IN 1, PROVIDES 1, SERVES 1, WORKS_FOR 1
+healthcare: entities Diagnosis 2, Event 2, Location 1, Medication 4, Organization 2, Patient 1, Person 1, Provider 2; relationships DIAGNOSED_WITH 2, LOCATED_AT 1, PARTICIPATED_IN 1, PRESCRIBED 2, TREATED_BY 2, WORKS_FOR 1
+hospitality: entities Event 1, Guest 2, Hotel 2, Location 1, Organization 1, Person 1, Reservation 1, Room 2, Service 2, Staff 2; relationships DELIVERED_BY 2, LOCATED_AT 1, LOCATED_IN 2, PARTICIPATED_IN 1, SERVED_BY 2, STAYED_AT 2, WORKS_FOR 1
+legal: entities Case 1, Contract 1, Event 1, Hearing 1, Location 1, Matter 1, Organization 1, Person 1, Statute 2; relationships APPLIES_TO 2, BELONGS_TO 1, GOVERNS 1, HELD_AT 1, LOCATED_AT 1, PARTICIPATED_IN 1, PARTY_TO 1, WORKS_FOR 1
+manufacturing: entities Event 1, Location 1, Machine 2, Organization 1, Part 2, Person 1, ProductionLine 2, QualityReport 1, Supplier 2, WorkOrder 2; relationships LOCATED_AT 1, OPERATED_BY 1, PARTICIPATED_IN 1, PRODUCED_ON 2, REPORTED_BY 1, SUPPLIED_BY 2, WORKS_FOR 1
+oil-gas: entities Event 1, Formation 2, Location 1, Organization 1, Permit 2, Person 1, Reservoir 1, Well 2; relationships DRILLED_IN 2, LOCATED_AT 1, PARTICIPATED_IN 1, PERMITTED_FOR 2, PRODUCES_FROM 2, WORKS_FOR 1
+options-intelligence: entities Event 1, Location 1, MarketEvent 2, Organization 1, Person 1, Regime 2, Strategy 2, Trade 2; relationships FLIPPED_TO 1, LOCATED_AT 1, OPTIMAL_IN 2, PARTICIPATED_IN 1, PRECEDED_BY 1, TRIGGERED_BY 2, WORKS_FOR 1
+personal-knowledge: entities Bookmark 2, Event 1, JournalEntry 2, Location 2, Note 2, Organization 1, Person 1, Project 1, Topic 3; relationships BELONGS_TO 1, INSPIRED_BY 2, LOCATED_AT 1, PARTICIPATED_IN 1, TAGGED 2, WORKS_FOR 1
+product-management: entities Epic 1, Event 1, Feature 2, Location 1, Metric 2, Objective 1, Organization 1, Person 1, Release 2; relationships CONTRIBUTES_TO 1, LOCATED_AT 1, MEASURED_BY 1, PARTICIPATED_IN 1, PART_OF_RELEASE 2, PRIORITIZED_IN 2, WORKS_FOR 1
+real-estate: entities Agent 2, Event 1, Listing 1, Location 1, Neighborhood 1, Organization 1, Person 3, Property 2, Transaction 1; relationships COMPARABLE_TO 1, LISTED_BY 1, LOCATED_AT 1, LOCATED_IN 1, PARTICIPATED_IN 1, REPRESENTED_BY 1, SOLD_TO 1, WORKS_FOR 1
+retail-ecommerce: entities Campaign 1, Customer 1, Event 1, Location 1, Order 2, Organization 1, Person 1, Product 4, Review 1; relationships BROWSED 1, CONTAINS 3, LOCATED_AT 1, PARTICIPATED_IN 1, PURCHASED 2, TARGETED_BY 1, WORKS_FOR 1
+scientific-research: entities Dataset 2, Event 1, Experiment 2, Grant 2, Location 1, Organization 1, Paper 2, Person 2; relationships FUNDED_BY 2, LOCATED_AT 1, PARTICIPATED_IN 2, PRODUCED_DATASET 1, REPLICATED 1, USED_DATASET 2, WORKS_FOR 1
+software-engineering: entities Deployment 1, Incident 1, Issue 1, Location 1, Organization 1, Person 2, PullRequest 1, Repository 1, Service 2; relationships AUTHORED 1, BELONGS_TO 1, CAUSED_INCIDENT 1, DEPLOYED_TO 1, FILED_BY 1, FIXES 1, LOCATED_AT 1, REVIEWED 1, TARGETS 1, TRIGGERED_BY 1, WORKS_FOR 2
+trip-planning: entities Destination 2, Event 4, Hotel 1, Itinerary 1, Location 2, Organization 1, Person 1, Restaurant 1, Review 1; relationships BOOKED_AT 1, INCLUDES_DESTINATION 2, LOCATED_AT 1, NEAR 1, PARTICIPATED_IN 1, REVIEWED_BY 1, WORKS_FOR 1
+vacation-industry: entities Activity 2, Booking 1, Guest 1, Location 1, Organization 1, Package 2, Person 1, Resort 1, Season 2; relationships AVAILABLE_IN 1, BOOKED_AT 1, INCLUDES 3, LOCATED_AT 1, OFFERED_AT 2, PREFERRED_BY 1, WORKS_FOR 1
+wildlife-management: entities Camera 2, Event 1, Habitat 1, Location 2, Organization 1, Person 1, Sighting 2, Species 2, Threat 1; relationships CAPTURED_BY 2, INHABITS 2, LOCATED_AT 1, OBSERVED_BY 1, PARTICIPATED_IN 1, PREYS_ON 1, THREATENS 1, WORKS_FOR 1
+fixtures: entities Account 2, Decision 2, Event 1, Location 2, Organization 8, Person 6; relationships LOCATED_AT 1, MANAGES 1, OWNS 1, PARTICIPATED_IN 1, WORKS_FOR 1
+
+## a second pass over the same stores: every section re-applied, every sentence from the cache (D7, D9)
+39 distinct documents: 0 inferences, 361 cache hits; bands and the typed graph unchanged: yes
+
+## stop, a crash mid-section, and resume (D9), on a fresh financial-services store with sections of about 120 bytes (its sample)
+stop after the first section: status stopped, 1 of 5 sections written, 3 inferences
+resume, killed mid-section: killed after the mentions of section 1
+  sections now: 0 complete (9 mentions, 3 claims); 1 incomplete (11 mentions, 0 claims)
+  the gate reads complete sections only: mentions of the incomplete section with a band: 0
+resume: status done; 1 complete sections skipped, 4 written (the incomplete one re-applied); 7 inferences, 3 cache hits
+the resumed store's bands and typed graph equal an uninterrupted run's (sections of 120 bytes): yes
+  runs: stopped (read 1, 3 inferences, 0 hits); failed (read 1, 3 inferences, 0 hits); done (read 5, 7 inferences, 3 hits)

@@ -1,0 +1,33 @@
+{
+  "entities": [
+    {"name": "Linden Hill College", "type": "Organization"},
+    {"name": "Portland", "type": "Location"},
+    {"name": "Helen Marsh", "type": "Person"},
+    {"name": "Tomas Ferreira", "type": "Student"},
+    {"name": "Autumn Research Showcase", "type": "Event"},
+    {"name": "Ruth Calloway", "type": "Instructor"},
+    {"name": "Regression Methods", "type": "Course"},
+    {"name": "Introductory Statistics", "type": "Course"},
+    {"name": "Fall 2026", "type": "Term"},
+    {"name": "Spring 2026", "type": "Term"},
+    {"name": "Maya Okoye", "type": "Student"},
+    {"name": "Problem Set 4", "type": "Assessment"},
+    {"name": "Submission S-3391", "type": "Submission"}
+  ],
+  "relations": [
+    {"source": "Linden Hill College", "target": "Portland", "type": "LOCATED_AT"},
+    {"source": "Helen Marsh", "target": "Linden Hill College", "type": "WORKS_FOR"},
+    {"source": "Tomas Ferreira", "target": "Autumn Research Showcase", "type": "ATTENDED"},
+    {"source": "Ruth Calloway", "target": "Regression Methods", "type": "TEACHES"},
+    {"source": "Ruth Calloway", "target": "Introductory Statistics", "type": "TEACHES"},
+    {"source": "Regression Methods", "target": "Fall 2026", "type": "OFFERED_IN"},
+    {"source": "Introductory Statistics", "target": "Spring 2026", "type": "OFFERED_IN"},
+    {"source": "Regression Methods", "target": "Portland", "type": "HELD_AT"},
+    {"source": "Tomas Ferreira", "target": "Regression Methods", "type": "ENROLLED_IN"},
+    {"source": "Maya Okoye", "target": "Regression Methods", "type": "ENROLLED_IN"},
+    {"source": "Problem Set 4", "target": "Regression Methods", "type": "PART_OF"},
+    {"source": "Submission S-3391", "target": "Tomas Ferreira", "type": "SUBMITTED_BY"},
+    {"source": "Submission S-3391", "target": "Ruth Calloway", "type": "GRADED_BY"},
+    {"source": "Maya Okoye", "target": "Autumn Research Showcase", "type": "ATTENDED"}
+  ]
+}

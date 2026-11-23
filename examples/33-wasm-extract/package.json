@@ -1,0 +1,28 @@
+{
+  "name": "relate-example-33-wasm-extract",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Example 33: edgextract's approach in a browser tab, with GLiNER2.5 (gliner-rs WASM), Relate 1.2.0 WASM and NVL. Install with `npm ci --omit=peer`, then `npm run vendor`.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "vendor": "esbuild web/vendor-entry.mjs --bundle --format=esm --minify --legal-comments=external --metafile=web/vendor/nvl.js.meta.json --outfile=web/vendor/nvl.js && esbuild node_modules/@neo4j-nvl/layout-workers/lib/hierarchical-layout/HierarchicalLayout.worker.js --bundle --format=esm --minify --legal-comments=external --metafile=web/vendor/HierarchicalLayout.worker.js.meta.json --outfile=web/vendor/HierarchicalLayout.worker.js && cp node_modules/@neo4j-nvl/base/LICENSE.txt web/vendor/NVL-LICENSE.txt",
+    "build": "npm run vendor && node build.mjs",
+    "serve": "node harness/serve.mjs --dev"
+  },
+  "dependencies": {
+    "@neo4j-nvl/base": "2.0.0",
+    "@neo4j-nvl/interaction-handlers": "2.0.0",
+    "@relate/relate-wasm": "1.2.0",
+    "js-yaml": "4.3.2"
+  },
+  "devDependencies": {
+    "@raphael.mansuy/edgextract": "0.1.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0"
+  }
+}

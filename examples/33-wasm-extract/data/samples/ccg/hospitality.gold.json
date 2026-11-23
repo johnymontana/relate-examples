@@ -1,0 +1,33 @@
+{
+  "entities": [
+    {"name": "Ines Moura", "type": "Person"},
+    {"name": "Ribeira Hotels Group", "type": "Organization"},
+    {"name": "Lisbon", "type": "Location"},
+    {"name": "Ribeira Wine Week", "type": "Event"},
+    {"name": "Tagus Suite", "type": "Room"},
+    {"name": "Room 412", "type": "Room"},
+    {"name": "Vellardo Terrace Hotel", "type": "Hotel"},
+    {"name": "October reservation", "type": "Reservation"},
+    {"name": "Guest 4471", "type": "Guest"},
+    {"name": "Guest 4502", "type": "Guest"},
+    {"name": "airport transfer service", "type": "Service"},
+    {"name": "laundry service", "type": "Service"},
+    {"name": "concierge staff", "type": "Staff"},
+    {"name": "housekeeping staff", "type": "Staff"},
+    {"name": "Ribeira Riverside Hotel", "type": "Hotel"}
+  ],
+  "relations": [
+    {"source": "Ines Moura", "target": "Ribeira Hotels Group", "type": "WORKS_FOR"},
+    {"source": "Ribeira Hotels Group", "target": "Lisbon", "type": "LOCATED_AT"},
+    {"source": "Ines Moura", "target": "Ribeira Wine Week", "type": "PARTICIPATED_IN"},
+    {"source": "Tagus Suite", "target": "Vellardo Terrace Hotel", "type": "LOCATED_IN"},
+    {"source": "Room 412", "target": "Vellardo Terrace Hotel", "type": "LOCATED_IN"},
+    {"source": "October reservation", "target": "Tagus Suite", "type": "ASSIGNED_TO"},
+    {"source": "Guest 4471", "target": "Vellardo Terrace Hotel", "type": "STAYED_AT"},
+    {"source": "Guest 4502", "target": "Vellardo Terrace Hotel", "type": "STAYED_AT"},
+    {"source": "Guest 4471", "target": "airport transfer service", "type": "SERVED_BY"},
+    {"source": "Guest 4502", "target": "laundry service", "type": "SERVED_BY"},
+    {"source": "airport transfer service", "target": "concierge staff", "type": "DELIVERED_BY"},
+    {"source": "laundry service", "target": "housekeeping staff", "type": "DELIVERED_BY"}
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "entities": [
+    {"name": "Lucia Romero", "type": "Person"},
+    {"name": "Routeling", "type": "Organization"},
+    {"name": "Valencia", "type": "Location"},
+    {"name": "Q1 roadmap review", "type": "Event"},
+    {"name": "Offline Route Sync", "type": "Feature"},
+    {"name": "Epic E-31", "type": "Epic"},
+    {"name": "Map Tile Cache", "type": "Feature"},
+    {"name": "Objective O-7", "type": "Objective"},
+    {"name": "6.0 release", "type": "Release"},
+    {"name": "Sync Success Rate", "type": "Metric"},
+    {"name": "Tile Load Time", "type": "Metric"}
+  ],
+  "relations": [
+    {"source": "Lucia Romero", "target": "Routeling", "type": "WORKS_FOR"},
+    {"source": "Routeling", "target": "Valencia", "type": "LOCATED_AT"},
+    {"source": "Lucia Romero", "target": "Q1 roadmap review", "type": "PARTICIPATED_IN"},
+    {"source": "Offline Route Sync", "target": "Epic E-31", "type": "PRIORITIZED_IN"},
+    {"source": "Map Tile Cache", "target": "Epic E-31", "type": "PRIORITIZED_IN"},
+    {"source": "Epic E-31", "target": "Objective O-7", "type": "CONTRIBUTES_TO"},
+    {"source": "Offline Route Sync", "target": "6.0 release", "type": "PART_OF_RELEASE"},
+    {"source": "Map Tile Cache", "target": "6.0 release", "type": "PART_OF_RELEASE"},
+    {"source": "Offline Route Sync", "target": "Sync Success Rate", "type": "MEASURED_BY"},
+    {"source": "Map Tile Cache", "target": "Tile Load Time", "type": "MEASURED_BY"}
+  ]
+}

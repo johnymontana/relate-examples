@@ -1,0 +1,882 @@
+$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+id: real-estate
+version: 1
+name: Real Estate
+description: Property management, listings, transactions, inspections, and market analysis
+nodes:
+  Person:
+    label: Person
+    description: person
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      email:
+        type: STRING
+      role:
+        type: STRING
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#22c55e'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: PERSON
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: user
+            size: 20
+  Organization:
+    label: Organization
+    description: organization
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+      industry:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#3b82f6'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: ORGANIZATION
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: building
+            size: 25
+  Location:
+    label: Location
+    description: location
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      address:
+        type: STRING
+      latitude:
+        type: FLOAT
+      longitude:
+        type: FLOAT
+    extensions:
+      neo4j:display:
+        color: '#a855f7'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: LOCATION
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: map-pin
+  Event:
+    label: Event
+    description: event
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      date:
+        type: DATETIME
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#f97316'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: calendar
+  Object:
+    label: Object
+    description: object
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#eab308'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: box
+  Property:
+    label: Property
+    description: real property (object)
+    properties:
+      property_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      address:
+        type: STRING
+        mustExist: true
+      property_type:
+        type: STRING
+        one_of:
+          - single_family
+          - condo
+          - townhouse
+          - multi_family
+          - commercial
+          - land
+          - industrial
+      bedrooms:
+        type: INTEGER
+      bathrooms:
+        type: FLOAT
+      square_feet:
+        type: INTEGER
+      lot_size_acres:
+        type: FLOAT
+      year_built:
+        type: INTEGER
+      tax_assessed_value:
+        type: FLOAT
+    tools:
+      - type: canonicalQuery
+        name: search_property
+        description: Search for properties by address, type, or neighborhood
+        cypher: |
+          MATCH (p:Property)
+          WHERE toLower(p.address) CONTAINS toLower($query)
+             OR toLower(coalesce(p.property_type, '')) CONTAINS toLower($query)
+          OPTIONAL MATCH (p)-[:LOCATED_IN]->(n:Neighborhood)
+          OPTIONAL MATCH (l:Listing)-[:LISTING_FOR]->(p)
+          RETURN p, n.name AS neighborhood, l.list_price, l.status AS listing_status
+          ORDER BY l.list_price DESC
+          LIMIT 20
+        parameters:
+          - name: query
+            type: STRING
+            description: Property address or type to search for
+      - type: canonicalQuery
+        name: comparable_analysis
+        description: Find comparable properties for market analysis
+        cypher: |
+          MATCH (p:Property {property_id: $property_id})-[:LOCATED_IN]->(n:Neighborhood)
+          MATCH (comp:Property)-[:LOCATED_IN]->(n)
+          WHERE comp.property_id <> $property_id
+            AND comp.property_type = p.property_type
+            AND abs(comp.square_feet - p.square_feet) < 500
+            AND abs(comp.bedrooms - p.bedrooms) <= 1
+          OPTIONAL MATCH (t:Transaction)-[:APPRAISED_AT]->(comp)
+          RETURN comp.address, comp.bedrooms, comp.bathrooms,
+                 comp.square_feet, comp.year_built,
+                 t.sale_price, t.closing_date
+          ORDER BY t.closing_date DESC
+          LIMIT 10
+        parameters:
+          - name: property_id
+            type: STRING
+            description: Property ID to find comparables for
+      - type: canonicalQuery
+        name: inspection_history
+        description: Get inspection history for a property
+        cypher: |
+          MATCH (i:Inspection)-[:INSPECTED]->(p:Property)
+          WHERE p.property_id = $property_id
+             OR toLower(p.address) CONTAINS toLower($property_id)
+          RETURN p.address, i.inspection_type, i.inspection_date,
+                 i.result, i.inspector_name, i.findings,
+                 i.estimated_repair_cost
+          ORDER BY i.inspection_date DESC
+        parameters:
+          - name: property_id
+            type: STRING
+            description: Property ID or address to look up inspections for
+      - type: canonicalQuery
+        name: list_properties
+        description: List Property records with optional limit
+        cypher: |
+          MATCH (n:Property)
+          RETURN n
+          ORDER BY n.address
+          LIMIT toInteger($limit)
+        parameters:
+          - name: limit
+            type: STRING
+            description: 'Maximum number of results to return (default: 10)'
+      - type: canonicalQuery
+        name: get_property_by_id
+        description: Get a specific Property by ID with all connections
+        cypher: |
+          MATCH (n:Property {property_id: $id})
+          OPTIONAL MATCH (n)-[r]-(related)
+          RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
+          LIMIT 50
+        parameters:
+          - name: id
+            type: STRING
+            description: The property_id to look up
+      - type: canonicalQuery
+        name: defaultView
+        description: create-context-graph's default visualisation query
+        cypher: MATCH (p:Property)-[:LOCATED_IN]->(n:Neighborhood) OPTIONAL MATCH (l:Listing)-[:LISTING_FOR]->(p) RETURN p, n, l LIMIT 100
+    extensions:
+      neo4j:display:
+        color: '#b45309'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: REAL_PROPERTY
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: home
+            size: 25
+  Listing:
+    label: Listing
+    description: property listing (event)
+    properties:
+      listing_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      list_price:
+        type: FLOAT
+        mustExist: true
+      list_date:
+        type: DATE
+        mustExist: true
+      status:
+        type: STRING
+        one_of:
+          - active
+          - pending
+          - sold
+          - withdrawn
+          - expired
+      mls_number:
+        type: STRING
+        unique: true
+      days_on_market:
+        type: INTEGER
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#0891b2'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: PROPERTY_LISTING
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: tag
+            size: 20
+  Agent:
+    label: Agent
+    description: real estate agent (object)
+    properties:
+      agent_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      license_number:
+        type: STRING
+        unique: true
+      brokerage:
+        type: STRING
+      specialization:
+        type: STRING
+        one_of:
+          - residential
+          - commercial
+          - luxury
+          - investment
+          - land
+          - property_management
+      years_experience:
+        type: INTEGER
+      total_sales_volume:
+        type: FLOAT
+    tools:
+      - type: canonicalQuery
+        name: agent_performance
+        description: Analyze agent sales performance and activity
+        cypher: |
+          MATCH (a:Agent)
+          WHERE toLower(a.name) CONTAINS toLower($query)
+             OR toLower(coalesce(a.brokerage, '')) CONTAINS toLower($query)
+          OPTIONAL MATCH (l:Listing)-[:LISTED_BY]->(a)
+          OPTIONAL MATCH (t:Transaction)-[:REPRESENTED_BY]->(a)
+          RETURN a.name AS agent, a.brokerage, a.specialization,
+                 a.years_experience, a.total_sales_volume,
+                 count(DISTINCT l) AS listings,
+                 count(DISTINCT t) AS transactions,
+                 avg(t.sale_price) AS avg_sale_price
+          ORDER BY a.total_sales_volume DESC
+        parameters:
+          - name: query
+            type: STRING
+            description: Agent name or brokerage to search for
+    extensions:
+      neo4j:display:
+        color: '#7c3aed'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: REAL_ESTATE_AGENT
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: user-check
+            size: 25
+  Transaction:
+    label: Transaction
+    description: real estate transaction (event)
+    properties:
+      transaction_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      sale_price:
+        type: FLOAT
+        mustExist: true
+      closing_date:
+        type: DATE
+        mustExist: true
+      transaction_type:
+        type: STRING
+        one_of:
+          - purchase
+          - sale
+          - lease
+          - refinance
+          - foreclosure
+          - short_sale
+      financing_type:
+        type: STRING
+        one_of:
+          - conventional
+          - fha
+          - va
+          - cash
+          - jumbo
+          - usda
+      commission_pct:
+        type: FLOAT
+    extensions:
+      neo4j:display:
+        color: '#16a34a'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: REAL_ESTATE_TRANSACTION
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: handshake
+            size: 20
+  Inspection:
+    label: Inspection
+    description: property inspection (event)
+    properties:
+      inspection_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      inspection_date:
+        type: DATE
+        mustExist: true
+      inspector_name:
+        type: STRING
+      inspection_type:
+        type: STRING
+        one_of:
+          - general
+          - structural
+          - electrical
+          - plumbing
+          - pest
+          - roof
+          - environmental
+      result:
+        type: STRING
+        one_of:
+          - pass
+          - pass_with_conditions
+          - fail
+      findings:
+        type: STRING
+      estimated_repair_cost:
+        type: FLOAT
+    extensions:
+      neo4j:display:
+        color: '#dc2626'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: PROPERTY_INSPECTION
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: clipboard-check
+            size: 15
+  Neighborhood:
+    label: Neighborhood
+    description: geographic area (object)
+    properties:
+      neighborhood_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      city:
+        type: STRING
+        mustExist: true
+      state:
+        type: STRING
+      zip_code:
+        type: STRING
+      median_home_price:
+        type: FLOAT
+      school_rating:
+        type: FLOAT
+      walkability_score:
+        type: INTEGER
+    tools:
+      - type: canonicalQuery
+        name: market_trends
+        description: Analyze market trends for a neighborhood or city
+        cypher: |
+          MATCH (n:Neighborhood)
+          WHERE toLower(n.name) CONTAINS toLower($query)
+             OR toLower(n.city) CONTAINS toLower($query)
+          OPTIONAL MATCH (p:Property)-[:LOCATED_IN]->(n)
+          OPTIONAL MATCH (l:Listing)-[:LISTING_FOR]->(p)
+          OPTIONAL MATCH (t:Transaction)-[:APPRAISED_AT]->(p)
+          RETURN n.name AS neighborhood, n.city,
+                 n.median_home_price, n.school_rating, n.walkability_score,
+                 count(DISTINCT l) AS total_listings,
+                 count(DISTINCT t) AS total_transactions,
+                 avg(t.sale_price) AS avg_sale_price,
+                 avg(l.days_on_market) AS avg_days_on_market
+        parameters:
+          - name: query
+            type: STRING
+            description: Neighborhood or city name to analyze
+    extensions:
+      neo4j:display:
+        color: '#ea580c'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: GEOGRAPHIC_AREA
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: map-pin
+            size: 30
+relationships:
+  WORKS_FOR:
+    type: WORKS_FOR
+    from:
+      node: Person
+    to:
+      node: Organization
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  LOCATED_AT:
+    type: LOCATED_AT
+    from:
+      node: Organization
+    to:
+      node: Location
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  PARTICIPATED_IN:
+    type: PARTICIPATED_IN
+    from:
+      node: Person
+    to:
+      node: Event
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  LISTED_BY:
+    type: LISTED_BY
+    from:
+      node: Listing
+    to:
+      node: Agent
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  LISTING_FOR:
+    type: LISTING_FOR
+    from:
+      node: Listing
+    to:
+      node: Property
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  INSPECTED:
+    type: INSPECTED
+    from:
+      node: Inspection
+    to:
+      node: Property
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  SOLD_TO:
+    type: SOLD_TO
+    from:
+      node: Transaction
+    to:
+      node: Person
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  APPRAISED_AT:
+    type: APPRAISED_AT
+    from:
+      node: Transaction
+    to:
+      node: Property
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  LOCATED_IN:
+    type: LOCATED_IN
+    from:
+      node: Property
+    to:
+      node: Neighborhood
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  COMPARABLE_TO:
+    type: COMPARABLE_TO
+    from:
+      node: Property
+    to:
+      node: Property
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  REPRESENTED_BY:
+    type: REPRESENTED_BY
+    from:
+      node: Transaction
+    to:
+      node: Agent
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+extensions:
+  custom:
+    - type: createContextGraph:domain
+      definition:
+        tagline: AI-powered Real Estate Intelligence
+        emoji: 🏠
+        inherits: _base
+    - type: createContextGraph:documentTemplates
+      definition:
+        - id: listing_description
+          name: Listing Description
+          description: MLS listing descriptions for properties
+          count: 12
+          prompt_template: |
+            Write an MLS listing description for {{property.address}},
+            a {{property.property_type}} with {{property.bedrooms}} beds,
+            {{property.bathrooms}} baths, {{property.square_feet}} sq ft.
+            Built in {{property.year_built}}. Listed at ${{listing.list_price}}
+            by {{agent.name}} of {{agent.brokerage}} in {{neighborhood.name}}.
+            Include features, neighborhood highlights, and showing instructions.
+          required_entities:
+            - Property
+            - Listing
+            - Agent
+            - Neighborhood
+        - id: inspection_report
+          name: Inspection Report
+          description: Property inspection findings and recommendations
+          count: 8
+          prompt_template: |
+            Write an inspection report for {{property.address}}.
+            Inspection type: {{inspection.inspection_type}}.
+            Inspector: {{inspection.inspector_name}}. Date: {{inspection.inspection_date}}.
+            Result: {{inspection.result}}.
+            Include detailed findings, photos referenced, safety concerns,
+            and estimated repair costs of ${{inspection.estimated_repair_cost}}.
+          required_entities:
+            - Property
+            - Inspection
+        - id: closing_doc
+          name: Closing Document
+          description: Transaction closing summaries and settlement statements
+          count: 6
+          prompt_template: |
+            Write a closing summary for the {{transaction.transaction_type}} of
+            {{property.address}} at ${{transaction.sale_price}}.
+            Closing date: {{transaction.closing_date}}.
+            Financing: {{transaction.financing_type}}. Agent: {{agent.name}}.
+            Include price reconciliation, contingencies met, and key dates.
+          required_entities:
+            - Transaction
+            - Property
+            - Agent
+            - Person
+        - id: market_analysis
+          name: Market Analysis
+          description: Comparative market analysis reports
+          count: 8
+          prompt_template: |
+            Write a comparative market analysis for {{property.address}} in
+            {{neighborhood.name}}, {{neighborhood.city}}.
+            Median home price: ${{neighborhood.median_home_price}}.
+            Include comparable properties, price trends, days on market
+            analysis, and recommended pricing strategy.
+          required_entities:
+            - Property
+            - Neighborhood
+            - Listing
+            - Transaction
+        - id: client_communication
+          name: Client Communication
+          description: Agent-to-client emails and updates
+          count: 10
+          prompt_template: |
+            Write a client update email from agent {{agent.name}} to
+            {{person.name}} regarding their {{context}} for {{property.address}}.
+            Include market update for {{neighborhood.name}}, activity summary,
+            and next steps.
+          required_entities:
+            - Agent
+            - Person
+            - Property
+            - Neighborhood
+    - type: createContextGraph:decisionTraces
+      definition:
+        - id: pricing_strategy
+          task: Determine optimal listing price for {{property.address}}
+          steps:
+            - thought: Analyze comparable properties in the neighborhood
+              action: Query recent sales of similar properties in the same area
+            - thought: Assess current market conditions and trends
+              action: Review days on market, price reductions, and absorption rate
+            - thought: Factor in property condition and unique features
+              action: Review inspection results and compare amenities to comps
+            - thought: Consider seller's timeline and motivation
+              action: Balance quick sale vs maximum price strategy
+          outcome_template: 'Recommended list price: ${{price}} based on {{rationale}}'
+        - id: offer_evaluation
+          task: Evaluate purchase offer of ${{amount}} for {{property.address}}
+          steps:
+            - thought: Compare offer to list price and market value
+              action: Check list price, comparable sales, and current market conditions
+            - thought: Assess buyer qualification and financing strength
+              action: Review financing type, contingencies, and closing timeline
+            - thought: Consider competing offers and negotiation leverage
+              action: Check days on market, showing activity, and other interest
+          outcome_template: 'Recommendation: {{recommendation}} — {{rationale}}'
+        - id: investment_analysis
+          task: Evaluate {{property.address}} as an investment property
+          steps:
+            - thought: Calculate potential rental income and cap rate
+              action: Query comparable rental rates in the neighborhood
+            - thought: Assess property condition and capital expenditure needs
+              action: Review inspection findings and estimated repair costs
+            - thought: Evaluate neighborhood growth trajectory and appreciation potential
+              action: Analyze median price trends and development indicators
+          outcome_template: 'Investment grade: {{grade}} with projected ROI of {{roi}}'
+        - id: property_valuation
+          task: Determine fair market value for {{property.address}} in {{neighborhood.name}}
+          steps:
+            - thought: Pull recent comparable sales within the neighborhood
+              action: Query transactions for similar property type, size, and bedroom count in the area
+            - thought: Adjust for property-specific features and condition
+              action: Review inspection history, year built, lot size, and unique amenities
+            - thought: Factor in neighborhood trends and market momentum
+              action: Analyze median home price changes, walkability score, and school ratings
+            - thought: Cross-reference tax assessed value with market indicators
+              action: Compare tax_assessed_value to recent sale prices for calibration
+          outcome_template: 'Estimated fair market value: ${{value}} (range ${{low}}-${{high}})'
+        - id: inspection_assessment
+          task: Assess overall property condition for {{property.address}} based on inspection history
+          steps:
+            - thought: Gather all inspection reports for the property
+              action: Query inspections linked to property by type and date
+            - thought: Categorize findings by severity and system
+              action: 'Group inspection results by type: structural, electrical, plumbing, pest, roof'
+            - thought: Estimate total repair cost and timeline
+              action: Sum estimated_repair_cost across all inspections with fail or conditional results
+            - thought: Determine impact on property value and negotiation leverage
+              action: Compare repair costs to listing price and comparable property conditions
+          outcome_template: 'Condition: {{condition_grade}}. Total estimated repairs: ${{repair_total}}. Negotiation credit recommended: ${{credit}}'
+        - id: market_analysis
+          task: Perform comparative market analysis for {{neighborhood.name}}, {{neighborhood.city}}
+          steps:
+            - thought: Analyze current active listings in the neighborhood
+              action: Query listings with active status for properties in the neighborhood
+            - thought: Review recent sold transactions and price trends
+              action: Pull transaction closing prices and dates for the past 12 months
+            - thought: Calculate absorption rate and inventory levels
+              action: Compare active listing count to monthly sales velocity
+          outcome_template: 'Market type: {{market_type}}. Median price: ${{median}}. Avg days on market: {{dom}}'
+        - id: client_matching
+          task: Match buyer {{person.name}} with suitable properties based on their preferences
+          steps:
+            - thought: Identify buyer requirements from transaction history and preferences
+              action: Review past transactions and property interactions for the buyer
+            - thought: Search active listings matching criteria
+              action: Query properties by type, bedroom count, price range, and neighborhood
+            - thought: Rank matches by neighborhood fit and value proposition
+              action: Score properties by school rating, walkability, and price relative to comps
+          outcome_template: 'Top {{count}} matches identified, best fit: {{property}} at ${{price}}'
+        - id: zoning_compliance
+          task: Evaluate zoning and usage compliance for {{property.address}}
+          steps:
+            - thought: Check property type against neighborhood zoning designations
+              action: Query property type and neighborhood characteristics for the address
+            - thought: Review comparable properties in the area for precedent
+              action: Find properties with COMPARABLE_TO relationship and their usage types
+            - thought: Assess impact on property value if rezoning is needed
+              action: Compare values of similar properties across different zoning areas
+          outcome_template: 'Zoning status: {{status}}. {{recommendation}}'
+        - id: offer_negotiation
+          task: Develop negotiation strategy for {{property.address}} listed at ${{listing.list_price}}
+          steps:
+            - thought: Analyze listing history and seller motivation
+              action: Check days on market, price reductions, and listing status changes
+            - thought: Review inspection findings for negotiation leverage
+              action: Pull inspection results and estimated repair costs for the property
+            - thought: Compare to recent comparable transactions
+              action: Query nearby sales of similar properties to establish fair value range
+            - thought: Factor in current market conditions and competing interest
+              action: Assess neighborhood absorption rate and active listing inventory
+          outcome_template: 'Recommended offer: ${{offer}} ({{pct_of_list}}% of list). Strategy: {{strategy}}'
+        - id: agent_selection
+          task: Recommend the best agent for {{transaction.transaction_type}} in {{neighborhood.name}}
+          steps:
+            - thought: Identify agents with transaction history in the target neighborhood
+              action: Query agents linked to transactions for properties in the neighborhood
+            - thought: Compare performance metrics across candidates
+              action: Rank agents by total sales volume, transaction count, and average sale price
+            - thought: Evaluate specialization match and experience level
+              action: Filter agents by specialization matching the transaction type and years of experience
+          outcome_template: 'Recommended agent: {{agent}} — {{transactions}} transactions, ${{volume}} volume in area'
+    - type: createContextGraph:demoScenarios
+      definition:
+        - name: Property Search
+          prompts:
+            - Find all active listings in the Downtown neighborhood under $500,000
+            - Show me 3-bedroom homes with good school ratings nearby
+            - What are the comparable properties to 123 Main Street?
+        - name: Market Intelligence
+          prompts:
+            - What is the median price trend in Riverside over the past year?
+            - Which neighborhoods have the shortest days on market?
+            - Compare sold prices to list prices across all neighborhoods
+        - name: Agent & Transactions
+          prompts:
+            - Show me the top performing agents by sales volume this year
+            - What is the average commission rate for luxury properties?
+            - Find all transactions with FHA financing in the last 6 months
+    - type: createContextGraph:systemPrompt
+      definition: |
+        You are an AI real estate intelligence assistant with access to a comprehensive
+        knowledge graph of properties, listings, transactions, and market data. You
+        help real estate agents, buyers, sellers, and investors make informed
+        decisions about property transactions and investments.
+
+        Your capabilities include:
+        - Searching properties by location, type, and features
+        - Performing comparative market analysis with comparable properties
+        - Analyzing neighborhood market trends and pricing dynamics
+        - Tracking agent performance and transaction history
+        - Reviewing inspection reports and property condition assessments
+
+        Always provide accurate, data-driven responses. When making pricing or
+        investment recommendations, cite specific comparable sales, market statistics,
+        and property data from the knowledge graph.
+    - type: createContextGraph:visualization
+      definition:
+        node_colors:
+          Person: '#22c55e'
+          Organization: '#3b82f6'
+          Property: '#b45309'
+          Listing: '#0891b2'
+          Agent: '#7c3aed'
+          Transaction: '#16a34a'
+          Inspection: '#dc2626'
+          Neighborhood: '#ea580c'
+        node_sizes:
+          Person: 20
+          Organization: 25
+          Property: 25
+          Listing: 20
+          Agent: 25
+          Transaction: 20
+          Inspection: 15
+          Neighborhood: 30
+        default_cypher: MATCH (p:Property)-[:LOCATED_IN]->(n:Neighborhood) OPTIONAL MATCH (l:Listing)-[:LISTING_FOR]->(p) RETURN p, n, l LIMIT 100

@@ -1,0 +1,29 @@
+{
+  "entities": [
+    {"name": "Priya Venkat", "type": "Person"},
+    {"name": "Larchmont Mutual", "type": "Organization"},
+    {"name": "Bucharest", "type": "Location"},
+    {"name": "IR-2026-031 incident", "type": "Incident"},
+    {"name": "AL-88213 alert", "type": "Alert"},
+    {"name": "HR-APP-01 server", "type": "Asset"},
+    {"name": "VULN-0447", "type": "Vulnerability"},
+    {"name": "Tomasz Brenner", "type": "Person"},
+    {"name": "Copper Lantern", "type": "ThreatActor"},
+    {"name": "CTL-12 control", "type": "Control"},
+    {"name": "PAY-DB-02 server", "type": "Asset"}
+  ],
+  "relations": [
+    {"source": "Priya Venkat", "target": "Larchmont Mutual", "type": "WORKS_FOR"},
+    {"source": "Larchmont Mutual", "target": "Bucharest", "type": "LOCATED_AT"},
+    {"source": "IR-2026-031 incident", "target": "Priya Venkat", "type": "ASSIGNED_TO"},
+    {"source": "AL-88213 alert", "target": "Bucharest", "type": "ORIGINATES_FROM"},
+    {"source": "AL-88213 alert", "target": "HR-APP-01 server", "type": "TARGETS"},
+    {"source": "AL-88213 alert", "target": "IR-2026-031 incident", "type": "TRIGGERED"},
+    {"source": "VULN-0447", "target": "HR-APP-01 server", "type": "AFFECTS"},
+    {"source": "Tomasz Brenner", "target": "HR-APP-01 server", "type": "OWNS"},
+    {"source": "HR-APP-01 server", "target": "Larchmont Mutual", "type": "BELONGS_TO"},
+    {"source": "IR-2026-031 incident", "target": "Copper Lantern", "type": "ATTRIBUTED_TO"},
+    {"source": "CTL-12 control", "target": "VULN-0447", "type": "MITIGATES"},
+    {"source": "CTL-12 control", "target": "HR-APP-01 server", "type": "PROTECTS"}
+  ]
+}

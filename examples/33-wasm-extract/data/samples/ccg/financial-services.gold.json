@@ -1,0 +1,29 @@
+{
+  "entities": [
+    {"name": "Dana Whitlock", "type": "Person"},
+    {"name": "Halvorsen Pryce Partners", "type": "Organization"},
+    {"name": "Colm Brady", "type": "Person"},
+    {"name": "Edinburgh", "type": "Location"},
+    {"name": "ACC-2207", "type": "Account"},
+    {"name": "Arjun Mehta", "type": "Person"},
+    {"name": "ACC-1980", "type": "Account"},
+    {"name": "Rebalancing Decision", "type": "Decision"},
+    {"name": "TX-4471", "type": "Transaction"},
+    {"name": "KWB-2031", "type": "Security"},
+    {"name": "Concentration Limit Policy", "type": "Policy"},
+    {"name": "Trim Decision", "type": "Decision"}
+  ],
+  "relations": [
+    {"source": "Dana Whitlock", "target": "Halvorsen Pryce Partners", "type": "WORKS_FOR"},
+    {"source": "Colm Brady", "target": "Halvorsen Pryce Partners", "type": "WORKS_FOR"},
+    {"source": "Halvorsen Pryce Partners", "target": "Edinburgh", "type": "LOCATED_AT"},
+    {"source": "Arjun Mehta", "target": "ACC-2207", "type": "OWNS"},
+    {"source": "Arjun Mehta", "target": "ACC-1980", "type": "OWNS"},
+    {"source": "Colm Brady", "target": "ACC-2207", "type": "MANAGES"},
+    {"source": "Rebalancing Decision", "target": "TX-4471", "type": "CAUSED"},
+    {"source": "TX-4471", "target": "KWB-2031", "type": "INVOLVES"},
+    {"source": "Rebalancing Decision", "target": "Concentration Limit Policy", "type": "APPLIED_POLICY"},
+    {"source": "Rebalancing Decision", "target": "Colm Brady", "type": "ADVISED_BY"},
+    {"source": "Rebalancing Decision", "target": "Trim Decision", "type": "PRECEDED_BY"}
+  ]
+}

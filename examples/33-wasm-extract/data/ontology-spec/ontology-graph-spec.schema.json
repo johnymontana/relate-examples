@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://neo4j.com/ontology-graph-spec/1.0.0/schema.json",
+  "title": "Neo4j Ontology Graph Specification v1",
+  "description": "Draft JSON Schema for the Ontology Graph spec v1 proposal (2026-09-25 doc state, working-session revision). Nodes and relationships are keyed by local ids; the label/type lives inside the entry. Types are tokens. Tools are core. Extensions ride the named extensions map: first-party keys, custom envelope under custom; extension payloads are never validated by this schema.",
+  "type": "object",
+  "required": ["$schema", "id", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "Spec link including the version. Meta-level; doubles as document-type marker."
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique identifier of the ontology."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The ontology's own version. Identity metadata, not lifecycle."
+    },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "nodes": {
+      "type": "object",
+      "description": "Map key is the identifier within the document, not the label. The label lives in label / labels.identifier, so label renames do not break references.",
+      "additionalProperties": { "$ref": "#/$defs/node" }
+    },
+    "relationships": {
+      "type": "object",
+      "description": "Map key is the intra-document identifier; the relationship type lives in the type field. Several keys may share a type across different endpoint pairs, but note graph-type enforcement keys on the type alone and cannot distinguish pairs yet.",
+      "additionalProperties": { "$ref": "#/$defs/relationshipEntry" }
+    },
+    "extensions": { "$ref": "#/$defs/extensionsMap" }
+  },
+  "$defs": {
+    "propertyType": {
+      "type": "string",
+      "description": "Type token: a Neo4j scalar, ANY, LIST<...> or VECTOR<...> (a VECTOR may carry a companion dimension field on the property). Element types are always scalars: no nested lists, no lists of vectors. No union types in v1: a property is a single type or ANY.",
+      "pattern": "^(ANY|LIST<ANY>|(STRING|INTEGER|FLOAT|BOOLEAN|DATE|TIME|LOCALTIME|DATETIME|LOCALDATETIME|DURATION|POINT|BYTES)|(LIST|VECTOR)<(STRING|INTEGER|FLOAT|BOOLEAN|DATE|TIME|LOCALTIME|DATETIME|LOCALDATETIME|DURATION|POINT|BYTES)>)$"
+    },
+    "labels": {
+      "type": "object",
+      "required": ["identifier"],
+      "additionalProperties": false,
+      "properties": {
+        "identifier": { "type": "string", "description": "The identifying (main) label." },
+        "implied": { "type": "array", "items": { "type": "string" } },
+        "optional": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "constraint": {
+      "description": "Constraint object form (the alternative to the mustExist/unique/key shorthand flags). Nameable, so tooling can reference individual constraints.",
+      "type": "object",
+      "required": ["constraint_type", "properties"],
+      "additionalProperties": false,
+      "properties": {
+        "constraint_type": { "type": "string", "enum": ["key", "unique", "mustExist"] },
+        "name": { "type": "string" },
+        "properties": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        }
+      }
+    },
+    "property": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "$ref": "#/$defs/propertyType" },
+        "dimension": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "VECTOR companion: element count. Absent = unconstrained."
+        },
+        "mustExist": { "type": "boolean" },
+        "unique": { "type": "boolean" },
+        "key": { "type": "boolean" },
+        "one_of": {
+          "type": "array",
+          "description": "Allowed values. JSON Schema's word. Default value support."
+        },
+        "pattern": { "type": "string", "format": "regex" },
+        "description": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "reference": { "$ref": "#/$defs/reference" },
+        "extensions": { "$ref": "#/$defs/extensionsMap" }
+      }
+    },
+    "endpoint": {
+      "type": "object",
+      "required": ["node"],
+      "additionalProperties": false,
+      "description": "Endpoint cardinality: count is the exact form, min_count/max_count the ranged form; absent means unconstrained (0..*). Counts on to constrain relationships per from-instance; counts on from constrain per to-instance.",
+      "properties": {
+        "node": { "type": "string", "description": "A node id from the nodes map." },
+        "count": { "type": "integer", "minimum": 0 },
+        "min_count": { "type": "integer", "minimum": 0 },
+        "max_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "reference": {
+      "type": "string",
+      "format": "uri",
+      "description": "A single informational URI pointing at an external definition of this element (e.g. the original RDF resource)."
+    },
+    "tool": {
+      "type": "object",
+      "required": ["type"],
+      "description": "Core tool definition for agents: type discriminates (canonicalQuery, externalRequest, ...), name and description are the readable surface; remaining fields are defined per tool type by its owner (cypher, url, ...). Definitions only, no behaviour.",
+      "properties": {
+        "type": { "type": "string" },
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "extension": {
+      "description": "Custom extension envelope, four fields: type required; $schema, name, definition optional. definition is free-form and never validated by this spec. Unknown extra fields are carried untouched.",
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": { "type": "string" },
+        "$schema": { "type": "string", "format": "uri" },
+        "name": { "type": "string" },
+        "definition": true
+      }
+    },
+    "extensionsMap": {
+      "type": "object",
+      "description": "Named extensions: first-party extensions as keys (neo4j:*), each shape defined by its owner, available in the ontology graph spec SDK, not validated by this spec. Custom extensions ride the fixed envelope under the reserved custom key.",
+      "properties": {
+        "custom": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/extension" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Every node carries its label in label (shorthand for an identifier-only labels) or labels.identifier (when implied/optional labels exist). Not schema-enforced; a node with neither is meaningless.",
+      "properties": {
+        "label": { "type": "string", "description": "Shorthand for labels.identifier when no implied/optional labels exist." },
+        "labels": { "$ref": "#/$defs/labels" },
+        "description": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "reference": { "$ref": "#/$defs/reference" },
+        "properties": {
+          "type": "object",
+          "propertyNames": {
+            "minLength": 1,
+            "description": "Property names are non-empty (ADR-0010): the map key is the property's addressable name, the string constraint objects and extensions reference."
+          },
+          "additionalProperties": { "$ref": "#/$defs/property" }
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/constraint" }
+        },
+        "tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tool" }
+        },
+        "extensions": { "$ref": "#/$defs/extensionsMap" }
+      }
+    },
+    "relationshipEntry": {
+      "type": "object",
+      "required": ["type", "from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "description": "The relationship type. One-to-one with the map key in the common case; several keys may share a type across different endpoint pairs." },
+        "from": { "$ref": "#/$defs/endpoint" },
+        "to": { "$ref": "#/$defs/endpoint" },
+        "description": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } },
+        "reference": { "$ref": "#/$defs/reference" },
+        "properties": {
+          "type": "object",
+          "propertyNames": {
+            "minLength": 1,
+            "description": "Property names are non-empty (ADR-0010): the map key is the property's addressable name, the string constraint objects and extensions reference."
+          },
+          "additionalProperties": { "$ref": "#/$defs/property" }
+        },
+        "constraints": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/constraint" }
+        },
+        "tools": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/tool" }
+        },
+        "extensions": { "$ref": "#/$defs/extensionsMap" }
+      }
+    }
+  }
+}

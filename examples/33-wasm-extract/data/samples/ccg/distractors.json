@@ -1,0 +1,137 @@
+{
+  "agent-memory": {
+    "source": "billing agent",
+    "type": "REASONED_ABOUT",
+    "target": "diesel index entity"
+  },
+  "conservation": {
+    "source": "Fen Water Programme",
+    "type": "BENEFITS",
+    "target": "Ashby fen skipper"
+  },
+  "cybersecurity": {
+    "source": "VULN-0447",
+    "type": "AFFECTS",
+    "target": "PAY-DB-02 server"
+  },
+  "data-journalism": {
+    "source": "bridge inspection dataset",
+    "type": "PROVIDED_BY",
+    "target": "roads office source"
+  },
+  "digital-twin": {
+    "source": "pump vibration alert",
+    "type": "CAUSED_BY",
+    "target": "Valve V-7"
+  },
+  "education": {
+    "source": "Tomas Ferreira",
+    "type": "ENROLLED_IN",
+    "target": "Introductory Statistics"
+  },
+  "financial-services": {
+    "source": "Trim Decision",
+    "type": "ADVISED_BY",
+    "target": "Colm Brady"
+  },
+  "gaming": {
+    "source": "Brannoc",
+    "type": "COMPLETED",
+    "target": "Drowned Bell quest"
+  },
+  "genai-llm-ops": {
+    "source": "Skerry-7B base model",
+    "type": "TRAINED_ON",
+    "target": "Claims Notes Corpus"
+  },
+  "gis-cartography": {
+    "source": "Bracken Dam spillway",
+    "type": "SURVEYED_BY",
+    "target": "autumn field survey"
+  },
+  "golf-sports": {
+    "source": "Westmoor Heath course",
+    "type": "HOSTS",
+    "target": "Harrow Cup tournament"
+  },
+  "government": {
+    "source": "HomeEnergy Office",
+    "type": "ADMINISTERS",
+    "target": "Solar Rebate Program"
+  },
+  "healthcare": {
+    "source": "Dr. Samuel Whitcombe",
+    "type": "PRESCRIBED",
+    "target": "metoprolol"
+  },
+  "hospitality": {
+    "source": "Guest 4502",
+    "type": "STAYED_AT",
+    "target": "Ribeira Riverside Hotel"
+  },
+  "legal": {
+    "source": "Meridian Wage Payment Act",
+    "type": "APPLIES_TO",
+    "target": "Corvane wage matter"
+  },
+  "manufacturing": {
+    "source": "Part GH-3",
+    "type": "SUPPLIED_BY",
+    "target": "Orlik Castings"
+  },
+  "oil-gas": {
+    "source": "Well Corsair 15-1H",
+    "type": "DRILLED_IN",
+    "target": "Ashby Sand formation"
+  },
+  "options-intelligence": {
+    "source": "QRV call trade",
+    "type": "TRIGGERED_BY",
+    "target": "jobs report market event"
+  },
+  "personal-knowledge": {
+    "source": "glaze test note",
+    "type": "TAGGED",
+    "target": "raku topic"
+  },
+  "product-management": {
+    "source": "Bulk Label Export",
+    "type": "PART_OF_RELEASE",
+    "target": "4.1 release"
+  },
+  "real-estate": {
+    "source": "Birch Street house",
+    "type": "LOCATED_IN",
+    "target": "Montford"
+  },
+  "retail-ecommerce": {
+    "source": "kitchen order",
+    "type": "CONTAINS",
+    "target": "Tollan Glass Teapot"
+  },
+  "scientific-research": {
+    "source": "Root Atlas paper",
+    "type": "USED_DATASET",
+    "target": "Sorghum Yield Dataset"
+  },
+  "software-engineering": {
+    "source": "INC-2207 incident",
+    "type": "AFFECTED",
+    "target": "payments service"
+  },
+  "trip-planning": {
+    "source": "Port Lodge Tour",
+    "type": "PART_OF_TRIP",
+    "target": "Douro Weekend itinerary"
+  },
+  "vacation-industry": {
+    "source": "Family Reef Package",
+    "type": "INCLUDES",
+    "target": "Sunset Canoe Tour"
+  },
+  "wildlife-management": {
+    "source": "African wild dog",
+    "type": "INHABITS",
+    "target": "Ewaso Floodplain"
+  }
+}

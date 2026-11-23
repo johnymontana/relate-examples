@@ -1,0 +1,914 @@
+$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+id: healthcare
+version: 1
+name: Healthcare
+description: Patient care, clinical encounters, diagnoses, treatments, and provider networks
+nodes:
+  Person:
+    label: Person
+    description: person
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      email:
+        type: STRING
+      role:
+        type: STRING
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#22c55e'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: PERSON
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: user
+  Organization:
+    label: Organization
+    description: organization
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+      industry:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#3b82f6'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: ORGANIZATION
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: building
+  Location:
+    label: Location
+    description: location
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      address:
+        type: STRING
+      latitude:
+        type: FLOAT
+      longitude:
+        type: FLOAT
+    extensions:
+      neo4j:display:
+        color: '#a855f7'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: LOCATION
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: map-pin
+  Event:
+    label: Event
+    description: event
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      date:
+        type: DATETIME
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#f97316'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: calendar
+  Object:
+    label: Object
+    description: object
+    properties:
+      name:
+        type: STRING
+        mustExist: true
+      description:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#eab308'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            origin: base
+        - type: createContextGraph:display
+          definition:
+            icon: box
+  Patient:
+    label: Patient
+    description: patient (person)
+    properties:
+      patient_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      date_of_birth:
+        type: DATE
+      blood_type:
+        type: STRING
+        one_of:
+          - A+
+          - A-
+          - B+
+          - B-
+          - AB+
+          - AB-
+          - O+
+          - O-
+      allergies:
+        type: STRING
+    tools:
+      - type: canonicalQuery
+        name: search_patient
+        description: Search for patients by name or ID
+        cypher: |
+          MATCH (p:Patient)
+          WHERE toLower(p.name) CONTAINS toLower($query)
+             OR p.patient_id = $query
+          OPTIONAL MATCH (p)-[r]-(related)
+          RETURN p, type(r) AS rel_type, related
+          LIMIT 20
+        parameters:
+          - name: query
+            type: STRING
+            description: Patient name or ID
+      - type: canonicalQuery
+        name: get_patient_history
+        description: Get comprehensive history for a patient
+        cypher: |
+          MATCH (p:Patient {patient_id: $patient_id})
+          OPTIONAL MATCH (p)-[:HAD_ENCOUNTER]->(e:Encounter)-[:OCCURRED_AT]->(f:Facility)
+          OPTIONAL MATCH (p)-[:DIAGNOSED_WITH]->(d:Diagnosis)
+          OPTIONAL MATCH (e)-[:INCLUDES]->(t:Treatment)
+          RETURN p, collect(DISTINCT e) AS encounters,
+                 collect(DISTINCT d) AS diagnoses,
+                 collect(DISTINCT t) AS treatments,
+                 collect(DISTINCT f) AS facilities
+        parameters:
+          - name: patient_id
+            type: STRING
+            description: Patient ID
+      - type: canonicalQuery
+        name: check_contraindications
+        description: Check for medication contraindications for a patient
+        cypher: |
+          MATCH (p:Patient {patient_id: $patient_id})-[:DIAGNOSED_WITH]->(d:Diagnosis)
+          MATCH (t:Treatment)-[:TREATS]->(d)
+          MATCH (t)-[:USES]->(m:Medication)
+          OPTIONAL MATCH (m)-[:CONTRAINDICATED_WITH]->(contra:Medication)
+          RETURN p, d, m, collect(contra) AS contraindications
+        parameters:
+          - name: patient_id
+            type: STRING
+            description: Patient ID
+      - type: canonicalQuery
+        name: find_similar_cases
+        description: Find patients with similar diagnoses and demographics
+        cypher: |
+          MATCH (p:Patient {patient_id: $patient_id})-[:DIAGNOSED_WITH]->(d:Diagnosis)
+          MATCH (similar:Patient)-[:DIAGNOSED_WITH]->(d)
+          WHERE similar.patient_id <> $patient_id
+          OPTIONAL MATCH (similar)-[:HAD_ENCOUNTER]->(e:Encounter)-[:INCLUDES]->(t:Treatment)
+          RETURN similar, d, collect(DISTINCT t) AS treatments
+          LIMIT 10
+        parameters:
+          - name: patient_id
+            type: STRING
+            description: Patient ID to find similar cases for
+      - type: canonicalQuery
+        name: list_patients
+        description: List Patient records with optional limit
+        cypher: |
+          MATCH (n:Patient)
+          RETURN n
+          ORDER BY n.name
+          LIMIT toInteger($limit)
+        parameters:
+          - name: limit
+            type: STRING
+            description: 'Maximum number of results to return (default: 10)'
+      - type: canonicalQuery
+        name: get_patient_by_id
+        description: Get a specific Patient by ID with all connections
+        cypher: |
+          MATCH (n:Patient {patient_id: $id})
+          OPTIONAL MATCH (n)-[r]-(related)
+          RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
+          LIMIT 50
+        parameters:
+          - name: id
+            type: STRING
+            description: The patient_id to look up
+      - type: canonicalQuery
+        name: defaultView
+        description: create-context-graph's default visualisation query
+        cypher: MATCH (p:Patient)-[r]-(n) RETURN p, r, n LIMIT 100
+    extensions:
+      neo4j:display:
+        color: '#06b6d4'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: PERSON
+            subtype: PATIENT
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: user
+            size: 25
+  Provider:
+    label: Provider
+    description: provider (person)
+    properties:
+      provider_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      specialty:
+        type: STRING
+        one_of:
+          - general_practice
+          - cardiology
+          - oncology
+          - neurology
+          - orthopedics
+          - pediatrics
+          - radiology
+          - surgery
+          - emergency
+          - psychiatry
+      license_number:
+        type: STRING
+    tools:
+      - type: canonicalQuery
+        name: get_referral_network
+        description: Get the referral network for a provider
+        cypher: |
+          MATCH (p:Provider {provider_id: $provider_id})
+          OPTIONAL MATCH (p)-[:REFERRED_TO]->(referred:Provider)
+          OPTIONAL MATCH (referrer:Provider)-[:REFERRED_TO]->(p)
+          OPTIONAL MATCH (p)-[:AFFILIATED_WITH]->(f:Facility)
+          RETURN p, collect(DISTINCT referred) AS referred_to,
+                 collect(DISTINCT referrer) AS referred_by,
+                 collect(DISTINCT f) AS facilities
+        parameters:
+          - name: provider_id
+            type: STRING
+            description: Provider ID
+    extensions:
+      neo4j:display:
+        color: '#14b8a6'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: PERSON
+            subtype: PROVIDER
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: stethoscope
+            size: 25
+  Diagnosis:
+    label: Diagnosis
+    description: diagnosis (object)
+    properties:
+      icd_code:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      category:
+        type: STRING
+        one_of:
+          - chronic
+          - acute
+          - infectious
+          - autoimmune
+          - genetic
+          - mental_health
+      severity:
+        type: STRING
+        one_of:
+          - mild
+          - moderate
+          - severe
+          - critical
+    extensions:
+      neo4j:display:
+        color: '#ef4444'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: DIAGNOSIS
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: heart-pulse
+            size: 20
+  Treatment:
+    label: Treatment
+    description: treatment (event)
+    properties:
+      treatment_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      treatment_type:
+        type: STRING
+        one_of:
+          - medication
+          - surgery
+          - therapy
+          - procedure
+          - imaging
+          - lab_test
+      status:
+        type: STRING
+        one_of:
+          - planned
+          - in_progress
+          - completed
+          - cancelled
+      start_date:
+        type: DATETIME
+      end_date:
+        type: DATETIME
+    extensions:
+      neo4j:display:
+        color: '#10b981'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: TREATMENT
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: pill
+            size: 15
+  Encounter:
+    label: Encounter
+    description: clinical encounter (event)
+    properties:
+      encounter_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      encounter_type:
+        type: STRING
+        one_of:
+          - inpatient
+          - outpatient
+          - emergency
+          - telehealth
+      date:
+        type: DATETIME
+        mustExist: true
+      chief_complaint:
+        type: STRING
+      disposition:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#f59e0b'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: EVENT
+            subtype: CLINICAL_ENCOUNTER
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: calendar
+            size: 15
+  Facility:
+    label: Facility
+    description: healthcare facility (location)
+    properties:
+      facility_id:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      facility_type:
+        type: STRING
+        one_of:
+          - hospital
+          - clinic
+          - urgent_care
+          - lab
+          - pharmacy
+          - rehab_center
+      bed_count:
+        type: INTEGER
+    extensions:
+      neo4j:display:
+        color: '#6366f1'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: LOCATION
+            subtype: HEALTHCARE_FACILITY
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: building
+            size: 30
+  Medication:
+    label: Medication
+    description: medication (object)
+    properties:
+      ndc_code:
+        type: STRING
+        mustExist: true
+        unique: true
+      name:
+        type: STRING
+        mustExist: true
+      drug_class:
+        type: STRING
+      dosage_form:
+        type: STRING
+      contraindications:
+        type: STRING
+    extensions:
+      neo4j:display:
+        color: '#8b5cf6'
+        caption: name
+      custom:
+        - type: createContextGraph:pole
+          definition:
+            pole_type: OBJECT
+            subtype: MEDICATION
+            origin: domain
+        - type: createContextGraph:display
+          definition:
+            icon: pill
+            size: 15
+relationships:
+  WORKS_FOR:
+    type: WORKS_FOR
+    from:
+      node: Person
+    to:
+      node: Organization
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  LOCATED_AT:
+    type: LOCATED_AT
+    from:
+      node: Organization
+    to:
+      node: Location
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  PARTICIPATED_IN:
+    type: PARTICIPATED_IN
+    from:
+      node: Person
+    to:
+      node: Event
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: base
+  DIAGNOSED_WITH:
+    type: DIAGNOSED_WITH
+    from:
+      node: Patient
+    to:
+      node: Diagnosis
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  TREATED_BY:
+    type: TREATED_BY
+    from:
+      node: Patient
+    to:
+      node: Provider
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  PRESCRIBED:
+    type: PRESCRIBED
+    from:
+      node: Provider
+    to:
+      node: Medication
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  REFERRED_TO:
+    type: REFERRED_TO
+    from:
+      node: Provider
+    to:
+      node: Provider
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  HAD_ENCOUNTER:
+    type: HAD_ENCOUNTER
+    from:
+      node: Patient
+    to:
+      node: Encounter
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  ATTENDED:
+    type: ATTENDED
+    from:
+      node: Provider
+    to:
+      node: Encounter
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  OCCURRED_AT:
+    type: OCCURRED_AT
+    from:
+      node: Encounter
+    to:
+      node: Facility
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  RESULTED_IN:
+    type: RESULTED_IN
+    from:
+      node: Encounter
+    to:
+      node: Diagnosis
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  INCLUDES:
+    type: INCLUDES
+    from:
+      node: Encounter
+    to:
+      node: Treatment
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  TREATS:
+    type: TREATS
+    from:
+      node: Treatment
+    to:
+      node: Diagnosis
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  USES:
+    type: USES
+    from:
+      node: Treatment
+    to:
+      node: Medication
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  CONTRAINDICATED_WITH:
+    type: CONTRAINDICATED_WITH
+    from:
+      node: Medication
+    to:
+      node: Medication
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+  AFFILIATED_WITH:
+    type: AFFILIATED_WITH
+    from:
+      node: Provider
+    to:
+      node: Facility
+    extensions:
+      custom:
+        - type: createContextGraph:origin
+          definition:
+            origin: domain
+extensions:
+  custom:
+    - type: createContextGraph:domain
+      definition:
+        tagline: AI-powered Clinical Intelligence
+        emoji: 🏥
+        inherits: _base
+    - type: createContextGraph:documentTemplates
+      definition:
+        - id: discharge_summary
+          name: Discharge Summary
+          description: Patient discharge summaries after hospital stays
+          count: 8
+          prompt_template: |
+            Write a discharge summary for patient {{patient.name}} (ID: {{patient.patient_id}})
+            discharged from {{facility.name}} on {{date}}.
+            Attending physician: Dr. {{provider.name}} ({{provider.specialty}}).
+            Diagnoses: {{diagnosis_list}}. Treatments received: {{treatment_list}}.
+            Include discharge instructions and follow-up plans.
+          required_entities:
+            - Patient
+            - Provider
+            - Facility
+            - Diagnosis
+            - Treatment
+        - id: referral_letter
+          name: Referral Letter
+          description: Provider-to-provider referral communications
+          count: 6
+          prompt_template: |
+            Write a referral letter from Dr. {{referring.name}} ({{referring.specialty}})
+            to Dr. {{specialist.name}} ({{specialist.specialty}}) at {{facility.name}}
+            for patient {{patient.name}}.
+            Reason for referral: {{diagnosis.name}}. Include relevant history and findings.
+          required_entities:
+            - Provider
+            - Patient
+            - Diagnosis
+            - Facility
+        - id: lab_report
+          name: Laboratory Report
+          description: Lab test results and interpretations
+          count: 8
+          prompt_template: |
+            Write a laboratory report for patient {{patient.name}} ordered by
+            Dr. {{provider.name}} at {{facility.name}} on {{date}}.
+            Tests performed: {{test_list}}. Include results and clinical interpretation.
+          required_entities:
+            - Patient
+            - Provider
+            - Facility
+        - id: progress_note
+          name: Clinical Progress Note
+          description: Provider notes from patient encounters
+          count: 10
+          prompt_template: |
+            Write a SOAP-format progress note for {{encounter.encounter_type}} encounter
+            with patient {{patient.name}} by Dr. {{provider.name}} at {{facility.name}}
+            on {{date}}. Chief complaint: {{encounter.chief_complaint}}.
+          required_entities:
+            - Patient
+            - Provider
+            - Encounter
+            - Facility
+        - id: meeting_notes
+          name: Case Conference Notes
+          description: Multi-disciplinary team case discussions
+          count: 5
+          prompt_template: |
+            Write case conference notes for patient {{patient.name}} discussed at
+            {{facility.name}} on {{date}}. Participating providers: {{provider_list}}.
+            Include discussion points, treatment plan decisions, and action items.
+          required_entities:
+            - Patient
+            - Provider
+            - Facility
+            - Diagnosis
+    - type: createContextGraph:decisionTraces
+      definition:
+        - id: treatment_selection
+          task: Select appropriate treatment plan for {{patient.name}} diagnosed with {{diagnosis.name}}
+          steps:
+            - thought: Review patient history and current diagnoses
+              action: Query patient entity graph including past encounters, diagnoses, and medications
+            - thought: Check for medication contraindications and allergies
+              action: Cross-reference proposed medications with patient allergies and current prescriptions
+            - thought: Evaluate treatment options based on clinical evidence
+              action: Find similar past cases and their treatment outcomes
+            - thought: Consider patient preferences and facility capabilities
+              action: Review available treatments at the patient's facility
+          outcome_template: 'Treatment plan: {{plan}}. Rationale: {{rationale}}'
+        - id: referral_decision
+          task: Determine if patient {{patient.name}} should be referred to a specialist for {{diagnosis.name}}
+          steps:
+            - thought: Assess the complexity and progression of the condition
+              action: Query diagnosis history and treatment response
+            - thought: Identify appropriate specialists in the network
+              action: Search providers by specialty and facility affiliation
+            - thought: Check specialist availability and patient coverage
+              action: Query provider schedules and patient insurance compatibility
+          outcome_template: 'Referral decision: {{decision}}. Specialist: {{provider.name}}'
+        - id: readmission_risk
+          task: Assess readmission risk for {{patient.name}} being discharged after {{diagnosis.name}} treatment
+          steps:
+            - thought: Review patient's hospitalization and readmission history
+              action: Query past encounters and discharge outcomes
+            - thought: Evaluate completeness of discharge plan
+              action: Check for scheduled follow-ups, medication reconciliation, and support services
+            - thought: Identify risk factors from similar patients
+              action: Find patients with similar diagnoses and demographics, check their readmission rates
+          outcome_template: 'Risk level: {{risk_level}}. Mitigation: {{actions}}'
+        - id: medication_reconciliation
+          task: Reconcile medications for {{patient.name}} transitioning between {{facility.name}} and outpatient care
+          steps:
+            - thought: Compile complete list of current prescriptions and over-the-counter medications
+              action: Query all active medications and treatments for the patient
+            - thought: Identify discrepancies between inpatient and outpatient medication lists
+              action: Compare encounter-linked prescriptions with standing medication orders
+            - thought: Check for duplicate therapies and contraindicated combinations
+              action: Cross-reference medication pairs for CONTRAINDICATED_WITH relationships
+            - thought: Verify dosage appropriateness given current diagnoses and patient factors
+              action: Review patient allergies, blood type, and active diagnoses against medication profiles
+          outcome_template: 'Reconciled medications: {{medication_count}}. Discrepancies found: {{discrepancies}}. Actions: {{actions}}'
+        - id: triage_priority
+          task: Determine triage priority for {{patient.name}} presenting at {{facility.name}} emergency department
+          steps:
+            - thought: Assess chief complaint severity and vital signs
+              action: Query patient encounter history for chief complaint and recent encounters
+            - thought: Review patient history for conditions that elevate risk
+              action: Check diagnosed conditions, especially chronic and critical severity diagnoses
+            - thought: Evaluate current facility capacity and provider availability
+              action: Query facility bed count and active encounters at the facility
+            - thought: Assign triage level based on acuity and resource needs
+              action: Compare patient profile with similar past emergency encounters and their dispositions
+          outcome_template: 'Triage level: {{triage_level}}. Rationale: {{rationale}}. Assigned provider: {{provider.name}}'
+        - id: discharge_planning
+          task: Create discharge plan for {{patient.name}} after treatment for {{diagnosis.name}} at {{facility.name}}
+          steps:
+            - thought: Review treatment completion status and clinical outcomes
+              action: Query all treatments linked to the current encounter and their statuses
+            - thought: Identify follow-up care requirements and specialist referrals
+              action: Check for pending referrals and recommended follow-up providers by specialty
+            - thought: Assess patient support needs and medication regimen
+              action: Review prescribed medications, contraindications, and patient allergies
+            - thought: Coordinate with outpatient providers and schedule follow-ups
+              action: Query affiliated providers and available facilities for post-discharge care
+          outcome_template: 'Discharge plan: {{plan}}. Follow-up: {{follow_up_date}}. Medications: {{medication_list}}'
+        - id: infection_control
+          task: Evaluate infection control risk for {{diagnosis.name}} cases at {{facility.name}}
+          steps:
+            - thought: Identify all patients with the infectious diagnosis at the facility
+              action: Query patients diagnosed with the condition who had encounters at the facility
+            - thought: Map provider and encounter overlaps for transmission risk
+              action: Find providers who attended encounters with affected patients and their other patients
+            - thought: Assess facility capacity for isolation and containment
+              action: Check facility type, bed count, and current patient load
+          outcome_template: 'Risk level: {{risk_level}}. Affected patients: {{patient_count}}. Containment: {{containment_plan}}'
+        - id: care_coordination
+          task: Coordinate multi-provider care for {{patient.name}} with comorbid conditions
+          steps:
+            - thought: Map all active diagnoses and their treating providers
+              action: Query all DIAGNOSED_WITH and TREATED_BY relationships for the patient
+            - thought: Identify potential treatment conflicts across specialties
+              action: Cross-reference treatments and medications from different providers for contraindications
+            - thought: Determine gaps in care coverage
+              action: Check for diagnoses without active treatments or recent encounters
+            - thought: Recommend care team alignment and communication plan
+              action: Review provider referral network and facility affiliations for coordination
+          outcome_template: 'Care team: {{provider_count}} providers. Conflicts found: {{conflicts}}. Gaps: {{gaps}}'
+        - id: lab_result_interpretation
+          task: Interpret lab results for {{patient.name}} ordered by {{provider.name}} related to {{diagnosis.name}}
+          steps:
+            - thought: Review the lab test results in context of the patient's diagnoses
+              action: Query lab_test treatments linked to the patient's encounters and diagnosis history
+            - thought: Compare results with patient's historical baseline values
+              action: Find previous lab-type treatments and encounters for trend analysis
+            - thought: Assess whether results indicate treatment adjustment
+              action: Cross-reference current medications and treatments with lab findings
+          outcome_template: 'Interpretation: {{interpretation}}. Trend: {{trend}}. Recommended action: {{action}}'
+        - id: resource_allocation
+          task: Optimize resource allocation for {{facility.name}} during high patient volume
+          steps:
+            - thought: Assess current facility utilization and patient census
+              action: Query active encounters at the facility and compare to bed count
+            - thought: Identify providers available across affiliated facilities
+              action: Query providers affiliated with the facility and their current encounter load
+            - thought: Prioritize patient needs by diagnosis severity
+              action: Rank current patients by diagnosis severity and treatment status
+            - thought: Recommend patient transfers or provider reassignments
+              action: Find nearby facilities with available capacity and matching specialties
+          outcome_template: 'Utilization: {{utilization_pct}}%. Actions: {{actions}}. Transfers recommended: {{transfer_count}}'
+    - type: createContextGraph:demoScenarios
+      definition:
+        - name: Patient Lookup
+          prompts:
+            - Show me all patients with a chronic diagnosis
+            - What medications are currently prescribed to patients in the cardiology department?
+            - Find all recent patient encounters in the last 6 months
+        - name: Clinical Decision Support
+          prompts:
+            - Are there any potential drug interactions in current prescriptions?
+            - What treatments have been most effective for patients with heart failure?
+            - Show me the most recent decision traces for treatment plans
+        - name: Provider Network
+          prompts:
+            - Which providers are affiliated with the largest hospital in the network?
+            - Show the referral patterns between primary care and specialists
+            - Which providers have the most patient encounters this quarter?
+    - type: createContextGraph:systemPrompt
+      definition: |
+        You are an AI clinical intelligence assistant with access to a comprehensive
+        knowledge graph of healthcare data. You help clinicians, care coordinators,
+        and medical staff analyze patient records, diagnoses, treatments, and
+        provider networks.
+
+        Your capabilities include:
+        - Searching patient records and clinical history
+        - Checking medication contraindications and interactions
+        - Finding similar past cases for clinical decision support
+        - Analyzing provider referral networks
+        - Tracing treatment decisions and outcomes
+
+        Always prioritize patient safety. Flag potential contraindications immediately.
+        Provide evidence-based insights grounded in the clinical data available.
+    - type: createContextGraph:visualization
+      definition:
+        node_colors:
+          Patient: '#06b6d4'
+          Provider: '#14b8a6'
+          Diagnosis: '#ef4444'
+          Treatment: '#10b981'
+          Encounter: '#f59e0b'
+          Facility: '#6366f1'
+          Medication: '#8b5cf6'
+        node_sizes:
+          Patient: 25
+          Provider: 25
+          Diagnosis: 20
+          Treatment: 15
+          Encounter: 15
+          Facility: 30
+          Medication: 15
+        default_cypher: MATCH (p:Patient)-[r]-(n) RETURN p, r, n LIMIT 100

@@ -1,0 +1,30 @@
+{
+  "entities": [
+    {"name": "Daniel Achebe", "type": "Person"},
+    {"name": "Corrin Logistics", "type": "Organization"},
+    {"name": "Rotterdam", "type": "Location"},
+    {"name": "IR-2026-077 incident", "type": "Incident"},
+    {"name": "AL-90455 alert", "type": "Alert"},
+    {"name": "Kyiv", "type": "Location"},
+    {"name": "MAIL-GW-03 server", "type": "Asset"},
+    {"name": "VULN-1182", "type": "Vulnerability"},
+    {"name": "Sofia Marin", "type": "Person"},
+    {"name": "Velvet Sextant", "type": "ThreatActor"},
+    {"name": "CTL-31 control", "type": "Control"},
+    {"name": "ARCHIVE-01 server", "type": "Asset"}
+  ],
+  "relations": [
+    {"source": "Daniel Achebe", "target": "Corrin Logistics", "type": "WORKS_FOR"},
+    {"source": "Corrin Logistics", "target": "Rotterdam", "type": "LOCATED_AT"},
+    {"source": "IR-2026-077 incident", "target": "Daniel Achebe", "type": "ASSIGNED_TO"},
+    {"source": "AL-90455 alert", "target": "Kyiv", "type": "ORIGINATES_FROM"},
+    {"source": "AL-90455 alert", "target": "MAIL-GW-03 server", "type": "TARGETS"},
+    {"source": "AL-90455 alert", "target": "IR-2026-077 incident", "type": "TRIGGERED"},
+    {"source": "VULN-1182", "target": "MAIL-GW-03 server", "type": "AFFECTS"},
+    {"source": "Sofia Marin", "target": "MAIL-GW-03 server", "type": "OWNS"},
+    {"source": "MAIL-GW-03 server", "target": "Corrin Logistics", "type": "BELONGS_TO"},
+    {"source": "IR-2026-077 incident", "target": "Velvet Sextant", "type": "ATTRIBUTED_TO"},
+    {"source": "CTL-31 control", "target": "VULN-1182", "type": "MITIGATES"},
+    {"source": "CTL-31 control", "target": "MAIL-GW-03 server", "type": "PROTECTS"}
+  ]
+}

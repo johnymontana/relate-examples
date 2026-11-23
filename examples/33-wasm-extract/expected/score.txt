@@ -1,0 +1,385 @@
+# Scores against the samples' gold, in Cypher (store.scoreAgainstGold; harness/run.mjs, gliner2.5-small-v1)
+create-context-graph's samples (27): one synthetic document per domain, written for this example, each scored on its
+domain's store against data/samples/ccg/<domain>.gold.json, which leaves out one hedged or negated claim per document on
+purpose (data/samples/ccg/distractors.json).
+As edgextract's eval: entities are (NAME, TYPE), relations (SOURCE, TARGET, TYPE), names canonical (names.js);
+micro-averaged over the documents. Predictions are the kept band; review and drop count as not predicted.
+A leading honorific is ignored as well, on both sides (store.withoutHonorific: Dr., Mr., Mrs., Ms., Prof., the first token
+of a canonical name): the text writes "Dr. Imani Okafor", the gold "Imani Okafor".
+Kinds and links are compared as written: create-context-graph's own labels (Person, Account) and types (WORKS_FOR).
+The samples' gold holds only relations their domain's ontology can hold: 303 of 303 legal for their (source kind, target kind) pair.
+
+## create-context-graph's samples (27 domains), at the default cutoffs (entity keep 0.500 drop 0.300; relation keep 0.350 drop 0.200)
+entities: P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17)
+  scored from the published typed graph instead of the gate: the same
+relations: P 1.000 R 0.861 F1 0.926 (tp 261, fp 0, fn 42)
+  scored from the published typed graph instead of the gate: the same
+without the honorific rule (names canonical only): entities P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17); relations P 1.000 R 0.861 F1 0.926 (tp 261, fp 0, fn 42)
+the demos' floor: relations P 1.000 (at least 0.900) and R 0.861 (at least 0.500); financial-services, the page's default sample, keeps 12 entities (at least 10) and 10 relationships (at least 8), 0 of them outside its gold (0)
+
+## per domain (entities; relations)
+domain                entities                                       relations
+agent-memory          P 0.917 R 0.917 F1 0.917 (tp 11, fp 1, fn 1)   P 1.000 R 0.750 F1 0.857 (tp 9, fp 0, fn 3)
+conservation          P 1.000 R 0.909 F1 0.952 (tp 10, fp 0, fn 1)   P 1.000 R 0.900 F1 0.947 (tp 9, fp 0, fn 1)
+cybersecurity         P 1.000 R 1.000 F1 1.000 (tp 11, fp 0, fn 0)   P 1.000 R 1.000 F1 1.000 (tp 12, fp 0, fn 0)
+data-journalism       P 0.800 R 0.923 F1 0.857 (tp 12, fp 3, fn 1)   P 1.000 R 0.818 F1 0.900 (tp 9, fp 0, fn 2)
+digital-twin          P 1.000 R 1.000 F1 1.000 (tp 13, fp 0, fn 0)   P 1.000 R 0.923 F1 0.960 (tp 12, fp 0, fn 1)
+education             P 1.000 R 0.923 F1 0.960 (tp 12, fp 0, fn 1)   P 1.000 R 0.786 F1 0.880 (tp 11, fp 0, fn 3)
+financial-services    P 1.000 R 1.000 F1 1.000 (tp 12, fp 0, fn 0)   P 1.000 R 0.909 F1 0.952 (tp 10, fp 0, fn 1)
+gaming                P 1.000 R 1.000 F1 1.000 (tp 12, fp 0, fn 0)   P 1.000 R 1.000 F1 1.000 (tp 11, fp 0, fn 0)
+genai-llm-ops         P 1.000 R 0.917 F1 0.957 (tp 11, fp 0, fn 1)   P 1.000 R 0.900 F1 0.947 (tp 9, fp 0, fn 1)
+gis-cartography       P 0.923 R 1.000 F1 0.960 (tp 12, fp 1, fn 0)   P 1.000 R 0.909 F1 0.952 (tp 10, fp 0, fn 1)
+golf-sports           P 0.917 R 0.917 F1 0.917 (tp 11, fp 1, fn 1)   P 1.000 R 0.727 F1 0.842 (tp 8, fp 0, fn 3)
+government            P 0.846 R 0.846 F1 0.846 (tp 11, fp 2, fn 2)   P 1.000 R 0.833 F1 0.909 (tp 10, fp 0, fn 2)
+healthcare            P 0.867 R 0.929 F1 0.897 (tp 13, fp 2, fn 1)   P 1.000 R 0.750 F1 0.857 (tp 9, fp 0, fn 3)
+hospitality           P 1.000 R 1.000 F1 1.000 (tp 15, fp 0, fn 0)   P 1.000 R 0.917 F1 0.957 (tp 11, fp 0, fn 1)
+legal                 P 1.000 R 0.909 F1 0.952 (tp 10, fp 0, fn 1)   P 1.000 R 0.750 F1 0.857 (tp 9, fp 0, fn 3)
+manufacturing         P 1.000 R 1.000 F1 1.000 (tp 15, fp 0, fn 0)   P 1.000 R 0.818 F1 0.900 (tp 9, fp 0, fn 2)
+oil-gas               P 1.000 R 0.917 F1 0.957 (tp 11, fp 0, fn 1)   P 1.000 R 0.900 F1 0.947 (tp 9, fp 0, fn 1)
+options-intelligence  P 1.000 R 1.000 F1 1.000 (tp 12, fp 0, fn 0)   P 1.000 R 1.000 F1 1.000 (tp 9, fp 0, fn 0)
+personal-knowledge    P 0.933 R 1.000 F1 0.966 (tp 14, fp 1, fn 0)   P 1.000 R 0.800 F1 0.889 (tp 8, fp 0, fn 2)
+product-management    P 1.000 R 1.000 F1 1.000 (tp 12, fp 0, fn 0)   P 1.000 R 0.900 F1 0.947 (tp 9, fp 0, fn 1)
+real-estate           P 0.923 R 1.000 F1 0.960 (tp 12, fp 1, fn 0)   P 1.000 R 0.889 F1 0.941 (tp 8, fp 0, fn 1)
+retail-ecommerce      P 1.000 R 1.000 F1 1.000 (tp 13, fp 0, fn 0)   P 1.000 R 0.909 F1 0.952 (tp 10, fp 0, fn 1)
+scientific-research   P 1.000 R 1.000 F1 1.000 (tp 13, fp 0, fn 0)   P 1.000 R 0.909 F1 0.952 (tp 10, fp 0, fn 1)
+software-engineering  P 1.000 R 1.000 F1 1.000 (tp 11, fp 0, fn 0)   P 1.000 R 0.857 F1 0.923 (tp 12, fp 0, fn 2)
+trip-planning         P 0.714 R 0.714 F1 0.714 (tp 10, fp 4, fn 4)   P 1.000 R 0.727 F1 0.842 (tp 8, fp 0, fn 3)
+vacation-industry     P 1.000 R 1.000 F1 1.000 (tp 12, fp 0, fn 0)   P 1.000 R 0.909 F1 0.952 (tp 10, fp 0, fn 1)
+wildlife-management   P 0.923 R 0.857 F1 0.889 (tp 12, fp 1, fn 2)   P 1.000 R 0.833 F1 0.909 (tp 10, fp 0, fn 2)
+
+## per domain: what was missed and what was kept wrongly (names as matched: canonical, no honorific)
+agent-memory:
+  entities false: DIESEL_INDEX|Entity
+  entities missed: DIESEL_INDEX_ENTITY|Entity
+  relations missed: BILLING_AGENT|BRENNAN_FREIGHT|REASONED_ABOUT; INVOICE_SEARCH_CALL|SURCHARGE_CONVERSATION|TRIGGERED_BY; SURCHARGE_CONVERSATION|BRENNAN_FREIGHT|EXTRACTED
+conservation:
+  entities missed: MV_06_MONITORING_VISIT|Monitoring
+  relations missed: MV_06_MONITORING_VISIT|KELLEN_MARSH_ORCHID|MONITORS
+cybersecurity:
+data-journalism:
+  entities false: CALLOW_VALLEY|Location; ROADS_OFFICE|Organization; STATE_RECORDS|Organization
+  entities missed: ROADS_OFFICE_SOURCE|Source
+  relations missed: BACKLOG_CLAIM|REPAIR_CLAIM|CONTRADICTS; CALLOW_VALLEY_COURIER|HARLOW|LOCATED_AT
+digital-twin:
+  relations missed: PEAK_VIBRATION_READING|PUMP_VIBRATION_ALERT|TRIGGERED
+education:
+  entities missed: PROBLEM_SET_4|Assessment
+  relations missed: PROBLEM_SET_4|REGRESSION_METHODS|PART_OF; S_3391|RUTH_CALLOWAY|GRADED_BY; S_3391|TOMAS_FERREIRA|SUBMITTED_BY
+financial-services:
+  relations missed: REBALANCING|TRIM|PRECEDED_BY
+gaming:
+genai-llm-ops:
+  entities missed: JULY|Evaluation
+  relations missed: AUGUST|JULY|COMPARED_WITH
+gis-cartography:
+  entities false: BRACKEN_DAM|Location
+  relations missed: FLOOD_ATLAS|HYDROLOGY|INCLUDES_LAYER
+golf-sports:
+  entities false: AOIFE_BRENNAN|Person
+  entities missed: AOIFE_BRENNAN|Player
+  relations missed: AOIFE_BRENNAN|HARROW_CUP|COMPETED_IN; FINAL_ROUND|HARROW_CUP|ROUND_IN_TOURNAMENT; THIRD_ROUND|HARROW_CUP|ROUND_IN_TOURNAMENT
+government:
+  entities false: ADA_LUND|Person; ENERGY_CRISIS_HOTLINE|Program
+  entities missed: ADA_LUND|Official; ENERGY_CRISIS_HOTLINE|Service
+  relations missed: ADA_LUND|MARIAH_CLAY|REPRESENTS; HOMEENERGY_OFFICE|ENERGY_CRISIS_HOTLINE|PROVIDES
+healthcare:
+  entities false: ADMISSION|Event; ANTICOAGULATION_THERAPY|Organization
+  entities missed: ANTICOAGULATION_THERAPY|Treatment
+  relations missed: ANTICOAGULATION_THERAPY|APIXABAN|USES; ANTICOAGULATION_THERAPY|ATRIAL_FIBRILLATION|TREATS; APIXABAN|KETOCONAZOLE|CONTRAINDICATED_WITH
+hospitality:
+  relations missed: OCTOBER|TAGUS_SUITE|ASSIGNED_TO
+legal:
+  entities missed: MOTION_TO_COMPEL|Filing
+  relations missed: MARCH_4|26_CV_0419|SCHEDULED_FOR; MOTION_TO_COMPEL|MERIDIAN_CODE_226|CITES; MOTION_TO_COMPEL|MERIDIAN_WAGE_PAYMENT_ACT|CITES
+manufacturing:
+  relations missed: B_7|GH_3|ASSEMBLED_FROM; PRESS_P_310|HOUSING_PRODUCTION_LINE|OPERATED_BY
+oil-gas:
+  entities missed: HEATER_TREATER_HT_5|Equipment
+  relations missed: HEATER_TREATER_HT_5|BRADY_KOWALSKI|MAINTAINED_BY
+options-intelligence:
+personal-knowledge:
+  entities false: THORNBURY|Location
+  relations missed: KILN_WASH_NOTE|FIREBOX_DESIGN|REFERENCES; WOOD_FIRING_TOPIC|ASH_GLAZES_TOPIC|RELATED_TO
+product-management:
+  relations missed: BULK_LABEL_EXPORT|EXPORT_SUCCESS_RATE|MEASURED_BY
+real-estate:
+  entities false: BUYER|Person
+  relations missed: MLS_30418|JUNIPER_LANE_HOUSE|LISTING_FOR
+retail-ecommerce:
+  relations missed: KETTLE_REVIEW|TOLLAN_ELECTRIC_KETTLE|REVIEW_OF
+scientific-research:
+  relations missed: DROUGHT_ROOTS|ROOT_ATLAS|CITED
+software-engineering:
+  relations missed: CHECKOUT_SERVICE|PAYMENTS_SERVICE|DEPENDS_ON; INC_2207|CHECKOUT_SERVICE|AFFECTED
+trip-planning:
+  entities false: DOURO_RIVER_CRUISE|Event; PORT_LODGE_TOUR|Event; QUINTA_DAS_ALVAS|Location; TERRACED_VINEYARD_HIKE|Event
+  entities missed: DOURO_RIVER_CRUISE|Activity; PORT_LODGE_TOUR|Activity; QUINTA_DAS_ALVAS|Hotel; TERRACED_VINEYARD_HIKE|Activity
+  relations missed: DOURO_RIVER_CRUISE|DOURO_WEEKEND|PART_OF_TRIP; DOURO_WEEKEND|QUINTA_DAS_ALVAS|BOOKED_AT; TERRACED_VINEYARD_HIKE|DOURO_WEEKEND|PART_OF_TRIP
+vacation-industry:
+  relations missed: SUNSET_CANOE_TOUR|CALM_WATER|AVAILABLE_IN
+wildlife-management:
+  entities false: EWASO_FLOODPLAIN|Location
+  entities missed: EWASO_FLOODPLAIN|Habitat; SNARING|Threat
+  relations missed: IMPALA|EWASO_FLOODPLAIN|INHABITS; SNARING|IMPALA|THREATENS
+
+## each rule switched off in turn, on the create-context-graph samples
+rule off     entities                                             relations
+none         P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17)      P 1.000 R 0.861 F1 0.926 (tp 261, fp 0, fn 42)
+gazetteer    P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17)      P 1.000 R 0.861 F1 0.926 (tp 261, fp 0, fn 42)
+one-kind     P 0.941 R 0.941 F1 0.941 (tp 320, fp 20, fn 20)      P 0.992 R 0.848 F1 0.915 (tp 257, fp 2, fn 46)
+name-kind    P 0.934 R 0.950 F1 0.942 (tp 323, fp 23, fn 17)      P 1.000 R 0.861 F1 0.926 (tp 261, fp 0, fn 42)
+span-join    P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17)      P 0.978 R 0.743 F1 0.844 (tp 225, fp 5, fn 78)
+legality     P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17)      P 0.985 R 0.848 F1 0.911 (tp 257, fp 4, fn 46)
+band         P 0.654 R 0.962 F1 0.779 (tp 327, fp 173, fn 13)     P 0.973 R 0.934 F1 0.953 (tp 283, fp 8, fn 20)
+hedge        P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17)      P 0.974 R 0.861 F1 0.914 (tp 261, fp 7, fn 42)
+ambiguity    P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17)      P 0.981 R 0.861 F1 0.917 (tp 261, fp 5, fn 42)
+verdicts     P 0.950 R 0.950 F1 0.950 (tp 323, fp 17, fn 17)      P 1.000 R 0.861 F1 0.926 (tp 261, fp 0, fn 42)
+(no gazetteer in create-context-graph's format and no verdicts here, so rules 1 and 7 change nothing; gate.txt and review.txt
+exercise them)
+
+## the distractors: one hedged or negated claim per document, left out of the gold on purpose
+Each must not be kept at the defaults (relation keep 0.350). Each is looked for in its own sentence (the one that names both ends and hedges
+or negates): a claim of its link there whose span texts contain the two names or are contained in them, kept first, then
+review, then the highest score. Shown: the sentence, then the claim's score, band and deciding rule, or "no claim".
+agent-memory: "billing agent" -[REASONED_ABOUT]-> "diesel index entity", s12: claim 0.481, drop by unanchored
+  "It is unclear whether the billing agent reasoned about the diesel index entity."
+conservation: "Fen Water Programme" -[BENEFITS]-> "Ashby fen skipper", s11: claim 0.207, review by band
+  "The Ashby fen skipper does not benefit from the Fen Water Programme."
+cybersecurity: "VULN-0447" -[AFFECTS]-> "PAY-DB-02 server", s12: claim 0.197, drop by band
+  "The PAY-DB-02 server is not affected by VULN-0447."
+data-journalism: "bridge inspection dataset" -[PROVIDED_BY]-> "roads office source", s11: claim 0.421, review by hedged
+  "The bridge inspection dataset was not provided by the roads office source."
+digital-twin: "pump vibration alert" -[CAUSED_BY]-> "Valve V-7", s13: claim 0.195, drop by band
+  "Valve V-7 did not cause the pump vibration alert."
+education: "Tomas Ferreira" -[ENROLLED_IN]-> "Introductory Statistics", s14: no claim
+  "Introductory Statistics does not list Tomas Ferreira as enrolled."
+financial-services: "Trim Decision" -[ADVISED_BY]-> "Colm Brady", s11: no claim
+  "Colm Brady may also have advised on the Trim Decision, but the July file is silent."
+gaming: "Brannoc" -[COMPLETED]-> "Drowned Bell quest", s11: claim 0.824, review by hedged
+  "The character Brannoc has not completed the Drowned Bell quest yet."
+genai-llm-ops: "Skerry-7B base model" -[TRAINED_ON]-> "Claims Notes Corpus", s10: claim 0.587, review by hedged
+  "The Skerry-7B base model was not trained on the Claims Notes Corpus."
+gis-cartography: "Bracken Dam spillway" -[SURVEYED_BY]-> "autumn field survey", s11: claim 0.410, review by hedged
+  "The Bracken Dam spillway was not surveyed by the autumn field survey."
+golf-sports: "Westmoor Heath course" -[HOSTS]-> "Harrow Cup tournament", s11: claim 0.283, review by band
+  "The Harrow Cup tournament is not hosted by the Westmoor Heath course."
+government: "HomeEnergy Office" -[ADMINISTERS]-> "Solar Rebate Program", s12: claim 0.224, review by band
+  "The Solar Rebate Program is not run by HomeEnergy Office."
+healthcare: "Dr. Samuel Whitcombe" -[PRESCRIBED]-> "metoprolol", s12: claim 0.444, review by hedged
+  "Dr. Samuel Whitcombe did not prescribe metoprolol during this admission."
+hospitality: "Guest 4502" -[STAYED_AT]-> "Ribeira Riverside Hotel", s12: claim 0.528, drop by illegal
+  "Guest 4502 did not stay at the Ribeira Riverside Hotel."
+legal: "Meridian Wage Payment Act" -[APPLIES_TO]-> "Corvane wage matter", s12: claim 0.305, drop by illegal
+  "The Meridian Wage Payment Act does not apply to the Corvane wage matter."
+manufacturing: "Part GH-3" -[SUPPLIED_BY]-> "Orlik Castings", s11: claim 0.411, review by hedged
+  "Part GH-3 is not supplied by Orlik Castings."
+oil-gas: "Well Corsair 15-1H" -[DRILLED_IN]-> "Ashby Sand formation", s10: claim 0.142, drop by band
+  "The Ashby Sand formation may hold oil, but Well Corsair 15-1H did not reach it."
+options-intelligence: "QRV call trade" -[TRIGGERED_BY]-> "jobs report market event", s9: claim 0.378, review by hedged
+  "The QRV call trade was not triggered by the jobs report market event."
+personal-knowledge: "glaze test note" -[TAGGED]-> "raku topic", s10: claim 0.417, review by hedged
+  "The glaze test note is not tagged with the raku topic."
+product-management: "Bulk Label Export" -[PART_OF_RELEASE]-> "4.1 release", s10: claim 0.329, review by band
+  "Bulk Label Export is not part of the 4.1 release."
+real-estate: "Birch Street house" -[LOCATED_IN]-> "Montford", s9: claim 0.425, review by hedged
+  "The Birch Street house is not located in the neighborhood of Montford."
+retail-ecommerce: "kitchen order" -[CONTAINS]-> "Tollan Glass Teapot", s11: claim 0.483, review by hedged
+  "The kitchen order did not contain the Tollan Glass Teapot."
+scientific-research: "Root Atlas paper" -[USED_DATASET]-> "Sorghum Yield Dataset", s11: claim 0.167, drop by band
+  "The Sorghum Yield Dataset is newer than the Root Atlas paper, which could not use it."
+software-engineering: "INC-2207 incident" -[AFFECTED]-> "payments service", s14: claim 0.212, review by band
+  "The INC-2207 incident never affected the payments service."
+trip-planning: "Port Lodge Tour" -[PART_OF_TRIP]-> "Douro Weekend itinerary", s11: claim 0.322, drop by illegal
+  "The Port Lodge Tour is not part of the Douro Weekend itinerary."
+vacation-industry: "Family Reef Package" -[INCLUDES]-> "Sunset Canoe Tour", s11: claim 0.311, review by band
+  "The Family Reef Package does not include the Sunset Canoe Tour."
+wildlife-management: "African wild dog" -[INHABITS]-> "Ewaso Floodplain", s12: claim 0.567, drop by illegal
+  "The African wild dog does not inhabit the Ewaso Floodplain."
+=> kept at the defaults: 0 of 27; a claim in the distractor's sentence: 25, scoring 0.142 to 0.824; 3 at 0.55 or more, 13 at the relation keep 0.350 or more
+   decided by: drop by band 4, drop by illegal 4, drop by unanchored 1, review by band 6, review by hedged 10
+   of those at the keep cutoff or more (the band alone would keep them): drop by illegal 2, drop by unanchored 1, review by hedged 10
+
+## the held-out set (data/samples/heldout: 6 documents), at the default cutoffs (entity keep 0.500 drop 0.300; relation keep 0.350 drop 0.200)
+Written like the samples, never listed in the page and never used to set a default or a rule (the defaults and the gate
+were settled on the samples alone). Each document on a fresh store of its domain, extracted, gated and published as the page
+does, and scored as the samples are; its distractor (data/samples/heldout/distractors.json) is looked for as theirs are.
+entities: P 0.919 R 0.907 F1 0.913 (tp 68, fp 6, fn 7)
+relations: P 0.979 R 0.723 F1 0.832 (tp 47, fp 1, fn 18)
+distractors kept: 0 of 6; review items per document: 5, 10, 11, 10, 7, 5
+cybersecurity         entities P 1.000 R 1.000 F1 1.000 (tp 12, fp 0, fn 0)
+                      relations P 1.000 R 1.000 F1 1.000 (tp 12, fp 0, fn 0); distractor "VULN-1182" -[AFFECTS]-> "ARCHIVE-01 server": claim 0.207, review by band
+financial-services    entities P 0.909 R 0.909 F1 0.909 (tp 10, fp 1, fn 1)
+                      relations P 0.889 R 0.800 F1 0.842 (tp 8, fp 1, fn 2); distractor "Growth Review Decision" -[ADVISED_BY]-> "Tomas Lind": no claim
+healthcare            entities P 0.929 R 0.929 F1 0.929 (tp 13, fp 1, fn 1)
+                      relations P 1.000 R 0.455 F1 0.625 (tp 5, fp 0, fn 6); distractor "Dr. Kofi Mensah" -[PRESCRIBED]-> "empagliflozin": claim 0.411, drop by illegal
+manufacturing         entities P 0.846 R 0.733 F1 0.786 (tp 11, fp 2, fn 4)
+                      relations P 1.000 R 0.545 F1 0.706 (tp 6, fp 0, fn 5); distractor "Part SR-4" -[SUPPLIED_BY]-> "Kesselbrook Foundry": no claim
+product-management    entities P 0.917 R 1.000 F1 0.957 (tp 11, fp 1, fn 0)
+                      relations P 1.000 R 0.800 F1 0.889 (tp 8, fp 0, fn 2); distractor "Map Tile Cache" -[MEASURED_BY]-> "Sync Success Rate": claim 0.495, review by hedged
+wildlife-management   entities P 0.917 R 0.917 F1 0.917 (tp 11, fp 1, fn 1)
+                      relations P 1.000 R 0.727 F1 0.842 (tp 8, fp 0, fn 3); distractor "lion" -[INHABITS]-> "Mwiru Woodland": claim 0.750, drop by illegal
+
+## where the create-context-graph relations are lost (at the defaults)
+For each gold relation, the best claim of its link whose span texts name its two ends (canonical, no honorific):
+kept; in review by the band; in review because an end is in review (rule 3's cap: end-in-review); dropped by the
+band; dropped as unanchored (an end joins no kept mention and none in review: rule 3); dropped as illegal (an end joins
+a mention of another kind: rule 4); or no such claim (the model did not pair them in one sentence).
+303 gold relations: kept 261, review: an end in review 14, dropped as illegal 13, review by the band 8, no claim 4, dropped as unanchored 3
+of those dropped as illegal, an end joined a mention in review for 6 of 13 (rule 3 anchors on review, rule 4 then checks its kind)
+kept, by link (links with a gold relation kept): WORKS_FOR 29 of 29, LOCATED_AT 25 of 26, PARTICIPATED_IN 23 of 23, CONTAINS 6 of 6, OWNS 5 of 5, BELONGS_TO 4 of 4, FUNDED_BY 4 of 4, TRIGGERED_BY 4 of 5, GOVERNS 3 of 3, INCLUDES 3 of 3, LOCATED_IN 3 of 3, SURVEYED_BY 3 of 3, ADMINISTERS 2 of 2, APPLIES_TO 2 of 2, ATTENDED 2 of 2, BENEFITS 2 of 2, BOOKED_AT 2 of 3, CAPTURED_BY 2 of 2, COMPLETED 2 of 2, DELIVERED_BY 2 of 2, DEPLOYED_TO 2 of 2, DIAGNOSED_WITH 2 of 2, DRILLED_IN 2 of 2, ENROLLED_IN 2 of 2, GENERATED 2 of 2, HELD_AT 2 of 2, INCLUDES_DESTINATION 2 of 2, INHABITS 2 of 3, INSPIRED_BY 2 of 2, INVOKED 2 of 2, MONITORED_BY 2 of 2, OFFERED_AT 2 of 2, OFFERED_IN 2 of 2, OPTIMAL_IN 2 of 2, PART_OF 2 of 3, PART_OF_COURSE 2 of 2, PART_OF_RELEASE 2 of 2, PERMITTED_FOR 2 of 2, PLAYED_AT 2 of 2, PLAYS 2 of 2, PRESCRIBED 2 of 2, PRIORITIZED_IN 2 of 2, PRODUCED_ON 2 of 2, PRODUCES_FROM 2 of 2, PROTECTED_IN 2 of 2, PURCHASED 2 of 2, REMEMBERED 2 of 2, REWARDS 2 of 2, SERVED_BY 2 of 2, STAYED_AT 2 of 2, SUPPLIED_BY 2 of 2, TAGGED 2 of 2, TARGETS 2 of 2, TEACHES 2 of 2, THREATENS 2 of 3, TREATED_BY 2 of 2, USED_DATASET 2 of 2, ADVISED_BY 1 of 1, AFFECTS 1 of 1, APPLIED_POLICY 1 of 1, ASSIGNED_TO 1 of 2, ATTRIBUTED_TO 1 of 1, AUTHORED 1 of 1, AVAILABLE_IN 1 of 2, BROWSED 1 of 1, CAUSED 1 of 1, CAUSED_BY 1 of 1, CAUSED_INCIDENT 1 of 1, COMPARABLE_TO 1 of 1, CONTRIBUTES_TO 1 of 1, CORRECTED_IN 1 of 1, EVALUATED_ON 1 of 1, FACT_CHECKED 1 of 1, FILED_BY 1 of 1, FIXES 1 of 1, FLIPPED_TO 1 of 1, FOLLOWED_UP 1 of 1, HOSTS 1 of 1, INCLUDES_LAYER 1 of 2, INVESTIGATED_BY 1 of 1, INVOLVES 1 of 1, ISSUES 1 of 1, LISTED_BY 1 of 1, MAINTAINED 1 of 1, MANAGES 1 of 1, MEASURED_BY 1 of 2, MITIGATES 1 of 1, NEAR 1 of 1, OBSERVED_BY 1 of 1, OPERATED_BY 1 of 2, ORIGINATES_FROM 1 of 1, PARTY_TO 1 of 1, PART_OF_SESSION 1 of 1, PRECEDED_BY 1 of 2, PREFERRED_BY 1 of 1, PREYS_ON 1 of 1, PRODUCED_BY 1 of 1, PRODUCED_DATASET 1 of 1, PROTECTS 1 of 1, PROVIDED_BY 1 of 1, PROVIDES 1 of 2, PUBLISHED_IN 1 of 1, REFERENCED 1 of 1, REPLICATED 1 of 1, REPORTED_BY 1 of 1, REPRESENTED_BY 1 of 1, REVIEWED 1 of 1, REVIEWED_BY 1 of 1, SCORED_IN 1 of 1, SERVES 1 of 1, SOLD_TO 1 of 1, SUPPORTS 1 of 1, TARGETED_BY 1 of 1, TRAINED_ON 1 of 1, TRIGGERED 1 of 2, USED_PROMPT 1 of 1
+links with gold relations and none kept: 25 of 141
+
+## where the create-context-graph entities are lost (at the defaults)
+For each gold entity, the best outcome of the model's mentions of it with its gold kind (canonical name, no honorific):
+kept; in review by the band or by the type margin (rule 2); dropped because another kind won the same span (rule 2,
+one-kind); dropped by the band; found only under another kind; or not found at all. A kind rule 2's POLE preference
+chose (pole-specific) counts by its band.
+340 gold entities: kept 323, found only as another kind 6, another kind won its span 4, review by the band 4, not found 2, review by the type margin 1
+kept or in review with the kind the POLE preference chose: 10 (kept 9): Agency 1, Evaluation 1, Hearing 1, Instructor 1, Monitoring 1, Patient 1, Student 2, ThreatActor 1, Tournament 1
+of those another kind won, the winner is one of the base's five kinds (Person, Organization, Location, Event, Object) for 3;
+  the winner has the lost kind's pole for 2 (the POLE preference needs it within the pole margin and above the drop cutoff),
+  another pole for 2 (create-context-graph types Player, Agent, Guest, Customer, Researcher and more as OBJECT);
+  the most frequent: Assessment lost to Person 1, Official lost to Person 1, Player lost to Person 1, Service lost to Program 1
+
+## settling the defaults, on the samples
+Grids over the samples' gold; values on a 0.05 grid, chosen for a good F1 without chasing the last point. Each grid moves one
+setting with the others at the defaults (store.defaultGate, the same for every ontology); cutoffs move for every kind or
+link at once. (Earlier builds also set the defaults of edgextract's format on edgextract's golden set: 0.85/0.70.)
+
+### how create-context-graph's kinds and links are put to the model (experiment B), on the samples
+"ids": every kind by its label with the description ontology.js derives ("financial account (object)"), every link as
+its phrase ("owns"): what this example asked before. "labels": what it asks now (pipeline.modelSchema): each kind's label
+as text ("account"), "<subtype> in <domain>" for a domain kind ("financial account in financial services"), the base
+kinds bare, a base kind no link names and a domain kind covers not asked (Object in all 27, Event in agent-memory and
+vacation-industry), and each link between its endpoints ("person owns account"); a generic v1 document is asked the same
+way. Both on a fresh store per domain, gated by the Cypher gate; P/R/F1 (tp/fp/fn), the distractors kept, and the review
+queue (mentions, claims).
+asked   keep       entities                         relations                     distractors kept  review m, c
+ids     0.85/0.70  0.912/0.521/0.663 (177/17/163)   1.000/0.106/0.191 (32/0/271)  0                 450, 168
+ids     0.50/0.35  0.849/0.809/0.828 (275/49/65)    0.987/0.498/0.662 (151/2/152) 0                 181, 47
+labels  0.85/0.70  0.966/0.665/0.787 (226/8/114)    1.000/0.092/0.169 (28/0/275)  0                 376, 284
+labels  0.50/0.35  0.950/0.950/0.950 (323/17/17)    1.000/0.861/0.926 (261/0/42)  0                 95, 51
+labels  0.75/0.60  0.959/0.821/0.884 (279/12/61)    1.000/0.248/0.397 (75/0/228)  0                 242, 237
+paired bootstrap over the 27 documents (2,000 resamples, seeded), the difference in micro F1 with its 95% interval:
+  labels at 0.50/0.35 against ids at 0.85/0.70 (the change): entity F1 +0.287 [95% +0.234, +0.341], ahead in 1.000 of resamples; relation F1 +0.734 [95% +0.690, +0.781], ahead in 1.000 of resamples
+  labels against ids, both at 0.85/0.70 (the schema alone): entity F1 +0.125 [95% +0.078, +0.171], ahead in 1.000 of resamples; relation F1 -0.022 [95% -0.078, +0.040], ahead in 0.206 of resamples
+  labels at 0.50/0.35 against labels at 0.85/0.70 (the cutoffs alone): entity F1 +0.163 [95% +0.126, +0.200], ahead in 1.000 of resamples; relation F1 +0.756 [95% +0.691, +0.815], ahead in 1.000 of resamples
+  labels at 0.50/0.35 against labels at 0.75/0.60, the previous defaults: entity F1 +0.066 [95% +0.041, +0.091], ahead in 1.000 of resamples; relation F1 +0.529 [95% +0.463, +0.594], ahead in 1.000 of resamples
+the "labels" schema by entity keep (rows) and relation keep (columns): entity F1, relation F1 (tp/fp), distractors kept
+keep   0.25                   0.30                   0.35                   0.40                   0.50                   0.60
+0.40   0.935 0.950 (275/1) d0 0.935 0.942 (270/0) d0 0.935 0.941 (269/0) d0 0.935 0.890 (243/0) d0 0.935 0.641 (143/0) d0 0.935 0.438 (85/0) d0
+0.50   0.950 0.935 (267/1) d0 0.950 0.927 (262/0) d0 0.950 0.926 (261/0) d0 0.950 0.878 (237/0) d0 0.950 0.632 (140/0) d0 0.950 0.438 (85/0) d0
+0.60   0.939 0.872 (235/1) d0 0.939 0.865 (231/0) d0 0.939 0.863 (230/0) d0 0.939 0.819 (210/0) d0 0.939 0.597 (129/0) d0 0.939 0.414 (79/0) d0
+0.70   0.907 0.801 (203/1) d0 0.907 0.798 (201/0) d0 0.907 0.795 (200/0) d0 0.907 0.753 (183/0) d0 0.907 0.564 (119/0) d0 0.907 0.401 (76/0) d0
+0.75   0.884 0.749 (182/1) d0 0.884 0.748 (181/0) d0 0.884 0.745 (180/0) d0 0.884 0.713 (168/0) d0 0.884 0.554 (116/0) d0 0.884 0.397 (75/0) d0
+
+### relation keep cutoff (rule 5, every link), entities at the defaults: relations P/R/F1 (tp/fp/fn)
+keep   ccg
+0.25   0.996/0.881/0.935 (267/1/36)
+0.30   1.000/0.865/0.927 (262/0/41)
+0.35   1.000/0.861/0.926 (261/0/42)
+0.40   1.000/0.782/0.878 (237/0/66)
+0.45   1.000/0.611/0.758 (185/0/118)
+0.50   1.000/0.462/0.632 (140/0/163)
+0.55   1.000/0.350/0.518 (106/0/197)
+0.60   1.000/0.281/0.438 (85/0/218)
+0.65   1.000/0.201/0.335 (61/0/242)
+0.70   1.000/0.109/0.196 (33/0/270)
+
+### entity keep cutoff (rule 5, every kind), relations at the defaults
+create-context-graph's format has no gazetteer: this is the model alone, and the relations move with it (rule 3 joins a
+claim to a kept mention first, else to one in review, and a claim joined to one in review waits in review: end-in-review).
+keep   ccg entities                       ccg relations
+0.40   0.913/0.959/0.935 (326/31/14)      1.000/0.888/0.941 (269/0/34)
+0.45   0.931/0.956/0.943 (325/24/15)      1.000/0.875/0.933 (265/0/38)
+0.50   0.950/0.950/0.950 (323/17/17)      1.000/0.861/0.926 (261/0/42)
+0.55   0.953/0.944/0.948 (321/16/19)      1.000/0.818/0.900 (248/0/55)
+0.60   0.957/0.921/0.939 (313/14/27)      1.000/0.759/0.863 (230/0/73)
+0.65   0.959/0.888/0.922 (302/13/38)      1.000/0.700/0.823 (212/0/91)
+0.70   0.961/0.859/0.907 (292/12/48)      1.000/0.660/0.795 (200/0/103)
+0.75   0.959/0.821/0.884 (279/12/61)      1.000/0.594/0.745 (180/0/123)
+0.85   0.966/0.665/0.787 (226/8/114)      1.000/0.383/0.554 (116/0/187)
+
+### drop cutoffs: gold facts lost to the drop band, and the review queue (gold documents only)
+A gold relation is lost at drop cutoff d when its best claim that the gate could keep (anchored, legal) scores <= d;
+a gold entity when the model's best mention of it (its gold kind) scores <= d. The review queue is counted with
+the keep cutoffs at their defaults and every kind and link at drop d.
+gold relations with such a claim: ccg 283 of 303 (the rest need another sentence, a pronoun resolved, or an end the gate keeps);
+gold entities the model finds with their gold kind: ccg 332 of 340
+drop   ccg: relations lost, claims in review; entities lost, mentions in review
+0.10   0, 63; 0, 373
+0.15   0, 59; 1, 240
+0.20   0, 53; 1, 181
+0.25   2, 48; 2, 131
+0.30   8, 37; 2, 95
+0.35   9, 30; 2, 67
+lowest-scoring gold relations, ccg: PEAK_VIBRATION_READING -[TRIGGERED]-> PUMP_VIBRATION_ALERT 0.202; FINAL_ROUND -[ROUND_IN_TOURNAMENT]-> HARROW_CUP 0.240; KILN_WASH_NOTE -[REFERENCES]-> FIREBOX_DESIGN 0.254
+lowest-scoring gold entities (the model alone), ccg: PROBLEM_SET_4 (Assessment) 0.149; ENERGY_CRISIS_HOTLINE (Service) 0.232; MOTION_TO_COMPEL (Filing) 0.353
+
+### margins: rule 2 (type margin) and rule 6 (relation margin)
+type margin  ccg entities; sent to review by it
+0.000        0.953/0.953/0.953 (324/16/16); 0
+0.025        0.950/0.950/0.950 (323/17/17); 5
+0.050        0.950/0.950/0.950 (323/17/17); 9
+0.100        0.949/0.935/0.942 (318/17/22); 23
+0.150        0.949/0.926/0.938 (315/17/25); 33
+rel margin   ccg relations; sent to review as ambiguous
+0.000        1.000/0.861/0.926 (261/0/42); 6
+0.050        1.000/0.861/0.926 (261/0/42); 6
+0.150        1.000/0.848/0.918 (257/0/46); 10
+
+### rule 2's POLE preference: the pole margin (create-context-graph's samples; a generic document's kinds have no pole)
+When a span's best label is a base kind, a domain kind of its pole that scored within the pole margin of it, and above
+its own drop cutoff, wins the span ("off": no preference). Columns: the samples' entities and relations, P/R/F1
+(tp/fp/fn); the gold entities kept or in review with their gold kind ("in reach"); the mentions the preference chose
+(kept); the review queue (mentions, claims); the distractors kept.
+margin  ccg entities                     ccg relations                 in reach  chosen (kept)  review m, c  distractors kept
+off     0.926/0.924/0.925 (314/25/26)    0.988/0.818/0.895 (248/3/55)  320       0 (0)          99, 48       0
+0.00    0.932/0.932/0.932 (317/23/23)    0.992/0.822/0.899 (249/2/54)  321       0 (0)          98, 49       0
+0.05    0.935/0.935/0.935 (318/22/22)    0.992/0.825/0.901 (250/2/53)  323       2 (1)          99, 50       0
+0.10    0.944/0.944/0.944 (321/19/19)    1.000/0.835/0.910 (253/0/50)  326       8 (7)          101, 53      0
+0.15    0.950/0.950/0.950 (323/17/17)    1.000/0.855/0.922 (259/0/44)  328       14 (13)        99, 51       0
+0.20    0.950/0.950/0.950 (323/17/17)    1.000/0.861/0.926 (261/0/42)  328       17 (16)        96, 50       0
+0.25    0.950/0.950/0.950 (323/17/17)    1.000/0.861/0.926 (261/0/42)  328       18 (17)        95, 51       0
+0.30    0.950/0.947/0.948 (322/17/18)    1.000/0.858/0.924 (260/0/43)  327       18 (17)        96, 51       0
+0.40    0.953/0.950/0.951 (323/16/17)    1.000/0.861/0.926 (261/0/42)  328       20 (18)        96, 51       0
+0.50    0.953/0.950/0.951 (323/16/17)    1.000/0.861/0.926 (261/0/42)  328       20 (18)        96, 51       0
+0.60    0.953/0.950/0.951 (323/16/17)    1.000/0.861/0.926 (261/0/42)  328       20 (18)        96, 51       0
+0.80    0.953/0.947/0.950 (322/16/18)    1.000/0.855/0.922 (259/0/44)  327       23 (18)        98, 53       0
+1.00    0.953/0.947/0.950 (322/16/18)    1.000/0.855/0.922 (259/0/44)  327       23 (18)        98, 53       0
+per domain, with the preference off and at the default pole margin 0.250 (entity F1; relation F1), where either moves:
+  cybersecurity         entities 0.909 -> 1.000 (tp 10 -> 11, fp 1 -> 0); relations 0.957 -> 1.000
+  education             entities 0.720 -> 0.960 (tp 9 -> 12, fp 3 -> 0); relations 0.476 -> 0.880
+  genai-llm-ops         entities 0.870 -> 0.957 (tp 10 -> 11, fp 1 -> 0); relations 0.889 -> 0.947
+  golf-sports           entities 0.833 -> 0.917 (tp 10 -> 11, fp 2 -> 1); relations 0.737 -> 0.842
+  government            entities 0.800 -> 0.846 (tp 10 -> 11, fp 2 -> 2); relations 0.909 -> 0.909
+  healthcare            entities 0.828 -> 0.897 (tp 12 -> 13, fp 3 -> 2); relations 0.667 -> 0.857
+  legal                 entities 0.857 -> 0.952 (tp 9 -> 10, fp 1 -> 0); relations 0.800 -> 0.857
+
+### the facts the relation keep cutoff decides, by score: true (in the gold) and false (gold documents only)
+Each fact the gate could keep (anchored, legal; rules 5 and 6 off) once, at its best claim's score, in bands of 0.05,
+entities at the defaults. Below the keep cutoff a fact waits in review; above it, it is published without one.
+score        ccg true, false
+0.20-0.25    2, 0
+0.25-0.30    6, 4
+0.30-0.35    1, 1
+0.35-0.40    29, 1
+0.40-0.45    53, 1
+0.45-0.50    48, 0
+0.50-0.55    38, 1
+0.55-0.60    21, 0
+0.60-0.65    24, 1
+0.65-0.70    28, 1
+0.70-0.75    18, 0
+0.75-0.80    9, 0
+0.80-0.85    6, 0
+0.85-0.90    0, 0
+0.90-0.95    0, 0
+0.95-1.00    0, 0
+from 0.20 up to the default keep 0.350 (in review at the defaults): ccg 9 true and 5 false
+from the default keep 0.350 up to 0.600, the previous one (kept now, in review before): ccg 189 true and 3 false
+true WORKS_FOR facts on the ccg samples: 29, scoring 0.489, 0.568, 0.578, 0.618, 0.627, 0.633, 0.636, 0.636, 0.651, 0.660, 0.662, 0.667, 0.680, 0.686, 0.695, 0.703, 0.706, 0.709, 0.723, 0.740, 0.768, 0.777, 0.789, 0.794, 0.795, 0.798, 0.812, 0.814, 0.845; below 0.350 (in review at the default): 0
+the distractors' claims (above, in their own sentences, any anchoring) score 0.824, 0.587, 0.567, 0.528, 0.483, 0.481, 0.444, 0.425, 0.421, 0.417, 0.411, 0.410, 0.378, 0.329, 0.322, 0.311, 0.305, 0.283, 0.224, 0.212, 0.207, 0.197, 0.195, 0.167, 0.142: 3 at 0.55 or more, 13 at the default keep 0.350 or more
+
+chosen (store.defaultGate, gliner2.5-small-v1; every ontology): entity keep 0.500 drop 0.300; relation keep 0.350 drop 0.200;
+  type margin 0.050; relation margin 0.050; pole margin 0.250

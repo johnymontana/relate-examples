@@ -1,0 +1,301 @@
+# Audits of the stores after the first pass (harness/run.mjs; queries/audit-*.cypher)
+Each audit is a query that must return 0 rows, on every store, at the default gate after publish: the fixtures' store
+(listed) and the 27 create-context-graph stores (counted).
+audit-1-kept-claims-legal.cypher: every kept claim is legal by the ontology (D10 rule 4)
+  rows: fixtures 0; create-context-graph: 0 on each of 27
+audit-2-claim-ends-kept.cypher: both ends of every kept claim are kept mentions (D10 rule 3)
+  rows: fixtures 0; create-context-graph: 0 on each of 27
+audit-3-evidence-inside-sentence.cypher: every mention and claim lies inside its sentence, and its text is what the offsets cut
+  rows: fixtures 0; create-context-graph: 0 on each of 27
+audit-4-complete-sections-only.cypher: nothing outside a complete section is gated or published (D9)
+  rows: fixtures 0; create-context-graph: 0 on each of 27
+audit-5-edges-match-kept-claims.cypher: typed edges and kept claims match one to one (D16)
+  rows: fixtures 0; create-context-graph: 0 on each of 27
+audit-6-typed-endpoints-labelled.cypher: every published entity carries exactly its kind label, and every typed edge joins them (D16)
+  rows: fixtures 0; create-context-graph: 0 on each of 27
+
+## the graph type is the backstop: a deliberately illegal publish is refused (O4, D16)
+financial-services: WORKS_FOR is typed (:Person)-[:WORKS_FOR]->(:Organization); publish Location:EDINBURGH -[WORKS_FOR]-> Organization:HALVORSEN_PRYCE_PARTNERS through store.writeTypedEdges
+  -> constraint: ConstraintValidationFailed: endpoint label presence verification failed: expected Person
+  WORKS_FOR edges from a Location afterwards: 0
+a link the ontology does not have (FOUNDED) -> StoreError: "FOUNDED" is not a link of this store's ontology
+
+## R16: an ontology edit (ALTER CURRENT GRAPH TYPE SET) drops every UNIQUE constraint; the store puts its own back
+a fresh financial-services store: its UNIQUE constraints 11 of 11
+ontology.js applyOntology(financial-services + Product): altered true; the store's UNIQUE constraints 0 of 11
+store.ensureConstraints: 11 of 11; the lookup-index check passes (R9): 16 lookup indexes built
+store.applyOntologyToStore(financial-services + Product) on another fresh store: altered true; the store's UNIQUE constraints 11 of 11
+
+## entities across documents (queries/03-entities-across-documents.cypher)
+fixtures:
+  Account:ACC_5120 (Account): markup, pronouns
+  Location:LEEDS (Location): event, injection, markup, unknown
+  Organization:CALDER_BAY_CAPITAL (Organization): hedge, injection, markup, negation, overlap, pronouns
+  Person:INGRID_SOL (Person): fence, hedge
+  Person:MIRA_HOLT (Person): event, hedge, markup, pronouns
+  Person:TOMAS_REYES (Person): hedge, markup, negation, unknown
+
+## entity keys with more than one display (the surface texts behind one KIND:NAME key, E3)
+digital-twin: Sensor:TS_204 shown as "Sensor TS-204", "sensor TS-204"; name "Sensor TS-204"
+digital-twin: Sensor:VS_118 shown as "Sensor VS-118", "sensor VS-118"; name "Sensor VS-118"
+gis-cartography: Layer:FLOOD_ZONES shown as "Flood Zones", "Flood Zones layer"; name "Flood Zones layer"
+gis-cartography: Layer:HYDROLOGY shown as "Hydrology", "Hydrology layer"; name "Hydrology layer"
+software-engineering: Deployment:D_881 shown as "D-881", "Deployment D-881"; name "Deployment D-881"
+fixtures: Decision:D_210 shown as "Decision D-210", "decision D-210"; name "Decision D-210"
+
+## the saved console queries (queries/[0-9]*.cypher, D11): rows on each store
+The fixtures' store alone; the create-context-graph stores as a total and the stores with rows.
+01-typed-graph.cypher: fixtures 5; create-context-graph: 261 rows, from 27 of 27 stores
+02-evidence-behind-an-edge.cypher: fixtures 7; create-context-graph: 261 rows, from 27 of 27 stores
+03-entities-across-documents.cypher: fixtures 6; create-context-graph: 0 rows, from 0 of 27 stores
+04-review-items-by-rule.cypher: fixtures 20; create-context-graph: 146 rows, from 27 of 27 stores
+05-ontology-graph.cypher: fixtures 24; create-context-graph: 677 rows, from 27 of 27 stores
+06-graph-type.cypher: fixtures 1; create-context-graph: 27 rows, from 27 of 27 stores
+07-ontology-canary.cypher: fixtures 0; create-context-graph: 0 rows, from 0 of 27 stores
+08-search-sentences.cypher ($q="decision transaction"): fixtures 2; create-context-graph: 7 rows, from 2 of 27 stores
+
+## dump.json (D17): store.dumpStore, loaded into a fresh store by lib/replay.mjs
+agent-memory: 181 nodes, 285 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+conservation: 135 nodes, 210 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+cybersecurity: 190 nodes, 333 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+data-journalism: 164 nodes, 277 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+digital-twin: 160 nodes, 267 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+education: 191 nodes, 322 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+financial-services: 158 nodes, 259 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+gaming: 164 nodes, 285 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+genai-llm-ops: 155 nodes, 262 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+gis-cartography: 171 nodes, 289 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+golf-sports: 162 nodes, 270 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+government: 181 nodes, 305 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+healthcare: 184 nodes, 292 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+hospitality: 194 nodes, 310 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+legal: 172 nodes, 300 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+manufacturing: 195 nodes, 342 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+oil-gas: 145 nodes, 230 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+options-intelligence: 133 nodes, 224 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+personal-knowledge: 172 nodes, 280 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+product-management: 144 nodes, 238 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+real-estate: 154 nodes, 256 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+retail-ecommerce: 159 nodes, 250 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+scientific-research: 165 nodes, 271 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+software-engineering: 189 nodes, 332 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+trip-planning: 179 nodes, 287 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+vacation-industry: 138 nodes, 219 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+wildlife-management: 161 nodes, 269 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+fixtures: 347 nodes, 478 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+
+## the ontologies' example queries (Ontology Graph Spec v1 `tools`) on the create-context-graph stores
+create-context-graph's agent tools and default views, written for its full Neo4j graphs, run on the graphs this example
+extracts from the samples: every canonicalQuery tool of each domain, on a copy of its store (store.dumpStore loaded by
+lib/replay.mjs into a fresh in-memory database), with its arguments checked and typed as the page checks them
+(web/console.js toolArgs: never a missing or null parameter, R3). Arguments: a STRING gets the name of the store's
+first kept entity of the tool's kind (else its first kept entity, else "x"); a parameter whose description suggests a
+value ("(default: 10)") that value; a default its default; numbers 10, booleans true, dates 2024-01-01, lists one name.
+Outcome: rows (1 or more), empty (0 rows), or error (the first line of the engine's message). Beside it, what the
+page's note on the tool (web/console.js toolCompat, which never runs the query) predicted: rows, empty, error, an error if
+reached (a clause before a call on a missing index can leave no rows) or checked at run (an index named by a parameter).
+SHOW PROCEDURES lists 31 procedures; SHOW INDEXES on each store equals the page's list of a store's 19 indexes: 27 of 27 stores
+
+domain                 tools  rows empty error   predicted rows/empty/error/if reached/at run
+agent-memory               8     5     3     0   6/2/0/0/0
+conservation               8     5     3     0   6/2/0/0/0
+cybersecurity              8     4     4     0   4/4/0/0/0
+data-journalism            8     4     4     0   5/3/0/0/0
+digital-twin               8     7     1     0   7/1/0/0/0
+education                  8     4     4     0   4/4/0/0/0
+financial-services         8     4     4     0   4/4/0/0/0
+gaming                     9     5     4     0   7/2/0/0/0
+genai-llm-ops              8     4     4     0   7/1/0/0/0
+gis-cartography            8     4     4     0   7/1/0/0/0
+golf-sports                8     2     6     0   7/1/0/0/0
+government                 8     5     3     0   6/2/0/0/0
+healthcare                 8     3     5     0   3/5/0/0/0
+hospitality                8     5     3     0   6/2/0/0/0
+legal                      8     1     6     1   2/5/1/0/0
+manufacturing              8     5     3     0   7/1/0/0/0
+oil-gas                    8     4     4     0   6/2/0/0/0
+options-intelligence      11     0    11     0   2/9/0/0/0
+personal-knowledge         8     5     3     0   6/2/0/0/0
+product-management         8     5     3     0   6/2/0/0/0
+real-estate                8     4     4     0   4/4/0/0/0
+retail-ecommerce           8     4     4     0   5/3/0/0/0
+scientific-research        8     2     6     0   5/3/0/0/0
+software-engineering       8     5     3     0   6/2/0/0/0
+trip-planning              8     3     5     0   7/1/0/0/0
+vacation-industry          8     5     3     0   7/1/0/0/0
+wildlife-management        8     2     6     0   4/4/0/0/0
+all                      220   106   113     1   146/73/1/0/0
+
+the note's prediction against the outcome ("rows" only says a query can return rows, so "rows, got empty" is no miss;
+"an error if reached" allows error or empty; "checked at run" allows any):
+  predicted rows             (146): rows 106, empty 40, error 0
+  predicted empty            ( 73): rows 0, empty 73, error 0
+  predicted error            (  1): rows 0, empty 0, error 1
+  predicted error if reached (  0): rows 0, empty 0, error 0
+  predicted checked at run   (  0): rows 0, empty 0, error 0
+  of the 40 predicted rows that got none, 18 ran on a store with no entity of the tool's kind (its first entity's name was the argument), 22 on a store with one:
+    agent-memory conversation_history, data-journalism source_network, genai-llm-ops experiment_comparison, genai-llm-ops eval_metrics, genai-llm-ops deployment_history, gis-cartography defaultView, golf-sports tournament_standings, hospitality defaultView, manufacturing quality_analysis, manufacturing get_work_orders, oil-gas equipment_health, product-management roadmap_status, retail-ecommerce review_sentiment, software-engineering defaultView, trip-planning find_activities, trip-planning hotel_comparison, trip-planning restaurant_recommendations, trip-planning defaultView, vacation-industry booking_history, vacation-industry defaultView, wildlife-management defaultView, wildlife-management sightings_by_area
+  the (domain, kind) pairs that carry tools: 99, of which 85 have an entity of the kind in their store
+  misses: none
+refused by the page's checks before running: none
+errors, by category: syntax 1
+  syntax: legal expiring_contracts: syntax error: UndefinedVariable: variable 'expiry' not defined
+the tools that returned rows, with their row counts:
+  agent-memory: search_agent 8, tool_usage_stats 1, list_agents 1, defaultView 8, entity_graph 1
+  conservation: search_site 1, list_species 2, defaultView 2, program_effectiveness 1, funding_analysis 2
+  cybersecurity: asset_exposure 1, search_alert 1, list_incidents 1, threat_actor_targets 1
+  data-journalism: search_source 1, defaultView 6, dataset_analysis 1, list_investigations 1
+  digital-twin: search_asset 1, sensor_readings 1, alert_history 1, maintenance_schedule 1, list_assets 2, system_health 2, defaultView 13
+  education: search_student 1, defaultView 2, instructor_load 2, list_courses 2
+  financial-services: search_customer 5, get_customer_decisions 2, defaultView 14, list_accounts 2
+  gaming: list_players 2, get_top_players 2, defaultView 2, item_economy 1, quest_progress 1
+  genai-llm-ops: search_model 1, list_models 2, defaultView 11, prompt_analysis 1
+  gis-cartography: search_feature 1, list_features 3, layer_contents 1, survey_data 1
+  golf-sports: course_stats 1, list_courses 2
+  government: agency_portfolio 1, list_agencies 1, get_agency_by_name 12, defaultView 2, search_program 1
+  healthcare: search_patient 8, list_patients 1, defaultView 8
+  hospitality: search_hotel 1, revenue_metrics 1, list_hotels 2, guest_history 1, service_analysis 1
+  legal: list_cases 1
+  manufacturing: search_machine 1, list_machines 2, defaultView 4, supplier_performance 2, production_metrics 1
+  oil-gas: search_well 1, permit_status 1, list_wells 2, defaultView 12
+  options-intelligence: none
+  personal-knowledge: knowledge_connections 1, list_notes 2, defaultView 8, project_status 1, topic_exploration 1
+  product-management: search_feature 1, dependency_map 1, list_features 2, defaultView 2, metric_analysis 1
+  real-estate: list_properties 2, defaultView 1, agent_performance 1, market_trends 1
+  retail-ecommerce: search_customer 1, list_customers 1, defaultView 3, campaign_performance 1
+  scientific-research: dataset_usage 1, experiment_results 1
+  software-engineering: search_developer 6, list_repositories 1, get_repository_by_name 4, get_service_health 1, get_deployment_history 1
+  trip-planning: search_destination 1, list_destinations 2, trip_budget 2
+  vacation-industry: search_resort 1, list_resorts 1, guest_preferences 1, seasonal_analysis 1, package_comparison 1
+  wildlife-management: list_species 2, habitat_analysis 1
+each copy's content digest after its tools ran: unchanged on 27 of 27 (no tool wrote)
+
+the note on index procedures (toolCompat) against the engine. A missing index errors once the query reaches the call
+(IndexDoesNotExist, for both index kinds); a null query vector returns no rows even then (R23). The note says no rows when a
+required MATCH before the call matches nothing or the vector is never written, an error when the call is certainly
+reached, an error if reached when a clause before it can leave no rows (a MATCH, an UNWIND, a subquery, ...), and
+checked at run for an index named by a parameter. Each case: predicted, the outcome, and whether the outcome is one the
+prediction allows (rows also allows empty; an error if reached allows error or empty; checked at run allows any).
+  financial-services find_similar_decisions, extracted, no index: MATCH (d:Decision {decision_id: $decision_id}) CALL db.index.vector.queryNodes('decision_embeddings', 5, d.embedding) YIELD node, score WHERE node.decision_id <> $decision_id RETURN node AS similar_decision, score ORDER BY score DESC
+    predicted empty (it matches on decision_id, which the extractor never writes); got empty: allowed
+  financial-services find_similar_decisions, extracted, with the index: MATCH (d:Decision {decision_id: $decision_id}) CALL db.index.vector.queryNodes('decision_embeddings', 5, d.embedding) YIELD node, score WHERE node.decision_id <> $decision_id RETURN node AS similar_decision, score ORDER BY score DESC
+    predicted empty (it matches on decision_id, which the extractor never writes); got empty: allowed
+  financial-services find_similar_decisions, decision_id and embedding written by hand, no index: MATCH (d:Decision {decision_id: $decision_id}) CALL db.index.vector.queryNodes('decision_embeddings', 5, d.embedding) YIELD node, score WHERE node.decision_id <> $decision_id RETURN node AS similar_decision, score ORDER BY score DESC
+    predicted empty (it matches on decision_id, which the extractor never writes); got error (IndexDoesNotExist: decision_embeddings): outside the note's premise
+  financial-services find_similar_decisions, decision_id and embedding written by hand, with the index: MATCH (d:Decision {decision_id: $decision_id}) CALL db.index.vector.queryNodes('decision_embeddings', 5, d.embedding) YIELD node, score WHERE node.decision_id <> $decision_id RETURN node AS similar_decision, score ORDER BY score DESC
+    predicted empty (it matches on decision_id, which the extractor never writes); got rows: outside the note's premise
+  software-engineering find_similar_incidents, extracted, no index: MATCH (i:Incident {incident_id: $incident_id}) CALL db.index.vector.queryNodes('incident_embeddings', 5, i.embedding) YIELD node, score WHERE node.incident_id <> $incident_id RETURN node AS similar_incident, score ORDER BY score DESC
+    predicted empty (it matches on incident_id, which the extractor never writes); got empty: allowed
+  software-engineering find_similar_incidents, extracted, with the index: MATCH (i:Incident {incident_id: $incident_id}) CALL db.index.vector.queryNodes('incident_embeddings', 5, i.embedding) YIELD node, score WHERE node.incident_id <> $incident_id RETURN node AS similar_incident, score ORDER BY score DESC
+    predicted empty (it matches on incident_id, which the extractor never writes); got empty: allowed
+  software-engineering find_similar_incidents, incident_id and embedding written by hand, no index: MATCH (i:Incident {incident_id: $incident_id}) CALL db.index.vector.queryNodes('incident_embeddings', 5, i.embedding) YIELD node, score WHERE node.incident_id <> $incident_id RETURN node AS similar_incident, score ORDER BY score DESC
+    predicted empty (it matches on incident_id, which the extractor never writes); got error (IndexDoesNotExist: incident_embeddings): outside the note's premise
+  software-engineering find_similar_incidents, incident_id and embedding written by hand, with the index: MATCH (i:Incident {incident_id: $incident_id}) CALL db.index.vector.queryNodes('incident_embeddings', 5, i.embedding) YIELD node, score WHERE node.incident_id <> $incident_id RETURN node AS similar_incident, score ORDER BY score DESC
+    predicted empty (it matches on incident_id, which the extractor never writes); got rows: outside the note's premise
+  a full-text index the store has: MATCH (s:_Sentence) WITH s LIMIT 1 CALL db.index.fulltext.queryNodes('sentence_text', 'Whitlock') YIELD node RETURN node
+    predicted rows; got rows: allowed
+  the call first, then a MATCH that finds nothing: CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node MATCH (n:Nope) RETURN n
+    predicted error (db.index.fulltext.queryNodes needs the index 'nope', which this store does not have: the call errors); got error (IndexDoesNotExist: nope): allowed
+  a MATCH on a label the ontology lacks before the call: MATCH (d:Nope) CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node
+    predicted empty (it needs the label Nope, which this ontology does not have); got empty: allowed
+  a MATCH on a kind before the call: MATCH (d:Decision) CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node
+    predicted error if reached (db.index.fulltext.queryNodes needs the index 'nope', which this store does not have: the call errors if the query reaches it (a clause before it can leave no rows)); got error (IndexDoesNotExist: nope): allowed
+  a required MATCH on a never-written property before the call: MATCH (p:Person {person_id: 'P-1'}) CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node
+    predicted empty (it matches on person_id, which the extractor never writes); got empty: allowed
+  an OPTIONAL MATCH, then a never-written vector: OPTIONAL MATCH (d:Decision {decision_id: 'x'}) CALL db.index.vector.queryNodes('nope', 5, d.embedding) YIELD node RETURN node
+    predicted empty (db.index.vector.queryNodes needs the index 'nope', which this store does not have, but its query vector d.embedding is never written (null), and a null query vector returns no rows even on a missing index); got empty: allowed
+  a literal null vector: MATCH (p:Person) WITH p LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, null) YIELD node RETURN node
+    predicted empty (db.index.vector.queryNodes needs the index 'nope', which this store does not have, but its query vector is null, and a null query vector returns no rows even on a missing index); got empty: allowed
+  a literal vector after a MATCH: MATCH (p:Person) WITH p LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, [1.0, 0.0, 0.0]) YIELD node RETURN node
+    predicted error if reached (db.index.vector.queryNodes needs the index 'nope', which this store does not have: the call errors if the query reaches it (a clause before it can leave no rows)); got error (IndexDoesNotExist: nope): allowed
+  a vector parameter after a MATCH: MATCH (p:Person) WITH p LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, $v) YIELD node RETURN node
+    predicted error if reached (db.index.vector.queryNodes needs the index 'nope', which this store does not have: the call errors if the query reaches it (a clause before it can leave no rows)); got error (IndexDoesNotExist: nope): allowed
+  an empty UNWIND before the call: UNWIND [] AS x CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node
+    predicted error if reached (db.index.fulltext.queryNodes needs the index 'nope', which this store does not have: the call errors if the query reaches it (a clause before it can leave no rows)); got empty: allowed
+  a WHERE on a never-written property before the call: MATCH (p:Person) WHERE p.ssn = 'x' CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node
+    predicted empty (its WHERE needs ssn, which the extractor never writes); got empty: allowed
+  a coalesce() vector: MATCH (p:Person) WITH p LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, coalesce(p.embedding, [1.0, 0.0])) YIELD node RETURN node
+    predicted error if reached (db.index.vector.queryNodes needs the index 'nope', which this store does not have: the call errors if the query reaches it (a clause before it can leave no rows)); got error (IndexDoesNotExist: nope): allowed
+  the call alone: CALL db.index.vector.queryNodes('nope', 5, [1.0, 0.0]) YIELD node RETURN node
+    predicted error (db.index.vector.queryNodes needs the index 'nope', which this store does not have: the call errors); got error (IndexDoesNotExist: nope): allowed
+  the call alone, the name in double quotes: CALL db.index.fulltext.queryNodes("nope", "x") YIELD node RETURN node
+    predicted error (db.index.fulltext.queryNodes needs the index 'nope', which this store does not have: the call errors); got error (IndexDoesNotExist: nope): allowed
+  the index named by a parameter: CALL db.index.fulltext.queryNodes($i, 'x') YIELD node RETURN node
+    predicted checked at run (db.index.fulltext.queryNodes takes its index from $i, so whether that index exists is checked at run (an error when it does not)); got error (IndexDoesNotExist: nope): allowed
+  the index named by a parameter, one the store has: CALL db.index.fulltext.queryNodes($i, 'Whitlock') YIELD node RETURN node
+    predicted checked at run (db.index.fulltext.queryNodes takes its index from $i, so whether that index exists is checked at run (an error when it does not)); got rows: allowed
+  queryRelationships alone: CALL db.index.vector.queryRelationships('nope', 5, [1.0, 0.0]) YIELD relationship RETURN relationship
+    predicted error (db.index.vector.queryRelationships needs the index 'nope', which this store does not have: the call errors); got error (IndexDoesNotExist: nope): allowed
+  a never-written vector, spaced: MATCH (p:Person) WITH p LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, p . embedding) YIELD node RETURN node
+    predicted empty (db.index.vector.queryNodes needs the index 'nope', which this store does not have, but its query vector p.embedding is never written (null), and a null query vector returns no rows even on a missing index); got empty: allowed
+  a never-written vector on a WITH alias: MATCH (p:Person) WITH p AS q LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, q.embedding) YIELD node RETURN node
+    predicted empty (db.index.vector.queryNodes needs the index 'nope', which this store does not have, but its query vector q.embedding is never written (null), and a null query vector returns no rows even on a missing index); got empty: allowed
+  a STRING property as the vector: MATCH (p:Person) WITH p LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, p.name) YIELD node RETURN node
+    predicted error if reached (db.index.vector.queryNodes needs the index 'nope', which this store does not have: the call errors if the query reaches it (a clause before it can leave no rows)); got error (type error: InvalidValueType: vector search requires a numeric list or VECTOR): allowed
+  an empty MATCH after a WITH, before the call: MATCH (p:Person) WITH p MATCH (d:Nope) CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node
+    predicted empty (it needs the label Nope, which this ontology does not have); got empty: allowed
+  a subquery that finds nothing before the call: CALL { MATCH (d:Nope) RETURN d } CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node
+    predicted error if reached (db.index.fulltext.queryNodes needs the index 'nope', which this store does not have: the call errors if the query reaches it (a clause before it can leave no rows)); got empty: allowed
+  a MATCH that finds nothing after a call a clause may not reach: MATCH (p:Person) WITH p LIMIT 1 CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node MATCH (x:Nope) RETURN x
+    predicted error if reached (db.index.fulltext.queryNodes needs the index 'nope', which this store does not have: the call errors if the query reaches it (a clause before it can leave no rows)); got error (IndexDoesNotExist: nope): allowed
+
+toolArgs on an empty input with a declared default (a STRING read only through toInteger(), LIMIT toInteger($limit)):
+  default 10: sent {"limit":"10"}
+  default "7": sent {"limit":"7"}
+  default "abc": refused: $limit (STRING, a whole number): the default "abc" is not a whole number (the query reads it through toInteger(), which would cut 2.7 to 2 and make "abc" null).
+  default "-3": refused: $limit (STRING, a whole number): the default "-3" is negative; a LIMIT or SKIP count is 0 or more.
+  default 2.5: refused: $limit (STRING, a whole number): the default 2.5 is not a whole number (the query reads it through toInteger(), which would cut 2.7 to 2 and make "abc" null).
+
+the graph tab's prefill (web/console.js prefillChoice, prefillPlan): for every tool, as if an entity of the kind it sits
+on were clicked, the parameter that gets the entity's name. 'property': the query compares it with a name-like property
+of a variable of that kind (name, title, common_name, ...); 'name': else it is named like a name or a search; 'none':
+else no parameter takes a name. Only a comparison that filters the rows counts for 'property' (not one in an OPTIONAL
+MATCH or a subquery), and any comparison with a property of another kind's variable rules out 'name'. The side panel
+runs a tool whose parameters all have a value (the name, a default, a value its description suggests, a first option),
+as a tool about the kind when the name goes nowhere, and asks for the ones with no value otherwise.
+  220 tools: no parameters 33, property 102, name 1, none 84
+  the side panel's button: runs at once for 167 (33 without parameters, 102 with the name and the rest with a value, 32 with every parameter at its start, as a tool about the kind), asks for the parameters that have no value for 53
+  prefilled, by parameter: query 75, name 8, asset_name 4, agent_name 3, destination 3, model_name 3, case_number 1, instructor 1, itinerary_name 1, property_id 1, service 1, species_name 1, system_name 1
+  by its name alone: data-journalism claim_verification $query
+  tools with none, by parameter: limit 28, id 22, ticker 6, course_code 3, incident_id 3, patient_id 3, customer_id 2, days 2, decision_id 2, threshold 2, case_number 1, habitat_name 1, matter_id 1, min_gex 1, option_type 1, pr_id 1, property_id 1, provider_id 1, quarter 1, query 1, severity_levels 1, status 1, strategy_type 1
+  digital-twin list_assets on an Asset named "pump P-12" (only $limit, read through toInteger()): fills {}, runs with {"limit":"10"}, as a tool about the kind
+  financial-services list_accounts on the Account "ACC-2207": runs with {"limit":"10"}, as a tool about the kind
+  financial-services get_account_by_id on the Account "ACC-2207": asks for $id
+  synthetic tools, on a Person:
+    function-wrapped equality on its name: q/property (compared with p.name of (p:Person) (=))
+    a regular expression built around the parameter: query/name (named like a name or a search)
+    <> on another kind's name: -/-
+    =~ with concatenation on another kind's name: -/-
+    an OPTIONAL MATCH on its own name: name/name (named like a name or a search)
+    an OPTIONAL MATCH on another kind's name: -/-
+    a subquery on another kind's name: -/-
+    an unlabelled neighbour's name: -/-
+  a prefilled parameter that is a whole number, a LIMIT or SKIP count, or id-like with no name-like property: none
+
+## the console's bookkeeping filter (web/console.js consoleResult: "Hide the example's bookkeeping", off by default)
+The extraction's own records are bookkeeping; the ontology layer and the published entities are content. A row is left
+out when a top-level column is a bookkeeping node or relationship, or a path through one; inside lists and maps those
+values are dropped and the row stays. NVL draws only what the shown rows hold, capped after the filter (1,000 nodes,
+3,000 relationships). _IN and _OF are the ontology's between two ontology-layer nodes and bookkeeping otherwise; the
+console worker sends the store's ontology node ids (ONTOLOGY_NODE_IDS) whenever the rows hold one.
+  bookkeeping labels: _Document, _Section, _Sentence, _Inference, _InferencePart, _Mention, _Claim, _Run, _Verdict, _Gold
+  content labels: _Ontology, _Kind, _LinkType, _Alias, _Entity (and every ontology label)
+  bookkeeping types: _HEAD, _TAIL, _EVIDENCE, _READ, _ON, _INFERRED; content: _DOMAIN, _RANGE (and every ontology type); by their ends: _IN, _OF
+  ontology.js's internal labels (15) and types (10) each classified exactly once: yes, yes
+on a copy of the financial-services store:
+  queries/05-ontology-graph.cypher: 24 rows; on: 24 shown, "", NVL 21 nodes and 24 relationships; off: NVL 21 and 24
+  queries/01-typed-graph.cypher: 10 rows; on: 10 shown, "", NVL 11 nodes and 10 relationships; off: NVL 11 and 10
+  each kind -[:_IN]-> the ontology, the relationships alone: 22 rows; on: 22 shown, "", NVL 0 nodes and 22 relationships; off: NVL 0 and 22
+  each sentence -[:_IN]-> its section, the relationships alone: 13 rows; on: 0 shown, "13 of 13 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 0 and 13
+  mentions, their _OF and entities: 24 rows; on: 0 shown, "24 of 24 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 36 and 24
+  paths through _OF: 24 rows; on: 0 shown, "24 of 24 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 36 and 24
+  each entity's key and collect() of its mentions: 12 rows; on: 12 shown, "24 values inside lists/maps hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 24 and 0
+  a map of a mention and its entity: 24 rows; on: 24 shown, "24 values inside lists/maps hidden (bookkeeping).", NVL 12 nodes and 0 relationships; off: NVL 36 and 0
+  the persons' untyped neighbours (financial-services' defaultView): 14 rows; on: 6 shown, "8 of 14 rows hidden (bookkeeping).", NVL 7 nodes and 6 relationships; off: NVL 15 and 14
+  every node: 158 rows; on: 35 shown, "123 of 158 rows hidden (bookkeeping).", NVL 35 nodes and 0 relationships; off: NVL 158 and 0
+on a store of the generic v1 document (harness/fixtures.mjs GENERIC_YAML, with a gazetteer), its ontology applied:
+  the gazetteer: _Alias -[:_OF]-> _Kind: 4 rows; on: 4 shown, "", NVL 7 nodes and 4 relationships; off: NVL 7 and 4
+  the gazetteer's _OF relationships alone: 4 rows; on: 4 shown, "", NVL 0 nodes and 4 relationships; off: NVL 0 and 4
+the cap after the filter: 1,200 _Sentence nodes created before 300 (:_Entity:Person) nodes, MATCH (n) RETURN n:
+  on: the table 300 rows ("1,200 of 1,500 rows hidden (bookkeeping)."); NVL 300 nodes, 300 of them entities; status: ""
+  off: the table 1,500 rows (""); NVL 1,000 nodes, 0 of them entities; status: "The graph shows the first 1,000 of 1,500 nodes: the console draws at most 1,000 nodes (relationship ends included) and 3,000 relationships."

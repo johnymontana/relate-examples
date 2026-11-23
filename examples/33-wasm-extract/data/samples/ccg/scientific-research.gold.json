@@ -1,0 +1,30 @@
+{
+  "entities": [
+    {"name": "Halima Ouattara", "type": "Person"},
+    {"name": "Eastmoor University", "type": "Organization"},
+    {"name": "Nairobi", "type": "Location"},
+    {"name": "Soil Ecology Congress", "type": "Event"},
+    {"name": "Jonas Berg", "type": "Person"},
+    {"name": "Drought Roots paper", "type": "Paper"},
+    {"name": "Kitui Soil Moisture Dataset", "type": "Dataset"},
+    {"name": "Sorghum Yield Dataset", "type": "Dataset"},
+    {"name": "Root Atlas paper", "type": "Paper"},
+    {"name": "Soil Resilience Grant", "type": "Grant"},
+    {"name": "Dryland Futures Grant", "type": "Grant"},
+    {"name": "Lowland Drought experiment", "type": "Experiment"},
+    {"name": "Highland Drought experiment", "type": "Experiment"}
+  ],
+  "relations": [
+    {"source": "Halima Ouattara", "target": "Eastmoor University", "type": "WORKS_FOR"},
+    {"source": "Eastmoor University", "target": "Nairobi", "type": "LOCATED_AT"},
+    {"source": "Halima Ouattara", "target": "Soil Ecology Congress", "type": "PARTICIPATED_IN"},
+    {"source": "Jonas Berg", "target": "Soil Ecology Congress", "type": "PARTICIPATED_IN"},
+    {"source": "Drought Roots paper", "target": "Kitui Soil Moisture Dataset", "type": "USED_DATASET"},
+    {"source": "Drought Roots paper", "target": "Sorghum Yield Dataset", "type": "USED_DATASET"},
+    {"source": "Drought Roots paper", "target": "Root Atlas paper", "type": "CITED"},
+    {"source": "Lowland Drought experiment", "target": "Kitui Soil Moisture Dataset", "type": "PRODUCED_DATASET"},
+    {"source": "Lowland Drought experiment", "target": "Soil Resilience Grant", "type": "FUNDED_BY"},
+    {"source": "Highland Drought experiment", "target": "Dryland Futures Grant", "type": "FUNDED_BY"},
+    {"source": "Highland Drought experiment", "target": "Lowland Drought experiment", "type": "REPLICATED"}
+  ]
+}

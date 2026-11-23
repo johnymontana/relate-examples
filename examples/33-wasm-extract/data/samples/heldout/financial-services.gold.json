@@ -1,0 +1,27 @@
+{
+  "entities": [
+    {"name": "Priya Sandhu", "type": "Person"},
+    {"name": "Wexcombe Private Bank", "type": "Organization"},
+    {"name": "Tomas Lind", "type": "Person"},
+    {"name": "Glasgow", "type": "Location"},
+    {"name": "ACC-5310", "type": "Account"},
+    {"name": "Helen Grieve", "type": "Person"},
+    {"name": "ACC-5311", "type": "Account"},
+    {"name": "Income Switch Decision", "type": "Decision"},
+    {"name": "TX-9012", "type": "Transaction"},
+    {"name": "Client Suitability Policy", "type": "Policy"},
+    {"name": "Growth Review Decision", "type": "Decision"}
+  ],
+  "relations": [
+    {"source": "Priya Sandhu", "target": "Wexcombe Private Bank", "type": "WORKS_FOR"},
+    {"source": "Tomas Lind", "target": "Wexcombe Private Bank", "type": "WORKS_FOR"},
+    {"source": "Wexcombe Private Bank", "target": "Glasgow", "type": "LOCATED_AT"},
+    {"source": "Helen Grieve", "target": "ACC-5310", "type": "OWNS"},
+    {"source": "Helen Grieve", "target": "ACC-5311", "type": "OWNS"},
+    {"source": "Tomas Lind", "target": "ACC-5310", "type": "MANAGES"},
+    {"source": "Income Switch Decision", "target": "TX-9012", "type": "CAUSED"},
+    {"source": "Income Switch Decision", "target": "Client Suitability Policy", "type": "APPLIED_POLICY"},
+    {"source": "Income Switch Decision", "target": "Tomas Lind", "type": "ADVISED_BY"},
+    {"source": "Income Switch Decision", "target": "Growth Review Decision", "type": "PRECEDED_BY"}
+  ]
+}

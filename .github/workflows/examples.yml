@@ -1,0 +1,170 @@
+# Runs `uv run pytest -q` and every example offline on linux/amd64 against the pinned Relate release.
+# Why each step exists and the cache layout: ci/README.md.
+name: examples
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+concurrency:
+  group: examples-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  RELATE_VERSION: v1.2.0
+  RELATE_TELEMETRY: "off"   # examples run offline; no CLI call phones home from CI
+  # Under an agent harness the relate CLI turns agent mode on for piped output (toon, 100-row cap).
+  # CI sets none of its variables, so this changes nothing here; it keeps a run started by an agent
+  # (act, a self-hosted runner in an agent session) identical to CI. scripts/env.sh sets them too.
+  RELATE_MAX_ROWS: "0"
+  RELATE_AGENT_MODE: "0"
+defaults:
+  run:
+    shell: bash   # bash --noprofile --norc -eo pipefail {0}
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    # On a cold cache example 33 adds a gliner-rs build (cargo install of wasm-pack and
+    # wasm-bindgen, then the crate), 304 MB of weights and Chromium, before its own run.
+    timeout-minutes: 60
+    env:
+      # In this job a missing optional dependency FAILS instead of printing SKIP and passing.
+      EXAMPLES_REQUIRE: wasm,gliner,browser
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The relate CLI, linux-amd64, from the public release, checked against ci/relate-<ver>.sha256
+      # (the release's own SHA256SUMS, committed when the pin was bumped).
+      - name: Install relate ${{ env.RELATE_VERSION }}
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL --retry 3 -o "$RUNNER_TEMP/relate-linux-amd64" \
+            "https://github.com/relatedb/relate/releases/download/${RELATE_VERSION}/relate-linux-amd64"
+          (cd "$RUNNER_TEMP" && grep ' relate-linux-amd64$' "$GITHUB_WORKSPACE/ci/relate-${RELATE_VERSION#v}.sha256" | sha256sum -c -)
+          install -m 0755 "$RUNNER_TEMP/relate-linux-amd64" "$HOME/.local/bin/relate"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: test "$(relate --version | head -1)" = "Relate ${RELATE_VERSION}"
+
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.11.29"        # the uv that wrote uv.lock; bump both together
+          python-version: "3.12"    # the interpreter expected/ was recorded with
+          cache-dependency-glob: uv.lock
+      - run: uv sync --locked
+      - name: The binding and the CLI are the same engine
+        run: test "$(uv run python -c 'import relate; print(relate.__version__)')" = "${RELATE_VERSION#v}"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: examples/33-wasm-extract/package-lock.json
+
+      # ---- Example 33 (keys wasm, gliner, browser) ------------------------------------------------
+      # gliner-rs v0.3.1 (4fa741e, the script's default) built to WASM. On a hit the script only
+      # re-checks the build (--check semantics); on a miss Rust 1.97.1 is set up with the
+      # wasm32 target, then the script installs wasm-pack 0.15.0 and wasm-bindgen-cli 0.2.128
+      # with cargo install --locked into .cache/wasm-tools (cached separately) and builds.
+      # The .wasm differs by build host, so it is not byte-pinned: expected/model.txt pins the
+      # behaviour instead (scripts/build-gliner-wasm.sh).
+      - name: Restore the gliner-rs WASM build
+        id: gliner-wasm
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/gliner-wasm
+          key: gliner-wasm-${{ runner.os }}-4fa741e-${{ hashFiles('scripts/build-gliner-wasm.sh') }}
+      - name: Restore wasm-pack and wasm-bindgen
+        id: wasm-tools
+        if: steps.gliner-wasm.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/wasm-tools
+          key: wasm-tools-${{ runner.os }}-4fa741e-${{ hashFiles('scripts/build-gliner-wasm.sh') }}
+      # Rust 1.97.1 becomes rustup's default from here on.
+      - if: steps.gliner-wasm.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@766a42937d994bd78bb4591385445c188ccb3f09  # 1.97.1 branch (toolchain: 1.97.1 in its action.yml)
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Build gliner-rs to WASM
+        run: scripts/build-gliner-wasm.sh
+      - if: steps.gliner-wasm.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/gliner-wasm
+          key: ${{ steps.gliner-wasm.outputs.cache-primary-key }}
+      - if: steps.gliner-wasm.outputs.cache-hit != 'true' && steps.wasm-tools.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/wasm-tools
+          key: ${{ steps.wasm-tools.outputs.cache-primary-key }}
+
+      # GLiNER2.5-small-v1 from the Hugging Face Hub at the pinned revision (no auth), every file
+      # checked against ci/gliner2.5-small-v1.sha256. Exports GLINER_SMALL_DIR.
+      - name: Restore the GLiNER2.5 weights
+        id: gliner
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/gliner
+          key: gliner-weights-${{ hashFiles('ci/gliner2.5-*.sha256') }}
+      - name: Fetch GLiNER2.5-small-v1
+        run: scripts/fetch-gliner.sh small
+      - if: steps.gliner.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/gliner
+          key: ${{ steps.gliner.outputs.cache-primary-key }}
+
+      # 33's own package-lock.json: @relate/relate-wasm (the Relate WASM bundle, its sha512
+      # integrity pinned there), NVL 2.0.0, js-yaml, esbuild, playwright 1.63.0; --omit=peer
+      # skips NVL's unused neo4j-driver peer. Then esbuild's NVL vendor bundle.
+      - name: Example 33's npm packages and the NVL vendor bundle
+        run: |
+          npm ci --omit=peer --prefix examples/33-wasm-extract
+          npm run --prefix examples/33-wasm-extract vendor
+      # Playwright's Chromium (the browser section). The browser download is cached; its system
+      # libraries are installed on every run.
+      - name: Restore Playwright's Chromium
+        id: playwright
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('examples/33-wasm-extract/package-lock.json') }}
+      - name: Install Chromium for Playwright
+        env:
+          HIT: ${{ steps.playwright.outputs.cache-hit }}
+        run: |
+          if [[ "$HIT" == true ]]; then
+            npx --prefix examples/33-wasm-extract playwright install-deps chromium
+          else
+            npx --prefix examples/33-wasm-extract playwright install --with-deps chromium
+          fi
+      - if: steps.playwright.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.playwright.outputs.cache-primary-key }}
+
+      # No .env in CI: offline runs.
+      - run: uv run pytest -q
+      - name: The bundled ontologies match their originals
+        run: node examples/33-wasm-extract/harness/convert.mjs --check
+      - name: Run every example offline
+        run: |
+          failed=()
+          echo "| example | result | s |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          for r in examples/*/run.sh; do
+            name="$(basename "$(dirname "$r")")"; log="$RUNNER_TEMP/$name.log"; start=$SECONDS
+            echo "::group::$name"
+            rc=0; "$r" 2>&1 | tee "$log" || rc=$?
+            echo "::endgroup::"
+            if (( rc != 0 )); then
+              result="FAIL (exit $rc)"; failed+=("$name")
+              echo "::error title=$name::run.sh exited $rc"
+            elif grep -q '^SKIP' "$log"; then
+              result="$(grep -m1 '^SKIP' "$log" | tr '|' '/')"
+            else
+              result=pass
+            fi
+            echo "| $name | $result | $((SECONDS - start)) |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          if (( ${#failed[@]} > 0 )); then echo "failed: ${failed[*]}"; exit 1; fi

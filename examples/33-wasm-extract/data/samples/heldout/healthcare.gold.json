@@ -1,0 +1,31 @@
+{
+  "entities": [
+    {"name": "Mirela Stan", "type": "Person"},
+    {"name": "Larkfield Community Health", "type": "Organization"},
+    {"name": "Leeds", "type": "Location"},
+    {"name": "Rafael Okoro", "type": "Patient"},
+    {"name": "type 2 diabetes", "type": "Diagnosis"},
+    {"name": "chronic kidney disease", "type": "Diagnosis"},
+    {"name": "Dr. Hannah Viljoen", "type": "Provider"},
+    {"name": "Dr. Kofi Mensah", "type": "Provider"},
+    {"name": "metformin", "type": "Medication"},
+    {"name": "lisinopril", "type": "Medication"},
+    {"name": "iodinated contrast", "type": "Medication"},
+    {"name": "Insulin therapy", "type": "Treatment"},
+    {"name": "insulin glargine", "type": "Medication"},
+    {"name": "empagliflozin", "type": "Medication"}
+  ],
+  "relations": [
+    {"source": "Mirela Stan", "target": "Larkfield Community Health", "type": "WORKS_FOR"},
+    {"source": "Larkfield Community Health", "target": "Leeds", "type": "LOCATED_AT"},
+    {"source": "Rafael Okoro", "target": "type 2 diabetes", "type": "DIAGNOSED_WITH"},
+    {"source": "Rafael Okoro", "target": "chronic kidney disease", "type": "DIAGNOSED_WITH"},
+    {"source": "Rafael Okoro", "target": "Dr. Hannah Viljoen", "type": "TREATED_BY"},
+    {"source": "Rafael Okoro", "target": "Dr. Kofi Mensah", "type": "TREATED_BY"},
+    {"source": "Dr. Hannah Viljoen", "target": "metformin", "type": "PRESCRIBED"},
+    {"source": "Dr. Kofi Mensah", "target": "lisinopril", "type": "PRESCRIBED"},
+    {"source": "metformin", "target": "iodinated contrast", "type": "CONTRAINDICATED_WITH"},
+    {"source": "Insulin therapy", "target": "insulin glargine", "type": "USES"},
+    {"source": "Insulin therapy", "target": "type 2 diabetes", "type": "TREATS"}
+  ]
+}
