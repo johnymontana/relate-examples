@@ -10,7 +10,7 @@ them here, and so is every tampered one: each must exit 3 before anything is wri
 The native tests run the snapshot route with the project engine's CLI: `relate` on PATH, and
 only when its --version is the relate-db version the project env holds (pyproject's pin); they
 SKIP, saying which, otherwise. Tests named test_pin_* assert today's engine behaviour
-(examples/33-wasm-extract/NOTES.md names the row); when one fails, re-verify it and update
+(examples/01-wasm-extract/NOTES.md names the row); when one fails, re-verify it and update
 lib/opfsfmt's docstring.
 """
 

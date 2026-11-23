@@ -11,7 +11,7 @@ on `PATH` (`relate --version`'s first line is `Relate v1.2.0`), the `relate-db==
 (pinned in each browser example's `package.json` and `package-lock.json`). Browser examples are
 published as a static GitHub Pages project site, `https://johnymontana.github.io/relate-examples/`.
 
-There is one example so far: `examples/33-wasm-extract/` (markdown to a knowledge graph in a browser
+There is one example so far: `examples/01-wasm-extract/` (markdown to a knowledge graph in a browser
 tab: GLiNER2.5 through gliner-rs WASM, Relate's WASM build in OPFS, NVL, a read-only Cypher console).
 Its `README.md` describes it as built, and its `NOTES.md` lists every Relate 1.2.0 behaviour it
 depends on or pins (rows `R1`…`R23`, each with a minimal repro) plus the design ids (D, E, G, O, V,
@@ -25,19 +25,19 @@ uv sync                                             # relate-db 1.2.0 + pytest
 rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
 scripts/build-gliner-wasm.sh [--check|--force]      # gliner-rs v0.3.1 (4fa741e) → .cache/gliner-wasm/; prints GLINER_WASM_DIR
 scripts/fetch-gliner.sh small|base [--check|--pin]  # GLiNER2.5 weights → .cache/gliner/, checked against ci/gliner2.5-*.sha256
-(cd examples/33-wasm-extract && npm ci --omit=peer && npm run vendor && npx playwright install chromium)
+(cd examples/01-wasm-extract && npm ci --omit=peer && npm run vendor && npx playwright install chromium)
 
 uv run pytest -q                                    # lib/tests; testpaths = examples + lib/tests, so run from the root
-examples/33-wasm-extract/run.sh                     # offline, ~8-10 min, diffed against expected/ (caffeinate -i on a laptop)
-examples/33-wasm-extract/run.sh --update            # rewrite expected/ (only after reading the diff)
-examples/33-wasm-extract/run.sh --site              # dist/ served as Pages serves it, on EX33_PORT (default 8733)
-examples/33-wasm-extract/run.sh --serve             # development server from web/ (?models=local: weights from .cache/gliner)
-node examples/33-wasm-extract/harness/convert.mjs [--check]   # regenerate (or compare) the bundled v1 ontologies
+examples/01-wasm-extract/run.sh                     # offline, ~8-10 min, diffed against expected/ (caffeinate -i on a laptop)
+examples/01-wasm-extract/run.sh --update            # rewrite expected/ (only after reading the diff)
+examples/01-wasm-extract/run.sh --site              # dist/ served as Pages serves it, on EX01_PORT (default 8701)
+examples/01-wasm-extract/run.sh --serve             # development server from web/ (?models=local: weights from .cache/gliner)
+node examples/01-wasm-extract/harness/convert.mjs [--check]   # regenerate (or compare) the bundled v1 ontologies
 node site/build.mjs [--no-build]                    # the Pages site into site/dist/
 python3 -I lib/opfsfmt.py check|to-dir|to-tar ...   # strict guard for a store exported from OPFS
 ```
 
-While iterating on 33, run one section's harness directly from the example's directory, after
+While iterating on 01, run one section's harness directly from the example's directory, after
 `source ../../scripts/env.sh` (`node harness/probes.mjs 1.2.0 > out/probes.txt`,
 `node harness/run.mjs 1.2.0 --out out`, `node harness/drive.mjs --out out/browser.txt`,
 `uv run --project ../.. python -I harness/native.py`) instead of the whole `run.sh`.
@@ -59,7 +59,7 @@ While iterating on 33, run one section's harness directly from the example's dir
 - Never run two `run.sh` in one example directory at once (each deletes `out/` and `work/`). Check
   for leftover servers and Chromium processes after a browser run.
 - `EXAMPLES_REQUIRE` (comma list): a missing optional dependency prints `SKIP:` and exits 0 unless
-  its key is named, then it fails. 33's keys: `wasm` (Node 20+, the pinned bundle, npm pins, NVL
+  its key is named, then it fails. 01's keys: `wasm` (Node 20+, the pinned bundle, npm pins, NVL
   vendor bundle, gliner-rs build), `gliner` (small-v1 weights), `browser` (Playwright's Chromium;
   only that section skips). The native section needs `relate` 1.2.0 on `PATH` and the matching
   binding; a different version fails at once.
@@ -74,7 +74,7 @@ While iterating on 33, run one section's harness directly from the example's dir
 - `lib/replay.mjs` and `lib/replay.py`: `dump`/`load`/`digest`/`content_digest` in one JSON format
   that both write byte for byte alike, graph types included. The JS side has its own parser: never
   pass a dump through `JSON.parse`/`JSON.stringify`/`postMessage` (send `canon(d)` text).
-- `lib/opfsfmt.py` (stdlib) and its browser twin `examples/33-wasm-extract/web/opfs.js`: the strict
+- `lib/opfsfmt.py` (stdlib) and its browser twin `examples/01-wasm-extract/web/opfs.js`: the strict
   format guard, pinned by `VERIFIED = "1.2.0"`; exit 3 on anything else.
 - `lib/tests/`: `test_opfsfmt.py`, `test_replay.py`, `test_replay_js.py`, `test_site_build.py`
   (`conftest.py` puts `lib/` on `sys.path`; `lib/` is a plain directory, not a package).
@@ -99,15 +99,15 @@ While iterating on 33, run one section's harness directly from the example's dir
   versioned `assets/<name>-<version>/`, and `.nojekyll`. `site/build.mjs` enforces this.
   `harness/serve.mjs --site` emulates Pages (base `/relate-examples/`, no custom headers,
   `max-age=600`, 301 to the trailing slash, 404 otherwise); keep it faithful.
-- **Per-origin names** carry the example's prefix (`ex33-…` stores and caches, `ex33.*`
-  `localStorage` keys, `EX33_*` env vars): every example shares one origin.
+- **Per-origin names** carry the example's prefix (`ex01-…` stores and caches, `ex01.*`
+  `localStorage` keys, `EX01_*` env vars): every example shares one origin.
 - **Engine pins move together.** A Relate upgrade bumps `@relate/relate-wasm` (package.json and
   lockfile), `relate-db` (pyproject and `uv.lock`), `ci/relate-<ver>.sha256`, `RELATE_VERSION` in
   `examples.yml`, `ver` in `run.sh`, `VERIFIED` in `lib/opfsfmt.py`, then every `NOTES.md` row is
   re-checked.
 - Every change must pass offline. Don't commit or push unless asked.
 
-## Relate 1.2.0 rules for code here (details and repros in 33's NOTES.md)
+## Relate 1.2.0 rules for code here (details and repros in 01's NOTES.md)
 
 - **CLI grammar:** `relate [flags] -d DB 'Q'`; a piped script needs the verb,
   `relate query [flags] -d DB < script`; read-only is `relate --read-only -d DB 'Q'`; also

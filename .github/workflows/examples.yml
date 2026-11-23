@@ -21,7 +21,7 @@ defaults:
 jobs:
   run:
     runs-on: ubuntu-24.04
-    # On a cold cache example 33 adds a gliner-rs build (cargo install of wasm-pack and
+    # On a cold cache example 01 adds a gliner-rs build (cargo install of wasm-pack and
     # wasm-bindgen, then the crate), 304 MB of weights and Chromium, before its own run.
     timeout-minutes: 60
     env:
@@ -57,9 +57,9 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: examples/33-wasm-extract/package-lock.json
+          cache-dependency-path: examples/01-wasm-extract/package-lock.json
 
-      # ---- Example 33 (keys wasm, gliner, browser) ------------------------------------------------
+      # ---- Example 01 (keys wasm, gliner, browser) ------------------------------------------------
       # gliner-rs v0.3.1 (4fa741e, the script's default) built to WASM. On a hit the script only
       # re-checks the build (--check semantics); on a miss Rust 1.97.1 is set up with the
       # wasm32 target, then the script installs wasm-pack 0.15.0 and wasm-bindgen-cli 0.2.128
@@ -113,13 +113,13 @@ jobs:
           path: .cache/gliner
           key: ${{ steps.gliner.outputs.cache-primary-key }}
 
-      # 33's own package-lock.json: @relate/relate-wasm (the Relate WASM bundle, its sha512
+      # 01's own package-lock.json: @relate/relate-wasm (the Relate WASM bundle, its sha512
       # integrity pinned there), NVL 2.0.0, js-yaml, esbuild, playwright 1.63.0; --omit=peer
       # skips NVL's unused neo4j-driver peer. Then esbuild's NVL vendor bundle.
-      - name: Example 33's npm packages and the NVL vendor bundle
+      - name: Example 01's npm packages and the NVL vendor bundle
         run: |
-          npm ci --omit=peer --prefix examples/33-wasm-extract
-          npm run --prefix examples/33-wasm-extract vendor
+          npm ci --omit=peer --prefix examples/01-wasm-extract
+          npm run --prefix examples/01-wasm-extract vendor
       # Playwright's Chromium (the browser section). The browser download is cached; its system
       # libraries are installed on every run.
       - name: Restore Playwright's Chromium
@@ -127,15 +127,15 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('examples/33-wasm-extract/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ hashFiles('examples/01-wasm-extract/package-lock.json') }}
       - name: Install Chromium for Playwright
         env:
           HIT: ${{ steps.playwright.outputs.cache-hit }}
         run: |
           if [[ "$HIT" == true ]]; then
-            npx --prefix examples/33-wasm-extract playwright install-deps chromium
+            npx --prefix examples/01-wasm-extract playwright install-deps chromium
           else
-            npx --prefix examples/33-wasm-extract playwright install --with-deps chromium
+            npx --prefix examples/01-wasm-extract playwright install --with-deps chromium
           fi
       - if: steps.playwright.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
@@ -146,7 +146,7 @@ jobs:
       # No .env in CI: offline runs.
       - run: uv run pytest -q
       - name: The bundled ontologies match their originals
-        run: node examples/33-wasm-extract/harness/convert.mjs --check
+        run: node examples/01-wasm-extract/harness/convert.mjs --check
       - name: Run every example offline
         run: |
           failed=()

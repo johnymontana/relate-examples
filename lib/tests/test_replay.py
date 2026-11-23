@@ -1,6 +1,6 @@
 """lib/replay.py: the typed round trip, run in CI.
 
-Example 33 dumps its browser store with lib/replay.mjs and loads that dump natively with
+Example 01 dumps its browser store with lib/replay.mjs and loads that dump natively with
 lib/replay.py (harness/native.py). These tests keep every typed path covered: FLOAT32, FLOAT64
 and INT8 vectors; a ZONED DATETIME with a named zone and nanoseconds; DURATIONs with and
 without months; 2D, 3D, cartesian and geographic POINTs; typed and plain lists; a node and a
@@ -10,7 +10,7 @@ load over 2,000 keyed nodes, in a subprocess of this interpreter pinned to the p
 relate-db version. Everything runs on :memory: except that subprocess case.
 lib/tests/test_replay_js.py covers lib/replay.mjs.
 
-Tests named test_pin_* assert today's engine behaviour (examples/33-wasm-extract/NOTES.md
+Tests named test_pin_* assert today's engine behaviour (examples/01-wasm-extract/NOTES.md
 names the row). When one fails, the engine has changed: update the row and the lib/replay
 docstring.
 """

@@ -10,8 +10,8 @@ Each test builds a fake repo in tmp_path (examples/<name>/site.json + a dist/) a
   missing index.html, symlink, duplicate path and empty tree fails with a clear message and
   leaves no output;
 - the output is deterministic;
-- example 33's page and the index template carry the policy Pages cannot send as a header, and
-  33's allows the measured HF Hub hosts and nothing broader.
+- example 01's page and the index template carry the policy Pages cannot send as a header, and
+  01's allows the measured HF Hub hosts and nothing broader.
 Needs node on PATH (skips otherwise); no network.
 """
 
@@ -288,9 +288,9 @@ def _meta_policy(html: str) -> dict:
 
 
 def test_example_33_page_policy():
-    """Pages cannot send headers, so 33's page carries the production policy itself, minus
+    """Pages cannot send headers, so 01's page carries the production policy itself, minus
     frame-ancestors (ignored in a <meta>), plus a referrer <meta>."""
-    html = (REPO / "examples" / "33-wasm-extract" / "web" / "index.html").read_text()
+    html = (REPO / "examples" / "01-wasm-extract" / "web" / "index.html").read_text()
     assert _meta_policy(html) == {
         "default-src": ["'self'"],
         "script-src": ["'self'", "'wasm-unsafe-eval'"],

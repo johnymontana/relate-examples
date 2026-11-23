@@ -14,7 +14,7 @@ Pages is enabled with "GitHub Actions" as its source (Settings > Pages).
 
 | | Example | Live |
 |---|---|---|
-| 33 | [`examples/33-wasm-extract/`](examples/33-wasm-extract/): markdown to a knowledge graph entirely in a browser tab. An ontology (one of create-context-graph's 27 domains, or your own Ontology Graph Spec v1 document) decides what is legal, GLiNER2.5 (gliner-rs compiled to WebAssembly) scores every candidate, cutoffs you own sort them into keep, review or drop, and Relate's WASM build holds everything in the browser's OPFS. A read-only Cypher console, NVL graphs, and a download that native Relate opens. | <https://johnymontana.github.io/relate-examples/33-wasm-extract/> |
+| 01 | [`examples/01-wasm-extract/`](examples/01-wasm-extract/): markdown to a knowledge graph entirely in a browser tab. An ontology (one of create-context-graph's 27 domains, or your own Ontology Graph Spec v1 document) decides what is legal, GLiNER2.5 (gliner-rs compiled to WebAssembly) scores every candidate, cutoffs you own sort them into keep, review or drop, and Relate's WASM build holds everything in the browser's OPFS. A read-only Cypher console, NVL graphs, and a download that native Relate opens. | <https://johnymontana.github.io/relate-examples/01-wasm-extract/> |
 
 ## Setup
 
@@ -25,9 +25,9 @@ macOS or Linux, with `curl`, [uv](https://docs.astral.sh/uv/), Node 20 or later 
 curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI; `relate --version`'s first line must be "Relate v1.2.0"
 uv sync                                             # the project env: relate-db 1.2.0 and pytest (uv.lock)
 rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
-scripts/build-gliner-wasm.sh                        # example 33: gliner-rs v0.3.1 built to WASM into .cache/gliner-wasm/
-scripts/fetch-gliner.sh small                       # example 33: GLiNER2.5-small-v1 weights into .cache/gliner/ (304 MB)
-(cd examples/33-wasm-extract && npm ci --omit=peer && npm run vendor && npx playwright install chromium)
+scripts/build-gliner-wasm.sh                        # example 01: gliner-rs v0.3.1 built to WASM into .cache/gliner-wasm/
+scripts/fetch-gliner.sh small                       # example 01: GLiNER2.5-small-v1 weights into .cache/gliner/ (304 MB)
+(cd examples/01-wasm-extract && npm ci --omit=peer && npm run vendor && npx playwright install chromium)
 ```
 
 An optional `.env` at the root is loaded by every `run.sh` (shell variables win over it); offline
@@ -37,8 +37,8 @@ runs need nothing from it.
 
 ```bash
 uv run pytest -q                                    # lib/tests (run from the root)
-examples/33-wasm-extract/run.sh                     # one example, offline, diffed against its expected/
-examples/33-wasm-extract/run.sh --update            # accept an intended output change
+examples/01-wasm-extract/run.sh                     # one example, offline, diffed against its expected/
+examples/01-wasm-extract/run.sh --update            # accept an intended output change
 for r in examples/*/run.sh; do "$r"; done           # every example, as CI runs them
 node site/build.mjs                                 # the Pages site into site/dist/
 ```
@@ -50,7 +50,7 @@ unless the comma list `EXAMPLES_REQUIRE` names that dependency's key (`wasm`, `g
 ## CI and Pages
 
 - [`.github/workflows/examples.yml`](.github/workflows/examples.yml), on every push and pull
-  request: installs the pinned CLI and binding, builds or restores example 33's dependencies, runs
+  request: installs the pinned CLI and binding, builds or restores example 01's dependencies, runs
   `uv run pytest -q` and every `examples/*/run.sh` with `EXAMPLES_REQUIRE=wasm,gliner,browser`.
 - [`.github/workflows/pages.yml`](.github/workflows/pages.yml), once `examples.yml` has passed on a push to `main` (or on demand):
   builds `site/dist` and deploys it to GitHub Pages.

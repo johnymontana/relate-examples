@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetch a GLiNER2.5 checkpoint, pinned by Hugging Face revision, into .cache/gliner/, verified; print its env var.
-#   scripts/fetch-gliner.sh small             fastino/gliner2.5-small-v1 @ 7132dc4 (304 MB in all; example 33's default)
-#   scripts/fetch-gliner.sh base              fastino/gliner2.5-base-v1  @ ca90624 (783 MB in all; selectable in 33's page)
+#   scripts/fetch-gliner.sh small             fastino/gliner2.5-small-v1 @ 7132dc4 (304 MB in all; example 01's default)
+#   scripts/fetch-gliner.sh base              fastino/gliner2.5-base-v1  @ ca90624 (783 MB in all; selectable in 01's page)
 #   scripts/fetch-gliner.sh small --check     verify the cached copy only: no network, no writes; exit 1 if not
 #   scripts/fetch-gliner.sh small --pin       write ci/gliner2.5-small-v1.sha256 from the HF API, once
 #   eval "$(scripts/fetch-gliner.sh small)"   sets GLINER_SMALL_DIR (GLINER_BASE_DIR for base)
@@ -9,7 +9,7 @@
 # Files: the four gliner-rs's WasmModel.load(weights, tokenizer, config_json,
 # encoder_config_json) takes (model.safetensors, tokenizer.json, config.json,
 # encoder_config/config.json), plus tokenizer_config.json, which only Python
-# gliner2 reads (33's harness/reference.py patches a copy of it, finding G2).
+# gliner2 reads (01's harness/reference.py patches a copy of it, finding G2).
 # Each comes from https://huggingface.co/<repo>/resolve/<revision>/<file>.
 #
 # Trust anchor: ci/<model>.sha256 (sha256sum format, sorted by path). --pin writes

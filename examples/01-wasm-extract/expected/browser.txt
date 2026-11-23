@@ -1,0 +1,188 @@
+# The page in headless Chromium (harness/drive.mjs): dist/ at /relate-examples/01-wasm-extract/, served as GitHub Pages serves it
+# (no custom headers: the page's own Content-Security-Policy <meta>); Relate 1.2.0 WASM in OPFS, GLiNER2.5-small-v1 through gliner-rs; the weights from .cache/gliner through page.route()
+# on their Hub URLs; graphs laid out with d3Force (?test=1, V6); the console's watchdog at 3 s
+# Content is compared through lib/replay.mjs digests of dumps without their (:_Run) nodes (when and how often a
+# document was read); the Node side is web/pipeline.js and web/store.js in this process, as harness/run.mjs runs them.
+
+## start
+page: HTTP 200; no CSP header (as on Pages): yes; the <meta> CSP has script-src 'self' 'wasm-unsafe-eval': yes; connect-src allows the Hub: yes; no frame-ancestors (ignored in a <meta>): yes; COOP/COEP: none
+assets/ served as Pages serves every file (Cache-Control max-age=600, application/wasm): yes; the page's URL without its trailing slash: HTTP 301 to /relate-examples/01-wasm-extract/: yes
+engine: ready
+store opened: ex01-kg-financial-services (ontology Financial Services (10 kinds, 12 links; 12 typed links enforced by the graph type, 0 checked by the gate only).)
+OPFS from the page thread (R11): storage error: OPFS needs a dedicated worker; store left behind: none
+
+## a first visit: the three steps, the empty graph tab, names and keys
+step 1: "💰 Financial Services" of 27 domains, "Investment management, trading, compliance, and risk assessment."; "Store opfs://ex01-kg-financial-services: nothing extracted yet."
+step 2: "Load small v1"; step 3: "Extract the sample" disabled, "Load the model first (step 2)."; Document: "the Financial Services sample": yes
+the graph tab's empty state (load-model): "Nothing extracted yet", "First load the model (step 2, 304 MB once, then cached), then extract the sample (step 3). GLiNER2.5 reads it sentence by sentence and the kept facts appear here as a graph." [Load small v1]: yes
+the Document box on start: "financial-services"; it shows the sample without its YAML front matter, which is extracted with it: yes
+every control on the page has an accessible name: yes
+the tab list's keys: ArrowRight on Graph selects and focuses review (review), ArrowLeft goes back to graph: yes
+
+## the model (D4, G8)
+load small-v1: ready; Hub requests answered from .cache/gliner: 12 (9 of them byte ranges); other Hub URLs: 0
+step 2: "small v1 loaded"; step 3: "Extract the sample" enabled; the empty state (extract): "Ready to extract" [Extract the sample]: yes
+
+## the store: the financial-services sample, create-context-graph's format (D7, D9, D16)
+while it ran, the graph tab showed "Extracting “financial-services”: asking the model about sentence 1 of 13", and so on for each model call: yes
+financial-services: done; Read 13 sentences: 13 asked of the model, 0 from the cache. Candidate relationships: 10 kept, 3 to review, 17 dropped.
+  kept "Dana Whitlock" -[WORKS_FOR]-> "Halvorsen Pryce Partners" 0.660
+  kept "Colm Brady" -[WORKS_FOR]-> "Halvorsen Pryce Partners" 0.686
+  kept "Halvorsen Pryce Partners" -[LOCATED_AT]-> "Edinburgh" 0.485
+  kept "Arjun Mehta" -[OWNS]-> "ACC-2207" 0.743
+  kept "Arjun Mehta" -[OWNS]-> "ACC-1980" 0.463
+  kept "Colm Brady" -[MANAGES]-> "ACC-2207" 0.700
+  kept "Rebalancing Decision" -[CAUSED]-> "TX-4471" 0.446
+  kept "TX-4471" -[INVOLVES]-> "KWB-2031" 0.472
+  kept "Rebalancing Decision" -[APPLIED_POLICY]-> "Concentration Limit Policy" 0.402
+  kept "Rebalancing Decision" -[ADVISED_BY]-> "Colm Brady" 0.639
+  the kept facts equal expected/extract.txt's (Node): yes
+the summary line: "“financial-services”: kept 12 entities and 10 relationships; 4 wait for your verdict. The graph now holds 12 entities and 10 relationships." [Show only this document] [Review (4) →]: yes
+the graph tab fitted the new graph: 12 nodes, every one inside the canvas and labelled under it at 11.5px (two thirds of the labels shown at least, the rest covered until a zoom); each relationship label shown on its edge's midpoint (within 2 px), over no node or node label: yes
+gliner-rs's raw JSON for "Colm Brady works for Halvorsen Pryce Partners.": the worker's (from the inference cache) is bit-identical to Node's: yes
+
+## reload (R24, G8)
+model: ready, from Cache Storage (yes); Hub requests: 0
+store reopened: ex01-kg-financial-services
+the store's content equals the Node run's for the financial-services sample: yes
+  nodes by label: Account 2, Decision 2, Location 1, Organization 1, Person 3, Policy 1, Security 1, Transaction 1, _Claim 30, _Document 1, _Entity 12, _Inference 13, _InferencePart 13, _Kind 10, _LinkType 12, _Mention 50, _Ontology 1, _Run 1, _Section 1, _Sentence 13
+
+## download and restore (D17, X1-X5)
+dump.json downloads: ex01-kg-financial-services.dump.json; the same content: yes
+database downloads: ex01-kg-financial-services.relate.tar; lib/opfsfmt.py check --snapshot: ok (a snapshot: graph.json, manifest.json, taken after free(), X1; 0 dot entries)
+restore of the download: ex01-kg-financial-services-restored-1 (adopted by one writable open, R22, then checked read-only, R15): counts, graph type and content digest against ex01-kg-financial-services: equal; now open: ex01-kg-financial-services-restored-1
+  the restored store opens writable: 1 documents, 12 entities, 10 relationships
+restore of the download made native and back (X4: harness/native.py x4: a writable open, clone to .rl, clone --to-snapshot-format json, opfsfmt to-tar): ex01-kg-from-native-restored-1: against ex01-kg-financial-services: equal
+
+## the same document again (D7, D9)
+financial-services: done; Read 13 sentences (1 already complete): 0 asked of the model, 0 from the cache. Candidate relationships: 10 kept, 3 to review, 17 dropped.
+
+## the graph tab (NVL, D16, V5-V8)
+shown again after the restores and the re-extraction, the graph tab fitted the view (fit again), every node inside and labelled, each relationship label shown on its midpoint: yes
+NVL holds 12 nodes and 10 relationships (canvas renderer); the store's typed graph: 12 entities, 10 relationships: yes
+a click on Person:DANA_WHITLOCK shows "Dana Whitlock", Person, "mentioned 1 time in financial-services", with 1 evidence sentence(s):
+  financial-services, sentence 1 · "Dana Whitlock" · p 0.998 · kept by its score
+  its key, generation and document ids only under "Stored properties", collapsed: yes
+selected, Dana Whitlock's relationships show their labels: WORKS_FOR: yes
+a kept relationship's label with no room on its line at a smaller zoom (APPLIED_POLICY): hidden, shown on its midpoint while the pointer is over the line, hidden again when it leaves: yes
+
+## the ontology tab: the ontology as a picture (NVL) and its v1 document
+NVL draws 10 kinds and 12 relationships, the store's 10 kinds and the 12 kind pairs its 12 links may join: yes; fitted, every kind inside and labelled: yes
+a click on Person shows:
+  Person a base kind (create-context-graph's POLE+O)
+  person
+  Asked of the model as "person".
+  Its cutoffs: keeps at p ≥ 0.50, drops at p ≤ 0.30 (the defaults).
+  Links from it: WORKS_FOR, PARTICIPATED_IN, OWNS and MANAGES; to it: ADVISED_BY. 3 tools in the Console tab.
+
+## the console: a read-only lease of the live store (D11, R15)
+01-typed-graph.cypher: ok, 10 rows; NVL draws 11 nodes and 10 relationships from the paths (the typed graph's relationships and their 11 end entities): yes
+  Decision:REBALANCING | ADVISED_BY | Person:COLM_BRADY | 0.639 | 1
+  Decision:REBALANCING | APPLIED_POLICY | Policy:CONCENTRATION_LIMIT | 0.402 | 1
+  Decision:REBALANCING | CAUSED | Transaction:TX_4471 | 0.446 | 1
+  Organization:HALVORSEN_PRYCE_PARTNERS | LOCATED_AT | Location:EDINBURGH | 0.485 | 1
+  Person:ARJUN_MEHTA | OWNS | Account:ACC_1980 | 0.463 | 1
+  Person:ARJUN_MEHTA | OWNS | Account:ACC_2207 | 0.743 | 1
+  Person:COLM_BRADY | MANAGES | Account:ACC_2207 | 0.7 | 1
+  Person:COLM_BRADY | WORKS_FOR | Organization:HALVORSEN_PRYCE_PARTNERS | 0.686 | 1
+  Person:DANA_WHITLOCK | WORKS_FOR | Organization:HALVORSEN_PRYCE_PARTNERS | 0.66 | 1
+  Transaction:TX_4471 | INVOLVES | Security:KWB_2031 | 0.472 | 1
+"Hide the example's bookkeeping" on a first visit: unchecked (ex01.consoleHideBookkeeping absent): yes
+05-ontology-graph.cypher with "Hide the example's bookkeeping" checked: ok, 24 rows; the table shows 24 (""); NVL draws 21 nodes and 24 relationships (the store's 21 _LinkType and _Kind nodes on a _DOMAIN or _RANGE edge, and its 24 edges): yes
+a CREATE typed into the console: engine/readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.; the store's content digest unchanged: yes
+SET on matched entities: readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+DETACH DELETE of matched entities: readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+an illegal typed edge, (:Account)-[:OWNS]->(:Person): constraint: ConstraintValidationFailed: endpoint label presence verification failed: expected Person
+  the store's content digest unchanged after all three: yes
+a read-only open while the engine holds the store: locked: storage locked: opfs://<store>
+a read-only open of the lent store leaves its 65 OPFS files byte-identical: yes
+an unbounded query: console watchdog (The query was still running, so the console worker was stopped (Relate has no cancel). Bound variable-length patterns, e.g. *1..4.)
+an extraction queued during that lease ran after it: yes (done, 1 inference)
+the engine took the store back and the console works again: yes (2 documents)
+its inference (the model from Cache Storage) is bit-identical to Node's: yes
+
+## review candidates in the graph tab: drawn faded beside the kept graph, decided from the side panel
+"Show review candidates" is on by default: yes; NVL holds the typed graph's 15 entities and 10 relationships (the store's: 15 and 10: yes) and review candidates: 0 entities, 4 relationships
+candidates are drawn apart: italic labels, a node's ending " (review)" and a relationship's its bare type (kept ones upright; NVL draws no caption of its own): yes; thinner, lighter relationships: yes; smaller, faded nodes: yes
+a click on the candidate Person:NADIA_OKORO -[WORKS_FOR]-> Organization:HALVORSEN_PRYCE_WEALTH (the highest-scoring one alone between its two entities) shows: "Nadia Okoro" -[WORKS_FOR]-> "Halvorsen Pryce Wealth", review by hedged
+  why: Its sentence hedges or negates it ("may" before its later end), and the model scores that like a plain fact, so a person decides whether it holds.
+  evidence: "Nadia Okoro may work for Halvorsen Pryce Wealth in Glasgow."
+Accept: Accepted "Nadia Okoro" -[WORKS_FOR]-> "Halvorsen Pryce Wealth": this claim is published, drawn as a kept fact (the Review tab lists the verdict).
+  drawn as a kept relationship, Person:NADIA_OKORO|WORKS_FOR|Organization:HALVORSEN_PRYCE_WEALTH: yes
+  the kept graph: 15 -> 15 entities, 10 -> 11 relationships (the store's: 15, 11); candidates: 0 -> 0 entities, 4 -> 3 relationships: yes
+"Show review candidates" off: candidates 0 and 0, the kept graph 15 and 11; remembered as ex01.graphCandidates = 0: yes
+
+## the ontology's tools in the console (Ontology Graph Spec v1 `tools`): listed with their notes, run, refused, run from the side panel
+the console tab: the editor first, "Ontology tools (8)" collapsed below the results: yes
+the tools section lists 8 tools of the financial-services document, by node: Person (search_customer, get_customer_decisions, defaultView); Account (detect_fraud_patterns, list_accounts, get_account_by_id); Decision (find_similar_decisions, get_causal_chain): yes
+  Person search_customer [rows]: On an extracted graph: can return rows; role is never written (null); an untyped relationship also reaches the store's bookkeeping (_Mention -[:_OF]-> each entity), which the console's "Hide the example's bookkeeping" leaves out.
+  Person get_customer_decisions [rows]: On an extracted graph: can return rows; date is never written (null).
+  Person defaultView [rows]: On an extracted graph: can return rows; an untyped relationship also reaches the store's bookkeeping (_Mention -[:_OF]-> each entity), which the console's "Hide the example's bookkeeping" leaves out.
+  Account detect_fraud_patterns [empty]: On an extracted graph: no rows (its WHERE needs date, which the extractor never writes); amount, account_id are never written (null).
+  Account list_accounts [rows]: On an extracted graph: can return rows.
+  Account get_account_by_id [empty]: On an extracted graph: no rows (it matches on account_id, which the extractor never writes); an untyped relationship also reaches the store's bookkeeping (_Mention -[:_OF]-> each entity), which the console's "Hide the example's bookkeeping" leaves out.
+  Decision find_similar_decisions [empty]: On an extracted graph: no rows (it matches on decision_id, which the extractor never writes); also db.index.vector.queryNodes needs the index 'decision_embeddings', which this store does not have, but its query vector d.embedding is never written (null), and a null query vector returns no rows even on a missing index.
+  Decision get_causal_chain [empty]: On an extracted graph: no rows (it matches on decision_id, which the extractor never writes); a variable-length pattern of up to 5 hops, over this page's bound of 4.
+  each note equals web/console.js toolCompat's in Node: yes
+Run Person's defaultView, "MATCH (p:Person)-[r]-(n) RETURN p, r, n LIMIT 100": ok, 16 rows (lease, read-only); the editor holds the tool's query: yes
+  "Hide the example's bookkeeping" unchecked (the default): the table shows 16 rows, ""; NVL draws 18 nodes and 16 relationships: yes
+  checked: the table shows 7 rows, "9 of 16 rows hidden (bookkeeping)."; NVL draws 9 nodes and 7 relationships; remembered as ex01.consoleHideBookkeeping = 1: yes
+  the console's table columns: p, r, n
+the editor's line about the tool: "Tool defaultView on Person: create-conte"…; once the query is edited: "Edited from the tool defaultView: it runs as a console query, without the tool's checks."; edited back: the tool's line again: yes
+Run list_accounts with $limit = "2.7" refused: Not run: $limit (STRING, a whole number): "2.7" is not a whole number (the query reads it through toInteger(), which would cut 2.7 to 2 and make "abc" null).
+Run list_accounts with $limit = "-1" refused: Not run: $limit (STRING, a whole number): "-1" is negative; a LIMIT or SKIP count is 0 or more.
+  queries sent to the console worker: 0: yes
+Run search_customer with $query empty: refused (query): Not run: $query needs a value: a missing or empty parameter is refused (a null one would match nothing, R3).
+  queries sent to the console worker: 0: yes
+a click on Person:DANA_WHITLOCK lists Person's tools in the side panel: search_customer [Run with $query = "Dana Whitlock"], get_customer_decisions [Run with $name = "Dana Whitlock"], defaultView [Run]: yes
+its Run prefilled $query = "Dana Whitlock" and opened the console tab (shown): ok, 2 rows: yes
+  (:_Entity:Person "Dana Whitlock") | WORKS_FOR | (:_Entity:Organization "Halvorsen Pryce Partners")
+  (:_Entity:Person "Dana Whitlock") | _OF | (:_Mention "DANA_WHITLOCK")
+a click on Account:ACC_2207 lists Account's tools: detect_fraud_patterns [Run], list_accounts [Run with $limit = "10"], get_account_by_id [Open: fill $id]: yes
+its list_accounts button ran it in the console tab (shown) with $limit = "10": ok, 2 rows: yes
+its get_account_by_id button opened the console tab (shown) and asks: "Fill $id, then Run: it has no value, and no parameter takes the entity's name."; $id = ""; queries sent: 0: yes
+
+## a second tab (R11)
+tab 2 sees: the lock banner; the engine says storage locked: opfs://ex01-kg-financial-services
+handover: tab 2 holds ex01-kg-financial-services; tab 1 holds nothing and says "ex01-kg-financial-services moved to another tab of this site."
+tab 2 loads the model from Cache Storage: ready
+
+## a store that keeps another version of its bundled ontology (an earlier build's conversion), and Re-apply
+applied through the editor: the financial-services document with the icon and size of its 10 nodes in neo4j:display; the page says: "This store keeps a version of Financial Services that differs from the bundled one (an earlier build's conversion, or an edit)."; the picker shows "financial-services (this store's own document)": yes
+  The changed ontology was applied; the gate and the publish ran again: claims keep 11, review 4, drop 17; typed graph 15 entities, 11 relationships.
+Re-apply the bundled one: the note is gone, the picker holds ogs/ccg/financial-services.ontology.yaml, the store's document is the bundled one again (its sha): yes
+  The changed ontology was applied; the gate and the publish ran again: claims keep 11, review 4, drop 17; typed graph 15 entities, 11 relationships.
+  kept: verdicts 1 -> 1; cutoffs set by you: Account 0.5/0.3 -> Account 0.5/0.3; the typed graph 15 entities and 11 relationships -> 15 and 11: yes
+
+## the domain picker: one store per ontology (D14), with its sample
+software-engineering opens ex01-kg-software-engineering (ontology Software Engineering (11 kinds, 17 links; 17 typed links enforced by the graph type, 0 checked by the gate only).)
+the store picker (Store tab) lists: ex01-kg-financial-services, ex01-kg-financial-services-restored-1, ex01-kg-from-native-restored-1, ex01-kg-software-engineering
+before it, the sample again (0 model calls), its summary line shown, and the side panel showed "Dana Whitlock"; after the switch: the hint, "Click a node or a relationship to see wh…"; the summary line gone, step 3's last result gone: yes
+the Document box holds "the Software Engineering sample" ("software-engineering"); step 1 says "Software development lifecycle, repositories, issues, deployments, and team collaboration."; the empty graph tab: extract: yes
+
+## the engine worker terminated mid-section, then resumed (R24, D9)
+step 3's button read "Extract “crash-notes”"; killed after section 1 of 2
+the page restarts the engine and the model (ready, from Cache Storage); the store is open again: yes
+sections in the store after the crash: 0 complete
+the extraction: failed; Continue offered: yes
+continue: done; Read 30 sentences in 2 sections (1 already complete): 12 asked of the model, 0 from the cache. Candidate relationships: 24 kept, 21 to review, 134 dropped.
+the resumed store's content equals an uninterrupted run's (Node): yes
+  runs: running (18 inferences, 0 hits); done (12 inferences, 0 hits)
+
+## a pasted document: its title, the summary line, a title the store holds for other text
+"Use the sample" (the crash test had typed "crash-notes"): "software-engineering"; pasted text with no heading: "pasted" [Extract “pasted”]; with a heading: "Release review" [Extract “Release review”]; a title typed, then other text: "My notes"; "Use the sample" again: "software-engineering" [Extract the sample]: yes
+"Release review": done; the summary line: "“Release review”: kept 6 entities and 2 relationships; 4 wait for your verdict. The graph now holds 31 entities and 10 relationships." [Show only this document] [Review (39) →]
+  its share (the console: entities and relationships whose docs hold it, its claims and mentions in review): 6, 2, 4; the store's: 31, 10, 39 in review: yes
+[Show only this document]: the graph tab draws its 6 entities and 2 relationships ("doc" chosen), the button then reads "Show all documents"; pressed, all 31 and 10 again: yes
+the same title, other text: duplicate: "This store already holds a document titled “Release review”, with other text (164 characters). Replace it with this text, or keep both as documents of the same title? Or cancel and change the title under Document." [Replace it] [Keep both] [Cancel]
+[Replace it]: done; "“Release review” (replacing the earlier text of that title)"; the store's documents: Release review, crash-notes: yes
+[Keep both]: done; 2 documents titled "Release review"; the Store tab lists "Release review (text <sha7>) · 215 characters · 1/1 sections complete" and "Release review (text <sha7>) · 193 characters · 1/1 sections complete", each with its text's sha256: yes
+pasted text with no heading: "pasted", extracted (done); then other pasted text: "pasted-2" [Extract “pasted-2”]: yes
+
+## reset
+ex01-kg-software-engineering is empty again; its ontology and schema were applied anew. 0 documents, 0 inferences, 0 entities; ontology software-engineering with 11 kinds
+
+## hygiene (every page of the run)
+CSP violations: none
+console and page errors (warnings ignored): none
+requests outside the page's origin, the routed Hub aside: none

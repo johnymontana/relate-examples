@@ -1,7 +1,7 @@
 """Check a Relate WASM store exported from OPFS, and turn it into a native directory database.
 
 Relate's WASM build keeps a database in the browser's OPFS and has no export or import API
-and no .rl writer (examples/33-wasm-extract/NOTES.md R12). So the page reads the store's
+and no .rl writer (examples/01-wasm-extract/NOTES.md R12). So the page reads the store's
 files itself, and native Relate opens the snapshot they hold as a directory database. Both
 ends depend on internal formats with no stability promise, so this guard is strict and pinned
 to the release every rule below was verified on (VERIFIED): the two exports

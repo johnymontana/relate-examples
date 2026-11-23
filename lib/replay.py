@@ -1,9 +1,9 @@
 """Dump a Relate graph to plain JSON and replay it into a fresh database.
 
-Relate has no dump command. Example 33 needs one anyway: a store made in the browser (WASM, in
+Relate has no dump command. Example 01 needs one anyway: a store made in the browser (WASM, in
 OPFS) has to load natively, and a native store in the browser, independently of the internal file
 formats; replaying the live rows into a new store also leaves behind the stale bytes a deleted
-value can keep in a file (examples/33-wasm-extract/NOTES.md R10). A generic replay runs into these
+value can keep in a file (examples/01-wasm-extract/NOTES.md R10). A generic replay runs into these
 traps, and this module handles each one (the R-ids are NOTES.md's rows):
 
 Schema  Every constraint and index is rebuilt from its SHOW columns, options included, never

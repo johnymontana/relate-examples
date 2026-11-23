@@ -1,0 +1,247 @@
+/* Example 01: the focused page, desktop layout. No external fonts:
+   the site's CSP allows styles and images from this origin only.
+   The page is an app shell: the header, then the three steps in a left column that scrolls on its
+   own, and the views on the right, whose tab panel takes the rest of the viewport (the graph canvas
+   fills it), so the whole graph shows at 1280x720 without scrolling the page. */
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #1d2433;
+  --muted: #5b6577;
+  --line: #d9dee7;
+  --accent: #2f6fde;
+  --accent-soft: #eaf1fd;
+  --accent-ink: #ffffff;
+  --warn-bg: #fff6e0;
+  --warn-line: #e8c46a;
+  --error-bg: #fdecec;
+  --error-line: #e28b8b;
+  --keep: #2e8b57;
+  --review: #b7791f;
+  --drop: #9aa3b2;
+  --mark: #ffe58f;
+  --code-bg: #f1f3f7;
+  --canvas: #fbfcfe;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  min-width: 1024px;
+  min-height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+a { color: var(--accent); }
+h1 { font-size: 19px; margin: 2px 0 0; }
+h2 { font-size: 14px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+h3 { font-size: 14px; margin: 18px 0 8px; }
+code, .code, kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 12px; top: -40px; background: var(--panel); padding: 6px 10px; border: 1px solid var(--accent); border-radius: 5px; z-index: 10; }
+.skip:focus { top: 8px; }
+
+/* ---- the header and banners ---------------------------------------------------------------------- */
+.top { flex: none; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; padding: 8px 20px 9px; border-bottom: 1px solid var(--line); background: var(--panel); }
+.brand { max-width: 900px; min-width: 0; }
+.back { font-size: 12.5px; text-decoration: none; }
+.sub { margin: 1px 0 0; color: var(--muted); }
+.status { margin: 0; color: var(--muted); text-align: right; font-size: 12.5px; max-width: 460px; }
+
+.banners { flex: none; padding: 0 20px; }
+.banner { margin: 8px 0 0; padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.banner.warn { background: var(--warn-bg); border-color: var(--warn-line); }
+.banner.error { background: var(--error-bg); border-color: var(--error-line); }
+.banner button { margin-left: 12px; }
+.banner.inline { margin: 6px 0; }
+
+/* ---- the layout ---------------------------------------------------------------------------------- */
+.layout { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 14px; padding: 12px 20px 14px; }
+.controls { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding: 0 4px 2px 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px 12px; }
+.work { min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 0 14px 12px; }
+.work:focus { outline: none; }
+
+/* ---- the three steps ----------------------------------------------------------------------------- */
+.step h2 { color: var(--ink); }
+.num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 12px; font-weight: 700; flex: none; }
+.step.done .num { background: var(--keep); }
+.step.waiting .num { background: var(--drop); }
+.step-status { margin: 6px 0 0; font-size: 13px; color: var(--ink); }
+.step-status:empty { display: none; }
+.step-status.error-text { color: #a12828; }
+
+.field { display: block; margin: 6px 0 3px; font-size: 12.5px; color: var(--muted); }
+.inline-field { font-size: 13px; color: var(--muted); white-space: nowrap; }
+input[type="text"], select, textarea { font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 5px 7px; background: #fff; width: 100%; }
+select.grow { flex: 1; width: auto; min-width: 0; }
+textarea.code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; resize: vertical; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+button { font: inherit; border: 1px solid var(--line); background: #fff; color: var(--ink); border-radius: 5px; padding: 5px 11px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .55; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+button.primary:hover:not(:disabled) { background: #245ec4; }
+button.danger { border-color: var(--error-line); color: #a12828; }
+button.small { padding: 2px 9px; font-size: 12.5px; }
+button.link { border: none; background: none; padding: 0 2px; color: var(--accent); font-weight: 600; text-decoration: underline; }
+button.close { border: none; background: none; font-size: 18px; line-height: 1; padding: 0 4px; color: var(--muted); margin-left: auto; }
+kbd { font-size: 11px; opacity: .8; margin-left: 4px; }
+progress { width: 100%; height: 8px; margin: 6px 0 0; }
+.hint { color: var(--muted); font-size: 12.5px; margin: 4px 0; }
+.error-text { color: #a12828; }
+.ok-text { color: var(--keep); }
+
+.choices { border: none; padding: 0; margin: 0; }
+.choices label { display: flex; gap: 6px; align-items: baseline; margin: 2px 0; }
+.choices .size { color: var(--muted); font-size: 12px; }
+.confirm { border: 1px solid var(--warn-line); background: var(--warn-bg); border-radius: 6px; padding: 8px; margin: 6px 0; }
+.kept { list-style: none; padding: 0; margin: 6px 0 0; font-size: 12.5px; }
+.kept li { padding: 2px 0; border-top: 1px dashed var(--line); }
+.doc { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.doc > summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.doc > summary span { color: var(--ink); }
+.doc[open] > summary { margin-bottom: 4px; }
+
+.foot { padding: 2px 4px 8px; color: var(--muted); font-size: 11.5px; }
+.foot p { margin: 0; }
+
+/* ---- the tabs ------------------------------------------------------------------------------------ */
+.tabs { flex: none; display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 0 -14px; padding: 0 10px; }
+.tabs button { border: none; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 12px 8px; background: none; color: var(--muted); }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+.count:not(:empty) { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--review); color: #fff; font-size: 11px; font-weight: 600; }
+.tab { flex: 1 1 auto; min-height: 0; overflow: auto; padding-top: 10px; }
+.tab-graph { display: flex; flex-direction: column; overflow: hidden; }
+
+/* ---- the graph tab ------------------------------------------------------------------------------- */
+.toolbar { flex: none; display: flex; gap: 14px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.toolbar label { white-space: nowrap; }
+.seg { border: none; margin: 0; padding: 0; display: flex; gap: 12px; }
+.counts { margin: 0; flex: 1; min-width: 160px; }
+.summary { flex: none; display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 6px 10px; border: 1px solid #b9cdf3; background: var(--accent-soft); border-radius: 6px; font-size: 13px; }
+.summary-actions { display: flex; gap: 12px; flex: none; white-space: nowrap; }
+.graph-area { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 10px; }
+.tab-graph .graph-area { flex: 1 1 auto; min-height: 0; grid-template-rows: minmax(0, 1fr); }
+/* NVL forces height: 100% on its container (V4): the host sets the height, NVL fills .nvl-frame. */
+.nvl-host { position: relative; height: 100%; min-height: 240px; border: 1px solid var(--line); border-radius: 6px; background: var(--canvas); overflow: hidden; }
+.nvl-frame { position: absolute; inset: 0; }
+/* graphview.js's node labels: under each node, over the canvas, letting the pointer through. */
+.nvl-labels { position: absolute; inset: 0; z-index: 1; pointer-events: none; overflow: hidden; }
+.nvl-label { position: absolute; left: 0; top: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; line-height: 1.3; color: var(--ink); background: rgba(251, 252, 254, .85); padding: 0 3px; border-radius: 3px; transform-origin: 50% 50%; }
+/* A relationship's type on its edge's midpoint, along it (graphview.js turns it), in the canvas's
+   colour so the line breaks around it. */
+.nvl-label.rel { font-size: 10px; letter-spacing: .02em; color: var(--muted); max-width: 120px; background: var(--canvas); padding: 0 2px; line-height: 1.25; }
+.nvl-label.candidate { font-style: italic; color: #7c8494; }
+/* Shown for the pointer (hovered or selected) where the graph has no room for it: above the rest. */
+.nvl-label.focus { z-index: 1; color: var(--ink); background: #fff; box-shadow: 0 0 0 1px var(--line), 0 1px 3px rgba(29, 36, 51, .18); }
+.side { min-height: 0; border: 1px solid var(--line); border-radius: 6px; padding: 10px; overflow: auto; font-size: 13px; }
+.side h4 { margin: 0 0 4px; font-size: 15px; word-break: break-word; }
+.side .kind-line { margin: 0 0 8px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.side .about { margin: 0 0 8px; }
+.side table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.side td { border-top: 1px solid var(--line); padding: 3px 4px; vertical-align: top; word-break: break-word; }
+.side td:first-child { color: var(--muted); width: 34%; }
+.side details.props { margin: 8px 0; }
+.side details.props > summary { cursor: pointer; color: var(--muted); font-size: 12.5px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 0 7px; border-radius: 10px; border: 1px solid var(--line); background: #fff; }
+.evidence { list-style: none; padding: 0; margin: 0; }
+.evidence li { border-top: 1px solid var(--line); padding: 6px 0; }
+.evidence .meta { color: var(--muted); font-size: 12px; }
+mark { background: var(--mark); padding: 0 1px; border-radius: 2px; }
+.legend { flex: none; display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: middle; border: 1px solid rgba(0, 0, 0, .15); }
+.swatch.candidate { background: #c9ced6; opacity: .7; }
+
+/* Overlays on a canvas: the empty state and the extraction's progress. */
+.empty-state { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; pointer-events: none; }
+.empty-state > * { max-width: 420px; }
+.empty-state button { pointer-events: auto; margin-top: 8px; }
+.empty-title { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+.graph-progress { position: absolute; z-index: 3; top: 10px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 4px; min-width: 300px; max-width: 80%; padding: 7px 12px; background: rgba(255, 255, 255, .96); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 2px 8px rgba(29, 36, 51, .12); font-size: 13px; }
+.graph-progress progress { margin: 0; }
+
+/* ---- the review tab ------------------------------------------------------------------------------ */
+.review-group h3 { margin-top: 10px; }
+.review-item { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; margin: 6px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.review-item .what { font-weight: 600; }
+.review-item .meta { color: var(--muted); font-size: 12px; }
+.review-item .why { font-size: 12.5px; margin-top: 2px; }
+.side .review-item { grid-template-columns: minmax(0, 1fr); }
+.review-item .sentence { margin-top: 4px; }
+.band { font-size: 11px; padding: 0 5px; border-radius: 3px; color: #fff; }
+.band.keep { background: var(--keep); }
+.band.review { background: var(--review); }
+.band.drop { background: var(--drop); }
+
+/* ---- the ontology tab ---------------------------------------------------------------------------- */
+.onto-area { height: clamp(300px, 52vh, 560px); grid-template-rows: minmax(0, 1fr); }
+.onto-area .nvl-host { height: 100%; }
+.editor textarea { min-height: 260px; }
+.onto-side dl { margin: 0; }
+
+/* ---- the cutoffs tab ----------------------------------------------------------------------------- */
+#cutoffs-status { position: sticky; top: -10px; z-index: 2; background: var(--panel); padding: 6px 0; margin: 0; border-bottom: 1px solid var(--line); }
+.cutoffs { display: grid; grid-template-columns: 220px 1fr 1fr; gap: 6px 14px; align-items: center; }
+.cutoffs .head { font-size: 12px; color: var(--muted); }
+.cutoffs label { display: flex; gap: 8px; align-items: center; font-size: 12.5px; }
+.cutoffs input[type="range"] { flex: 1; }
+.cutoffs .val { font-variant-numeric: tabular-nums; width: 34px; text-align: right; }
+.cutoffs .name { font-weight: 600; word-break: break-word; }
+.cutoffs .name small { display: block; font-weight: 400; color: var(--muted); }
+.cutoffs .cut-src { font-size: 11px; font-weight: 400; color: var(--muted); border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; }
+.cutoffs .cut-src.user { color: var(--accent); }
+
+/* ---- the console tab ----------------------------------------------------------------------------- */
+.params { display: grid; grid-template-columns: 160px 1fr; gap: 4px 10px; margin: 6px 0; align-items: center; }
+.params:empty { display: none; }
+.params label { font-size: 12.5px; color: var(--muted); }
+.run-row { gap: 14px; }
+.console-graph { height: clamp(280px, calc(100vh - 330px), 560px); margin-top: 6px; grid-template-rows: minmax(0, 1fr); }
+.table-wrap { overflow: auto; max-height: 420px; margin-top: 10px; border: 1px solid var(--line); border-radius: 6px; }
+.table-wrap:has(table:empty) { display: none; }
+table#console-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+#console-table th, #console-table td { border-bottom: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+#console-table th { position: sticky; top: 0; background: var(--code-bg); }
+#console-table td { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; max-width: 520px; }
+.null { color: var(--muted); font-style: italic; }
+
+/* ---- the store tab ------------------------------------------------------------------------------- */
+.facts { display: grid; grid-template-columns: 200px 1fr; gap: 4px 12px; margin: 8px 0 0; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; word-break: break-word; }
+.docs { padding-left: 18px; margin: 4px 0; }
+.docs li { margin: 3px 0; }
+pre.code { background: var(--code-bg); padding: 8px 10px; border-radius: 6px; overflow: auto; }
+.native summary { cursor: pointer; margin: 8px 0; }
+
+/* The console's ontology tools (Ontology Graph Spec v1 `tools`) and the graph tab's side-panel list. */
+.tools-box { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 12px 0 4px; }
+.tools-box > summary { cursor: pointer; font-weight: 600; }
+.tools-list { max-height: 460px; overflow: auto; }
+.tool-group h4 { margin: 10px 0 4px; font-size: 13px; }
+.tool-group h4 small { font-weight: 400; color: var(--muted); }
+.tool { border-top: 1px solid var(--line); padding: 4px 0; }
+.tool > summary { cursor: pointer; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.tool > summary .tool-desc { color: var(--muted); font-size: 12.5px; flex: 1; min-width: 200px; }
+.tool-type { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 4px; }
+.tool-chip { font-size: 11px; border-radius: 3px; padding: 0 5px; color: #fff; background: var(--drop); white-space: nowrap; }
+.tool-chip.rows { background: var(--keep); }
+.tool-chip.empty { background: var(--review); }
+.tool-chip.error { background: #a12828; }
+.tool-chip.error-if-reached { background: #c26a1f; }
+.tool-chip.checked-at-run { background: #6b7280; }
+.tool-compat { font-size: 12.5px; margin: 4px 0; }
+pre.tool-cypher { margin: 4px 0; font-size: 12px; white-space: pre-wrap; }
+.tool .params { grid-template-columns: 200px 1fr; }
+.tool .req { color: #a12828; }
+.side-tools { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 6px; }
+.side-tools h5 { margin: 0 0 4px; font-size: 13px; }
+.side-tool { padding: 4px 0; border-top: 1px dashed var(--line); }
+.side-tool button { margin-top: 3px; }

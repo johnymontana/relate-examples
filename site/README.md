@@ -1,8 +1,8 @@
 # The browser-examples site
 
 One static GitHub Pages project site serves this repository's browser examples: an index page at
-<https://johnymontana.github.io/relate-examples/> and each example under its own path (example 33
-at `/relate-examples/33-wasm-extract/`). There is no server code: pages, WASM and data run in the
+<https://johnymontana.github.io/relate-examples/> and each example under its own path (example 01
+at `/relate-examples/01-wasm-extract/`). There is no server code: pages, WASM and data run in the
 visitor's browser. The site goes live once the repository is pushed and Pages is enabled with
 "GitHub Actions" as its source (Settings > Pages).
 
@@ -26,7 +26,7 @@ An example joins the site by adding `examples/<name>/site.json`; no site code ch
 ```json
 {
   "title": "…", "description": "…",
-  "path": "33-wasm-extract",
+  "path": "01-wasm-extract",
   "build": "npm run build", "dist": "dist",
   "connect": ["https://huggingface.co", "https://*.hf.co"],
   "requires": ["wasm"],
@@ -38,7 +38,7 @@ An example joins the site by adding `examples/<name>/site.json`; no site code ch
 - **Strict validation.** Unknown fields are refused. `path` is one URL segment of `[a-z0-9-]`,
   unique across examples. `dist` is a relative path inside the example. Each `connect` entry is an
   origin (`https://` or `wss://`, a lower-case host whose first label may be `*`, no path). Each
-  `requires` entry is an `EXAMPLES_REQUIRE` key naming what `build` needs (33: `wasm`, the gliner-rs build and npm packages; not `gliner`, since the page fetches the weights itself); the build prints them and does not check them.
+  `requires` entry is an `EXAMPLES_REQUIRE` key naming what `build` needs (01: `wasm`, the gliner-rs build and npm packages; not `gliner`, since the page fetches the weights itself); the build prints them and does not check them.
 - **`build`** runs through the shell in the example's directory and must write `dist`
   deterministically.
 - **`dist`** holds `index.html` at its root, regular files only, and must work from any sub-path:
@@ -52,7 +52,7 @@ An example joins the site by adding `examples/<name>/site.json`; no site code ch
   every `connect` origin.
 - **Every per-origin storage name is prefixed** with the example's own prefix, because all examples
   share the `johnymontana.github.io` origin (OPFS, Cache Storage, `localStorage`, IndexedDB,
-  `BroadcastChannel`); example 33 uses `ex33`.
+  `BroadcastChannel`); example 01 uses `ex01`.
 
 ## What GitHub Pages does and does not do
 
@@ -65,7 +65,7 @@ An example joins the site by adding `examples/<name>/site.json`; no site code ch
   that is not a file.
 - `.nojekyll` turns off the Jekyll pass, so files whose names start with `_` are published.
 
-Locally, `examples/33-wasm-extract/harness/serve.mjs --site` (or that example's `./run.sh --site`)
+Locally, `examples/01-wasm-extract/harness/serve.mjs --site` (or that example's `./run.sh --site`)
 serves its `dist/` the same way, under `/relate-examples/`, and its browser test runs against that
 server. A deployed site has a smoke test:
-`node examples/33-wasm-extract/harness/drive.mjs --smoke --base-url https://johnymontana.github.io/relate-examples/33-wasm-extract/`.
+`node examples/01-wasm-extract/harness/drive.mjs --smoke --base-url https://johnymontana.github.io/relate-examples/01-wasm-extract/`.

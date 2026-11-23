@@ -1,0 +1,161 @@
+# Relate WASM 1.2.0: the surface example 01 relies on (harness/probes.mjs; NOTES.md has a row per R-id)
+bundle: npm's @relate/relate-wasm 1.2.0, installed from package-lock.json (lib/relate_wasm.check)
+
+## version (R1)
+dbms.components: Cypher 5, 25
+dbms.components: Neo4j Kernel 2026.10-relate
+dbms.components: Relate 1.2.0
+relate_wasm.version(db) -> 1.2.0
+
+## no transaction control (R2)
+BEGIN -> syntax: syntax error: parse error: unexpected token "BEGIN"
+START TRANSACTION -> syntax: syntax error: parse error: unexpected token "START"
+COMMIT -> syntax: syntax error: parse error: unexpected token "COMMIT"
+ROLLBACK -> syntax: syntax error: parse error: unexpected token "ROLLBACK"
+executeScript 'CREATE (:S {i: 1}); CREATE (:S {i: nosuch}); CREATE (:S {i: 3})':
+  statement 1: ok, nodes_created 1
+  statement 2: syntax: syntax error: UndefinedVariable: variable 'nosuch' not defined
+  statements after it: not run
+  MATCH (s:S) RETURN count(s) -> [{"c":1}]
+  (statement 1 stays committed: there is nothing to roll back)
+
+## null and missing parameters (R3): a null matches nothing, a missing one is refused
+3 :Memory nodes, ids m1-m3
+{id: $id}, $id null -> [{"c":0}]
+WHERE m.id = $id, $id null -> [{"c":0}]
+WHERE m.id IS NOT NULL AND m.id = $id, $id null -> [{"c":0}]
+WHERE $id IS NOT NULL AND m.id = $id, $id null (the parameter-side guard) -> [{"c":0}]
+{id: $id}, $id missing (params {}) -> semantic: semantic error: ParameterMissing: Expected parameter(s): id
+{id: $id}, no params at all (execute(q, null)) -> semantic: semantic error: ParameterMissing: Expected parameter(s): id
+relate_wasm.exec refuses before the engine sees it (a forgotten argument is an error, not an empty answer):
+  {id: $id} with {id: null} -> refused by relate_wasm ($id is null)
+  {id: $id} with {} -> refused by relate_wasm ($id not supplied)
+  {id: $id} with {id: undefined} -> refused by relate_wasm ($id is undefined)
+  {id: $id} with {id: NaN} -> refused by relate_wasm ($id is NaN)
+  {id: $id} with {id: "m2"} -> [{"c":1}]
+
+## indexes (R9): what serves a lookup, shown by the plan
+a fresh store already has 2 indexes: index_1b9dcc97 LOOKUP RELATIONSHIP token-lookup-1.0; index_460996c0 LOOKUP NODE token-lookup-1.0
+Each case: a fresh store, the DDL, then 10 :N nodes; SHOW INDEXES on :N (the built-in LOOKUP indexes left
+out); and the leaf operator of EXPLAIN MATCH (a:N {id: $k}) RETURN a.id AS id (the envelope's plan document).
+Timing it: node harness/probes.mjs 1.2.0 --index-timing (stderr only; never part of this file).
+- no index on :N(id)
+    DDL: (none)
+    SHOW INDEXES: (none on :N)
+    EXPLAIN: NodeByLabelScan (a:N) (notifications: Relate.Notification.Statement.MissingIndex)
+- CREATE INDEX n_id FOR (n:N) ON (n.id)
+    DDL: ok
+    SHOW INDEXES: n_id RANGE range-1.0, owningConstraint null, createStatement "CREATE RANGE INDEX `n_id` FOR (n:`N`) ON (n.`id`)"
+    EXPLAIN: NodeIndexSeek RANGE INDEX a:N(id) WHERE id = $k
+- CREATE CONSTRAINT n_uq ... IS UNIQUE
+    DDL: ok
+    SHOW INDEXES: n_uq RANGE range-1.0, owningConstraint n_uq, createStatement "CREATE CONSTRAINT `n_uq` FOR (n:`N`) REQUIRE (n.`id`) IS UNIQUE"
+    EXPLAIN: NodeIndexSeek RANGE INDEX a:N(id) WHERE id = $k
+- the UNIQUE, then CREATE INDEX on its key (the index refused)
+    DDL: ok; semantic: semantic error: EquivalentSchemaRuleAlreadyExists
+    SHOW INDEXES: n_uq RANGE range-1.0, owningConstraint n_uq, createStatement "CREATE CONSTRAINT `n_uq` FOR (n:`N`) REQUIRE (n.`id`) IS UNIQUE"
+    EXPLAIN: NodeIndexSeek RANGE INDEX a:N(id) WHERE id = $k
+- CREATE INDEX, then the UNIQUE on its key (the UNIQUE refused)
+    DDL: ok; semantic: semantic error: AlreadyExists: there already exists an index (:N {id}). A constraint cannot be created until the index has been dropped.
+    SHOW INDEXES: n_id RANGE range-1.0, owningConstraint null, createStatement "CREATE RANGE INDEX `n_id` FOR (n:`N`) ON (n.`id`)"
+    EXPLAIN: NodeIndexSeek RANGE INDEX a:N(id) WHERE id = $k
+- CREATE INDEX n_id ... OPTIONS {indexProvider: 'range-1.0'} (refused: only indexConfig is an option)
+    DDL: syntax: syntax error: Invalid input 'indexProvider' for 'OPTIONS'. Expected 'indexConfig'.
+    SHOW INDEXES: (none on :N)
+    EXPLAIN: NodeByLabelScan (a:N) (notifications: Relate.Notification.Statement.MissingIndex)
+- CREATE INDEX $name FOR (n:N) ON (n.id), name as a parameter
+    DDL: ok
+    SHOW INDEXES: n_id RANGE range-1.0, owningConstraint null, createStatement "CREATE RANGE INDEX `n_id` FOR (n:`N`) ON (n.`id`)"
+    EXPLAIN: NodeIndexSeek RANGE INDEX a:N(id) WHERE id = $k
+The second of an equivalent index and UNIQUE is refused in either order (IF NOT EXISTS would skip it silently).
+
+## 0 and 0.0 (R5)
+RETURN valueType(0), valueType(0.0), 0 = 0.0 -> [{"eq":true,"f":"FLOAT NOT NULL","i":"INTEGER NOT NULL"}]
+valueType($p) for $p = 0, 0.0, 3.0, 3.5 sent from JS -> [{"a":"INTEGER NOT NULL","b":"INTEGER NOT NULL","c":"INTEGER NOT NULL","d":"FLOAT NOT NULL"}]
+valueType(toFloat($p)) for $p = 0 -> [{"t":"FLOAT NOT NULL"}]
+valueType($e) for $e = [0.9, 0] -> [{"t":"LIST<INTEGER NOT NULL | FLOAT NOT NULL> NOT NULL"}]
+a 2-dimension VECTOR index on :V(e):
+  CREATE (:V {e: $e}), $e = [0.9, 0] -> [{"t":"LIST<FLOAT NOT NULL> NOT NULL"}]
+  CREATE (:V {e: [x IN $e | toFloat(x)]}), $e = [0.9, 0] -> [{"t":"LIST<FLOAT NOT NULL> NOT NULL"}]
+
+## dynamic labels and types (R7)
+CREATE (n:$($l)), $l = "Made" -> [{"l":["Made"]}]
+SET n:$($ls), a list -> [{"l":["Made","L1","L2"]}]
+MATCH (n:$($l)) -> [{"c":1}]
+REMOVE n:$($l) -> [{"l":["Made","L1"]}]
+CREATE ()-[r:$($t)]->() -> [{"t":"DYN_REL"}]
+MERGE (a)-[r:$($t)]->(b), twice -> [{"t":"LINKS"}]
+  -[:LINKS]-> afterwards -> [{"c":1}]
+CREATE (n:$($l)), $l null -> type: type error: InvalidArgumentType: Invalid input 'NULL' for dynamic label. Expected to be STRING or LIST<STRING>.
+MATCH (n:$($l)), $l null (not a match-all) -> type: type error: InvalidArgumentType: Invalid input 'NULL' for dynamic label. Expected to be STRING or LIST<STRING>.
+CREATE ()-[r:$($t)]->(), $t null -> type: type error: InvalidArgumentType: Invalid input 'NULL' for dynamic label. Expected to be STRING or LIST<STRING>.
+CREATE (n:$($l)), $l missing -> semantic: semantic error: ParameterMissing: Expected parameter(s): l
+CREATE (n:$($l)), $l = "" -> syntax: syntax error: invalid name. A label name cannot be empty or contain any null-bytes: ''.
+
+## compiled out of wasm32, or not callable (R8, R12)
+LOAD CSV FROM 'file:///x.csv' -> other: LOAD CSV file unavailable
+LOAD CSV WITH HEADERS FROM 'https://example.com/x.csv' -> other: LOAD CSV file unavailable
+CALL db.checkpoint() (no checkpoint procedure: free() is the only checkpoint) -> syntax: syntax error: ProcedureNotFound: db.checkpoint
+
+## cdc (R18)
+CALL cdc.current() -> syntax: syntax error: ProcedureNotFound: cdc.current
+SHOW PROCEDURES lists cdc.current -> [{"listed":0}]
+
+## timestamp() (R19: the statement clock)
+valueType(timestamp()) -> [{"t":"INTEGER NOT NULL"}]
+collect(timestamp()) over 20,000 rows of one statement: one value -> [{"n":20000,"pinned":true}]
+timestamp() = datetime().epochMillis -> [{"same":true}]
+a relationship ts from timestamp() (an INTEGER) -> [{"t":"INTEGER NOT NULL"}]
+
+## column names and identifiers (R6)
+MATCH (p:P) RETURN [x IN [1,2] | x * 2], {a: 1}.a, CASE WHEN true THEN 1 END, $x, -1, p {.name}
+  columns: ["[x IN [1,2] | x * 2]","{a: 1}.a","CASE WHEN true THEN 1 END","$x","-1","p"]
+  (an unaliased column is named by its text, a map projection by its variable: give every console column an alias)
+CREATE (n:Ärzte {Größe: 1}) (unquoted Unicode) -> [{"g":1,"l":["Ärzte"]}]
+CREATE (:Café😀) (an emoji) -> syntax: syntax error: InvalidUnicodeCharacter: parse error: expected RightParen, got "invalid unicode character: 😀" (Error)
+
+## the wire envelope (R4)
+DDL: CREATE INDEX -> ok
+an envelope's keys: columnTypes, columns, elapsed_ms, error, execute_ms, lex_parse_ms, lower_ms, notifications, parse_ms, plan, plan_cache, plan_ms, result_generation_ms, rewrite_ms, rows, stats (relate_wasm.exec keeps columns, rows and stats)
+a node's keys: id, kind, labels, properties
+a relationship's keys: end_node, id, kind, properties, start_node, type
+a path: a flat list of 3 (node, relationship, node)
+RETURN 9007199254740993: the envelope text holds it (true), JSON.parse gives 9007199254740992
+execute(q, '[1]') (relate_wasm never sends this) -> other: params must be a JSON object
+
+## traps (R14)
+No longer traps: the parser and the expression builder refuse these as errors, and the handle stays usable.
+RETURN ((((1)))) nested 5,000 deep -> syntax: syntax error: parse error: maximum nesting depth of 500 exceeded
+RETURN size(range(1, 300000000)) -> other: This statement tried to build a single value of 24 GB. This is a safety limit protecting against memory exhaustion (not a database limit) — build the value in smaller pieces, or raise it with --expression-memory-limit.
+  the same handle afterwards: RETURN 1 AS ok -> [{"ok":1}]
+Still traps, each in its own process with a 400 KB stack (node --stack-size): a nesting under the parser's
+limit that overflows the stack. The default Node stack takes these; a browser worker's may not.
+RETURN ((((1)))) nested 450 deep -> threw RangeError: Maximum call stack size exceeded; trap.js isWasmTrap true, relate_wasm.isTrap true
+  the same handle again -> threw Error: recursive use of an object detected which would lead to unsafe aliasing in rust; trap.js isWasmTrap false, relate_wasm.isTrap true
+  a new handle on the same instance -> works
+RETURN [[[[]]]] nested 450 deep -> threw RangeError: Maximum call stack size exceeded; trap.js isWasmTrap true, relate_wasm.isTrap true
+  the same handle again -> threw Error: recursive use of an object detected which would lead to unsafe aliasing in rust; trap.js isWasmTrap false, relate_wasm.isTrap true
+  a new handle on the same instance -> works
+
+## a read-only handle in memory (R15): new RelateDb(true)
+RETURN 1 AS ok -> [{"ok":1}]
+EXPLAIN CREATE (:X) (a plan, nothing written) -> ok
+CREATE (:X) -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+MERGE (x:X {k: 1}) (would create) -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+CALL { CREATE (:X) } -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+FOREACH (i IN [1] | CREATE (:X)) -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+PROFILE CREATE (:X) -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+CALL { ... } IN TRANSACTIONS -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+CREATE INDEX -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+CREATE CONSTRAINT -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+ALTER CURRENT GRAPH TYPE SET -> readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+Refused per write performed, not per statement: with nothing to write, these succeed:
+  MATCH (n) CREATE (:X) (no rows) -> ok
+  MATCH (n) SET n.x = 1 (no rows) -> ok
+  MATCH (n) DETACH DELETE n (no rows) -> ok
+  DROP INDEX nosuch IF EXISTS -> ok
+reset() -> threw readonly: database is read-only
+executeScript 'RETURN 1 AS a; CREATE (:X); RETURN 2 AS b' -> 1 result, then readonly: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance. at statement 2
+In OPFS (browser.txt): a read-only open of a store with data refuses SET and DELETE too, an
+illegal edge reports the graph type's ConstraintValidationFailed before the read-only error, the store's
+files stay byte-identical, and a read-only handle and a writer exclude each other (storage locked).

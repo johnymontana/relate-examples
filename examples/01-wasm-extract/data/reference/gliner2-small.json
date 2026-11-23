@@ -1,0 +1,241 @@
+{
+ "generator": "examples/01-wasm-extract/harness/reference.py",
+ "about": "GLiNER2.5-small-v1 through Python gliner2 on torch (CPU, 1 thread): the reference harness/model.mjs compares gliner-rs's WASM build with. Offsets are Unicode code points; a relation's score is its head's confidence, which equals its tail's.",
+ "source": "texts from data/samples/ccg/financial-services.md (written for example 01); the schema is pipeline.modelSchema of data/ontologies/ogs/ccg/financial-services.ontology.yaml (create-context-graph 707b168, Apache-2.0)",
+ "model": {
+  "repo": "fastino/gliner2.5-small-v1",
+  "revision": "7132dc4561c3f94563c6147e75ffa8ef34c4964a",
+  "sha256": {
+   "model.safetensors": "4ee982787ace270d4bf15dbcb28ced38e0aa201372347114ceedd6336055de2b",
+   "tokenizer.json": "cbc8ae6037812709c9c26f2a160f8dc48b0440bcb79c8141804259ae2d6adac3",
+   "config.json": "0b7d9e1401ceeb83e992ec66d2f93bff7e5646428f1b4706ec527cf88f53578a",
+   "encoder_config/config.json": "db837d0dc587f5858687ef860c1f400de10f3c3e44f88daef8cbda80d74e4c9c"
+  }
+ },
+ "tokenizer_config": "G2: a copy with extra_special_tokens renamed additional_special_tokens, backend and is_local dropped (transformers 4.x)",
+ "versions": {
+  "python": "3.12.12",
+  "gliner2": "2.0.0",
+  "torch": "2.14.1",
+  "transformers": "4.57.6",
+  "tokenizers": "0.22.2"
+ },
+ "host": "darwin-arm64",
+ "torch_threads": 1,
+ "options": {
+  "threshold": 0.1,
+  "include_confidence": true,
+  "include_spans": true,
+  "overlap": "the checkpoint's (flat)"
+ },
+ "schema": {
+  "entities": [
+   ["person", null],
+   ["organization", null],
+   ["location", null],
+   ["event", null],
+   ["account", "financial account in financial services"],
+   ["transaction", "financial transaction in financial services"],
+   ["decision", "decision in financial services"],
+   ["policy", "regulation in financial services"],
+   ["security", "financial instrument in financial services"]
+  ],
+  "relations": ["person works for organization", "organization located at location", "person participated in event", "person owns account", "transaction transferred to account", "transaction transferred from account", "transaction involves security", "decision caused transaction", "decision applied policy policy", "decision advised by person", "person manages account", "decision preceded by decision"]
+ },
+ "gold": [
+  ["Dana Whitlock", "person"],
+  ["Halvorsen Pryce Wealth", "organization"],
+  ["Edinburgh", "location"],
+  ["Arjun Mehta", "person"],
+  ["ACC-2207", "account"],
+  ["Colm Brady", "person"],
+  ["TX-4471", "transaction"],
+  ["decision D-118", "decision"]
+ ],
+ "cases": [
+  {
+   "id": "sentence-1",
+   "text": "Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh.",
+   "with_relations": true,
+   "tokens": 17,
+   "entities": [
+    ["person", 0, 13, "Dana Whitlock", 0.9989472031593323],
+    ["organization", 24, 46, "Halvorsen Pryce Wealth", 0.9970648884773254],
+    ["account", 50, 64, "wealth manager", 0.1823020577430725],
+    ["location", 76, 85, "Edinburgh", 0.9935674071311951]
+   ],
+   "relations": [
+    ["person works for organization", [0, 13, "Dana Whitlock"], [24, 46, "Halvorsen Pryce Wealth"], 0.7690987586975098],
+    ["organization located at location", [24, 46, "Halvorsen Pryce Wealth"], [76, 85, "Edinburgh"], 0.4100899398326874],
+    ["person manages account", [0, 13, "Dana Whitlock"], [50, 64, "wealth manager"], 0.22134222090244293]
+   ]
+  },
+  {
+   "id": "sentence-2",
+   "text": "Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024.",
+   "with_relations": true,
+   "tokens": 26,
+   "entities": [
+    ["person", 0, 11, "Arjun Mehta", 0.9962618947029114],
+    ["account", 25, 33, "ACC-2207", 0.9717236161231995],
+    ["person", 39, 49, "Colm Brady", 0.9965384006500244],
+    ["account", 66, 74, "ACC-2207", 0.9889726042747498],
+    ["decision", 83, 104, "discretionary mandate", 0.5829528570175171],
+    ["policy", 83, 104, "discretionary mandate", 0.2535661458969116]
+   ],
+   "relations": [
+    ["person owns account", [0, 11, "Arjun Mehta"], [17, 33, "account ACC-2207"], 0.6933205723762512],
+    ["person manages account", [39, 49, "Colm Brady"], [17, 33, "account ACC-2207"], 0.3654434382915497]
+   ]
+  },
+  {
+   "id": "sentence-3",
+   "text": "Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent.",
+   "with_relations": true,
+   "tokens": 26,
+   "entities": [
+    ["decision", 0, 26, "Rebalancing decision D-118", 0.7447002530097961],
+    ["event", 34, 45, "transaction", 0.10054155439138412],
+    ["transaction", 46, 53, "TX-4471", 0.8236165642738342],
+    ["account", 69, 73, "fund", 0.13312682509422302],
+    ["location", 90, 99, "portfolio", 0.3329896926879883]
+   ],
+   "relations": [
+    ["transaction transferred from account", [34, 53, "transaction TX-4471"], [46, 53, "TX-4471"], 0.10242072492837906],
+    ["decision caused transaction", [0, 26, "Rebalancing decision D-118"], [34, 53, "transaction TX-4471"], 0.38586196303367615],
+    ["decision preceded by decision", [0, 26, "Rebalancing decision D-118"], [0, 26, "Rebalancing decision D-118"], 0.14974252879619598]
+   ]
+  },
+  {
+   "id": "sentence-4",
+   "text": "The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September.",
+   "with_relations": true,
+   "tokens": 23,
+   "entities": [
+    ["decision", 20, 34, "decision D-118", 0.8090445399284363],
+    ["person", 50, 60, "Colm Brady", 0.9994727969169617],
+    ["event", 65, 73, "approved", 0.19419807195663452],
+    ["organization", 81, 101, "investment committee", 0.9875695109367371],
+    ["location", 81, 101, "investment committee", 0.4008159041404724]
+   ],
+   "relations": [
+    ["person works for organization", [50, 60, "Colm Brady"], [81, 101, "investment committee"], 0.13347893953323364],
+    ["decision applied policy policy", [20, 34, "decision D-118"], [81, 101, "investment committee"], 0.2237294316291809],
+    ["decision advised by person", [20, 34, "decision D-118"], [50, 60, "Colm Brady"], 0.6191279292106628],
+    ["decision preceded by decision", [20, 34, "decision D-118"], [50, 60, "Colm Brady"], 0.3354739546775818]
+   ]
+  },
+  {
+   "id": "body",
+   "text": "Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September.",
+   "with_relations": true,
+   "tokens": 92,
+   "entities": [
+    ["person", 0, 13, "Dana Whitlock", 0.9977706670761108],
+    ["organization", 24, 46, "Halvorsen Pryce Wealth", 0.9951584935188293],
+    ["location", 76, 85, "Edinburgh", 0.9916211366653442],
+    ["person", 87, 98, "Arjun Mehta", 0.9830375909805298],
+    ["account", 112, 120, "ACC-2207", 0.987686038017273],
+    ["person", 126, 136, "Colm Brady", 0.912247359752655],
+    ["account", 153, 161, "ACC-2207", 0.9946908354759216],
+    ["event", 170, 191, "discretionary mandate", 0.10222352296113968],
+    ["policy", 170, 191, "discretionary mandate", 0.2717699706554413],
+    ["decision", 208, 234, "Rebalancing decision D-118", 0.6955608129501343],
+    ["transaction", 254, 261, "TX-4471", 0.9300359487533569],
+    ["decision", 343, 357, "decision D-118", 0.6238958239555359],
+    ["person", 373, 383, "Colm Brady", 0.9510975480079651],
+    ["event", 388, 396, "approved", 0.19636887311935425],
+    ["organization", 404, 424, "investment committee", 0.42674723267555237],
+    ["event", 404, 424, "investment committee", 0.1661829650402069],
+    ["policy", 404, 424, "investment committee", 0.10708160698413849]
+   ],
+   "relations": [
+    ["person works for organization", [0, 13, "Dana Whitlock"], [24, 46, "Halvorsen Pryce Wealth"], 0.5740962624549866],
+    ["organization located at location", [24, 46, "Halvorsen Pryce Wealth"], [76, 85, "Edinburgh"], 0.20701298117637634],
+    ["person owns account", [0, 13, "Dana Whitlock"], [145, 161, "account ACC-2207"], 0.6095004081726074],
+    ["person owns account", [87, 98, "Arjun Mehta"], [145, 161, "account ACC-2207"], 0.3663046956062317],
+    ["person owns account", [373, 383, "Colm Brady"], [145, 161, "account ACC-2207"], 0.2846081256866455],
+    ["decision caused transaction", [208, 234, "Rebalancing decision D-118"], [242, 261, "transaction TX-4471"], 0.2634764015674591],
+    ["decision advised by person", [208, 234, "Rebalancing decision D-118"], [126, 136, "Colm Brady"], 0.22562040388584137],
+    ["person manages account", [126, 136, "Colm Brady"], [104, 120, "account ACC-2207"], 0.3302106261253357],
+    ["decision preceded by decision", [208, 234, "Rebalancing decision D-118"], [343, 357, "decision D-118"], 0.11564082652330399]
+   ]
+  },
+  {
+   "id": "offsets",
+   "text": "🚀 Zoë Müller owns account ACC-2207.",
+   "with_relations": true,
+   "tokens": 11,
+   "entities": [
+    ["person", 2, 12, "Zoë Müller", 0.9931996464729309],
+    ["account", 26, 34, "ACC-2207", 0.8343690037727356]
+   ],
+   "relations": [
+    ["person owns account", [0, 12, "🚀 Zoë Müller"], [26, 34, "ACC-2207"], 0.6595468521118164],
+    ["person manages account", [2, 12, "Zoë Müller"], [18, 34, "account ACC-2207"], 0.4341096878051758]
+   ]
+  },
+  {
+   "id": "two-labels",
+   "text": "Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024.",
+   "with_relations": false,
+   "tokens": 26,
+   "entities": [
+    ["person", 0, 11, "Arjun Mehta", 0.9977009892463684],
+    ["account", 25, 33, "ACC-2207", 0.9748184084892273],
+    ["person", 39, 49, "Colm Brady", 0.9967694282531738],
+    ["account", 66, 74, "ACC-2207", 0.9877008199691772],
+    ["decision", 83, 104, "discretionary mandate", 0.6925791501998901],
+    ["policy", 83, 104, "discretionary mandate", 0.14013433456420898],
+    ["event", 115, 119, "2024", 0.4138911962509155]
+   ],
+   "relations": []
+  },
+  {
+   "id": "long",
+   "text": "Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September. Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September. Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September. Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September. Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September. Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September. Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September. Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September.",
+   "with_relations": false,
+   "tokens": 736,
+   "repeat": {
+    "unit": "Dana Whitlock works for Halvorsen Pryce Wealth, a wealth manager located in Edinburgh. Arjun Mehta owns account ACC-2207, and Colm Brady manages account ACC-2207 under a discretionary mandate signed in 2024. Rebalancing decision D-118 caused transaction TX-4471 and raised the fund's weight in the portfolio to 14 percent. The file shows that decision D-118 was advised by Colm Brady and approved by the investment committee on 19 September.",
+    "copies": 8,
+    "separator": " "
+   },
+   "entities": [
+    ["organization", 24, 46, "Halvorsen Pryce Wealth", 0.9999312162399292],
+    ["location", 76, 85, "Edinburgh", 0.999977707862854],
+    ["person", 126, 136, "Colm Brady", 0.9998869895935059],
+    ["person", 373, 383, "Colm Brady", 0.9998476505279541],
+    ["organization", 466, 488, "Halvorsen Pryce Wealth", 0.9999852180480957],
+    ["location", 518, 527, "Edinburgh", 0.999982476234436],
+    ["person", 568, 578, "Colm Brady", 0.9998658895492554],
+    ["person", 815, 825, "Colm Brady", 0.9998362064361572],
+    ["organization", 908, 930, "Halvorsen Pryce Wealth", 0.9999872446060181],
+    ["location", 960, 969, "Edinburgh", 0.9999828338623047],
+    ["person", 1010, 1020, "Colm Brady", 0.9998502731323242],
+    ["person", 1257, 1267, "Colm Brady", 0.9998346567153931],
+    ["organization", 1350, 1372, "Halvorsen Pryce Wealth", 0.9999890327453613],
+    ["location", 1402, 1411, "Edinburgh", 0.999983549118042],
+    ["person", 1452, 1462, "Colm Brady", 0.999860405921936],
+    ["person", 1699, 1709, "Colm Brady", 0.9998362064361572],
+    ["organization", 1792, 1814, "Halvorsen Pryce Wealth", 0.9999904632568359],
+    ["location", 1844, 1853, "Edinburgh", 0.9999841451644897],
+    ["person", 1894, 1904, "Colm Brady", 0.9998557567596436],
+    ["person", 2141, 2151, "Colm Brady", 0.9998261332511902],
+    ["organization", 2234, 2256, "Halvorsen Pryce Wealth", 0.9999903440475464],
+    ["location", 2286, 2295, "Edinburgh", 0.9999816417694092],
+    ["person", 2336, 2346, "Colm Brady", 0.9998481273651123],
+    ["person", 2583, 2593, "Colm Brady", 0.9998175501823425],
+    ["organization", 2676, 2698, "Halvorsen Pryce Wealth", 0.9999901056289673],
+    ["location", 2728, 2737, "Edinburgh", 0.999981164932251],
+    ["person", 2778, 2788, "Colm Brady", 0.9998387098312378],
+    ["person", 3025, 3035, "Colm Brady", 0.9998103976249695],
+    ["organization", 3118, 3140, "Halvorsen Pryce Wealth", 0.9999897480010986],
+    ["location", 3170, 3179, "Edinburgh", 0.999980092048645],
+    ["person", 3220, 3230, "Colm Brady", 0.9998266100883484],
+    ["person", 3467, 3477, "Colm Brady", 0.9997959733009338]
+   ],
+   "relations": []
+  }
+ ]
+}

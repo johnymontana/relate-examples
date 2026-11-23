@@ -1,9 +1,9 @@
 # Builds the browser-examples site (site/build.mjs: each examples/*/site.json example's dist/, plus
 # the index page) and publishes it on GitHub Pages as this repository's project site:
-# https://<owner>.github.io/relate-examples/ (example 33 at /relate-examples/33-wasm-extract/).
+# https://<owner>.github.io/relate-examples/ (example 01 at /relate-examples/01-wasm-extract/).
 # Pages serves the files as they are, with no custom headers: each page carries its own
 # Content-Security-Policy <meta>, and site/build.mjs refuses a page without one. site/README.md
-# is the contract; examples/33-wasm-extract/harness/serve.mjs --site emulates what Pages serves.
+# is the contract; examples/01-wasm-extract/harness/serve.mjs --site emulates what Pages serves.
 # It deploys only what CI has passed: it runs when the examples workflow completes successfully for a
 # push to main, and builds that run's commit (workflow_run.head_sha), never a later one. A manual
 # workflow_dispatch builds the commit it is started on.
@@ -42,7 +42,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: examples/33-wasm-extract/package-lock.json
+          cache-dependency-path: examples/01-wasm-extract/package-lock.json
 
       # gliner-rs v0.3.1 built to WASM, as the examples workflow builds it (the same cache keys, so
       # either workflow's build serves the other): Rust 1.97.1 with the wasm32 target on a miss.
@@ -76,13 +76,13 @@ jobs:
           path: .cache/wasm-tools
           key: ${{ steps.wasm-tools.outputs.cache-primary-key }}
 
-      # 33's npm packages (@relate/relate-wasm among them, pinned with its integrity) and the NVL
+      # 01's npm packages (@relate/relate-wasm among them, pinned with its integrity) and the NVL
       # vendor bundle. The site never ships the GLiNER weights: the page fetches them from the Hub.
-      - name: Example 33's npm packages and the NVL vendor bundle
+      - name: Example 01's npm packages and the NVL vendor bundle
         run: |
-          npm ci --omit=peer --prefix examples/33-wasm-extract
-          npm run --prefix examples/33-wasm-extract vendor
-      # Runs each example's own build (33: npm run build), checks every page's CSP <meta> and
+          npm ci --omit=peer --prefix examples/01-wasm-extract
+          npm run --prefix examples/01-wasm-extract vendor
+      # Runs each example's own build (01: npm run build), checks every page's CSP <meta> and
       # relative URLs, and writes site/dist/ with the index page and .nojekyll.
       - name: Build site/dist
         run: node site/build.mjs

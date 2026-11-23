@@ -18,7 +18,7 @@ project env's wheel (this interpreter, in a subprocess), and check:
 - the JS port refuses what it does not handle, naming the property, and refuses
   bad dumps before its first write.
 Prerequisites (each test SKIPs without its own): node on PATH; the pinned release's
-@relate/relate-wasm package, installed by `npm ci --omit=peer` in examples/33-wasm-extract
+@relate/relate-wasm package, installed by `npm ci --omit=peer` in examples/01-wasm-extract
 (or $RELATE_WASM_DIR), where loadNode checks it and fails a test on a package that is there
 but not the pinned one.
 """
@@ -44,13 +44,13 @@ REPLAY_MJS = REPO / "lib" / "replay.mjs"
 RELATE_WASM_MJS = REPO / "lib" / "relate_wasm.mjs"
 NODE = shutil.which("node")
 PIN = metadata.version("relate-db")  # the project engine: pyproject's pin, as the project env holds it
-# where lib/relate_wasm.mjs find(PIN) looks when run from examples/33-wasm-extract: $RELATE_WASM_DIR, else npm's copy
-EX33 = REPO / "examples" / "33-wasm-extract"
-WASM = Path(os.environ.get("RELATE_WASM_DIR") or EX33 / "node_modules" / "@relate" / "relate-wasm")
+# where lib/relate_wasm.mjs find(PIN) looks when run from examples/01-wasm-extract: $RELATE_WASM_DIR, else npm's copy
+EX01 = REPO / "examples" / "01-wasm-extract"
+WASM = Path(os.environ.get("RELATE_WASM_DIR") or EX01 / "node_modules" / "@relate" / "relate-wasm")
 
 needs_node = pytest.mark.skipif(NODE is None, reason="node is not on PATH")
 needs_wasm = pytest.mark.skipif(not (WASM / "relate_bg.wasm").exists() or not (WASM / "relate.js").exists(),
-                                reason=f"no Relate {PIN} WASM bundle in {WASM} (npm ci --omit=peer in examples/33-wasm-extract)")
+                                reason=f"no Relate {PIN} WASM bundle in {WASM} (npm ci --omit=peer in examples/01-wasm-extract)")
 
 # One graph, built with the same statements on both engines: a graph type, a UNIQUE constraint
 # (whose backing index serves its key), every index kind lib/replay rebuilds, a NODE KEY, a relationship type constraint, and the

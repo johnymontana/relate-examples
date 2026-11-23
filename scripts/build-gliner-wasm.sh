@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Build gliner-rs's WASM package from a pinned commit into .cache/gliner-wasm/<rev7>/; print its env var.
-#   scripts/build-gliner-wasm.sh               v0.3.1 = 4fa741e, example 33's revision (D4)
+#   scripts/build-gliner-wasm.sh               v0.3.1 = 4fa741e, example 01's revision (D4)
 #   scripts/build-gliner-wasm.sh <tag|sha>     another revision of apiplant/gliner-rs
 #   scripts/build-gliner-wasm.sh --check       verify a cached build only: no network, no build; exit 1 if none
 #   scripts/build-gliner-wasm.sh --force       rebuild even when a verified build is cached
 #   eval "$(scripts/build-gliner-wasm.sh)"     sets GLINER_WASM_DIR
 #
-# gliner-rs (Apache-2.0) publishes no WASM artifact, so example 33 builds it the way the
+# gliner-rs (Apache-2.0) publishes no WASM artifact, so example 01 builds it the way the
 # repo's website does (`wasm-pack build --target web --release`), made reproducible:
 #   - the GitHub source archive of the full commit sha; its pax header must name that commit;
 #   - cargo --locked (the commit's Cargo.lock) on Rust 1.97.1: GLINER_RUST_TOOLCHAIN names the
@@ -26,7 +26,7 @@
 # and LICENSE. Its .wasm differs from a macOS arm64 one, though: cargo hashes the host triple
 # into the crate metadata of build scripts and proc macros, which renames symbols and so moves
 # functions. Both give byte-identical extractCli JSON on every reference case, so the bytes are
-# not pinned (no ci/gliner-rs-<rev7>.sha256) and example 33's expected/model.txt pins the
+# not pinned (no ci/gliner-rs-<rev7>.sha256) and example 01's expected/model.txt pins the
 # behaviour against a Python reference instead (D4). Should a pin file appear, a build or a
 # cached copy that differs from it fails closed and is not installed.
 #
@@ -39,7 +39,7 @@
 #                          THIRD_PARTY-crates.txt (below), and .built (commit, toolchain, each file's
 #                          sha256), written last
 # THIRD_PARTY-crates.txt lists every crate linked into the .wasm (name, version, licence
-# expression, repository; sorted), for the licence notices example 33's site ships: the
+# expression, repository; sorted), for the licence notices example 01's site ships: the
 # gliner-rs package's normal dependency edges in `cargo metadata --filter-platform
 # wasm32-unknown-unknown`, transitively, leaving out build- and dev-dependencies (they run on the
 # build host or only in tests) and proc-macro crates with whatever only they need (compiled for
