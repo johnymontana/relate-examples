@@ -93,8 +93,11 @@ or you typed it. The engine worker and the Node harness call the same function.
 ## The ontology and the store
 
 The page needs the SDK's `decode` and `core` clean. It shows the other validation sets for
-information: `consistentSchema` asks for an explicit database `name` on every property (65 issues
-here), and `mappable` checks the import mappings (9).
+information:
+- `consistentSchema` reports 66 issues. In 65 of them a property lacks an explicit database `name`.
+  The other is the existence constraint on `Company.name`, which the SDK reports as conflicting with
+  a composite constraint on `Company`.
+- `mappable` checks the import mappings, and reports 9 issues.
 
 `web/ddl.js` turns the ontology into the store's schema, applied in this order (`ddl.cypher`):
 
