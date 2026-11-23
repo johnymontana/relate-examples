@@ -1710,7 +1710,7 @@ async function smoke(argv) {
     const shown = await page.$eval(tid('graph-counts'), (e) => ({ n: Number(e.dataset.nodes), r: Number(e.dataset.rels) }));
     ok(gc.rels > 0 && gc.nodes === shown.n && gc.rels === shown.r, `NVL draws the graph: ${gc.nodes} nodes, ${gc.rels} relationships`);
     const qc = await consoleUi(page, "CREATE (:Probe {name: 'x'}) RETURN 1 AS one");
-    ok(qc.category === 'readonly' && /database is read-only/.test(qc.text), `a console CREATE is refused: ${firstLine(qc.text)}`);
+    ok(qc.category === 'readonly' && /WriteOnReadOnlyAccessDatabase/.test(qc.text), `a console CREATE is refused: ${firstLine(qc.text)}`);
     await page.click(tid('tab-store'));
     const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 60000 }), page.click(tid('download-db'))]);
     const tmp = path.join(profile, 'download.tar');
