@@ -1,0 +1,63 @@
+# The validator (web/validate.js) against the Python's
+
+same: MATCH (a:Company)-[r:ACQUIRES]->(b:Company) RETURN a.name, b.name
+same: MATCH (p:Person)-[r:CEO_OF]->(c:Company) RETURN p.name, c.name
+same: MATCH (c:Company)<-[r:CEO_OF]-(p:Person) RETURN p.name
+same: MATCH (c:Company)-[r:CEO_OF]->(p:Person) RETURN p.name
+  - illegal endpoints: (:Company)-[:CEO_OF]-(:Person); allowed: [('Person', 'Company')]
+same: MATCH (p:Person)-[:CEO_OF]-(c:Company) RETURN p.name
+same: MATCH (a:Corporation)-[:ACQUIRES]->(b:Company) RETURN a
+  - unknown label :Corporation
+  - illegal endpoints: (:Corporation)-[:ACQUIRES]-(:Company); allowed: [('Company', 'Company')]
+same: MATCH (a:Company)-[:BUYS]->(b:Company) RETURN a
+  - unknown relationship type :BUYS
+same: MATCH (f:InvestmentFund)-[:INVESTED_IN]->(p:Product) RETURN f
+  - illegal endpoints: (:InvestmentFund)-[:INVESTED_IN]-(:Product); allowed: [('InvestmentFund', 'Company')]
+same: MATCH (n:Company) DETACH DELETE n
+  - write/clause violation: query must be read-only
+same: CREATE (n:Company {name: 'x'})
+  - write/clause violation: query must be read-only
+same: MATCH (n:Company) SET n.name = 'x'
+  - write/clause violation: query must be read-only
+same: MATCH (a)-[r]->(b) WHERE r.assertion = 'asserted' RETURN a.name, type(r), b.name
+same: MATCH (reg:Regulator)-[r]->(c:Company) WHERE r.assertion = 'negated' RETURN reg.name
+same: MATCH (c:`Company`)-[:`MAKES`]->(p:`Product`) RETURN p.name
+same: MATCH (e:Event)-[:EVENT_TARGET]->(c:Company) RETURN e, c
+same: LOAD CSV FROM 'x' AS row RETURN row
+  - write/clause violation: query must be read-only
+same: CALL dbms.components() YIELD name RETURN name
+  - write/clause violation: query must be read-only
+
+# The A/B notes (web/compare.js) against the Python's
+
+case 1: same
+  - bare query blocked by ontology validation: unknown label :Corporation; unknown relationship type :BUYS
+  - bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts
+case 2: same
+  - bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts
+  - bare query omits the support-probability threshold
+  - bare query matches only the canonical name — alias mentions (tickers, short forms) silently miss
+  - row counts differ: ontology 1 vs bare 0
+case 3: same
+  - same shape this time — the ontology earns its keep on the questions where meaning, not structure, is the answer
+
+# The model's reply to a query (web/llm.js parseReply)
+
+"{\"cypher\": \"MATCH (n:Company) RETURN n.name\"}"  ->  "MATCH (n:Company) RETURN n.name"
+"<think>\n\n</think>\n\n{\"cypher\": \"MATCH (n:Company) RETURN n.name\"}"  ->  "MATCH (n:Company) RETURN n.name"
+"<think>\nsome thought\n</think>\nHere it is: {\"cypher\": \"RETURN 1;\"} done"  ->  "RETURN 1"
+"```cypher\nMATCH (p:Person) RETURN p.name;\n```"  ->  "MATCH (p:Person) RETURN p.name"
+"MATCH (p:Person) RETURN p.name"  ->  "MATCH (p:Person) RETURN p.name"
+
+# Engine notes: EXPLAIN on the loaded store (advisory, never blocking)
+
+MATCH (a:Corporation)-[:BUYS]->(b) RETURN b.nme
+  engine: unknown label (The label `Corporation` does not exist in this database.)
+  engine: unknown property key (The property key `nme` does not exist in this database.)
+  engine: unknown relationship type (The relationship type `BUYS` does not exist in this database.)
+MATCH (c:Company) WHERE c.nmae = 'Halcyon' RETURN c.name
+  engine: unknown property key (The property key `nmae` does not exist in this database.)
+MATCH (c:Company) WHERE c.country = 'US' RETURN c.name
+  (none)
+MATCH (c:Company)-[r:ACQUIRES]->(t:Company) WHERE r.assertion = 'asserted' RETURN t.name
+  (none)

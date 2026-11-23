@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://huggingface.co https://*.hf.co https://raw.githubusercontent.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; base-uri 'self'; object-src 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ontology-driven Text2Cypher · Relate example 02</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body data-ready="0" data-llm="none" data-busy="0">
+<header>
+  <h1>Ontology-driven Text2Cypher</h1>
+  <span class="sub">in your browser: the ontology grounds generation, static validation and Relate guard execution</span>
+  <a class="back" href="../">all examples</a>
+  <span class="badge" id="mode" data-testid="mode">starting…</span>
+</header>
+<div id="banner" class="banner" hidden data-testid="banner"></div>
+<main>
+  <div class="panel" id="ontology-panel">
+    <h2>Ontology</h2>
+    <div class="tabs" id="onttabs">
+      <span class="tab active" data-o="browser">Browser</span>
+      <span class="tab" data-o="json">JSON document</span>
+      <span class="tab" data-o="checks" data-testid="tab-checks">Checks</span>
+    </div>
+    <div id="ontology" data-testid="ontology"></div>
+    <pre id="jsonview" class="view" hidden></pre>
+    <div id="checks" class="view" hidden data-testid="checks"></div>
+  </div>
+  <div>
+    <div class="panel">
+      <h2>Knowledge graph <span class="dim">(NVL: click a node or edge)</span></h2>
+      <div class="tabs" id="graphtabs">
+        <span class="tab active" data-g="data">Instance data</span>
+        <span class="tab" data-g="onto">Ontology (metamodel)</span>
+      </div>
+      <div class="graph-stack">
+        <div class="graph-wrap"><div id="graph" data-testid="graph"></div></div>
+      </div>
+      <div id="detail"></div>
+    </div>
+
+    <div class="panel" id="model-panel">
+      <h2>Model <span class="dim">(runs on this machine's GPU through WebLLM; nothing is sent anywhere)</span></h2>
+      <div id="gpu" class="note" data-testid="gpu">Checking for WebGPU…</div>
+      <div class="row">
+        <select id="model" data-testid="model-select" aria-label="Model"></select>
+        <button id="load-model" data-testid="load-model" disabled>Load model</button>
+        <label class="check"><input type="checkbox" id="use-canned" data-testid="use-canned"> canned answers</label>
+        <label class="check" title="When a query is refused or fails, tell the model what went wrong and let it try once more (both variants alike)"><input type="checkbox" id="repair" data-testid="repair"> repair once</label>
+      </div>
+      <div class="progress" hidden data-testid="progress"><div class="bar"></div><span class="ptext"></span></div>
+      <div id="model-note" class="note" data-testid="model-note"></div>
+    </div>
+
+    <div class="panel" id="ask">
+      <h2>Ask</h2>
+      <input id="q" data-testid="question" placeholder="e.g. Which acquisitions were rumored but never asserted?" aria-label="Question">
+      <div class="chips" id="chips" data-testid="chips"></div>
+      <button id="go" data-testid="ask" disabled>Generate &amp; run</button>
+      <div class="ab" id="ab" hidden>
+        <div class="card without" id="card-without" data-testid="card-without"></div>
+        <div class="card with" id="card-with" data-testid="card-with"></div>
+      </div>
+      <div id="compare" hidden data-testid="compare"></div>
+      <details class="more">
+        <summary>What the model reads (the two prompts)</summary>
+        <div class="two">
+          <div><h3>Without the ontology: schema only</h3><pre id="prompt-bare" class="view prompt"></pre></div>
+          <div><h3>With the ontology: descriptions, vocabularies, cookbook</h3><pre id="prompt-grounded" class="view prompt"></pre></div>
+        </div>
+      </details>
+      <details class="more" id="own">
+        <summary>Run your own Cypher (the same checks, the same store)</summary>
+        <textarea id="own-cypher" data-testid="own-cypher" rows="4" spellcheck="false">MATCH (a:Company)-[r:ACQUIRES]->(b:Company)
+RETURN a.name, b.name, r.assertion, r.supported</textarea>
+        <button id="own-run" data-testid="own-run" disabled>Check &amp; run</button>
+        <div class="card" id="own-card" data-testid="own-card" hidden></div>
+      </details>
+    </div>
+  </div>
+</main>
+<footer>
+  Relate 1.2.0 (WebAssembly) holds the graph in this tab; WebLLM runs the model on your GPU; the
+  Ontology Graph Spec SDK reads the ontology. Example 02 of
+  <a href="../">relate-examples</a> · <a href="THIRD_PARTY.md">third-party notices</a>.
+</footer>
+</body>
+</html>

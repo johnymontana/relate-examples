@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 60
     env:
       # In this job a missing optional dependency FAILS instead of printing SKIP and passing.
-      EXAMPLES_REQUIRE: wasm,gliner,browser
+      EXAMPLES_REQUIRE: wasm,gliner,browser   # 01's keys; 02's (wasm, browser) are among them
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -57,7 +57,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: examples/01-wasm-extract/package-lock.json
+          cache-dependency-path: examples/*/package-lock.json
 
       # ---- Example 01 (keys wasm, gliner, browser) ------------------------------------------------
       # gliner-rs v0.3.1 (4fa741e, the script's default) built to WASM. On a hit the script only
@@ -142,6 +142,13 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.playwright.outputs.cache-primary-key }}
+
+      # ---- Example 02 (keys wasm, browser) ------------------------------------------------------------
+      # 02's own package-lock.json: @relate/relate-wasm, @mlc-ai/web-llm, @neo4j/ontology-graph-spec, NVL
+      # 2.0.0, js-yaml, esbuild and playwright 1.63.0 (the same Playwright as 01, so the Chromium installed
+      # above serves both). The models never run in CI: the browser section drives the page in canned mode.
+      - name: Example 02's npm packages
+        run: npm ci --omit=peer --prefix examples/02-wasm-text2cypher
 
       # No .env in CI: offline runs.
       - run: uv run pytest -q

@@ -1,0 +1,576 @@
+# Corporate Events — v2.0.0: richer domain model used by the extraction /
+# entity-resolution examples and the Text2Cypher demo app.
+#
+# Every node and relationship carries a REAL definition: what counts, what
+# does not, and which neighboring concept to use instead. Those descriptions
+# are not documentation fluff — they become extraction-prompt guidance,
+# decision-model criteria, and the Text2Cypher schema briefing.
+#
+# Validated with the Ontology Graph Spec SDK by harness/run.mjs (data/SOURCE.md lists the changes).
+schema: "https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json"
+id: corporate-events
+version: "2.0.0"
+name: Corporate Events
+description: >-
+  Companies, people, products, industries, regulators and investors, and the
+  corporate events that connect them: acquisitions, partnerships, supply
+  agreements, rivalries, leadership, investment and regulatory scrutiny.
+  Designed for knowledge-graph extraction from business news, with
+  assertion-status and support judgments stored on every relationship.
+
+nodes:
+  company:
+    label: Company
+    description: >-
+      A commercial enterprise: a public issuer or a private firm. Includes
+      subsidiaries and divisions when they are reported as acting
+      independently. Does NOT include regulatory bodies (use Regulator),
+      investment vehicles whose role is purely financial (use InvestmentFund),
+      or industry classifications (use Industry). A ticker symbol used to name
+      a company refers to the Company, not the instrument.
+    aliases: [Organization, Firm, Corporation]
+    reference: "https://schema.org/Organization"
+    properties:
+      id:
+        type: STRING
+        key: true
+      name:
+        type: STRING
+        must_exist: true
+        description: >-
+          Canonical legal or trading name after entity resolution. Short forms
+          and tickers live in aliases, never here.
+      aliases:
+        type: "LIST<STRING>"
+        description: >-
+          Alternative surface forms that entity resolution merged into this
+          node: abbreviations, tickers, short names. Query-side, match with
+          `name = $x OR $x IN aliases`.
+      ticker:
+        type: STRING
+        unique: true
+        pattern: "^[A-Z]{1,6}$"
+        description: Exchange ticker symbol, if publicly listed.
+      country:
+        type: STRING
+      founded:
+        type: DATE
+      description:
+        type: STRING
+        description: Free-text company description; embedded for semantic search.
+      embedding:
+        type: "VECTOR<FLOAT32>"
+        dimension: 1536
+    constraints:
+      company_name_country_unique:
+        type: UNIQUE
+        properties: [name, country]
+        name: company_name_country_unique
+    extensions:
+      indexes:
+        company_name_fulltext:
+          type: FULLTEXT
+          labels: [Company]
+          properties: [name, description]
+          options:
+            type: FULLTEXT
+            fulltext.analyzer: "standard-no-stop-words"
+        company_embedding_vector:
+          type: VECTOR
+          labels: [Company]
+          properties: [embedding]
+          options:
+            type: VECTOR
+            vector.dimensions: 1536
+            vector.similarity_function: cosine
+      display:
+        x: 0
+        y: 0
+        colour: "#4C8EDA"
+
+  person:
+    label: Person
+    description: >-
+      A named individual acting in a business capacity: executives, founders,
+      board members, named analysts or officials. Always a specific human
+      named in the text — never a role mentioned generically ("the CEO said"
+      without a name produces no Person node).
+    reference: "https://schema.org/Person"
+    properties:
+      id:
+        type: STRING
+        key: true
+      name:
+        type: STRING
+        must_exist: true
+        description: Full name as stated in the source.
+      role:
+        type: STRING
+        description: Job title as stated in the source text (e.g. "Chief Executive Officer").
+    extensions:
+      display:
+        x: -320
+        y: -120
+        colour: "#F79767"
+
+  product:
+    label: Product
+    description: >-
+      A named, sellable product, service, or brand with its own identity.
+      Includes model-numbered variants as DISTINCT products when the source
+      distinguishes them ("Aurora 14" vs "Aurora 14 Pro" are two products, not
+      one). Does not include generic product categories ("edge accelerators").
+    reference: "https://schema.org/Product"
+    properties:
+      id:
+        type: STRING
+        key: true
+      name:
+        type: STRING
+        must_exist: true
+      category:
+        type: STRING
+        description: Product category as stated in the source.
+    extensions:
+      display:
+        x: 320
+        y: -120
+        colour: "#57C7E3"
+
+  industry:
+    label: Industry
+    description: >-
+      A market or sector classification ("Semiconductors", "Logistics"), used
+      to group companies by their primary line of business. Not a company,
+      not a product — a label for the arena companies operate in.
+    reference: "https://schema.org/Industry"
+    properties:
+      id:
+        type: STRING
+        key: true
+      name:
+        type: STRING
+        must_exist: true
+    extensions:
+      display:
+        x: 320
+        y: 240
+        colour: "#8FBC8F"
+
+  regulator:
+    label: Regulator
+    description: >-
+      A government or statutory body with oversight or enforcement authority:
+      the SEC, FTC, DOJ, a competition authority, a central bank. A company
+      being regulated is a Company; the body doing the regulating is a
+      Regulator. Agencies mentioned purely as data sources (e.g. "figures
+      from the Bureau of…") do not count.
+    reference: "https://schema.org/GovernmentOrganization"
+    properties:
+      id:
+        type: STRING
+        key: true
+      name:
+        type: STRING
+        must_exist: true
+      aliases:
+        type: "LIST<STRING>"
+        description: Acronyms and short forms ("SEC", "the Commission").
+      jurisdiction:
+        type: STRING
+        description: Country or region whose law the body administers.
+    extensions:
+      display:
+        x: -320
+        y: 240
+        colour: "#E06C5F"
+
+  fund:
+    label: InvestmentFund
+    description: >-
+      An investment vehicle whose role in the text is financial sponsorship:
+      private-equity firms, venture funds, sovereign funds, activist investors.
+      Distinct from Company: a fund holds stakes; it does not operate the
+      business. When a corporation invests from its own balance sheet, model
+      the corporation as Company with HAS_STAKE_IN instead.
+    reference: "https://schema.org/InvestmentFund"
+    properties:
+      id:
+        type: STRING
+        key: true
+      name:
+        type: STRING
+        must_exist: true
+      kind:
+        type: STRING
+        one_of: [private_equity, venture_capital, sovereign, activist, other]
+    extensions:
+      display:
+        x: -640
+        y: 0
+        colour: "#D9C8A9"
+
+  event:
+    label: Event
+    description: >-
+      A corporate event node for n-ary facts that a bare relationship cannot
+      hold: an acquisition with a price AND a date AND two parties. Use only
+      when event-level details matter; for plain "who acquired whom", the
+      ACQUIRES relationship with its judgment properties is the simpler and
+      preferred representation.
+    labels:
+      identifier: Event
+      optional: [AcquisitionEvent, PartnershipEvent]
+    properties:
+      id:
+        type: STRING
+        key: true
+      kind:
+        type: STRING
+        must_exist: true
+        one_of: [acquisition, partnership, investment, litigation, earnings]
+      status:
+        type: STRING
+        must_exist: true
+        one_of: [rumored, announced, completed, cancelled]
+      announced_on:
+        type: DATE
+      amount_usd:
+        type: FLOAT
+      summary:
+        type: STRING
+    extensions:
+      display:
+        x: 0
+        y: 260
+        colour: "#D9C8A9"
+
+relationships:
+  acquires:
+    type: ACQUIRES
+    description: >-
+      The head is buying, has agreed to buy, or has bought the tail: a change
+      of control. Requires a stated transaction, not a capability or an
+      intention ("could acquire" is hypothetical, not asserted). Do NOT use
+      for partial ownership (use HAS_STAKE_IN) or for purchases of products
+      or services (use SUPPLIES in the opposite direction).
+    from:
+      node: company
+    to:
+      node: company
+    properties:
+      assertion:
+        type: STRING
+        description: How the source presents the claim (decision-model judgment).
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+        description: Probability the source connects the two entities at all.
+      evidence:
+        type: STRING
+        description: Sentence or span the extraction was grounded in.
+
+  has-stake-in:
+    type: HAS_STAKE_IN
+    description: >-
+      The head holds a partial ownership interest in the tail — a minority
+      stake, not control. A stake that becomes a takeover is ACQUIRES.
+    from:
+      node: company
+    to:
+      node: company
+    properties:
+      percentage:
+        type: FLOAT
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  partners-with:
+    type: PARTNERS_WITH
+    description: >-
+      A stated partnership, alliance, joint venture, or multi-year agreement
+      between two companies as near-peers. Direction reflects mention order in
+      the source; the relationship is effectively symmetric. For one-directional
+      customer/vendor arrangements, use SUPPLIES instead.
+    from:
+      node: company
+    to:
+      node: company
+    properties:
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  supplies:
+    type: SUPPLIES
+    description: >-
+      The head provides goods, inputs, or services to the tail under a stated
+      commercial arrangement: a vendor/customer relationship. Direction
+      matters: supplier → customer. An alliance between peers without a stated
+      supply arrangement is PARTNERS_WITH.
+    from:
+      node: company
+    to:
+      node: company
+    properties:
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  competes-with:
+    type: COMPETES_WITH
+    description: >-
+      The two companies are stated rivals in the same market. The source must
+      frame them as competitors; merely operating in the same industry is not
+      competition — that is OPERATES_IN twice.
+    from:
+      node: company
+    to:
+      node: company
+    properties:
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  ceo-of:
+    type: CEO_OF
+    description: >-
+      The person is the tail company's chief executive. Only for the top
+      executive role explicitly named as CEO (or "chief executive"); other
+      C-suite roles are not this relationship.
+    from:
+      node: person
+    to:
+      node: company
+      max_count: 1        # a person is CEO of at most one company in this model
+    properties:
+      since:
+        type: DATE
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  founded:
+    type: FOUNDED
+    description: >-
+      The person founded or co-founded the company. Historical fact — does not
+      imply a current role (use CEO_OF for that).
+    from:
+      node: person
+    to:
+      node: company
+    properties:
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  makes:
+    type: MAKES
+    description: >-
+      The company produces or sells the product under its own brand. Includes
+      announced products; check `assertion` to separate shipping products from
+      announced ones.
+    from:
+      node: company
+    to:
+      node: product
+    properties:
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  operates-in:
+    type: OPERATES_IN
+    description: >-
+      The company's primary line of business is the given industry. One
+      company may operate in several industries; use the ones the source
+      states, not ones inferred from its products.
+    from:
+      node: company
+    to:
+      node: industry
+    properties:
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  investigates:
+    type: INVESTIGATES
+    description: >-
+      The regulator has opened, is conducting, or is reported to be weighing
+      an inquiry or enforcement action against the company. Reported
+      consideration is NOT an opened inquiry — such edges are hypothetical or
+      forward_looking, never asserted.
+    from:
+      node: regulator
+    to:
+      node: company
+    properties:
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  invested-in:
+    type: INVESTED_IN
+    description: >-
+      The investment fund holds or has acquired a financial interest in the
+      company: backing, a round, a stake. The fund is a sponsor, not an
+      operator — for corporate venture arms acting as strategic owners,
+      consider HAS_STAKE_IN from the parent Company instead.
+    from:
+      node: fund
+    to:
+      node: company
+    properties:
+      amount_usd:
+        type: FLOAT
+      assertion:
+        type: STRING
+        one_of: [asserted, hypothetical, negated, forward_looking]
+      supported:
+        type: FLOAT
+      evidence:
+        type: STRING
+
+  # N-ary event participants
+  event-acquirer:
+    type: EVENT_ACQUIRER
+    description: Links an acquisition Event to the acquiring Company.
+    from: { node: event }
+    to:   { node: company, count: 1 }
+  event-target:
+    type: EVENT_TARGET
+    description: Links an acquisition Event to the acquired Company.
+    from: { node: event }
+    to:   { node: company, count: 1 }
+
+extensions:
+  # Free-form owner data (spec allows `custom` anywhere): a few-shot query
+  # cookbook that text2cypher renders into the LLM prompt. Query examples are
+  # domain knowledge — they belong in the ontology, next to the schema.
+  custom:
+    query_examples:
+      - question: What is Northwind acquiring?
+        cypher: |
+          MATCH (a:Company)-[r:ACQUIRES]->(b:Company)
+          WHERE (a.name = 'Northwind Logistics' OR 'Northwind' IN a.aliases)
+            AND r.assertion = 'asserted' AND r.supported >= 0.8
+          RETURN a.name, b.name, r.supported
+      - question: Which acquisitions were rumored but never asserted?
+        cypher: |
+          MATCH (a:Company)-[r:ACQUIRES]->(b:Company)
+          WHERE r.assertion IN ['hypothetical', 'forward_looking']
+          RETURN a.name, b.name, r.assertion, r.evidence
+      - question: Who is the CEO of Northwind?
+        cypher: |
+          MATCH (p:Person)-[r:CEO_OF]->(c:Company)
+          WHERE (c.name = 'Northwind Logistics' OR 'Northwind' IN c.aliases)
+            AND r.assertion = 'asserted'
+          RETURN p.name, r.evidence
+      - question: What products does Halcyon make?
+        cypher: |
+          MATCH (c:Company)-[r:MAKES]->(p:Product)
+          WHERE (c.name = 'Halcyon Semiconductor Corporation' OR 'HLCN' IN c.aliases)
+            AND r.assertion = 'asserted'
+          RETURN p.name
+      - question: Which industries does Halcyon operate in?
+        cypher: |
+          MATCH (c:Company)-[r:OPERATES_IN]->(i:Industry)
+          WHERE (c.name = 'Halcyon Semiconductor Corporation' OR 'HLCN' IN c.aliases)
+            AND r.assertion = 'asserted'
+          RETURN i.name
+      - question: Is Halcyon under regulatory scrutiny?
+        cypher: |
+          MATCH (reg:Regulator)-[r:INVESTIGATES]->(c:Company)
+          WHERE (c.name = 'Halcyon Semiconductor Corporation' OR 'HLCN' IN c.aliases)
+          RETURN reg.name, r.assertion, r.evidence
+  # Import mappings: how relational source tables land in this graph shape.
+  data_source_tables:
+    companies_csv:
+      source: "s3://example-datalake/exports/companies.csv"
+      columns:
+        - { name: company_id, type: varchar, suggested: STRING }
+        - { name: legal_name, type: varchar, suggested: STRING }
+        - { name: ticker,     type: varchar, suggested: STRING, nullable: true }
+        - { name: country,    type: char,    size: 2, suggested: STRING }
+      primary_keys: [company_id]
+    deals_csv:
+      source: "s3://example-datalake/exports/deals.csv"
+      columns:
+        - { name: deal_id,        type: varchar, suggested: STRING }
+        - { name: acquirer_id,    type: varchar, suggested: STRING }
+        - { name: target_id,      type: varchar, suggested: STRING }
+        - { name: announced_date, type: date,    suggested: DATE }
+      primary_keys: [deal_id]
+      foreign_keys:
+        acquirer_fk:
+          columns: [acquirer_id]
+          references: { table: companies_csv, columns: [company_id] }
+        target_fk:
+          columns: [target_id]
+          references: { table: companies_csv, columns: [company_id] }
+  data_source_mappings:
+    companies_import:
+      - id: companies_nodes
+        type: NODE
+        node: company
+        table: companies_csv
+        mode: MERGE
+        key: [id]
+        properties:
+          id:      { column: company_id }
+          name:    { column: legal_name }
+          ticker:  { column: ticker }
+          country: { column: country }
+    deals_import:
+      - id: deals_relationships
+        type: RELATIONSHIP
+        relationship: acquires
+        table: deals_csv
+        depends_on: companies_nodes
+        mode: MERGE
+        from_node:
+          label: Company
+          properties:
+            id: { column: acquirer_id }
+        to_node:
+          label: Company
+          properties:
+            id: { column: target_id }

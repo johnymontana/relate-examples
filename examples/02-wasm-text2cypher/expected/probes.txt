@@ -1,0 +1,48 @@
+# Relate 1.2.0 behaviours example 02 depends on (NOTES.md has one row per probe)
+
+## P1 an existence constraint on a graph-typed label must come from the graph type: holds
+  graph type {name :: STRING}, then CREATE CONSTRAINT … IS NOT NULL: error: IncompatibleGraphTypeDependence: dependent constraints are managed by the graph type
+  graph type {name :: STRING NOT NULL}, then the same CREATE CONSTRAINT IF NOT EXISTS: ok
+
+## P2 ALTER CURRENT GRAPH TYPE SET drops the constraints the store had: holds
+  a UNIQUE constraint before: 1; b_id after the ALTER: 0
+
+## P3 the graph type refuses what the ontology forbids, and allows undeclared properties: holds
+  a STRING property set to 5: error: semantic error: ConstraintValidationFailed: `constraint_<generated>` property type
+  a NOT NULL property missing: error: semantic error: ConstraintValidationFailed: `constraint_<generated>` requires properties
+  a relationship from the wrong label: error: ConstraintValidationFailed: endpoint label presence verification failed: expected A
+  a well-typed relationship: ok
+  a FLOAT relationship property set to a string: error: semantic error: ConstraintValidationFailed: `constraint_<generated>` property type
+  a property the graph type does not declare: ok
+  a dynamic label MERGE on a typed label: ok
+
+## P4 the property types a graph type accepts: holds
+  accepted: STRING, INTEGER, FLOAT, BOOLEAN, DATE, DURATION, POINT, LOCAL DATETIME, LOCAL TIME, ZONED DATETIME, ZONED TIME, UUID, LIST<STRING NOT NULL>, VECTOR<FLOAT32>(3), VECTOR<INTEGER8>(3)
+  refused: ANY, LIST<ANY>, LIST<STRING>, FLOAT32, INTEGER8, INTEGER16, INTEGER32
+
+## P5 EXPLAIN names unknown labels, types and property keys, but returns no plan rows and flags no writes: holds
+  notification codes: Neo.ClientNotification.Statement.UnknownLabelWarning, Neo.ClientNotification.Statement.UnknownPropertyKeyWarning, Neo.ClientNotification.Statement.UnknownRelationshipTypeWarning
+  EXPLAIN rows: 0, columns: 0
+  EXPLAIN of a DETACH DELETE: error none, 0 notifications, 0 rows
+  EXPLAIN with a parameter not supplied: error none
+  the store after both EXPLAINs: 2 nodes
+
+## P6 a read-only in-memory handle starts empty and refuses writes: holds
+  nodes: 0
+  CREATE: error: semantic error: WriteOnReadOnlyAccessDatabase: No write operations are allowed on this database. The database is in read-only mode on this Neo4j instance.
+
+## P7 stats counters show a write; a read and a write that matches nothing move none: holds
+  read: none
+  DETACH DELETE matching nothing: none
+  CREATE (n:Tmp) DELETE n: labels_added 1
+  SET on a match: properties_set 1
+
+## P8 an integral JS number binds as INTEGER; toFloat() makes it FLOAT: holds
+  $x = 1: INTEGER NOT NULL; toFloat($x): FLOAT NOT NULL
+
+## P9 SHOW CURRENT GRAPH TYPE prints properties sorted, vector coordinates NOT NULL, no {} for none, and folds later key/unique constraints in as CONSTRAINT items: holds
+  {
+    (:`A` => {`e` :: VECTOR<FLOAT32 NOT NULL>(3), `id` :: STRING NOT NULL}),
+    (:`A` =>)-[:`T` =>]->(:`A` =>),
+    CONSTRAINT `a_id_key` FOR (`n`:`A` =>) REQUIRE (`n`.`id`) IS KEY
+  }

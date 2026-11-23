@@ -1,0 +1,26 @@
+{
+  "name": "relate-example-02-wasm-text2cypher",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Example 02: ontology-grounded Text2Cypher in a browser tab, with Relate 1.2.0 WASM, WebLLM and the Ontology Graph Spec SDK. Install with `npm ci --omit=peer`; `npm run build` writes dist/.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node ../../lib/serve.mjs --example 02-wasm-text2cypher"
+  },
+  "dependencies": {
+    "@mlc-ai/web-llm": "0.2.89",
+    "@neo4j-nvl/base": "2.0.0",
+    "@neo4j-nvl/interaction-handlers": "2.0.0",
+    "@neo4j/ontology-graph-spec": "0.12.2",
+    "@relate/relate-wasm": "1.2.0",
+    "js-yaml": "4.3.2"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0"
+  }
+}

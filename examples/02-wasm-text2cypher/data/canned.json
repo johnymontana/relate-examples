@@ -1,0 +1,126 @@
+{
+  "canned": [
+    {
+      "keywords": [
+        "rumor",
+        "rumoured",
+        "speculat",
+        "never asserted",
+        "hypothetical"
+      ],
+      "cypher": "MATCH (a:Company)-[r:ACQUIRES]->(b:Company)\nWHERE r.assertion IN ['hypothetical', 'forward_looking']\nRETURN a.name, b.name, r.assertion, r.evidence",
+      "bare": "MATCH (a:Company)-[r:ACQUIRES]->(b:Company)\nRETURN a.name, b.name"
+    },
+    {
+      "keywords": [
+        "ceo",
+        "chief executive"
+      ],
+      "cypher": "MATCH (p:Person)-[r:CEO_OF]->(c:Company)\nWHERE (c.name = 'Northwind Logistics' OR 'Northwind' IN c.aliases)\n  AND r.assertion = 'asserted'\nRETURN p.name, c.name, r.evidence",
+      "bare": "MATCH (p:Person)-[r:CEO_OF]->(c:Company)\nWHERE c.name = 'Northwind'\nRETURN p.name, c.name"
+    },
+    {
+      "keywords": [
+        "compet",
+        "rival"
+      ],
+      "cypher": "MATCH (a:Company)-[r:COMPETES_WITH]->(b:Company)\nWHERE r.assertion = 'asserted' AND r.supported >= 0.8\nRETURN a.name, b.name, r.evidence",
+      "bare": "MATCH (a:Company)-[r:COMPETES_WITH]->(b:Company)\nRETURN a.name, b.name"
+    },
+    {
+      "keywords": [
+        "product",
+        "make"
+      ],
+      "cypher": "MATCH (c:Company)-[r:MAKES]->(p:Product)\nWHERE (c.name = 'Halcyon Semiconductor Corporation' OR 'HLCN' IN c.aliases)\n  AND r.assertion = 'asserted'\nRETURN p.name",
+      "bare": "MATCH (c:Company)-[r:MAKES]->(p:Product)\nWHERE c.name = 'Halcyon'\nRETURN p.name"
+    },
+    {
+      "keywords": [
+        "industr",
+        "sector",
+        "operate"
+      ],
+      "cypher": "MATCH (c:Company)-[r:OPERATES_IN]->(i:Industry)\nWHERE r.assertion = 'asserted'\nRETURN c.name, i.name",
+      "bare": "MATCH (c:Company)-[:OPERATES_IN]->(i:Industry)\nRETURN c.name, i.name"
+    },
+    {
+      "keywords": [
+        "regulat",
+        "investigat",
+        "scrutiny",
+        "sec"
+      ],
+      "cypher": "MATCH (reg:Regulator)-[r:INVESTIGATES]->(c:Company)\nRETURN reg.name, c.name, r.assertion, r.evidence",
+      "bare": "MATCH (reg:Regulator)-[:INVESTIGATES]->(c:Company)\nRETURN reg.name, c.name"
+    },
+    {
+      "keywords": [
+        "denied",
+        "deny",
+        "not pursue",
+        "won't pursue",
+        "reject"
+      ],
+      "cypher": "MATCH (reg:Regulator)-[r]->(c:Company)\nWHERE r.assertion = 'negated'\nRETURN reg.name, type(r), c.name, r.evidence",
+      "bare": "MATCH (reg:Regulator)-[:INVESTIGATES]->(c:Company)\nRETURN reg.name, c.name"
+    },
+    {
+      "keywords": [
+        "found"
+      ],
+      "cypher": "MATCH (p:Person)-[r:FOUNDED]->(c:Company)\nWHERE r.assertion = 'asserted'\nRETURN p.name, c.name, r.evidence",
+      "bare": "MATCH (p:Person)-[:FOUNDED]->(c:Company)\nRETURN p.name, c.name"
+    },
+    {
+      "keywords": [
+        "suppl"
+      ],
+      "cypher": "MATCH (a:Company)-[r:SUPPLIES]->(b:Company)\nWHERE r.assertion = 'asserted' AND r.supported >= 0.8\nRETURN a.name, b.name, r.evidence",
+      "bare": "MATCH (a:Company)-[:SUPPLIES]->(b:Company)\nRETURN a.name, b.name"
+    },
+    {
+      "keywords": [
+        "partner",
+        "alliance"
+      ],
+      "cypher": "MATCH (a:Company)-[r:PARTNERS_WITH]->(b:Company)\nWHERE (a.name = 'Northwind Logistics' OR 'Northwind' IN a.aliases)\n  AND r.assertion = 'asserted' AND r.supported >= 0.8\nRETURN b.name, r.supported, r.evidence",
+      "bare": "MATCH (a:Company)-[:PARTNERS_WITH]->(b:Company)\nWHERE a.name = 'Northwind'\nRETURN b.name"
+    },
+    {
+      "keywords": [
+        "invest",
+        "backed",
+        "fund"
+      ],
+      "cypher": "MATCH (f:InvestmentFund)-[r:INVESTED_IN]->(c:Company)\nWHERE r.assertion = 'asserted'\nRETURN f.name, c.name, r.evidence",
+      "bare": "MATCH (f:InvestmentFund)-[:INVESTED_IN]->(c:Company)\nRETURN f.name, c.name"
+    },
+    {
+      "keywords": [
+        "acqui",
+        "buy",
+        "bought"
+      ],
+      "cypher": "MATCH (a:Company)-[r:ACQUIRES]->(b:Company)\nWHERE (a.name = 'Northwind Logistics' OR 'Northwind' IN a.aliases)\n  AND r.assertion = 'asserted' AND r.supported >= 0.8\nRETURN a.name, b.name, r.supported, r.evidence",
+      "bare": "MATCH (a:Company)-[r:ACQUIRES]->(b:Company)\nWHERE a.name = 'Northwind'\nRETURN b.name"
+    }
+  ],
+  "fallback": {
+    "cypher": "MATCH (a)-[r]->(b)\nWHERE r.assertion = 'asserted' AND r.supported >= 0.8\nRETURN a.name, type(r), b.name, r.supported LIMIT 25",
+    "bare": "MATCH (a)-[r]->(b) RETURN a.name, type(r), b.name LIMIT 25"
+  },
+  "suggested": [
+    "What is Northwind acquiring?",
+    "Which acquisitions were rumored but never asserted?",
+    "Which investigations did regulators deny?",
+    "Who is the CEO of Northwind?",
+    "Which companies compete with each other?",
+    "What products does Halcyon make?",
+    "Who supplies Halcyon?",
+    "Is Halcyon under regulatory scrutiny?",
+    "Which industries does Halcyon operate in?",
+    "Which funds have backed Cascade?",
+    "Who founded Duarte Robotics?"
+  ]
+}

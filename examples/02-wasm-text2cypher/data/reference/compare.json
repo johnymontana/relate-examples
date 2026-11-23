@@ -1,0 +1,78 @@
+[
+  {
+    "with": {
+      "cypher": "MATCH (a:Company)-[r:ACQUIRES]->(b:Company) WHERE r.assertion = 'asserted' RETURN b.name",
+      "issues": [],
+      "rows": [
+        {
+          "b.name": "x"
+        }
+      ],
+      "execution": "fixture"
+    },
+    "without": {
+      "cypher": "MATCH (a:Corporation)-[:BUYS]->(b) RETURN b",
+      "issues": [
+        "unknown label :Corporation",
+        "unknown relationship type :BUYS"
+      ],
+      "rows": [],
+      "execution": "fixture"
+    },
+    "notes": [
+      "bare query blocked by ontology validation: unknown label :Corporation; unknown relationship type :BUYS",
+      "bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts"
+    ]
+  },
+  {
+    "with": {
+      "cypher": "MATCH (a:Company)-[r:ACQUIRES]->(b:Company) WHERE (a.name = 'N' OR 'N' IN a.aliases) AND r.assertion = 'asserted' AND r.supported >= 0.8 RETURN b.name",
+      "issues": [],
+      "rows": [
+        {
+          "b.name": "x"
+        }
+      ],
+      "execution": "fixture"
+    },
+    "without": {
+      "cypher": "MATCH (a:Company)-[r:ACQUIRES]->(b:Company) WHERE a.name = 'N' RETURN b.name",
+      "issues": [],
+      "rows": [],
+      "execution": "fixture"
+    },
+    "notes": [
+      "bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts",
+      "bare query omits the support-probability threshold",
+      "bare query matches only the canonical name — alias mentions (tickers, short forms) silently miss",
+      "row counts differ: ontology 1 vs bare 0"
+    ]
+  },
+  {
+    "with": {
+      "cypher": "MATCH (c:Company)-[:OPERATES_IN]->(i:Industry) RETURN c.name, i.name",
+      "issues": [],
+      "rows": [
+        {
+          "c.name": "a",
+          "i.name": "b"
+        }
+      ],
+      "execution": "fixture"
+    },
+    "without": {
+      "cypher": "MATCH (c:Company)-[:OPERATES_IN]->(i:Industry) RETURN c.name, i.name",
+      "issues": [],
+      "rows": [
+        {
+          "c.name": "a",
+          "i.name": "b"
+        }
+      ],
+      "execution": "fixture"
+    },
+    "notes": [
+      "same shape this time — the ontology earns its keep on the questions where meaning, not structure, is the answer"
+    ]
+  }
+]

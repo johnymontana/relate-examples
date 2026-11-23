@@ -1,0 +1,204 @@
+# Example 02 in headless Chromium (harness/drive.mjs): dist/ as GitHub Pages serves it, ?llm=canned
+
+boots: yes; Relate 1.2.0; llm canned
+header: ontology: Corporate Events v2.0.0 · llm: canned answers · store: Relate 1.2.0 (WASM, in this tab)
+ontology browser: 26 collapsible entries (nodes, relationships, cookbook)
+checks tab (the Ontology Graph Spec SDK): decode clean; core clean; labelled clean; consistentSchema 66 issues; mappable 9 issues; bulkImportable clean; wellConstrained clean
+the graph: NVL drew it
+the store: 38 nodes, 43 relationships
+
+## every suggested question, as the Ask button answers it (canned answers; rows sorted by canonical JSON)
+
+### What is Northwind acquiring?
+grounded: MATCH (a:Company)-[r:ACQUIRES]->(b:Company) WHERE (a.name = 'Northwind Logistics' OR 'Northwind' IN a.aliases) AND r.assertion = 'asserted' AND r.supported >= 0.8 RETURN a.name, b.name, r.supported, r.evidence
+  checks: pass
+  1 row(s)
+    {"a.name":"Northwind Logistics","b.name":"Cascade Freight Systems","r.evidence":"entered into a definitive agreement to acquire Cascade Freight Systems","r.supported":0.99}
+bare: MATCH (a:Company)-[r:ACQUIRES]->(b:Company) WHERE a.name = 'Northwind' RETURN b.name
+  checks: pass
+  0 row(s)
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts | bare query omits the support-probability threshold | bare query matches only the canonical name — alias mentions (tickers, short forms) silently miss | row counts differ: ontology 1 vs bare 0
+
+### Which acquisitions were rumored but never asserted?
+grounded: MATCH (a:Company)-[r:ACQUIRES]->(b:Company) WHERE r.assertion IN ['hypothetical', 'forward_looking'] RETURN a.name, b.name, r.assertion, r.evidence
+  checks: pass
+  1 row(s)
+    {"a.name":"Northwind Logistics","b.name":"Halcyon Semiconductor Corporation","r.assertion":"hypothetical","r.evidence":"Industry watchers speculate that Northwind could make a bid for Halcyon"}
+bare: MATCH (a:Company)-[r:ACQUIRES]->(b:Company) RETURN a.name, b.name
+  checks: pass
+  3 row(s)
+    {"a.name":"Northwind Logistics","b.name":"Cascade Freight Systems"}
+    {"a.name":"Northwind Logistics","b.name":"Halcyon Semiconductor Corporation"}
+    {"a.name":"Solstice Aerospace","b.name":"Duarte Robotics"}
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts | row counts differ: ontology 1 vs bare 3
+
+### Which investigations did regulators deny?
+grounded: MATCH (reg:Regulator)-[r:INVESTIGATES]->(c:Company) RETURN reg.name, c.name, r.assertion, r.evidence
+  checks: pass
+  3 row(s)
+    {"c.name":"Halcyon Semiconductor Corporation","r.assertion":"hypothetical","r.evidence":"regulators are reportedly weighing an inquiry into Halcyon's disclosures","reg.name":"Securities and Exchange Commission"}
+    {"c.name":"Northwind Logistics","r.assertion":"negated","r.evidence":"The FTC said it will not pursue action against Northwind over the Cascade deal","reg.name":"Federal Trade Commission"}
+    {"c.name":"Solstice Aerospace","r.assertion":"forward_looking","r.evidence":"the FAA is expected to open a review of Solstice's test flights next quarter","reg.name":"Federal Aviation Administration"}
+bare: MATCH (reg:Regulator)-[:INVESTIGATES]->(c:Company) RETURN reg.name, c.name
+  checks: pass
+  3 row(s)
+    {"c.name":"Halcyon Semiconductor Corporation","reg.name":"Securities and Exchange Commission"}
+    {"c.name":"Northwind Logistics","reg.name":"Federal Trade Commission"}
+    {"c.name":"Solstice Aerospace","reg.name":"Federal Aviation Administration"}
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts
+
+### Who is the CEO of Northwind?
+grounded: MATCH (p:Person)-[r:CEO_OF]->(c:Company) WHERE (c.name = 'Northwind Logistics' OR 'Northwind' IN c.aliases) AND r.assertion = 'asserted' RETURN p.name, c.name, r.evidence
+  checks: pass
+  1 row(s)
+    {"c.name":"Northwind Logistics","p.name":"Priya Raman","r.evidence":"Priya Raman, Chief Executive Officer of Northwind"}
+bare: MATCH (p:Person)-[r:CEO_OF]->(c:Company) WHERE c.name = 'Northwind' RETURN p.name, c.name
+  checks: pass
+  0 row(s)
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts | bare query matches only the canonical name — alias mentions (tickers, short forms) silently miss | row counts differ: ontology 1 vs bare 0
+
+### Which companies compete with each other?
+grounded: MATCH (a:Company)-[r:COMPETES_WITH]->(b:Company) WHERE r.assertion = 'asserted' AND r.supported >= 0.8 RETURN a.name, b.name, r.evidence
+  checks: pass
+  2 row(s)
+    {"a.name":"Alder Cloud Services","b.name":"Bluepine Analytics","r.evidence":"Alder's new analytics tier puts it in direct competition with Bluepine"}
+    {"a.name":"Halcyon Semiconductor Corporation","b.name":"Vantage Energy Partners","r.evidence":"Halcyon competes with Vantage Energy Partners in the industrial sensor market"}
+bare: MATCH (a:Company)-[r:COMPETES_WITH]->(b:Company) RETURN a.name, b.name
+  checks: pass
+  2 row(s)
+    {"a.name":"Alder Cloud Services","b.name":"Bluepine Analytics"}
+    {"a.name":"Halcyon Semiconductor Corporation","b.name":"Vantage Energy Partners"}
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts | bare query omits the support-probability threshold
+
+### What products does Halcyon make?
+grounded: MATCH (c:Company)-[r:MAKES]->(p:Product) WHERE (c.name = 'Halcyon Semiconductor Corporation' OR 'HLCN' IN c.aliases) AND r.assertion = 'asserted' RETURN p.name
+  checks: pass
+  2 row(s)
+    {"p.name":"Aurora 14 Pro"}
+    {"p.name":"Aurora 14"}
+bare: MATCH (c:Company)-[r:MAKES]->(p:Product) WHERE c.name = 'Halcyon' RETURN p.name
+  checks: pass
+  0 row(s)
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts | bare query matches only the canonical name — alias mentions (tickers, short forms) silently miss | row counts differ: ontology 2 vs bare 0
+
+### Who supplies Halcyon?
+grounded: MATCH (a:Company)-[r:SUPPLIES]->(b:Company) WHERE r.assertion = 'asserted' AND r.supported >= 0.8 RETURN a.name, b.name, r.evidence
+  checks: pass
+  3 row(s)
+    {"a.name":"Alder Cloud Services","b.name":"Northwind Logistics","r.evidence":"Northwind runs its routing platform on Alder's cloud"}
+    {"a.name":"Duarte Robotics","b.name":"Kestrel Medical Systems","r.evidence":"Duarte Robotics supplies actuator modules to Kestrel Medical"}
+    {"a.name":"Torrent Microsystems","b.name":"Halcyon Semiconductor Corporation","r.evidence":"Torrent will provide advanced packaging services for Halcyon's chipsets"}
+bare: MATCH (a:Company)-[:SUPPLIES]->(b:Company) RETURN a.name, b.name
+  checks: pass
+  4 row(s)
+    {"a.name":"Alder Cloud Services","b.name":"Northwind Logistics"}
+    {"a.name":"Duarte Robotics","b.name":"Kestrel Medical Systems"}
+    {"a.name":"Kestrel Medical Systems","b.name":"Fernhill Foods"}
+    {"a.name":"Torrent Microsystems","b.name":"Halcyon Semiconductor Corporation"}
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts | bare query omits the support-probability threshold | row counts differ: ontology 3 vs bare 4
+
+### Is Halcyon under regulatory scrutiny?
+grounded: MATCH (reg:Regulator)-[r:INVESTIGATES]->(c:Company) RETURN reg.name, c.name, r.assertion, r.evidence
+  checks: pass
+  3 row(s)
+    {"c.name":"Halcyon Semiconductor Corporation","r.assertion":"hypothetical","r.evidence":"regulators are reportedly weighing an inquiry into Halcyon's disclosures","reg.name":"Securities and Exchange Commission"}
+    {"c.name":"Northwind Logistics","r.assertion":"negated","r.evidence":"The FTC said it will not pursue action against Northwind over the Cascade deal","reg.name":"Federal Trade Commission"}
+    {"c.name":"Solstice Aerospace","r.assertion":"forward_looking","r.evidence":"the FAA is expected to open a review of Solstice's test flights next quarter","reg.name":"Federal Aviation Administration"}
+bare: MATCH (reg:Regulator)-[:INVESTIGATES]->(c:Company) RETURN reg.name, c.name
+  checks: pass
+  3 row(s)
+    {"c.name":"Halcyon Semiconductor Corporation","reg.name":"Securities and Exchange Commission"}
+    {"c.name":"Northwind Logistics","reg.name":"Federal Trade Commission"}
+    {"c.name":"Solstice Aerospace","reg.name":"Federal Aviation Administration"}
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts
+
+### Which industries does Halcyon operate in?
+grounded: MATCH (c:Company)-[r:OPERATES_IN]->(i:Industry) WHERE r.assertion = 'asserted' RETURN c.name, i.name
+  checks: pass
+  12 row(s)
+    {"c.name":"Alder Cloud Services","i.name":"Cloud Infrastructure"}
+    {"c.name":"Bluepine Analytics","i.name":"Data & Analytics"}
+    {"c.name":"Cascade Freight Systems","i.name":"Logistics"}
+    {"c.name":"Copperleaf Mining","i.name":"Mining"}
+    {"c.name":"Duarte Robotics","i.name":"Robotics"}
+    {"c.name":"Fernhill Foods","i.name":"Food Production"}
+    {"c.name":"Halcyon Semiconductor Corporation","i.name":"Semiconductors"}
+    {"c.name":"Kestrel Medical Systems","i.name":"Healthcare Devices"}
+    {"c.name":"Northwind Logistics","i.name":"Logistics"}
+    {"c.name":"Solstice Aerospace","i.name":"Aerospace"}
+    {"c.name":"Torrent Microsystems","i.name":"Semiconductors"}
+    {"c.name":"Vantage Energy Partners","i.name":"Semiconductors"}
+bare: MATCH (c:Company)-[:OPERATES_IN]->(i:Industry) RETURN c.name, i.name
+  checks: pass
+  12 row(s)
+    {"c.name":"Alder Cloud Services","i.name":"Cloud Infrastructure"}
+    {"c.name":"Bluepine Analytics","i.name":"Data & Analytics"}
+    {"c.name":"Cascade Freight Systems","i.name":"Logistics"}
+    {"c.name":"Copperleaf Mining","i.name":"Mining"}
+    {"c.name":"Duarte Robotics","i.name":"Robotics"}
+    {"c.name":"Fernhill Foods","i.name":"Food Production"}
+    {"c.name":"Halcyon Semiconductor Corporation","i.name":"Semiconductors"}
+    {"c.name":"Kestrel Medical Systems","i.name":"Healthcare Devices"}
+    {"c.name":"Northwind Logistics","i.name":"Logistics"}
+    {"c.name":"Solstice Aerospace","i.name":"Aerospace"}
+    {"c.name":"Torrent Microsystems","i.name":"Semiconductors"}
+    {"c.name":"Vantage Energy Partners","i.name":"Semiconductors"}
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts
+
+### Which funds have backed Cascade?
+grounded: MATCH (f:InvestmentFund)-[r:INVESTED_IN]->(c:Company) WHERE r.assertion = 'asserted' RETURN f.name, c.name, r.evidence
+  checks: pass
+  2 row(s)
+    {"c.name":"Bluepine Analytics","f.name":"Foundry Nine Ventures","r.evidence":"Foundry Nine Ventures led Bluepine's Series B"}
+    {"c.name":"Cascade Freight Systems","f.name":"Meridian Capital Partners","r.evidence":"Meridian Capital Partners, which backed Cascade in 2019"}
+bare: MATCH (f:InvestmentFund)-[:INVESTED_IN]->(c:Company) RETURN f.name, c.name
+  checks: pass
+  3 row(s)
+    {"c.name":"Bluepine Analytics","f.name":"Foundry Nine Ventures"}
+    {"c.name":"Cascade Freight Systems","f.name":"Meridian Capital Partners"}
+    {"c.name":"Solstice Aerospace","f.name":"Auric Sovereign Fund"}
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts | row counts differ: ontology 2 vs bare 3
+
+### Who founded Duarte Robotics?
+grounded: MATCH (p:Person)-[r:FOUNDED]->(c:Company) WHERE r.assertion = 'asserted' RETURN p.name, c.name, r.evidence
+  checks: pass
+  1 row(s)
+    {"c.name":"Duarte Robotics","p.name":"Marcus Duarte","r.evidence":"Duarte Robotics, which Marcus Duarte founded in 2015"}
+bare: MATCH (p:Person)-[:FOUNDED]->(c:Company) RETURN p.name, c.name
+  checks: pass
+  1 row(s)
+    {"c.name":"Duarte Robotics","p.name":"Marcus Duarte"}
+notes: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts
+
+the rows equal the Node section's (out/queries.json) for the same query: yes (22 of 22)
+
+## the Ask button and a chip
+chip 4 asks "Who is the CEO of Northwind?": the cards show both queries and their rows: yes
+comparison: bare query omits the assertion filter — rumors, denials and speculation come back indistinguishable from facts | bare query matches only the canonical name — alias mentions (tickers, short forms) silently miss | row counts differ: ontology 1 vs bare 0
+
+## run your own Cypher (the same checks, the same store)
+a read: MATCH (p:Person)-[:CEO_OF]->(c:Company) RETURN p.name AS ceo, c.name AS company ORDER BY company
+  ✓ read-only · labels/types known · endpoints legal
+  5 row(s) · Relate 1.2.0 (WASM, in this tab)
+    Marcus Duarte / Duarte Robotics
+    Elena Voss / Halcyon Semiconductor Corporation
+    Priya Raman / Northwind Logistics
+    Tom Okonkwo / Torrent Microsystems
+    Sara Lindqvist / Vantage Energy Partners
+a write: MATCH (c:Company {id: 'halcyon'}) DETACH DELETE c
+  ✗ blocked by ontology validation: write/clause violation: query must be read-only
+  0 row(s) · not run: the ontology check refused it
+a syntax error: MATCH (c:Company RETURN c
+  ✓ read-only · labels/types known · endpoints legal
+  ✗ syntax error: parse error: expected RightParen, got "RETURN" (RETURN)
+  0 row(s) · not run: Relate 1.2.0 (WASM, in this tab) cannot plan it
+an unknown property: MATCH (c:Company) WHERE c.revenue > 10 RETURN c.name
+  ✓ read-only · labels/types known · endpoints legal
+  ⚠ Relate: engine: unknown property key (The property key `revenue` does not exist in this database.)
+  0 row(s) · Relate 1.2.0 (WASM, in this tab)
+the store afterwards: 38 nodes (unchanged: yes)
+
+## without ?llm=canned, where WebGPU cannot run the models
+the model panel says there is no usable WebGPU and the canned answers stand in: yes
+
+console errors: none; CSP violations: none

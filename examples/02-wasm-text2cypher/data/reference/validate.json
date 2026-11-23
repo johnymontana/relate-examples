@@ -1,0 +1,89 @@
+[
+  {
+    "cypher": "MATCH (a:Company)-[r:ACQUIRES]->(b:Company) RETURN a.name, b.name",
+    "issues": []
+  },
+  {
+    "cypher": "MATCH (p:Person)-[r:CEO_OF]->(c:Company) RETURN p.name, c.name",
+    "issues": []
+  },
+  {
+    "cypher": "MATCH (c:Company)<-[r:CEO_OF]-(p:Person) RETURN p.name",
+    "issues": []
+  },
+  {
+    "cypher": "MATCH (c:Company)-[r:CEO_OF]->(p:Person) RETURN p.name",
+    "issues": [
+      "illegal endpoints: (:Company)-[:CEO_OF]-(:Person); allowed: [('Person', 'Company')]"
+    ]
+  },
+  {
+    "cypher": "MATCH (p:Person)-[:CEO_OF]-(c:Company) RETURN p.name",
+    "issues": []
+  },
+  {
+    "cypher": "MATCH (a:Corporation)-[:ACQUIRES]->(b:Company) RETURN a",
+    "issues": [
+      "unknown label :Corporation",
+      "illegal endpoints: (:Corporation)-[:ACQUIRES]-(:Company); allowed: [('Company', 'Company')]"
+    ]
+  },
+  {
+    "cypher": "MATCH (a:Company)-[:BUYS]->(b:Company) RETURN a",
+    "issues": [
+      "unknown relationship type :BUYS"
+    ]
+  },
+  {
+    "cypher": "MATCH (f:InvestmentFund)-[:INVESTED_IN]->(p:Product) RETURN f",
+    "issues": [
+      "illegal endpoints: (:InvestmentFund)-[:INVESTED_IN]-(:Product); allowed: [('InvestmentFund', 'Company')]"
+    ]
+  },
+  {
+    "cypher": "MATCH (n:Company) DETACH DELETE n",
+    "issues": [
+      "write/clause violation: query must be read-only"
+    ]
+  },
+  {
+    "cypher": "CREATE (n:Company {name: 'x'})",
+    "issues": [
+      "write/clause violation: query must be read-only"
+    ]
+  },
+  {
+    "cypher": "MATCH (n:Company) SET n.name = 'x'",
+    "issues": [
+      "write/clause violation: query must be read-only"
+    ]
+  },
+  {
+    "cypher": "MATCH (a)-[r]->(b) WHERE r.assertion = 'asserted' RETURN a.name, type(r), b.name",
+    "issues": []
+  },
+  {
+    "cypher": "MATCH (reg:Regulator)-[r]->(c:Company) WHERE r.assertion = 'negated' RETURN reg.name",
+    "issues": []
+  },
+  {
+    "cypher": "MATCH (c:`Company`)-[:`MAKES`]->(p:`Product`) RETURN p.name",
+    "issues": []
+  },
+  {
+    "cypher": "MATCH (e:Event)-[:EVENT_TARGET]->(c:Company) RETURN e, c",
+    "issues": []
+  },
+  {
+    "cypher": "LOAD CSV FROM 'x' AS row RETURN row",
+    "issues": [
+      "write/clause violation: query must be read-only"
+    ]
+  },
+  {
+    "cypher": "CALL dbms.components() YIELD name RETURN name",
+    "issues": [
+      "write/clause violation: query must be read-only"
+    ]
+  }
+]

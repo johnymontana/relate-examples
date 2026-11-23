@@ -1,0 +1,19 @@
+{
+  "title": "Ontology-grounded Text2Cypher, in your browser",
+  "description": "Ask a question in English and watch two queries get written for it: one from a bare schema, one from an Ontology Graph Spec document's descriptions, vocabularies and query cookbook. A language model running on your own GPU (WebLLM, Qwen3.5) writes them; the ontology's static checks and Relate 1.2.0's planner vet them; Relate, compiled to WebAssembly, runs them on an in-tab knowledge graph held under a graph type derived from the same ontology, and the page says what the ontology changed. The ontology is read with the official Ontology Graph Spec SDK. Without WebGPU, the page answers with reference queries and everything else runs the same.",
+  "path": "02-wasm-text2cypher",
+  "build": "npm run build",
+  "dist": "dist",
+  "connect": ["https://huggingface.co", "https://*.hf.co", "https://raw.githubusercontent.com"],
+  "requires": ["wasm"],
+  "browser": "Runs in any current browser with module workers and WebAssembly. Writing queries with a model needs WebGPU with 16-bit shaders (Chrome or Edge on desktop, Safari 26, Firefox on Windows or macOS) and a one-time download of 1.1 GB (Qwen3.5 2B) or 2.4 GB (Qwen3.5 4B), cached by the browser; without it the page uses reference queries.",
+  "credits": [
+    "Relate 1.2.0 WebAssembly build (Apache-2.0), served here as a pinned copy of npm's @relate/relate-wasm 1.2.0.",
+    "WebLLM 0.2.89 (mlc-ai/web-llm, Apache-2.0), bundled from npm; its WebGPU model libraries are fetched from mlc-ai/binary-mlc-llm-libs at a pinned commit and checked against SRI hashes.",
+    "Qwen3.5 2B and 4B by the Qwen team (Apache-2.0), as mlc-ai's q4f16_1 conversions, fetched from the Hugging Face Hub at pinned revisions.",
+    "The Ontology Graph Spec SDK 0.12.2 (npm @neo4j/ontology-graph-spec, neo4j/ontology-graph-spec, Apache-2.0), with the Kotlin libraries compiled into it (Apache-2.0).",
+    "NVL 2.0.0, the Neo4j Visualization Library (proprietary), used with Neo4j's permission (confirmed by the repository owner on 2026-10-08).",
+    "js-yaml 4.3.2 (MIT).",
+    "The ontology, demo graph, prompts, validator and reference queries come from the repository owner's own ontospec-knowledge-graph-extraction project; the companies and people in the demo graph are fictional."
+  ]
+}

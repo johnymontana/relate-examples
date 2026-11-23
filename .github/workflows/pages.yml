@@ -1,9 +1,10 @@
 # Builds the browser-examples site (site/build.mjs: each examples/*/site.json example's dist/, plus
 # the index page) and publishes it on GitHub Pages as this repository's project site:
-# https://<owner>.github.io/relate-examples/ (example 01 at /relate-examples/01-wasm-extract/).
+# https://<owner>.github.io/relate-examples/ (example 01 at /relate-examples/01-wasm-extract/, 02 at
+# /relate-examples/02-wasm-text2cypher/).
 # Pages serves the files as they are, with no custom headers: each page carries its own
 # Content-Security-Policy <meta>, and site/build.mjs refuses a page without one. site/README.md
-# is the contract; examples/01-wasm-extract/harness/serve.mjs --site emulates what Pages serves.
+# is the contract; lib/serve.mjs emulates what Pages serves.
 # It deploys only what CI has passed: it runs when the examples workflow completes successfully for a
 # push to main, and builds that run's commit (workflow_run.head_sha), never a later one. A manual
 # workflow_dispatch builds the commit it is started on.
@@ -42,7 +43,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: examples/01-wasm-extract/package-lock.json
+          cache-dependency-path: examples/*/package-lock.json
 
       # gliner-rs v0.3.1 built to WASM, as the examples workflow builds it (the same cache keys, so
       # either workflow's build serves the other): Rust 1.97.1 with the wasm32 target on a miss.
@@ -82,7 +83,11 @@ jobs:
         run: |
           npm ci --omit=peer --prefix examples/01-wasm-extract
           npm run --prefix examples/01-wasm-extract vendor
-      # Runs each example's own build (01: npm run build), checks every page's CSP <meta> and
+      # 02's npm packages (@relate/relate-wasm, WebLLM, the Ontology Graph Spec SDK, NVL), each pinned with its
+      # integrity; its build bundles them itself. The site never ships the models: the page fetches them.
+      - name: Example 02's npm packages
+        run: npm ci --omit=peer --prefix examples/02-wasm-text2cypher
+      # Runs each example's own build (01 and 02: npm run build), checks every page's CSP <meta> and
       # relative URLs, and writes site/dist/ with the index page and .nojekyll.
       - name: Build site/dist
         run: node site/build.mjs

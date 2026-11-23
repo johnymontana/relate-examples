@@ -1,0 +1,41 @@
+# The ontology through the Ontology Graph Spec SDK
+
+document: data/corporate-events.ontology.yaml (id corporate-events, version "2.0.0")
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+SDK: @neo4j/ontology-graph-spec 0.12.2
+decoded: yes; usable (no decode or core issue): yes
+
+## Issues per validation set
+core               0
+labelled           0
+consistentSchema   66
+mappable           9
+bulkImportable     0
+wellConstrained    0
+
+## Issue codes per set
+consistentSchema: missing_property_name 65, node_existence_composite_conflict 1
+mappable: mapping_depends_on_other_list 1, missing_table_column_supported_type 8
+
+## Core and decode issues
+none
+
+## consistentSchema issues other than missing_property_name
+node_existence_composite_conflict /nodes/company/constraints/exists_company_name: Existence constraint 'exists_company_name' on property 'name' conflicts with a composite constraint on node 'company'
+
+## Nodes (7) and relationships (13)
+(:Company)-[:ACQUIRES]->(:Company)
+(:Company)-[:HAS_STAKE_IN]->(:Company)
+(:Company)-[:PARTNERS_WITH]->(:Company)
+(:Company)-[:SUPPLIES]->(:Company)
+(:Company)-[:COMPETES_WITH]->(:Company)
+(:Person)-[:CEO_OF]->(:Company)
+(:Person)-[:FOUNDED]->(:Company)
+(:Company)-[:MAKES]->(:Product)
+(:Company)-[:OPERATES_IN]->(:Industry)
+(:Regulator)-[:INVESTIGATES]->(:Company)
+(:InvestmentFund)-[:INVESTED_IN]->(:Company)
+(:Event)-[:EVENT_ACQUIRER]->(:Company)
+(:Event)-[:EVENT_TARGET]->(:Company)
+
+query cookbook: 6 examples (extensions.custom.query_examples)

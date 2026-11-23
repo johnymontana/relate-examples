@@ -1,0 +1,43 @@
+# Native Relate 1.2.0 (harness/native.py): the page's store, built natively, and every query compared with WASM
+
+schema: 20 statements from out/ddl.cypher (the graph type first)
+loaded: 38 nodes, 43 relationships (data/demo-graph.json: 38, 43)
+graph type: 20 elements read back
+valueType(r.supported): FLOAT NOT NULL
+a CEO_OF edge from a Product, against the graph type: refused (IntegrityError: ConstraintValidationFailed: endpoint label presence verification failed: expected Person)
+
+## The 32 queries the Node section ran on Relate 1.2.0 WASM, natively
+same: canned rumor: grounded (1 row)
+same: canned rumor: bare (3 rows)
+same: canned ceo: grounded (1 row)
+same: canned ceo: bare (0 rows)
+same: canned compet: grounded (2 rows)
+same: canned compet: bare (2 rows)
+same: canned product: grounded (2 rows)
+same: canned product: bare (0 rows)
+same: canned industr: grounded (12 rows)
+same: canned industr: bare (12 rows)
+same: canned regulat: grounded (3 rows)
+same: canned regulat: bare (3 rows)
+same: canned denied: grounded (1 row)
+same: canned denied: bare (3 rows)
+same: canned found: grounded (1 row)
+same: canned found: bare (1 row)
+same: canned suppl: grounded (3 rows)
+same: canned suppl: bare (4 rows)
+same: canned partner: grounded (1 row)
+same: canned partner: bare (0 rows)
+same: canned invest: grounded (2 rows)
+same: canned invest: bare (3 rows)
+same: canned acqui: grounded (1 row)
+same: canned acqui: bare (0 rows)
+same: fallback: grounded (25 rows)
+same: fallback: bare (25 rows)
+same: cookbook: What is Northwind acquiring? (1 row)
+same: cookbook: Which acquisitions were rumored but never asserted? (1 row)
+same: cookbook: Who is the CEO of Northwind? (1 row)
+same: cookbook: What products does Halcyon make? (2 rows)
+same: cookbook: Which industries does Halcyon operate in? (1 row)
+same: cookbook: Is Halcyon under regulatory scrutiny? (1 row)
+
+=> the same rows natively and in WASM: 32 of 32

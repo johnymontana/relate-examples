@@ -1,0 +1,775 @@
+{
+  "nodes": [
+    {
+      "id": "northwind",
+      "label": "Company",
+      "props": {
+        "name": "Northwind Logistics",
+        "aliases": [
+          "Northwind",
+          "Northwind Logistics Inc."
+        ],
+        "ticker": "NWL"
+      }
+    },
+    {
+      "id": "cascade",
+      "label": "Company",
+      "props": {
+        "name": "Cascade Freight Systems",
+        "aliases": [
+          "Cascade",
+          "Cascade Freight"
+        ]
+      }
+    },
+    {
+      "id": "halcyon",
+      "label": "Company",
+      "props": {
+        "name": "Halcyon Semiconductor Corporation",
+        "aliases": [
+          "HLCN",
+          "Halcyon",
+          "Halcyon Semiconductor"
+        ],
+        "ticker": "HLCN"
+      }
+    },
+    {
+      "id": "vantage",
+      "label": "Company",
+      "props": {
+        "name": "Vantage Energy Partners",
+        "aliases": [
+          "Vantage"
+        ]
+      }
+    },
+    {
+      "id": "torrent",
+      "label": "Company",
+      "props": {
+        "name": "Torrent Microsystems",
+        "aliases": [
+          "Torrent"
+        ]
+      }
+    },
+    {
+      "id": "duarte",
+      "label": "Company",
+      "props": {
+        "name": "Duarte Robotics",
+        "aliases": [
+          "Duarte"
+        ],
+        "ticker": "DRT"
+      }
+    },
+    {
+      "id": "solstice",
+      "label": "Company",
+      "props": {
+        "name": "Solstice Aerospace",
+        "aliases": [
+          "Solstice"
+        ],
+        "ticker": "SLSA"
+      }
+    },
+    {
+      "id": "bluepine",
+      "label": "Company",
+      "props": {
+        "name": "Bluepine Analytics",
+        "aliases": [
+          "Bluepine"
+        ]
+      }
+    },
+    {
+      "id": "kestrel",
+      "label": "Company",
+      "props": {
+        "name": "Kestrel Medical Systems",
+        "aliases": [
+          "Kestrel"
+        ]
+      }
+    },
+    {
+      "id": "alder",
+      "label": "Company",
+      "props": {
+        "name": "Alder Cloud Services",
+        "aliases": [
+          "Alder"
+        ]
+      }
+    },
+    {
+      "id": "copperleaf",
+      "label": "Company",
+      "props": {
+        "name": "Copperleaf Mining",
+        "aliases": [
+          "Copperleaf"
+        ]
+      }
+    },
+    {
+      "id": "fernhill",
+      "label": "Company",
+      "props": {
+        "name": "Fernhill Foods",
+        "aliases": [
+          "Fernhill"
+        ]
+      }
+    },
+    {
+      "id": "priya",
+      "label": "Person",
+      "props": {
+        "name": "Priya Raman",
+        "role": "Chief Executive Officer"
+      }
+    },
+    {
+      "id": "elena",
+      "label": "Person",
+      "props": {
+        "name": "Elena Voss",
+        "role": "Chief Executive Officer"
+      }
+    },
+    {
+      "id": "tom",
+      "label": "Person",
+      "props": {
+        "name": "Tom Okonkwo",
+        "role": "Chief Executive Officer"
+      }
+    },
+    {
+      "id": "marcus",
+      "label": "Person",
+      "props": {
+        "name": "Marcus Duarte",
+        "role": "Founder & CEO"
+      }
+    },
+    {
+      "id": "sara",
+      "label": "Person",
+      "props": {
+        "name": "Sara Lindqvist",
+        "role": "Chief Executive Officer"
+      }
+    },
+    {
+      "id": "aurora14",
+      "label": "Product",
+      "props": {
+        "name": "Aurora 14"
+      }
+    },
+    {
+      "id": "aurora14pro",
+      "label": "Product",
+      "props": {
+        "name": "Aurora 14 Pro"
+      }
+    },
+    {
+      "id": "kestrelone",
+      "label": "Product",
+      "props": {
+        "name": "KestrelOne"
+      }
+    },
+    {
+      "id": "bluepine-lens",
+      "label": "Product",
+      "props": {
+        "name": "Bluepine Lens"
+      }
+    },
+    {
+      "id": "arm7",
+      "label": "Product",
+      "props": {
+        "name": "Duarte ARM-7"
+      }
+    },
+    {
+      "id": "solstice-relay",
+      "label": "Product",
+      "props": {
+        "name": "Solstice Relay"
+      }
+    },
+    {
+      "id": "ind-semis",
+      "label": "Industry",
+      "props": {
+        "name": "Semiconductors"
+      }
+    },
+    {
+      "id": "ind-logistics",
+      "label": "Industry",
+      "props": {
+        "name": "Logistics"
+      }
+    },
+    {
+      "id": "ind-robotics",
+      "label": "Industry",
+      "props": {
+        "name": "Robotics"
+      }
+    },
+    {
+      "id": "ind-aerospace",
+      "label": "Industry",
+      "props": {
+        "name": "Aerospace"
+      }
+    },
+    {
+      "id": "ind-healthcare",
+      "label": "Industry",
+      "props": {
+        "name": "Healthcare Devices"
+      }
+    },
+    {
+      "id": "ind-cloud",
+      "label": "Industry",
+      "props": {
+        "name": "Cloud Infrastructure"
+      }
+    },
+    {
+      "id": "ind-analytics",
+      "label": "Industry",
+      "props": {
+        "name": "Data & Analytics"
+      }
+    },
+    {
+      "id": "ind-mining",
+      "label": "Industry",
+      "props": {
+        "name": "Mining"
+      }
+    },
+    {
+      "id": "ind-food",
+      "label": "Industry",
+      "props": {
+        "name": "Food Production"
+      }
+    },
+    {
+      "id": "sec",
+      "label": "Regulator",
+      "props": {
+        "name": "Securities and Exchange Commission",
+        "aliases": [
+          "SEC"
+        ],
+        "jurisdiction": "United States"
+      }
+    },
+    {
+      "id": "ftc",
+      "label": "Regulator",
+      "props": {
+        "name": "Federal Trade Commission",
+        "aliases": [
+          "FTC"
+        ],
+        "jurisdiction": "United States"
+      }
+    },
+    {
+      "id": "faa",
+      "label": "Regulator",
+      "props": {
+        "name": "Federal Aviation Administration",
+        "aliases": [
+          "FAA"
+        ],
+        "jurisdiction": "United States"
+      }
+    },
+    {
+      "id": "meridian",
+      "label": "InvestmentFund",
+      "props": {
+        "name": "Meridian Capital Partners",
+        "aliases": [
+          "Meridian"
+        ],
+        "kind": "private_equity"
+      }
+    },
+    {
+      "id": "foundry9",
+      "label": "InvestmentFund",
+      "props": {
+        "name": "Foundry Nine Ventures",
+        "aliases": [
+          "Foundry Nine"
+        ],
+        "kind": "venture_capital"
+      }
+    },
+    {
+      "id": "auric",
+      "label": "InvestmentFund",
+      "props": {
+        "name": "Auric Sovereign Fund",
+        "aliases": [
+          "Auric"
+        ],
+        "kind": "sovereign"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "northwind",
+      "type": "ACQUIRES",
+      "to": "cascade",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.99,
+        "evidence": "entered into a definitive agreement to acquire Cascade Freight Systems"
+      }
+    },
+    {
+      "from": "northwind",
+      "type": "ACQUIRES",
+      "to": "halcyon",
+      "props": {
+        "assertion": "hypothetical",
+        "supported": 0.93,
+        "evidence": "Industry watchers speculate that Northwind could make a bid for Halcyon"
+      }
+    },
+    {
+      "from": "solstice",
+      "type": "ACQUIRES",
+      "to": "duarte",
+      "props": {
+        "assertion": "negated",
+        "supported": 0.88,
+        "evidence": "Solstice denied it was in talks to acquire Duarte Robotics"
+      }
+    },
+    {
+      "from": "northwind",
+      "type": "HAS_STAKE_IN",
+      "to": "torrent",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.85,
+        "evidence": "Northwind holds a 12% stake in Torrent Microsystems"
+      }
+    },
+    {
+      "from": "meridian",
+      "type": "INVESTED_IN",
+      "to": "cascade",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.9,
+        "evidence": "Meridian Capital Partners, which backed Cascade in 2019"
+      }
+    },
+    {
+      "from": "foundry9",
+      "type": "INVESTED_IN",
+      "to": "bluepine",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.92,
+        "evidence": "Foundry Nine Ventures led Bluepine's Series B"
+      }
+    },
+    {
+      "from": "auric",
+      "type": "INVESTED_IN",
+      "to": "solstice",
+      "props": {
+        "assertion": "forward_looking",
+        "supported": 0.71,
+        "evidence": "Auric is expected to participate in Solstice's next funding round"
+      }
+    },
+    {
+      "from": "northwind",
+      "type": "PARTNERS_WITH",
+      "to": "halcyon",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.96,
+        "evidence": "Northwind confirmed it supplies logistics services to HLCN"
+      }
+    },
+    {
+      "from": "torrent",
+      "type": "PARTNERS_WITH",
+      "to": "halcyon",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.95,
+        "evidence": "a multi-year supply agreement under which Torrent will provide advanced packaging"
+      }
+    },
+    {
+      "from": "bluepine",
+      "type": "PARTNERS_WITH",
+      "to": "alder",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.9,
+        "evidence": "Bluepine and Alder announced a joint analytics platform"
+      }
+    },
+    {
+      "from": "torrent",
+      "type": "SUPPLIES",
+      "to": "halcyon",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.97,
+        "evidence": "Torrent will provide advanced packaging services for Halcyon's chipsets"
+      }
+    },
+    {
+      "from": "duarte",
+      "type": "SUPPLIES",
+      "to": "kestrel",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.89,
+        "evidence": "Duarte Robotics supplies actuator modules to Kestrel Medical"
+      }
+    },
+    {
+      "from": "kestrel",
+      "type": "SUPPLIES",
+      "to": "fernhill",
+      "props": {
+        "assertion": "hypothetical",
+        "supported": 0.55,
+        "evidence": "a supply deal between Kestrel and Fernhill is said to be under discussion"
+      }
+    },
+    {
+      "from": "alder",
+      "type": "SUPPLIES",
+      "to": "northwind",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.86,
+        "evidence": "Northwind runs its routing platform on Alder's cloud"
+      }
+    },
+    {
+      "from": "halcyon",
+      "type": "COMPETES_WITH",
+      "to": "vantage",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.92,
+        "evidence": "Halcyon competes with Vantage Energy Partners in the industrial sensor market"
+      }
+    },
+    {
+      "from": "alder",
+      "type": "COMPETES_WITH",
+      "to": "bluepine",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.8,
+        "evidence": "Alder's new analytics tier puts it in direct competition with Bluepine"
+      }
+    },
+    {
+      "from": "priya",
+      "type": "CEO_OF",
+      "to": "northwind",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.98,
+        "evidence": "Priya Raman, Chief Executive Officer of Northwind"
+      }
+    },
+    {
+      "from": "elena",
+      "type": "CEO_OF",
+      "to": "halcyon",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.97,
+        "evidence": "Elena Voss, Halcyon's chief executive, told investors"
+      }
+    },
+    {
+      "from": "tom",
+      "type": "CEO_OF",
+      "to": "torrent",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.95,
+        "evidence": "Torrent CEO Tom Okonkwo said"
+      }
+    },
+    {
+      "from": "marcus",
+      "type": "CEO_OF",
+      "to": "duarte",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.99,
+        "evidence": "Founder & CEO Marcus Duarte demonstrated the ARM-7"
+      }
+    },
+    {
+      "from": "sara",
+      "type": "CEO_OF",
+      "to": "vantage",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.9,
+        "evidence": "Vantage chief Sara Lindqvist"
+      }
+    },
+    {
+      "from": "marcus",
+      "type": "FOUNDED",
+      "to": "duarte",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.99,
+        "evidence": "Duarte Robotics, which Marcus Duarte founded in 2015"
+      }
+    },
+    {
+      "from": "halcyon",
+      "type": "MAKES",
+      "to": "aurora14",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.99,
+        "evidence": "launched the Aurora 14 edge accelerator"
+      }
+    },
+    {
+      "from": "halcyon",
+      "type": "MAKES",
+      "to": "aurora14pro",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.99,
+        "evidence": "alongside the Aurora 14 Pro"
+      }
+    },
+    {
+      "from": "kestrel",
+      "type": "MAKES",
+      "to": "kestrelone",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.93,
+        "evidence": "Kestrel's KestrelOne imaging platform"
+      }
+    },
+    {
+      "from": "bluepine",
+      "type": "MAKES",
+      "to": "bluepine-lens",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.91,
+        "evidence": "its flagship Bluepine Lens product"
+      }
+    },
+    {
+      "from": "duarte",
+      "type": "MAKES",
+      "to": "arm7",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.96,
+        "evidence": "demonstrated the ARM-7 warehouse robot"
+      }
+    },
+    {
+      "from": "solstice",
+      "type": "MAKES",
+      "to": "solstice-relay",
+      "props": {
+        "assertion": "forward_looking",
+        "supported": 0.78,
+        "evidence": "Solstice is expected to unveil the Relay satellite bus next year"
+      }
+    },
+    {
+      "from": "halcyon",
+      "type": "OPERATES_IN",
+      "to": "ind-semis",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.97,
+        "evidence": "Halcyon Semiconductor … next-generation chipsets"
+      }
+    },
+    {
+      "from": "torrent",
+      "type": "OPERATES_IN",
+      "to": "ind-semis",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.93,
+        "evidence": "Torrent Microsystems, a contract chip packager"
+      }
+    },
+    {
+      "from": "vantage",
+      "type": "OPERATES_IN",
+      "to": "ind-semis",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.8,
+        "evidence": "Vantage's industrial sensor business"
+      }
+    },
+    {
+      "from": "northwind",
+      "type": "OPERATES_IN",
+      "to": "ind-logistics",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.96,
+        "evidence": "expands the company's freight network across the Pacific Northwest"
+      }
+    },
+    {
+      "from": "cascade",
+      "type": "OPERATES_IN",
+      "to": "ind-logistics",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.94,
+        "evidence": "Cascade Freight Systems operates 40 distribution centers"
+      }
+    },
+    {
+      "from": "duarte",
+      "type": "OPERATES_IN",
+      "to": "ind-robotics",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.97,
+        "evidence": "Duarte Robotics' warehouse automation business"
+      }
+    },
+    {
+      "from": "solstice",
+      "type": "OPERATES_IN",
+      "to": "ind-aerospace",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.95,
+        "evidence": "Solstice Aerospace's satellite programs"
+      }
+    },
+    {
+      "from": "kestrel",
+      "type": "OPERATES_IN",
+      "to": "ind-healthcare",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.92,
+        "evidence": "Kestrel Medical Systems' imaging devices"
+      }
+    },
+    {
+      "from": "alder",
+      "type": "OPERATES_IN",
+      "to": "ind-cloud",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.9,
+        "evidence": "Alder Cloud Services' datacenter footprint"
+      }
+    },
+    {
+      "from": "bluepine",
+      "type": "OPERATES_IN",
+      "to": "ind-analytics",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.88,
+        "evidence": "Bluepine Analytics' data platform"
+      }
+    },
+    {
+      "from": "copperleaf",
+      "type": "OPERATES_IN",
+      "to": "ind-mining",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.9,
+        "evidence": "Copperleaf Mining's lithium operations"
+      }
+    },
+    {
+      "from": "fernhill",
+      "type": "OPERATES_IN",
+      "to": "ind-food",
+      "props": {
+        "assertion": "asserted",
+        "supported": 0.87,
+        "evidence": "Fernhill Foods' packaged goods business"
+      }
+    },
+    {
+      "from": "sec",
+      "type": "INVESTIGATES",
+      "to": "halcyon",
+      "props": {
+        "assertion": "hypothetical",
+        "supported": 0.61,
+        "evidence": "regulators are reportedly weighing an inquiry into Halcyon's disclosures"
+      }
+    },
+    {
+      "from": "ftc",
+      "type": "INVESTIGATES",
+      "to": "northwind",
+      "props": {
+        "assertion": "negated",
+        "supported": 0.9,
+        "evidence": "The FTC said it will not pursue action against Northwind over the Cascade deal"
+      }
+    },
+    {
+      "from": "faa",
+      "type": "INVESTIGATES",
+      "to": "solstice",
+      "props": {
+        "assertion": "forward_looking",
+        "supported": 0.74,
+        "evidence": "the FAA is expected to open a review of Solstice's test flights next quarter"
+      }
+    }
+  ]
+}
