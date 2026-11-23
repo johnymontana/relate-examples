@@ -221,7 +221,7 @@ table#console-table { border-collapse: collapse; width: 100%; font-size: 12.5px;
 pre.code { background: var(--code-bg); padding: 8px 10px; border-radius: 6px; overflow: auto; }
 .native summary { cursor: pointer; margin: 8px 0; }
 
-/* The console's ontology tools (Ontology Graph Spec v1 `tools`) and the graph tab's side-panel list. */
+/* The console's ontology tools (the ontology's `tools` custom extension) and the graph tab's side-panel list. */
 .tools-box { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 12px 0 4px; }
 .tools-box > summary { cursor: pointer; font-weight: 600; }
 .tools-list { max-height: 460px; overflow: auto; }

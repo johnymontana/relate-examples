@@ -251,7 +251,7 @@ link at once. (Earlier builds also set the defaults of edgextract's format on ed
 its phrase ("owns"): what this example asked before. "labels": what it asks now (pipeline.modelSchema): each kind's label
 as text ("account"), "<subtype> in <domain>" for a domain kind ("financial account in financial services"), the base
 kinds bare, a base kind no link names and a domain kind covers not asked (Object in all 27, Event in agent-memory and
-vacation-industry), and each link between its endpoints ("person owns account"); a generic v1 document is asked the same
+vacation-industry), and each link between its endpoints ("person owns account"); a generic document is asked the same
 way. Both on a fresh store per domain, gated by the Cypher gate; P/R/F1 (tp/fp/fn), the distractors kept, and the review
 queue (mentions, claims).
 asked   keep       entities                         relations                     distractors kept  review m, c

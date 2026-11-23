@@ -1,20 +1,20 @@
 #!/usr/bin/env node
 // @ts-check
-// The bundled ontologies as Ontology Graph Spec v1 documents (web/convert.js, web/ogs.js):
+// The bundled ontologies as Ontology Graph Spec 1.1 documents (web/convert.js, web/ogs.js):
 // data/ontologies/ogs/ccg/<domain>.ontology.yaml from create-context-graph's 27 domain files (with
 // _base.yaml). The originals stay where they are (data/ontologies/ccg/) for provenance; the page and
-// the harnesses load the v1 documents.
+// the harnesses load the documents.
 //   node harness/convert.mjs           write data/ontologies/ogs/ (only files that changed)
 //   node harness/convert.mjs --check   write nothing; exit 1 naming every committed document that is
 //                                      not byte for byte a fresh conversion of its original, and any file
 //                                      under data/ontologies/ogs/ that has no original
 // harness/ontology.mjs makes the same check in every run (ontology.txt), and also checks the
-// conversion back (toCreateContextGraph, below): every key of the 27 files comes back from the v1
+// conversion back (toCreateContextGraph, below): every key of the 27 files comes back from the
 // document, so the conversion loses nothing create-context-graph's model reads.
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { EXTENSIONS, customOf, isMap, loadText } from '../web/ogs.js';
+import { EXTENSIONS, custom, isMap, loadText, toolsOf } from '../web/ogs.js';
 import { CCG_DEFAULT_COLOR, CCG_DEFAULT_ICON, CCG_DISPLAY, PROPERTY_TYPES } from '../web/convert.js';
 import { parseOntology } from '../web/ontology.js';
 
@@ -107,16 +107,15 @@ export function flattenCreateContextGraph(text, baseText) {
 }
 
 /**
- * A v1 document converted from create-context-graph's format, read back into the shape
+ * A document converted from create-context-graph's format, read back into the shape
  * flattenCreateContextGraph gives: every value the conversion carried, from where it put it.
  * @param {any} doc
  */
 export function toCreateContextGraph(doc) {
-  const custom = (ext, type) => customOf(ext, type)[0]?.definition;
   const propBack = (name, p) => fullProperty({
     name,
     type: custom(p.extensions, 'createContextGraph:type') ?? TYPE_BACK[p.type] ?? p.type,
-    required: p.mustExist, unique: p.unique, enum: p.one_of, default: custom(p.extensions, 'createContextGraph:default'), description: p.description,
+    required: p.must_exist, unique: p.unique, enum: p.one_of, default: custom(p.extensions, 'createContextGraph:default'), description: p.description,
   });
   const props = (m) => Object.entries(m ?? {}).map(([name, p]) => propBack(name, p));
   const domainExt = { ...custom(doc.extensions, EXTENSIONS.domain) };
@@ -124,16 +123,16 @@ export function toCreateContextGraph(doc) {
   delete domainExt.inherits;
   const tools = [];
   for (const el of [...Object.values(doc.nodes ?? {}), ...Object.values(doc.relationships ?? {})]) {
-    for (const t of el.tools ?? []) if (t.name !== 'defaultView') tools.push(t);
+    for (const t of toolsOf(el)) if (t.name !== 'defaultView') tools.push(t);
   }
   return {
     domain: { id: doc.id, name: doc.name, ...(doc.description !== undefined ? { description: doc.description } : {}), ...domainExt },
     inherits,
     entity_types: Object.values(doc.nodes).map((n) => {
       const pole = custom(n.extensions, EXTENSIONS.pole);
-      const display = n.extensions?.[EXTENSIONS.display] ?? {};
+      const display = n.extensions?.display ?? {};
       const looks = custom(n.extensions, CCG_DISPLAY) ?? {};
-      return { label: n.label, pole_type: pole.pole_type, subtype: pole.subtype ?? null, color: display.color, icon: looks.icon, properties: props(n.properties) };
+      return { label: n.label, pole_type: pole.pole_type, subtype: pole.subtype ?? null, color: display.colour, icon: looks.icon, properties: props(n.properties) };
     }),
     relationships: Object.values(doc.relationships ?? {}).map((r) => ({ type: r.type, source: r.from.node, target: r.to.node, properties: props(r.properties) })),
     agent_tools: tools.map((t) => ({
@@ -157,7 +156,7 @@ export function canonJson(v) {
 
 /**
  * The lossless check for one create-context-graph file: [] when every value comes back, else the
- * parts that differ. agent_tools are compared as a set (the v1 document lists them by element).
+ * parts that differ. agent_tools are compared as a set (the document lists them by element).
  * @param {string} text @param {string} baseText @param {any} doc
  */
 export function losses(text, baseText, doc) {

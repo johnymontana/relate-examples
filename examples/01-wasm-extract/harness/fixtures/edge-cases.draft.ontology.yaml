@@ -1,0 +1,67 @@
+$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+id: edge_cases
+version: 1
+name: Edge cases
+nodes:
+  person:
+    label: Person
+    description: A named person.
+  company:
+    label: Company
+    description: A named company or business.
+  location:
+    label: Location
+relationships:
+  FOUNDED:
+    type: FOUNDED
+    from:
+      node: person
+    to:
+      node: company
+    description: The person founded the company.
+  WORKS_FOR:
+    type: WORKS_FOR
+    from:
+      node: person
+    to:
+      node: company
+    description: The person works for the company.
+  PARTNER_OF:
+    type: PARTNER_OF
+    from:
+      node: company
+    to:
+      node: company
+    description: The two companies work together.
+    extensions:
+      custom:
+        - type: edgextract:symmetric
+  INVESTED_IN__person__company:
+    type: INVESTED_IN
+    from:
+      node: person
+    to:
+      node: company
+    description: The person or company put money into the company.
+  INVESTED_IN__company__company:
+    type: INVESTED_IN
+    from:
+      node: company
+    to:
+      node: company
+    description: The person or company put money into the company.
+  HEADQUARTERED_IN:
+    type: HEADQUARTERED_IN
+    from:
+      node: company
+    to:
+      node: location
+    description: The company is based in this place.
+extensions:
+  custom:
+    - type: edgextract:gazetteer
+      definition:
+        Ada Lovelace: person
+        Northwind: company
+        Acme Inc: company
+        東京: location

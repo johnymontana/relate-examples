@@ -1,16 +1,15 @@
-$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
 id: education
-version: 1
 name: Education
 description: Students, instructors, courses, enrollments, assessments, and outcomes for K-12, higher-ed, or training organizations
 nodes:
   Person:
     label: Person
-    description: person
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       email:
         type: STRING
       role:
@@ -18,47 +17,49 @@ nodes:
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#22c55e'
-        caption: name
+      display:
+        x: 0
+        'y': -300
+        colour: '#22c55e'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: PERSON
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: user
+        createContextGraph:pole:
+          pole_type: PERSON
+          origin: base
+        createContextGraph:display:
+          icon: user
+    description: person
   Organization:
     label: Organization
-    description: organization
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
       industry:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#3b82f6'
-        caption: name
+      display:
+        x: 150
+        'y': -260
+        colour: '#3b82f6'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: ORGANIZATION
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: building
+        createContextGraph:pole:
+          pole_type: ORGANIZATION
+          origin: base
+        createContextGraph:display:
+          icon: building
+    description: organization
   Location:
     label: Location
-    description: location
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       address:
         type: STRING
       latitude:
@@ -66,68 +67,71 @@ nodes:
       longitude:
         type: FLOAT
     extensions:
-      neo4j:display:
-        color: '#a855f7'
-        caption: name
+      display:
+        x: 260
+        'y': -150
+        colour: '#a855f7'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: LOCATION
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: map-pin
+        createContextGraph:pole:
+          pole_type: LOCATION
+          origin: base
+        createContextGraph:display:
+          icon: map-pin
+    description: location
   Event:
     label: Event
-    description: event
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       date:
-        type: DATETIME
+        type: ZONED DATETIME
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#f97316'
-        caption: name
+      display:
+        x: 300
+        'y': 0
+        colour: '#f97316'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: calendar
+        createContextGraph:pole:
+          pole_type: EVENT
+          origin: base
+        createContextGraph:display:
+          icon: calendar
+    description: event
   Object:
     label: Object
-    description: object
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#eab308'
-        caption: name
+      display:
+        x: 260
+        'y': 150
+        colour: '#eab308'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: box
+        createContextGraph:pole:
+          pole_type: OBJECT
+          origin: base
+        createContextGraph:display:
+          icon: box
+    description: object
   Student:
     label: Student
-    description: learner (person)
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       student_id:
         type: STRING
@@ -151,46 +155,47 @@ nodes:
           - deferred
       email:
         type: STRING
-    tools:
-      - type: canonicalQuery
-        name: search_student
-        description: Search students by name or ID
-        cypher: |
-          MATCH (s:Student)
-          WHERE toLower(s.name) CONTAINS toLower($query)
-             OR toLower(coalesce(s.student_id, '')) CONTAINS toLower($query)
-          OPTIONAL MATCH (s)-[:ENROLLED_IN]->(c:Course)
-          RETURN s, collect(DISTINCT c) AS courses
-          LIMIT 20
-        parameters:
-          - name: query
-            type: STRING
-            description: Student name or ID
-      - type: canonicalQuery
-        name: defaultView
-        description: create-context-graph's default visualisation query
-        cypher: MATCH (s:Student)-[r:ENROLLED_IN]->(c:Course) RETURN s, r, c LIMIT 100
     extensions:
-      neo4j:display:
-        color: '#2563eb'
-        caption: name
+      display:
+        x: 150
+        'y': 260
+        colour: '#2563eb'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: PERSON
-            subtype: LEARNER
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: graduation-cap
-            size: 20
+        createContextGraph:pole:
+          pole_type: PERSON
+          subtype: LEARNER
+          origin: domain
+        createContextGraph:display:
+          icon: graduation-cap
+          size: 20
+        tools:
+          - type: canonicalQuery
+            name: search_student
+            description: Search students by name or ID
+            cypher: |
+              MATCH (s:Student)
+              WHERE toLower(s.name) CONTAINS toLower($query)
+                 OR toLower(coalesce(s.student_id, '')) CONTAINS toLower($query)
+              OPTIONAL MATCH (s)-[:ENROLLED_IN]->(c:Course)
+              RETURN s, collect(DISTINCT c) AS courses
+              LIMIT 20
+            parameters:
+              - name: query
+                type: STRING
+                description: Student name or ID
+          - type: canonicalQuery
+            name: defaultView
+            description: create-context-graph's default visualisation query
+            cypher: MATCH (s:Student)-[r:ENROLLED_IN]->(c:Course) RETURN s, r, c LIMIT 100
+    description: learner (person)
   Instructor:
     label: Instructor
-    description: educator (person)
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       role:
         type: STRING
@@ -204,45 +209,46 @@ nodes:
         type: STRING
       email:
         type: STRING
-    tools:
-      - type: canonicalQuery
-        name: instructor_load
-        description: Get the courses and student count for an instructor
-        cypher: |
-          MATCH (i:Instructor)
-          WHERE i.name = $instructor OR toLower(i.name) CONTAINS toLower($instructor)
-          OPTIONAL MATCH (i)-[:TEACHES]->(c:Course)
-          OPTIONAL MATCH (e:Enrollment)-[:FOR_COURSE]->(c)
-          RETURN i, c, count(DISTINCT e) AS enrolled
-        parameters:
-          - name: instructor
-            type: STRING
-            description: Instructor name
     extensions:
-      neo4j:display:
-        color: '#0ea5e9'
-        caption: name
+      display:
+        x: 0
+        'y': 300
+        colour: '#0ea5e9'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: PERSON
-            subtype: EDUCATOR
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: user-square
-            size: 25
+        createContextGraph:pole:
+          pole_type: PERSON
+          subtype: EDUCATOR
+          origin: domain
+        createContextGraph:display:
+          icon: user-square
+          size: 25
+        tools:
+          - type: canonicalQuery
+            name: instructor_load
+            description: Get the courses and student count for an instructor
+            cypher: |
+              MATCH (i:Instructor)
+              WHERE i.name = $instructor OR toLower(i.name) CONTAINS toLower($instructor)
+              OPTIONAL MATCH (i)-[:TEACHES]->(c:Course)
+              OPTIONAL MATCH (e:Enrollment)-[:FOR_COURSE]->(c)
+              RETURN i, c, count(DISTINCT e) AS enrolled
+            parameters:
+              - name: instructor
+                type: STRING
+                description: Instructor name
+    description: educator (person)
   Course:
     label: Course
-    description: course (object)
     properties:
       course_code:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       subject:
         type: STRING
         one_of:
@@ -269,80 +275,81 @@ nodes:
           - graduate
       description:
         type: STRING
-    tools:
-      - type: canonicalQuery
-        name: course_roster
-        description: Get the roster for a course in a term
-        cypher: |
-          MATCH (c:Course {course_code: $course_code})
-          OPTIONAL MATCH (e:Enrollment)-[:FOR_COURSE]->(c)
-          OPTIONAL MATCH (e)-[:ENROLLMENT_OF]->(s:Student)
-          OPTIONAL MATCH (i:Instructor)-[:TEACHES]->(c)
-          RETURN c, collect(DISTINCT s) AS students, collect(DISTINCT i) AS instructors
-        parameters:
-          - name: course_code
-            type: STRING
-            description: Course code (e.g. CS101)
-      - type: canonicalQuery
-        name: course_prereq_chain
-        description: Walk the prerequisite chain for a course
-        cypher: |
-          MATCH path = (start:Course {course_code: $course_code})<-[:PREREQUISITE_OF*1..3]-(prereq:Course)
-          RETURN path, prereq
-          LIMIT 50
-        parameters:
-          - name: course_code
-            type: STRING
-            description: Course code
-      - type: canonicalQuery
-        name: list_courses
-        description: List Course records with optional limit
-        cypher: |
-          MATCH (n:Course)
-          RETURN n
-          ORDER BY n.course_code
-          LIMIT toInteger($limit)
-        parameters:
-          - name: limit
-            type: STRING
-            description: 'Maximum number of results to return (default: 10)'
-      - type: canonicalQuery
-        name: get_course_by_id
-        description: Get a specific Course by course code (its unique ID) with connections
-        cypher: |
-          MATCH (n:Course {course_code: $course_code})
-          OPTIONAL MATCH (n)-[r]-(related)
-          RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
-          LIMIT 50
-        parameters:
-          - name: course_code
-            type: STRING
-            description: The course code (e.g. CS101)
     extensions:
-      neo4j:display:
-        color: '#7c3aed'
-        caption: name
+      display:
+        x: -150
+        'y': 260
+        colour: '#7c3aed'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: COURSE
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: book
-            size: 25
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: COURSE
+          origin: domain
+        createContextGraph:display:
+          icon: book
+          size: 25
+        tools:
+          - type: canonicalQuery
+            name: course_roster
+            description: Get the roster for a course in a term
+            cypher: |
+              MATCH (c:Course {course_code: $course_code})
+              OPTIONAL MATCH (e:Enrollment)-[:FOR_COURSE]->(c)
+              OPTIONAL MATCH (e)-[:ENROLLMENT_OF]->(s:Student)
+              OPTIONAL MATCH (i:Instructor)-[:TEACHES]->(c)
+              RETURN c, collect(DISTINCT s) AS students, collect(DISTINCT i) AS instructors
+            parameters:
+              - name: course_code
+                type: STRING
+                description: Course code (e.g. CS101)
+          - type: canonicalQuery
+            name: course_prereq_chain
+            description: Walk the prerequisite chain for a course
+            cypher: |
+              MATCH path = (start:Course {course_code: $course_code})<-[:PREREQUISITE_OF*1..3]-(prereq:Course)
+              RETURN path, prereq
+              LIMIT 50
+            parameters:
+              - name: course_code
+                type: STRING
+                description: Course code
+          - type: canonicalQuery
+            name: list_courses
+            description: List Course records with optional limit
+            cypher: |
+              MATCH (n:Course)
+              RETURN n
+              ORDER BY n.course_code
+              LIMIT toInteger($limit)
+            parameters:
+              - name: limit
+                type: STRING
+                description: 'Maximum number of results to return (default: 10)'
+          - type: canonicalQuery
+            name: get_course_by_id
+            description: Get a specific Course by course code (its unique ID) with connections
+            cypher: |
+              MATCH (n:Course {course_code: $course_code})
+              OPTIONAL MATCH (n)-[r]-(related)
+              RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
+              LIMIT 50
+            parameters:
+              - name: course_code
+                type: STRING
+                description: The course code (e.g. CS101)
+    description: course (object)
   Term:
     label: Term
-    description: academic term (event)
     properties:
       term_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       term_type:
         type: STRING
         one_of:
@@ -356,26 +363,27 @@ nodes:
       end_date:
         type: DATE
     extensions:
-      neo4j:display:
-        color: '#f59e0b'
-        caption: name
+      display:
+        x: -260
+        'y': 150
+        colour: '#f59e0b'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: ACADEMIC_TERM
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: calendar-days
-            size: 15
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: ACADEMIC_TERM
+          origin: domain
+        createContextGraph:display:
+          icon: calendar-days
+          size: 15
+    description: academic term (event)
   Enrollment:
     label: Enrollment
-    description: enrollment (event)
     properties:
       enrollment_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
@@ -392,30 +400,31 @@ nodes:
       enrolled_date:
         type: DATE
     extensions:
-      neo4j:display:
-        color: '#84cc16'
-        caption: name
+      display:
+        x: -300
+        'y': 0
+        colour: '#84cc16'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: ENROLLMENT
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: clipboard-check
-            size: 12
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: ENROLLMENT
+          origin: domain
+        createContextGraph:display:
+          icon: clipboard-check
+          size: 12
+    description: enrollment (event)
   Assessment:
     label: Assessment
-    description: assessment (event)
     properties:
       assessment_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       assessment_type:
         type: STRING
         one_of:
@@ -428,32 +437,33 @@ nodes:
           - homework
           - participation
       due_date:
-        type: DATETIME
+        type: ZONED DATETIME
       max_score:
         type: FLOAT
       weight:
         type: FLOAT
     extensions:
-      neo4j:display:
-        color: '#ef4444'
-        caption: name
+      display:
+        x: -260
+        'y': -150
+        colour: '#ef4444'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: ASSESSMENT
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: file-check
-            size: 15
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: ASSESSMENT
+          origin: domain
+        createContextGraph:display:
+          icon: file-check
+          size: 15
+    description: assessment (event)
   Submission:
     label: Submission
-    description: submission (event)
     properties:
       submission_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
@@ -468,38 +478,40 @@ nodes:
       score:
         type: FLOAT
       submitted_at:
-        type: DATETIME
-    tools:
-      - type: canonicalQuery
-        name: at_risk_students
-        description: Find students with low recent assessment scores
-        cypher: |
-          MATCH (sub:Submission)-[:SUBMITTED_BY]->(s:Student)
-          MATCH (sub)-[:SUBMITTED_FOR]->(a:Assessment)-[:PART_OF]->(c:Course)
-          WHERE sub.score IS NOT NULL AND a.max_score IS NOT NULL
-          WITH s, c, avg(toFloat(sub.score) / toFloat(a.max_score)) AS avg_ratio
-          WHERE avg_ratio < toFloat($threshold)
-          RETURN s, c, avg_ratio
-          ORDER BY avg_ratio ASC
-          LIMIT 30
-        parameters:
-          - name: threshold
-            type: FLOAT
-            default: 0.6
+        type: ZONED DATETIME
     extensions:
-      neo4j:display:
-        color: '#14b8a6'
-        caption: name
+      display:
+        x: -150
+        'y': -260
+        colour: '#14b8a6'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: SUBMISSION
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: send
-            size: 12
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: SUBMISSION
+          origin: domain
+        createContextGraph:display:
+          icon: send
+          size: 12
+        tools:
+          - type: canonicalQuery
+            name: at_risk_students
+            description: Find students with low recent assessment scores
+            cypher: |
+              MATCH (sub:Submission)-[:SUBMITTED_BY]->(s:Student)
+              MATCH (sub)-[:SUBMITTED_FOR]->(a:Assessment)-[:PART_OF]->(c:Course)
+              WHERE sub.score IS NOT NULL AND a.max_score IS NOT NULL
+              WITH s, c, avg(toFloat(sub.score) / toFloat(a.max_score)) AS avg_ratio
+              WHERE avg_ratio < toFloat($threshold)
+              RETURN s, c, avg_ratio
+              ORDER BY avg_ratio ASC
+              LIMIT 30
+            parameters:
+              - name: threshold
+                type: FLOAT
+                default: 0.6
+    description: submission (event)
 relationships:
   WORKS_FOR:
     type: WORKS_FOR
@@ -509,9 +521,8 @@ relationships:
       node: Organization
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   LOCATED_AT:
     type: LOCATED_AT
     from:
@@ -520,9 +531,8 @@ relationships:
       node: Location
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   PARTICIPATED_IN:
     type: PARTICIPATED_IN
     from:
@@ -531,9 +541,8 @@ relationships:
       node: Event
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   TEACHES:
     type: TEACHES
     from:
@@ -542,9 +551,8 @@ relationships:
       node: Course
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   ADVISES:
     type: ADVISES
     from:
@@ -553,9 +561,8 @@ relationships:
       node: Student
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   ENROLLED_IN:
     type: ENROLLED_IN
     from:
@@ -564,9 +571,8 @@ relationships:
       node: Course
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   ENROLLMENT_OF:
     type: ENROLLMENT_OF
     from:
@@ -575,9 +581,8 @@ relationships:
       node: Student
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   FOR_COURSE:
     type: FOR_COURSE
     from:
@@ -586,9 +591,8 @@ relationships:
       node: Course
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   OFFERED_IN:
     type: OFFERED_IN
     from:
@@ -597,9 +601,8 @@ relationships:
       node: Term
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   BELONGS_TO:
     type: BELONGS_TO
     from:
@@ -608,9 +611,8 @@ relationships:
       node: Organization
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   PREREQUISITE_OF:
     type: PREREQUISITE_OF
     from:
@@ -619,9 +621,8 @@ relationships:
       node: Course
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   PART_OF:
     type: PART_OF
     from:
@@ -630,9 +631,8 @@ relationships:
       node: Course
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   SUBMITTED_BY:
     type: SUBMITTED_BY
     from:
@@ -641,9 +641,8 @@ relationships:
       node: Student
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   SUBMITTED_FOR:
     type: SUBMITTED_FOR
     from:
@@ -652,9 +651,8 @@ relationships:
       node: Assessment
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   GRADED_BY:
     type: GRADED_BY
     from:
@@ -663,9 +661,8 @@ relationships:
       node: Instructor
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   HELD_AT:
     type: HELD_AT
     from:
@@ -674,9 +671,8 @@ relationships:
       node: Location
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   ATTENDED:
     type: ATTENDED
     from:
@@ -685,173 +681,166 @@ relationships:
       node: Event
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
 extensions:
   custom:
-    - type: createContextGraph:domain
-      definition:
-        tagline: AI-powered Learning Intelligence
-        emoji: 🎓
-        inherits: _base
-    - type: createContextGraph:documentTemplates
-      definition:
-        - id: syllabus
-          name: Course Syllabus
-          description: Course syllabus with policies and schedule
-          count: 6
-          prompt_template: |
-            Write a syllabus for course {{course.name}} ({{course.course_code}}) taught by
-            {{instructor.name}} in {{term.name}}. Include learning objectives, weekly schedule,
-            grading policy, and required readings.
-          required_entities:
-            - Course
-            - Instructor
-            - Term
-        - id: assignment_brief
-          name: Assignment Brief
-          description: Detailed assignment description with rubric
-          count: 8
-          prompt_template: |
-            Write an assignment brief for {{assessment.name}} ({{assessment.assessment_type}})
-            in {{course.name}}. Due: {{assessment.due_date}}. Include instructions,
-            learning outcomes, evaluation rubric, and submission requirements.
-          required_entities:
-            - Assessment
-            - Course
-            - Instructor
-        - id: progress_report
-          name: Student Progress Report
-          description: Individual student progress summaries
-          count: 5
-          prompt_template: |
-            Write a progress report for {{student.name}} in {{course.name}}.
-            Instructor: {{instructor.name}}. Cover grades to date, attendance,
-            strengths, areas for improvement, and recommended next steps.
-          required_entities:
-            - Student
-            - Course
-            - Instructor
-        - id: lesson_plan
-          name: Lesson Plan
-          description: Detailed lesson plan for a single class session
-          count: 6
-          prompt_template: |
-            Write a lesson plan for {{course.name}} session on {{topic}}.
-            Instructor: {{instructor.name}}. Include objectives, activities, materials,
-            and assessment for the class period.
-          required_entities:
-            - Course
-            - Instructor
-        - id: parent_email
-          name: Parent Communication
-          description: Email to a parent about student progress or behavior
-          count: 6
-          prompt_template: |
-            Write an email from {{instructor.name}} to the parent of {{student.name}}
-            about {{topic}} in {{course.name}}. Be specific, constructive, and
-            include any requested next steps.
-          required_entities:
-            - Instructor
-            - Student
-            - Course
-    - type: createContextGraph:decisionTraces
-      definition:
-        - id: academic_intervention
-          task: Decide on academic intervention for {{student.name}} in {{course.name}}
-          steps:
-            - thought: Assess the student's current performance trajectory
-              action: Review submissions, scores, and attendance patterns this term
-            - thought: Identify possible root causes
-              action: Compare against the student's performance in other courses and prior terms
-            - thought: Consider available support resources
-              action: Check tutoring availability, advisor schedule, and prior intervention outcomes
-            - thought: Choose the least disruptive effective intervention
-              action: Match intervention severity to gap size and time remaining in term
-          outcome_template: 'Intervention: {{intervention}}. Owner: {{owner}}. Review date: {{review}}'
-        - id: course_scheduling
-          task: Schedule a new section of {{course.name}} for {{term.name}}
-          steps:
-            - thought: Check instructor availability and load
-              action: Query instructor course loads and prior teaching of this course
-            - thought: Estimate demand from prerequisite enrollments
-              action: Count students who completed prerequisite courses
-            - thought: Avoid time conflicts with required co-courses
-              action: Check the schedule of courses commonly taken together
-          outcome_template: 'Section: {{section}}. Instructor: {{instructor}}. Capacity: {{cap}}'
-        - id: grade_appeal
-          task: Evaluate grade appeal for {{student.name}} on {{assessment.name}}
-          steps:
-            - thought: Reconstruct the original grading
-              action: Pull the submission, rubric, and graded score
-            - thought: Compare against peer submissions for consistency
-              action: Sample other submissions for the same assessment
-            - thought: Check policy compliance
-              action: Verify late, attendance, and academic-honesty policies
-          outcome_template: 'Decision: {{decision}}. Original: {{original}}. Revised: {{revised}}'
-        - id: program_review
-          task: Review effectiveness of {{course.name}} curriculum
-          steps:
-            - thought: Aggregate outcomes from recent terms
-              action: Compute completion rate, average final grade, and DFW rate per term
-            - thought: Identify assessments where students cluster low
-              action: Find assessments with low average scores across cohorts
-            - thought: Compare against peer courses or program goals
-              action: Find similar courses in the same subject and compare outcomes
-          outcome_template: 'Findings: {{findings}}. Recommended changes: {{changes}}'
-    - type: createContextGraph:demoScenarios
-      definition:
-        - name: Roster & Enrollment
-          prompts:
-            - Show me students enrolled in CS101 this term
-            - Which courses have prerequisites that block the most students?
-            - Who advises our largest cohort of graduate students?
-        - name: Grades & Assessment
-          prompts:
-            - Which students are at risk of failing this term?
-            - Show the grade distribution for the midterm in math 201
-            - What's the average final grade for courses taught by Dr. Chen?
-        - name: Curriculum Intelligence
-          prompts:
-            - Which prerequisites have the strongest correlation with course success?
-            - Find courses with declining enrollment over the last 3 terms
-            - What are the most common course pathways for our CS majors?
-    - type: createContextGraph:systemPrompt
-      definition: |
-        You are an AI education intelligence assistant with access to a comprehensive knowledge
-        graph of students, instructors, courses, terms, enrollments, assessments, and submissions.
-        You help instructional teams understand learning outcomes, identify at-risk students,
-        manage course schedules, and improve curriculum.
+    createContextGraph:domain:
+      tagline: AI-powered Learning Intelligence
+      emoji: 🎓
+      inherits: _base
+    createContextGraph:documentTemplates:
+      - id: syllabus
+        name: Course Syllabus
+        description: Course syllabus with policies and schedule
+        count: 6
+        prompt_template: |
+          Write a syllabus for course {{course.name}} ({{course.course_code}}) taught by
+          {{instructor.name}} in {{term.name}}. Include learning objectives, weekly schedule,
+          grading policy, and required readings.
+        required_entities:
+          - Course
+          - Instructor
+          - Term
+      - id: assignment_brief
+        name: Assignment Brief
+        description: Detailed assignment description with rubric
+        count: 8
+        prompt_template: |
+          Write an assignment brief for {{assessment.name}} ({{assessment.assessment_type}})
+          in {{course.name}}. Due: {{assessment.due_date}}. Include instructions,
+          learning outcomes, evaluation rubric, and submission requirements.
+        required_entities:
+          - Assessment
+          - Course
+          - Instructor
+      - id: progress_report
+        name: Student Progress Report
+        description: Individual student progress summaries
+        count: 5
+        prompt_template: |
+          Write a progress report for {{student.name}} in {{course.name}}.
+          Instructor: {{instructor.name}}. Cover grades to date, attendance,
+          strengths, areas for improvement, and recommended next steps.
+        required_entities:
+          - Student
+          - Course
+          - Instructor
+      - id: lesson_plan
+        name: Lesson Plan
+        description: Detailed lesson plan for a single class session
+        count: 6
+        prompt_template: |
+          Write a lesson plan for {{course.name}} session on {{topic}}.
+          Instructor: {{instructor.name}}. Include objectives, activities, materials,
+          and assessment for the class period.
+        required_entities:
+          - Course
+          - Instructor
+      - id: parent_email
+        name: Parent Communication
+        description: Email to a parent about student progress or behavior
+        count: 6
+        prompt_template: |
+          Write an email from {{instructor.name}} to the parent of {{student.name}}
+          about {{topic}} in {{course.name}}. Be specific, constructive, and
+          include any requested next steps.
+        required_entities:
+          - Instructor
+          - Student
+          - Course
+    createContextGraph:decisionTraces:
+      - id: academic_intervention
+        task: Decide on academic intervention for {{student.name}} in {{course.name}}
+        steps:
+          - thought: Assess the student's current performance trajectory
+            action: Review submissions, scores, and attendance patterns this term
+          - thought: Identify possible root causes
+            action: Compare against the student's performance in other courses and prior terms
+          - thought: Consider available support resources
+            action: Check tutoring availability, advisor schedule, and prior intervention outcomes
+          - thought: Choose the least disruptive effective intervention
+            action: Match intervention severity to gap size and time remaining in term
+        outcome_template: 'Intervention: {{intervention}}. Owner: {{owner}}. Review date: {{review}}'
+      - id: course_scheduling
+        task: Schedule a new section of {{course.name}} for {{term.name}}
+        steps:
+          - thought: Check instructor availability and load
+            action: Query instructor course loads and prior teaching of this course
+          - thought: Estimate demand from prerequisite enrollments
+            action: Count students who completed prerequisite courses
+          - thought: Avoid time conflicts with required co-courses
+            action: Check the schedule of courses commonly taken together
+        outcome_template: 'Section: {{section}}. Instructor: {{instructor}}. Capacity: {{cap}}'
+      - id: grade_appeal
+        task: Evaluate grade appeal for {{student.name}} on {{assessment.name}}
+        steps:
+          - thought: Reconstruct the original grading
+            action: Pull the submission, rubric, and graded score
+          - thought: Compare against peer submissions for consistency
+            action: Sample other submissions for the same assessment
+          - thought: Check policy compliance
+            action: Verify late, attendance, and academic-honesty policies
+        outcome_template: 'Decision: {{decision}}. Original: {{original}}. Revised: {{revised}}'
+      - id: program_review
+        task: Review effectiveness of {{course.name}} curriculum
+        steps:
+          - thought: Aggregate outcomes from recent terms
+            action: Compute completion rate, average final grade, and DFW rate per term
+          - thought: Identify assessments where students cluster low
+            action: Find assessments with low average scores across cohorts
+          - thought: Compare against peer courses or program goals
+            action: Find similar courses in the same subject and compare outcomes
+        outcome_template: 'Findings: {{findings}}. Recommended changes: {{changes}}'
+    createContextGraph:demoScenarios:
+      - name: Roster & Enrollment
+        prompts:
+          - Show me students enrolled in CS101 this term
+          - Which courses have prerequisites that block the most students?
+          - Who advises our largest cohort of graduate students?
+      - name: Grades & Assessment
+        prompts:
+          - Which students are at risk of failing this term?
+          - Show the grade distribution for the midterm in math 201
+          - What's the average final grade for courses taught by Dr. Chen?
+      - name: Curriculum Intelligence
+        prompts:
+          - Which prerequisites have the strongest correlation with course success?
+          - Find courses with declining enrollment over the last 3 terms
+          - What are the most common course pathways for our CS majors?
+    createContextGraph:systemPrompt: |
+      You are an AI education intelligence assistant with access to a comprehensive knowledge
+      graph of students, instructors, courses, terms, enrollments, assessments, and submissions.
+      You help instructional teams understand learning outcomes, identify at-risk students,
+      manage course schedules, and improve curriculum.
 
-        Your capabilities include:
-        - Searching students and instructors by name, role, or department
-        - Computing grade distributions, completion rates, and risk signals
-        - Tracing prerequisite chains and curriculum design choices
-        - Surfacing intervention candidates and trending trouble spots
-        - Cross-referencing assessments, submissions, and final outcomes
+      Your capabilities include:
+      - Searching students and instructors by name, role, or department
+      - Computing grade distributions, completion rates, and risk signals
+      - Tracing prerequisite chains and curriculum design choices
+      - Surfacing intervention candidates and trending trouble spots
+      - Cross-referencing assessments, submissions, and final outcomes
 
-        Always lead with specific, actionable insights backed by data from the graph.
-        Respect student privacy: aggregate when discussing cohorts; only name individual
-        students when answering a question that names them.
-    - type: createContextGraph:visualization
-      definition:
-        node_colors:
-          Person: '#22c55e'
-          Organization: '#3b82f6'
-          Student: '#2563eb'
-          Instructor: '#0ea5e9'
-          Course: '#7c3aed'
-          Term: '#f59e0b'
-          Enrollment: '#84cc16'
-          Assessment: '#ef4444'
-          Submission: '#14b8a6'
-        node_sizes:
-          Course: 25
-          Student: 20
-          Instructor: 25
-          Assessment: 15
-          Submission: 12
-          Enrollment: 12
-          Term: 15
-        default_cypher: MATCH (s:Student)-[r:ENROLLED_IN]->(c:Course) RETURN s, r, c LIMIT 100
+      Always lead with specific, actionable insights backed by data from the graph.
+      Respect student privacy: aggregate when discussing cohorts; only name individual
+      students when answering a question that names them.
+    createContextGraph:visualization:
+      node_colors:
+        Person: '#22c55e'
+        Organization: '#3b82f6'
+        Student: '#2563eb'
+        Instructor: '#0ea5e9'
+        Course: '#7c3aed'
+        Term: '#f59e0b'
+        Enrollment: '#84cc16'
+        Assessment: '#ef4444'
+        Submission: '#14b8a6'
+      node_sizes:
+        Course: 25
+        Student: 20
+        Instructor: 25
+        Assessment: 15
+        Submission: 12
+        Enrollment: 12
+        Term: 15
+      default_cypher: MATCH (s:Student)-[r:ENROLLED_IN]->(c:Course) RETURN s, r, c LIMIT 100

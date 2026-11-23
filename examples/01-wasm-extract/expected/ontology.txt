@@ -1,37 +1,65 @@
 # Ontologies in Relate WASM 1.2.0 (harness/ontology.mjs)
-Every ontology is an Ontology Graph Spec v1 document (web/ogs.js): parsed by web/ontology.js, kept in an in-memory
+Every ontology is an Ontology Graph Spec 1.1 document (web/ogs.js): parsed by web/ontology.js, kept in an in-memory
 store by applyOntology (the D8 layer and a CIP-176 graph type, D15) and read back. The 27 bundled ones are converted
 (web/convert.js) from create-context-graph's domain files (data/ontologies/ccg/); the page and the harnesses load the
 converted documents (data/ontologies/ogs/ccg/), and a create-context-graph file is converted on load. edgextract 0.1.0 (npm,
 its own WASM) is the parity oracle for the ported splitter and names.
 The example's own labels and relationship types all start with _ (_Entity, _Claim, _IN, ...); an ontology id may not.
 
-## the Ontology Graph Spec v1 (data/ontology-spec/: neo4j/graph-spec 35e74c0, Apache-2.0)
-schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json (draft 2020-12; 11 definitions)
+## the Ontology Graph Spec 1.1.0 (data/ontology-spec/: neo4j/ontology-graph-spec release/v0.12.2, Apache-2.0)
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json (draft 2020-12; 35 definitions)
 web/ogs.js SCHEMA equals the vendored file: yes; SCHEMA_ID is its $id: yes
-keywords it uses (the ones web/ogs.js interprets, annotations aside): $ref, additionalProperties, enum, format, items, minItems, minLength, minimum, pattern, properties, propertyNames, required, type
+keywords it uses (the ones web/ogs.js interprets, annotations aside): $ref, additionalProperties, const, enum, items, oneOf, properties, required, type
+the SDK: npm @neo4j/ontology-graph-spec 0.12.2 (web/ogs.js SDK_VERSION 0.12.2), through lib/ogs.mjs
 
 ### the bundled documents (data/ontologies/ogs/, harness/convert.mjs): fresh conversions of their originals
 documents: 27, from create-context-graph (with _base.yaml)
 each byte for byte a fresh conversion of its original: yes
 each gives the ontology its original gives (kinds, links, legal pairs, asks, the graph type, the model's schema, the tools): 27 of 27
 each reads back from toYaml and from toCanonicalJson to the same document, its sha256 taken over the canonical JSON: 27 of 27
-create-context-graph, read back from each v1 document into its own model (domain, inherits, entity types with their
+create-context-graph, read back from each document into its own model (domain, inherits, entity types with their
 properties, colours and icons, relationships, agent tools, document templates, decision traces, demo scenarios, system
 prompt, visualization; harness/convert.mjs toCreateContextGraph) and compared with the file flattened by _merge_base: nothing lost in 27 of 27
 keys a conversion dropped (keys the format's own reader ignores): none
 
-### create-context-graph property types as v1 type tokens (web/convert.js PROPERTY_TYPES), over the 27 files and _base.yaml
-  string    -> STRING     769 properties (13 in _base.yaml)
-  float     -> FLOAT      128 properties (2 in _base.yaml)
-  integer   -> INTEGER     76 properties
-  date      -> DATE        65 properties
-  datetime  -> DATETIME    49 properties (1 in _base.yaml)
-  boolean   -> BOOLEAN      4 properties
+### the SDK on the bundled documents (lib/ogs.mjs: GraphSpec.Json decodes the js-yaml reading; the SDK's validation sets)
+decoded, with no core issue: 27 of 27
+the other validation sets (informational: the page checks core): consistentSchema missing_property_name 1507
+Y1: through the SDK's YAML decoder: type: LIST<STRING> -> refused: Neo4jType does not contain element with name ''; quoted -> decoded
+    schema: <a plain URL> then version: '1' -> refused: Top-level decoder: deserializing nested class for '1' in 'kotlin.collections.LinkedHashMap'; the URL quoted -> decoded
+    the bundled documents (js-yaml's YAML) -> 0 of 27 decoded; through js-yaml and GraphSpec.Json (lib/ogs.mjs) -> decoded, and all 27 above
+Y2: a document with an integer version and an unknown field: the SDK -> accepted; the JSON Schema -> /version type, / additionalProperties
+
+### the draft format earlier builds shipped (lib/ogs.mjs fromDraft; harness/fixtures/*.draft.ontology.yaml: the last draft build's own files)
+  $schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json  ->  schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+  version: <integer>  ->  version: "<integer>" (a string)
+  property mustExist  ->  property must_exist
+  type DATETIME, LOCALDATETIME, TIME, LOCALTIME (also inside LIST<…>)  ->  type ZONED DATETIME, LOCAL DATETIME, ZONED TIME, LOCAL TIME
+  type BYTES  ->  refused: the published spec has no byte type
+  node extensions.neo4j:display {color, caption, …}  ->  node extensions.display {x, y, colour, custom: {caption, …}}: x and y from layoutPoint()
+  extensions.custom [{type: T, definition: D}, …] (document, node, relationship, property)  ->  extensions.custom {T: D, …} (T: {} without a definition)
+  any other <namespace>:<name> extension key E  ->  extensions.custom.E
+  node or relationship tools [...]  ->  extensions.custom.tools [...] on the same element
+  constraints [{constraint_type: key|unique|mustExist, name?, properties}]  ->  constraints {<name, else kind_props>: {type: KEY|UNIQUE|EXISTS, properties, name?}}
+  custom envelope with $schema or name  ->  extensions.custom.T: {definition, $schema, name, …}
+financial-services as the last draft build bundled it: isDraft true; fromDraft gives the bundled document: yes
+pasted into the page (parseOntology): converted from ontology-graph-spec-draft; the same kinds, links, asks and sha as the bundled one: yes
+the generic document (harness/fixtures.mjs GENERIC_YAML) as the last draft build had it: fromDraft gives it: yes
+fromDraft on a BYTES property: OntologyError: This draft Ontology Graph Spec document cannot be converted: nodes.person.properties.photo: type BYTES has no equivalent in the published spec
+fromDraft on two custom envelopes of one type: OntologyError: This draft Ontology Graph Spec document cannot be converted: the document: extensions.custom has two edgextract:gazetteer entries; the published format keeps one per type
+fromDraft on a constraint of an unknown kind: OntologyError: This draft Ontology Graph Spec document cannot be converted: nodes.person.constraints[0]: constraint_type "exists" is not key, unique or mustExist
+
+### create-context-graph property types as type tokens (web/convert.js PROPERTY_TYPES), over the 27 files and _base.yaml
+  string    -> STRING          769 properties (13 in _base.yaml)
+  float     -> FLOAT           128 properties (2 in _base.yaml)
+  integer   -> INTEGER          76 properties
+  date      -> DATE             65 properties
+  datetime  -> ZONED DATETIME   49 properties (1 in _base.yaml)
+  boolean   -> BOOLEAN           4 properties
 types with no token (ANY): none; reported by the conversions: 0
-in the 27 v1 documents (the base's properties on every domain that keeps its kind): STRING 1107, FLOAT 180, INTEGER 76, DATETIME 75, DATE 65, BOOLEAN 4
-flags: required -> mustExist: true, unique -> unique: true, enum -> one_of, default -> a createContextGraph:default extension
-(v1 has no default field), description -> description; tool parameters get the same type tokens.
+in the 27 documents (the base's properties on every domain that keeps its kind): STRING 1107, FLOAT 180, INTEGER 76, ZONED DATETIME 75, DATE 65, BOOLEAN 4
+flags: required -> must_exist: true, unique -> unique: true, enum -> one_of, default -> a createContextGraph:default extension
+(the spec has no default field), description -> description; tool parameters get the same type tokens.
 
 ### create-context-graph's agent_tools and visualization.default_cypher as canonicalQuery tools (web/convert.js toolAnchor)
 Each tool sits on (1) the node its first parameter binds: of its parameters in declared order, the first the query
@@ -76,62 +104,67 @@ with parameters compared with a node property only where that cannot filter the 
 a tool on another node than the one its first bound parameter compares: 0
 o.tools (financial-services, the interface the page's tools view reads): 8; the first: {"anchor":{"kind":"node","key":"Person","label":"Person"},"type":"canonicalQuery","name":"search_customer","description":"Search for clients, advisors, or other people by name or role","cypher":"MATCH (p:Person) …","url":null,"parameters":[{"name":"query","type":"STRING","description":"Name or role to search for"}]}
 
-### the two validators: ajv 8.20.0 with ajv-formats 3.0.1 (fast uri, regex) and web/ogs.js validateSchema
-Compared error for error, as (instance path, keyword) pairs; then the rules web/ogs.js adds (checkDocument), which the
-schema cannot say. ajv runs with allErrors, strict mode (strictTypes off: the schema's propertyNames has no type) and strictNumbers.
-the 27 bundled documents: valid for both, no rule broken: 27 of 27
-valid: implied and optional labels, a constraint object, a VECTOR with its dimension, cardinalities, an externalRequest tool: valid for both, no rule broken
-no $schema: both refuse: / required
-$schema not a URI: both refuse: /$schema format
-version 1.5: both refuse: /version type
-version -1: both refuse: /version minimum
-version "1": both refuse: /version type
-an unknown top-level field (types): both refuse: / additionalProperties
-nodes as a list: both refuse: /nodes type
-a node that is text: both refuse: /nodes/Person type
-an extra field on a node (colour): both refuse: /nodes/Account additionalProperties
-a bad type token (TEXT): both refuse: /nodes/Account/properties/balance/type pattern
-a nested list token (LIST<LIST<STRING>>): both refuse: /nodes/Account/properties/balance/type pattern
-an empty property name (graph-spec's ADR-0010): both refuse: /nodes/Account/properties minLength; /nodes/Account/properties propertyNames
-an empty property name on a relationship: both refuse: /relationships/OWNS/properties minLength; /relationships/OWNS/properties propertyNames
-one_of that is not a list: both refuse: /nodes/Account/properties/status/one_of type
-a pattern that is not a regular expression: both refuse: /nodes/Account/properties/status/pattern format
-dimension 0: both refuse: /nodes/employee/properties/embedding/dimension minimum
-a constraint of an unknown kind with no properties: both refuse: /nodes/employee/constraints/0/constraint_type enum; /nodes/employee/constraints/0/properties minItems
-labels without an identifier, an implied label that is a number: both refuse: /nodes/employee/labels required; /nodes/employee/labels/implied/1 type
-a reference that is not a URI: both refuse: /nodes/employee/reference format
-a relationship without `to`: both refuse: /relationships/OWNS required
-an endpoint with an extra field (label) and max_count 0: both refuse: /relationships/OWNS/to additionalProperties; /relationships/OWNS/to/max_count minimum
-a custom extension without a type: both refuse: /extensions/custom/6 required
-custom extensions that are not a list: both refuse: /nodes/Account/extensions/custom type
-a tool without a type: both refuse: /nodes/Account/tools/0 required
-the document a list: both refuse: / type
-an endpoint to an unknown node: schema-valid for both; the rules: /relationships/OWNS/to/node "Acount" is not a node of this document
-a constraint naming a property the node does not have: schema-valid for both; the rules: /nodes/employee/constraints/0/properties "employee_number" is not a property of this element (a constraint names properties declared beside it)
-a node with no label: schema-valid for both; the rules: /nodes/Policy has no label: give it `label` (or `labels` with an `identifier`)
-label and labels.identifier disagree: schema-valid for both; the rules: /nodes/employee `label` (Worker) and `labels.identifier` (Employee) disagree; keep one of them
-two nodes with one label: schema-valid for both; the rules: /nodes/Policy the label Account already identifies the node "Account"; one node per label
-a label with a leading _: schema-valid for both; the rules: /nodes/Policy/label bad label id: _Policy. Ids that start with _ are kept for this example's own labels and relationship types (_Entity, _Claim, _Document, _IN, _OF, ...). Rename it.
-a relationship type with a hyphen: schema-valid for both; the rules: /relationships/OWNS/type bad relationship type id: OWNS-ACCOUNT. Ids hold letters (with their combining marks), digits and _ only, at most 64 characters (any script; spaces become _; no emoji, - or :).
-an implied label equal to the identifier: schema-valid for both; the rules: /nodes/employee/labels/implied/0 the label Employee is listed twice on this node
-dimension on a STRING: schema-valid for both; the rules: /nodes/employee/properties/grade/dimension goes with a VECTOR<…> type, not "STRING"
-key with mustExist: false: schema-valid for both; the rules: /nodes/person/properties/id key implies unique and mustExist; it cannot go with mustExist: false or unique: false
-count with min_count: schema-valid for both; the rules: /relationships/MEMBER_OF/to `count` is the exact form; it does not go with min_count or max_count
-the same type between the same nodes twice: schema-valid for both; the rules: /relationships/OWNS_AGAIN repeats "OWNS": the same type between the same nodes
-edgextract:symmetric on one entry of a type only: schema-valid for both; the rules: /relationships the entries of KNOWS disagree on edgextract:symmetric: put it on all of them or none
-$schema naming another version: schema-valid for both; the rules: /$schema names "https://neo4j.com/ontology-graph-spec/2.0.0/schema.json"; this page reads version 1.0.0 of the Ontology Graph Spec, https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
-a create-context-graph document with a node lacking createContextGraph:pole: schema-valid for both; the rules: /nodes/Policy a create-context-graph document (createContextGraph:domain) gives every node a createContextGraph:pole extension
-a gazetteer naming a node the document does not have: schema-valid for both; the rules: /extensions/custom edgextract:gazetteer: "Ada Lovelace" maps to "manager", which is not a node of this document
-=> the two validators report the same errors on 42 of 42 documents; 42 of 42 refused (or accepted) where designed
-ajv and web/ogs.js agree on all 69 documents: yes
-parseOntology on the bad type token: OntologyError: This document does not follow the Ontology Graph Spec v1 schema (1 problem): /nodes/Account/properties/balance/type: "TEXT" is not a type token (STRING, INTEGER, FLOAT, BOOLEAN, DATE, TIME, LOCALTIME, DATETIME, LOCALDATETIME, DURATION, POINT, BYTES, ANY, LIST<…> or VECTOR<…> of a scalar)
-parseOntology on the endpoint to an unknown node: OntologyError: This document breaks the rules this page needs (1 problem): /relationships/OWNS/to/node: "Acount" is not a node of this document
+### the checks: ajv 8.20.0 and web/ogs.js validateSchema (the JSON Schema), the SDK (validateSpec), the rules (checkDocument)
+The two schema validators are compared error for error, as (instance path, keyword) pairs; ajv runs with allErrors, strict
+mode (strictTypes off) and strictNumbers. A document the schema accepts goes to the SDK (decode, Validations.core), and one
+the SDK accepts to the rules web/ogs.js adds, which neither can say.
+the 27 bundled documents: valid for both validators and the SDK, no rule broken: 27 of 27
+valid: implied and optional labels, a constraint, a VECTOR with its dimension, cardinalities, an externalRequest tool: valid for all three, no rule broken
+no schema: both validators refuse: / required
+schema a number: both validators refuse: /schema type
+version 1 (an integer, as the draft had it): both validators refuse: /version type
+$schema beside schema (the draft's marker): both validators refuse: / additionalProperties
+an unknown top-level field (types): both validators refuse: / additionalProperties
+nodes as a list: both validators refuse: /nodes type
+a node that is text: both validators refuse: /nodes/Person type
+an extra field on a node (colour): both validators refuse: /nodes/Account additionalProperties
+a draft field on a property (mustExist): both validators refuse: /nodes/person/properties/name additionalProperties
+a draft field on a node (tools): both validators refuse: /nodes/team additionalProperties
+a bad type token (TEXT): both validators refuse: /nodes/Account/properties/balance/type enum
+a draft type token (DATETIME): both validators refuse: /nodes/Account/properties/balance/type enum
+a nested list token (LIST<LIST<STRING>>): both validators refuse: /nodes/Account/properties/balance/type enum
+one_of that is not a list: both validators refuse: /nodes/Account/properties/status/one_of type
+dimension 1.5: both validators refuse: /nodes/employee/properties/embedding/dimension type
+a constraint of an unknown kind: both validators refuse: /nodes/employee/constraints/employee_id/type enum
+constraints as a list (the draft's form): both validators refuse: /nodes/employee/constraints type
+an implied label that is a number: both validators refuse: /nodes/employee/labels/implied/1 type
+a relationship without `to`: both validators refuse: /relationships/OWNS required
+an endpoint with an extra field (labels): both validators refuse: /relationships/OWNS/to additionalProperties
+custom extensions as a list (the draft's form): both validators refuse: /nodes/Account/extensions/custom type
+display without x and y: both validators refuse: /nodes/Account/extensions/display oneOf; /nodes/Account/extensions/display required; /nodes/Account/extensions/display required; /nodes/Account/extensions/display type
+display on a relationship: both validators refuse: /relationships/OWNS/extensions additionalProperties
+the document a list: both validators refuse: / type
+an endpoint to an unknown node: schema-valid; the SDK: /relationships/OWNS/to/node sdk:missing_relationship_to_node: Missing node with id 'Acount' for relationship 'OWNS'
+a constraint naming a property the node does not have: schema-valid; the SDK: /nodes/employee/constraints/employee_id/properties/0 sdk:missing_node_constraint_property: Missing property with id 'employee_number' for node constraint 'employee_id'
+count with min_count: schema-valid; the SDK: /relationships/MEMBER_OF/to sdk:relationship_count_conflict: Relationship 'MEMBER_OF' to can't set both count and min/max count
+min_count above max_count: schema-valid; the SDK: /relationships/MEMBER_OF/to sdk:relationship_min_count_exceeds_max: Relationship 'MEMBER_OF' to min count is greater than max count
+pattern with one_of on one property: schema-valid; the SDK: /nodes/employee/properties/grade sdk:property_pattern_one_of_conflict: Property 'grade' can't set both pattern and one_of
+a null custom extension: schema-valid; the SDK: / sdk:decode: Custom values cannot be null
+a node with no label: schema- and SDK-valid; the rules: /nodes/Policy has no label: give it `label` (or `labels` with an `identifier`)
+label and labels.identifier disagree: schema- and SDK-valid; the rules: /nodes/employee `label` (Worker) and `labels.identifier` (Employee) disagree; keep one of them
+two nodes with one label: schema- and SDK-valid; the rules: /nodes/Policy the label Account already identifies the node "Account"; one node per label
+a label with a leading _: schema- and SDK-valid; the rules: /nodes/Policy/label bad label id: _Policy. Ids that start with _ are kept for this example's own labels and relationship types (_Entity, _Claim, _Document, _IN, _OF, ...). Rename it.
+a relationship type with a hyphen: schema- and SDK-valid; the rules: /relationships/OWNS/type bad relationship type id: OWNS-ACCOUNT. Ids hold letters (with their combining marks), digits and _ only, at most 64 characters (any script; spaces become _; no emoji, - or :).
+an implied label equal to the identifier: schema- and SDK-valid; the rules: /nodes/employee/labels/implied/0 the label Employee is listed twice on this node
+dimension on a STRING: schema- and SDK-valid; the rules: /nodes/employee/properties/grade/dimension goes with a VECTOR<…> type, not "STRING"
+key with must_exist: false: schema- and SDK-valid; the rules: /nodes/person/properties/id key implies unique and must_exist; it cannot go with must_exist: false or unique: false
+the same type between the same nodes twice: schema- and SDK-valid; the rules: /relationships/OWNS_AGAIN repeats "OWNS": the same type between the same nodes
+edgextract:symmetric on one entry of a type only: schema- and SDK-valid; the rules: /relationships the entries of KNOWS disagree on edgextract:symmetric: put it on all of them or none
+schema naming spec 1.0.0: schema- and SDK-valid; the rules: /schema names "https://neo4j.com/docs/ontology-graph-spec/1.0.0/schema.json"; this page reads version 1.1.0 of the Ontology Graph Spec, https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+a create-context-graph document with a node lacking createContextGraph:pole: schema- and SDK-valid; the rules: /nodes/Policy a create-context-graph document (createContextGraph:domain) gives every node a createContextGraph:pole extension
+a gazetteer naming a node the document does not have: schema- and SDK-valid; the rules: /extensions/custom/edgextract:gazetteer "Ada Lovelace" maps to "manager", which is not a node of this document
+tools that are not a list: schema- and SDK-valid; the rules: /nodes/team/extensions/custom/tools the tools are a list, not {"type":"canonicalQuery"}
+two tools with one name: schema- and SDK-valid; the rules: /nodes/employee/extensions/custom/tools/1/name two tools here are named "hr"
+=> the two validators report the same errors on 46 of 46 documents; 46 of 46 refused (or accepted) where designed
+ajv and web/ogs.js agree on all 73 documents: yes
+parseOntology on the bad type token: OntologyError: This document does not follow the Ontology Graph Spec 1.1.0 schema (1 problem): /nodes/Account/properties/balance/type: "TEXT" is not one of the spec's type tokens (STRING, INTEGER, FLOAT, BOOLEAN, DATE, ZONED DATETIME, LOCAL DATETIME, ZONED TIME, LOCAL TIME, DURATION, POINT, UUID, ANY, the sized INTEGER8/16/32 and FLOAT32, LIST<…> of most of them, VECTOR<…> of a number type)
+parseOntology on the endpoint to an unknown node: OntologyError: This document is refused by the Ontology Graph Spec SDK (1 problem): /relationships/OWNS/to/node: Missing node with id 'Acount' for relationship 'OWNS'
 parseOntology on the valid one: kinds Person, Employee (implied Person), Team; links MEMBER_OF, KNOWS (symmetric); asked as generic; tools hr on node employee
 the same document as JSON: the same ontology and sha: yes
-a file with $schema and domain: OntologyError: This file mixes two formats: `$schema` marks an Ontology Graph Spec document, `domain` and `entity_types` are create-context-graph's. Keep one of them.
+a file with schema and domain: OntologyError: This file mixes two formats: `schema` marks an Ontology Graph Spec document, `domain` and `entity_types` are create-context-graph's. Keep one of them.
 
 ## create-context-graph's domains (data/ontologies/ccg/, neo4j-labs/create-context-graph 707b168): 27, each inheriting _base.yaml
-Each is loaded as the page loads it, its v1 document (data/ontologies/ogs/ccg/), converted from the file and _base.yaml.
+Each is loaded as the page loads it, its document (data/ontologies/ogs/ccg/), converted from the file and _base.yaml.
 Labels and relationship types are the files' own, verbatim. _base.yaml is merged as ontology.py _merge_base does: the
 base's entity types and relationships first, unless the domain declares that label or relationship type itself. Entries
 sharing a relationship type are one link with several legal (source, target) pairs, which is what the gate checks; a link
@@ -162,7 +195,7 @@ asked (gliner.js "label:description"): person, organization, location, agent:ai 
 links asked: "person works for organization", "organization located at location", "agent remembered memory", "conversation extracted entity", "agent reasoned about entity", "agent invoked tool call", "agent participated in conversation", "memory referenced entity", "conversation part of session session", "tool call triggered by conversation"
 applyOntology: altered true; graph type read back: 11 node types and 10 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 10, _Alias 0; _IN 21, _DOMAIN 10, _RANGE 10, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### conservation (ogs/ccg/conservation.ontology.yaml, from conservation.yaml): 🌿 Conservation
 Wildlife conservation, habitat protection, species monitoring, and environmental stewardship; store ex01-kg-conservation
@@ -175,7 +208,7 @@ asked (gliner.js "label:description"): person, organization, location, event, si
 links asked: "person works for organization", "person participated in event", "species protected in site", "program funded by funding", "stakeholder partnered with program", "monitoring monitors species", "person threatens species", "program benefits species", "monitoring located at site", "site managed by stakeholder"
 applyOntology: altered true; graph type read back: 11 node types and 10 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 10, _Alias 0; _IN 21, _DOMAIN 10, _RANGE 10, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### cybersecurity (ogs/ccg/cybersecurity.ontology.yaml, from cybersecurity.yaml): 🛡️ Cybersecurity
 Assets, vulnerabilities, alerts, incidents, threat actors, and controls for security operations centers; store ex01-kg-cybersecurity
@@ -188,7 +221,7 @@ asked (gliner.js "label:description"): person, organization, location, event, as
 links asked: "person works for organization", "organization located at location", "person participated in event", "vulnerability affects asset", "alert triggered incident", "alert targets asset", "incident attributed to threat actor", "threat actor uses vulnerability", "person owns asset", "user accesses asset", "control mitigates vulnerability", "control protects asset", "incident assigned to person", "alert reported by user", "asset depends on asset", "asset belongs to organization", "alert originates from location"
 applyOntology: altered true; graph type read back: 12 node types and 17 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 12, _LinkType 17, _Alias 0; _IN 29, _DOMAIN 17, _RANGE 17, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### data-journalism (ogs/ccg/data-journalism.ontology.yaml, from data-journalism.yaml): 📰 Data Journalism
 Investigative journalism, source management, fact-checking, and data-driven storytelling; store ex01-kg-data-journalism
@@ -201,7 +234,7 @@ asked (gliner.js "label:description"): person, organization, location, event, so
 links asked: "person works for organization", "organization located at location", "person participated in event", "story sourced from source", "claim fact checked dataset", "claim contradicts claim", "dataset supports claim", "claim published in story", "story investigated by investigation", "correction corrected in story", "dataset provided by source"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### digital-twin (ogs/ccg/digital-twin.ontology.yaml, from digital-twin.yaml): 🏭 Digital Twin
 IoT asset monitoring, sensor data management, predictive maintenance, and system health analysis; store ex01-kg-digital-twin
@@ -214,7 +247,7 @@ asked (gliner.js "label:description"): person, organization, location, event, as
 links asked: "person works for organization", "organization located at location", "person participated in event", "asset monitored by sensor", "reading triggered alert", "maintenance record maintained asset", "asset connected to asset", "asset part of system", "sensor generated reading", "alert caused by asset", "maintenance record followed up alert"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### education (ogs/ccg/education.ontology.yaml, from education.yaml): 🎓 Education
 Students, instructors, courses, enrollments, assessments, and outcomes for K-12, higher-ed, or training organizations; store ex01-kg-education
@@ -227,7 +260,7 @@ asked (gliner.js "label:description"): person, organization, location, event, st
 links asked: "person works for organization", "organization located at location", "person participated in event", "instructor teaches course", "instructor advises student", "student enrolled in course", "enrollment enrollment of student", "enrollment for course course", "course offered in term", "course belongs to organization", "course prerequisite of course", "assessment part of course", "submission submitted by student", "submission submitted for assessment", "submission graded by instructor", "course held at location", "student attended event"
 applyOntology: altered true; graph type read back: 12 node types and 17 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 12, _LinkType 17, _Alias 0; _IN 29, _DOMAIN 17, _RANGE 17, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### financial-services (ogs/ccg/financial-services.ontology.yaml, from financial-services.yaml): 💰 Financial Services
 Investment management, trading, compliance, and risk assessment; store ex01-kg-financial-services
@@ -240,7 +273,7 @@ asked (gliner.js "label:description"): person, organization, location, event, ac
 links asked: "person works for organization", "organization located at location", "person participated in event", "person owns account", "transaction transferred to account", "transaction transferred from account", "transaction involves security", "decision caused transaction", "decision applied policy policy", "decision advised by person", "person manages account", "decision preceded by decision"
 applyOntology: altered true; graph type read back: 10 node types and 12 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 10, _LinkType 12, _Alias 0; _IN 22, _DOMAIN 12, _RANGE 12, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### gaming (ogs/ccg/gaming.ontology.yaml, from gaming.yaml): 🎮 Gaming
 Player management, game economy, quest tracking, and community analytics; store ex01-kg-gaming
@@ -253,7 +286,7 @@ asked (gliner.js "label:description"): person, organization, location, event, pl
 links asked: "person works for organization", "organization located at location", "person participated in event", "player plays character", "character completed quest", "character equipped item", "player traded with player", "player member of guild", "character unlocked achievement", "quest rewards item", "character owns item"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### genai-llm-ops (ogs/ccg/genai-llm-ops.ontology.yaml, from genai-llm-ops.yaml): 🤖 GenAI & LLM Ops
 Machine learning model lifecycle, experiment tracking, prompt engineering, and deployment management; store ex01-kg-genai-llm-ops
@@ -266,7 +299,7 @@ asked (gliner.js "label:description"): person, organization, location, event, mo
 links asked: "person works for organization", "organization located at location", "person participated in event", "model fine tuned from model", "model evaluated on dataset", "model deployed to deployment", "experiment used prompt prompt", "model trained on dataset", "evaluation compared with evaluation", "model produced by experiment", "model scored in evaluation"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### gis-cartography (ogs/ccg/gis-cartography.ontology.yaml, from gis-cartography.yaml): 🗺 GIS & Cartography
 Geographic information systems, spatial analysis, surveying, and map production; store ex01-kg-gis-cartography
@@ -279,7 +312,7 @@ asked (gliner.js "label:description"): person, organization, location, event, fe
 links asked: "person works for organization", "organization located at location", "person participated in event", "layer contains feature", "boundary borders boundary", "feature surveyed by survey", "boundary overlaps boundary", "feature part of layer layer", "coordinate referenced in survey", "map project includes layer layer", "coordinate defines boundary"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### golf-sports (ogs/ccg/golf-sports.ontology.yaml, from golf-sports.yaml): ⛳ Golf Sports
 Golf course management, player performance tracking, tournaments, and handicap analysis; store ex01-kg-golf-sports
@@ -292,7 +325,7 @@ asked (gliner.js "label:description"): person, organization, location, event, co
 links asked: "person works for organization", "organization located at location", "person participated in event", "round played at course", "player scored round", "player competed in tournament", "player ranked tournament", "course hosts tournament", "hole part of course course", "player has handicap handicap", "round round in tournament tournament"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### government (ogs/ccg/government.ontology.yaml, from government.yaml): 🏛️ Government
 Agencies, programs, policies, regulations, citizens, services, and budgets for public-sector operations; store ex01-kg-government
@@ -306,7 +339,7 @@ asked (gliner.js "label:description"): person, organization, location, event, ag
 links asked: "person works for organization", "organization located at location", "person participated in event", "agency administers program", "agency enforces regulation", "agency issues policy", "policy governs program", "regulation implements policy", "agency provides service", "citizen eligible for service or citizen eligible for program", "budget appropriated to program", "budget funds agency", "official leads agency", "official sponsors policy", "regulation affects organization", "agency serves location", "official represents citizen", "policy supersedes policy"
 applyOntology: altered true; graph type read back: 13 node types and 17 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 13, _LinkType 18, _Alias 0; _IN 31, _DOMAIN 18, _RANGE 19, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### healthcare (ogs/ccg/healthcare.ontology.yaml, from healthcare.yaml): 🏥 Healthcare
 Patient care, clinical encounters, diagnoses, treatments, and provider networks; store ex01-kg-healthcare
@@ -319,7 +352,7 @@ asked (gliner.js "label:description"): person, organization, location, event, pa
 links asked: "person works for organization", "organization located at location", "person participated in event", "patient diagnosed with diagnosis", "patient treated by provider", "provider prescribed medication", "provider referred to provider", "patient had encounter encounter", "provider attended encounter", "encounter occurred at facility", "encounter resulted in diagnosis", "encounter includes treatment", "treatment treats diagnosis", "treatment uses medication", "medication contraindicated with medication", "provider affiliated with facility"
 applyOntology: altered true; graph type read back: 12 node types and 16 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 12, _LinkType 16, _Alias 0; _IN 28, _DOMAIN 16, _RANGE 16, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### hospitality (ogs/ccg/hospitality.ontology.yaml, from hospitality.yaml): 🏨 Hospitality
 Hotel operations, guest services, room management, and revenue optimization; store ex01-kg-hospitality
@@ -332,7 +365,7 @@ asked (gliner.js "label:description"): person, organization, location, event, ho
 links asked: "person works for organization", "organization located at location", "person participated in event", "guest stayed at hotel", "guest reserved reservation", "guest served by service", "guest rated hotel", "reservation assigned to room", "hotel managed by staff", "service delivered by staff", "room located in hotel"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### legal (ogs/ccg/legal.ontology.yaml, from legal.yaml): ⚖️ Legal
 Cases, matters, contracts, filings, hearings, and counsel for a legal practice or in-house team; store ex01-kg-legal
@@ -346,7 +379,7 @@ asked (gliner.js "label:description"): person, organization, location, event, ca
 links asked: "person works for organization", "organization located at location", "person participated in event", "counsel represents case", "counsel opposes case", "case belongs to matter", "person client of counsel", "person party to case or organization party to contract", "contract governs matter", "filing filed in case", "counsel authored filing", "hearing scheduled for case", "counsel attended hearing", "filing cites statute", "statute applies to case", "hearing held at location", "contract supersedes contract"
 applyOntology: altered true; graph type read back: 12 node types and 16 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 12, _LinkType 17, _Alias 0; _IN 29, _DOMAIN 18, _RANGE 18, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### manufacturing (ogs/ccg/manufacturing.ontology.yaml, from manufacturing.yaml): 🏭 Manufacturing
 Production management, quality control, supply chain, and equipment maintenance; store ex01-kg-manufacturing
@@ -359,7 +392,7 @@ asked (gliner.js "label:description"): person, organization, location, event, ma
 links asked: "person works for organization", "organization located at location", "person participated in event", "part assembled from part", "part supplied by supplier", "quality report inspected part", "work order produced on production line", "work order depends on part", "machine operated by production line", "work order assigned to machine", "quality report reported by person"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### oil-gas (ogs/ccg/oil-gas.ontology.yaml, from oil-gas.yaml): 🛢️ Oil & Gas
 Upstream operations, drilling, production monitoring, and regulatory compliance; store ex01-kg-oil-gas
@@ -372,7 +405,7 @@ asked (gliner.js "label:description"): person, organization, location, event, we
 links asked: "person works for organization", "organization located at location", "person participated in event", "well drilled in formation", "inspection inspected by well", "permit permitted for well", "well produces from reservoir", "equipment connected to well", "equipment maintained by person", "formation contains reservoir", "inspection inspected equipment equipment"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### options-intelligence (ogs/ccg/options-intelligence.ontology.yaml, from options-intelligence.yaml): 📈 Options Intelligence
 Real-time options analysis, dealer positioning, gamma exposure, and 0DTE trading intelligence; store ex01-kg-options-intelligence
@@ -385,7 +418,7 @@ asked (gliner.js "label:description"): person, organization, location, event, un
 links asked: "person works for organization", "organization located at location", "person participated in event", "underlying has option options contract", "underlying exposure at exposure level", "underlying in regime regime", "underlying has level key level", "person traded trade", "trade executes options contract", "trade triggered by market event", "trade uses strategy strategy", "regime flipped to regime", "trade breached key level", "regime preceded by regime", "strategy optimal in regime", "market event impacted underlying", "market event caused flip regime"
 applyOntology: altered true; graph type read back: 13 node types and 17 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 13, _LinkType 17, _Alias 0; _IN 30, _DOMAIN 17, _RANGE 17, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### personal-knowledge (ogs/ccg/personal-knowledge.ontology.yaml, from personal-knowledge.yaml): 📝 Personal Knowledge
 Personal note-taking, contact management, project tracking, and knowledge connections; store ex01-kg-personal-knowledge
@@ -398,7 +431,7 @@ asked (gliner.js "label:description"): person, organization, location, event, no
 links asked: "person works for organization", "organization located at location", "person participated in event", "contact knows contact", "note tagged topic", "contact worked on project", "note references bookmark", "topic related to topic", "contact mentioned in journal entry", "note belongs to project", "journal entry inspired by bookmark"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### product-management (ogs/ccg/product-management.ontology.yaml, from product-management.yaml): 📋 Product Management
 Feature planning, roadmap management, user research, and product analytics; store ex01-kg-product-management
@@ -411,7 +444,7 @@ asked (gliner.js "label:description"): person, organization, location, event, fe
 links asked: "person works for organization", "organization located at location", "person participated in event", "feature requested by user persona", "feature prioritized in epic", "feature measured by metric", "feature part of release release", "feature depends on feature", "feature addresses feedback", "epic contributes to objective", "feedback submitted by user persona"
 applyOntology: altered true; graph type read back: 12 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 12, _LinkType 11, _Alias 0; _IN 23, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### real-estate (ogs/ccg/real-estate.ontology.yaml, from real-estate.yaml): 🏠 Real Estate
 Property management, listings, transactions, inspections, and market analysis; store ex01-kg-real-estate
@@ -424,7 +457,7 @@ asked (gliner.js "label:description"): person, organization, location, event, pr
 links asked: "person works for organization", "organization located at location", "person participated in event", "listing listed by agent", "listing listing for property", "inspection inspected property", "transaction sold to person", "transaction appraised at property", "property located in neighborhood", "property comparable to property", "transaction represented by agent"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### retail-ecommerce (ogs/ccg/retail-ecommerce.ontology.yaml, from retail-ecommerce.yaml): 🛒 Retail & E-Commerce
 Customer management, product catalog, order fulfillment, and marketing campaigns; store ex01-kg-retail-ecommerce
@@ -437,7 +470,7 @@ asked (gliner.js "label:description"): person, organization, location, event, cu
 links asked: "person works for organization", "organization located at location", "person participated in event", "customer purchased order", "order contains product", "customer reviewed review", "review review of product", "product recommended product", "customer browsed product", "product belongs to category category", "customer targeted by campaign"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### scientific-research (ogs/ccg/scientific-research.ontology.yaml, from scientific-research.yaml): 🔬 Scientific Research
 Research collaboration, publication tracking, grant management, and experiment analysis; store ex01-kg-scientific-research
@@ -450,7 +483,7 @@ asked (gliner.js "label:description"): person, organization, location, event, re
 links asked: "person works for organization", "organization located at location", "person participated in event", "researcher authored paper", "paper cited paper", "experiment funded by grant", "experiment replicated experiment", "paper used dataset dataset", "researcher affiliated with institution", "researcher conducted experiment", "experiment produced dataset dataset"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### software-engineering (ogs/ccg/software-engineering.ontology.yaml, from software-engineering.yaml): 💻 Software Engineering
 Software development lifecycle, repositories, issues, deployments, and team collaboration; store ex01-kg-software-engineering
@@ -463,7 +496,7 @@ asked (gliner.js "label:description"): person, organization, location, event, re
 links asked: "person works for organization", "organization located at location", "person participated in event", "person authored pull request", "person reviewed pull request", "issue assigned to person", "issue filed by person", "issue belongs to repository", "pull request targets repository", "pull request fixes issue", "deployment deployed to service", "deployment triggered by pull request", "service depends on service", "deployment caused incident incident", "incident affected service", "person on call service", "repository contains service"
 applyOntology: altered true; graph type read back: 11 node types and 17 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 17, _Alias 0; _IN 28, _DOMAIN 17, _RANGE 17, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### trip-planning (ogs/ccg/trip-planning.ontology.yaml, from trip-planning.yaml): 🌍 Trip Planning
 Travel planning, destination research, booking management, and itinerary optimization; store ex01-kg-trip-planning
@@ -476,7 +509,7 @@ asked (gliner.js "label:description"): person, organization, location, event, de
 links asked: "person works for organization", "organization located at location", "person participated in event", "hotel located in destination", "activity recommended for destination", "itinerary booked at hotel", "restaurant near hotel", "activity part of trip itinerary", "hotel reviewed by review", "itinerary includes destination destination", "review reviewed activity activity"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### vacation-industry (ogs/ccg/vacation-industry.ontology.yaml, from vacation-industry.yaml): 🏖 Vacation Industry
 Resort management, vacation bookings, guest experiences, and seasonal operations; store ex01-kg-vacation-industry
@@ -489,7 +522,7 @@ asked (gliner.js "label:description"): person, organization, location, resort:va
 links asked: "person works for organization", "organization located at location", "booking booked at resort", "guest reviewed resort", "guest participated in activity", "activity available in season", "package includes activity", "package preferred by guest", "guest made booking booking", "package offered at resort"
 applyOntology: altered true; graph type read back: 11 node types and 10 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 10, _Alias 0; _IN 21, _DOMAIN 10, _RANGE 10, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### wildlife-management (ogs/ccg/wildlife-management.ontology.yaml, from wildlife-management.yaml): 🐻 Wildlife Management
 Wildlife tracking, conservation, habitat monitoring, and species management; store ex01-kg-wildlife-management
@@ -502,7 +535,7 @@ asked (gliner.js "label:description"): person, organization, location, event, sp
 links asked: "person works for organization", "organization located at location", "person participated in event", "individual belongs to species species", "individual sighted at sighting", "sighting captured by camera", "species inhabits habitat", "species preys on species", "camera monitors habitat", "threat threatens species", "sighting observed by person"
 applyOntology: altered true; graph type read back: 11 node types and 11 edge types, equal to graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
-stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
+stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
 ### the 27 domains at a glance (each applied again: no ALTER, nothing changed; 4 UNIQUE each, their backing indexes built)
 domain                 kinds (own + _base)  links (from _base)  pairs  typed  untyped
@@ -584,15 +617,19 @@ Ann Lee rejected, published again: 1 entities, 0 relationships; nodes still labe
 audits: 0 rows each
 _Kind.implied: Person null, Employee ["Person","Staff"], Company null
 
-### a store an earlier build of this page wrote: its ontology as YAML (with its base), no v1 document
+### a store an earlier build of this page wrote: its ontology as YAML (with its base), no document
 readOntology: doc none, yaml set, inherits _base; ontologyFromStored converts it (from create-context-graph): the same kinds, links and asks as the bundled document: yes
-opened with it: previous sha the YAML's yes, altered false; now stored: the v1 document yes, yaml, inherits and base_yaml gone yes, converted_from create-context-graph
+opened with it: previous sha the YAML's yes, altered false; now stored: the document yes, yaml, inherits and base_yaml gone yes, converted_from create-context-graph
+
+### a store the last draft build wrote: its document in the draft format (the live site before this build), converted on open
+readOntology: a draft document (isDraft true), spec 1.0.0; ontologyFromStored converts it: the same kinds, links, asks and sha as the bundled document: yes
+opened with it: previous sha the draft's yes, altered false; now stored: the published document yes, spec 1.1.0, sha the bundled one's yes
 
 ## the id rule and the create-context-graph format's refusals (D8)
 an entity type label with a leading _ (create-context-graph): refused: bad entity type id: _Secret. Ids that start with _ are kept for this example's own labels and relationship types (_Entity, _Claim, _Document, _IN, _OF, ...). Rename it.
 a relationship type with a leading _ (create-context-graph): refused: bad relationship type id: _OWNS. Ids that start with _ are kept for this example's own labels and relationship types (_Entity, _Claim, _Document, _IN, _OF, ...). Rename it.
-a node label with a leading _ (v1): refused: This document breaks the rules this page needs (1 problem): /nodes/_Private/label: bad label id: _Private. Ids that start with _ are kept for this example's own labels and relationship types (_Entity, _Claim, _Document, _IN, _OF, ...). Rename it.
-a relationship type with a leading _ (v1): refused: This document breaks the rules this page needs (1 problem): /relationships/_OWNS/type: bad relationship type id: _OWNS. Ids that start with _ are kept for this example's own labels and relationship types (_Entity, _Claim, _Document, _IN, _OF, ...). Rename it.
+a node label with a leading _ (Ontology Graph Spec): refused: This document breaks the rules this page needs (1 problem): /nodes/_Private/label: bad label id: _Private. Ids that start with _ are kept for this example's own labels and relationship types (_Entity, _Claim, _Document, _IN, _OF, ...). Rename it.
+a relationship type with a leading _ (Ontology Graph Spec): refused: This document breaks the rules this page needs (1 problem): /relationships/_OWNS/type: bad relationship type id: _OWNS. Ids that start with _ are kept for this example's own labels and relationship types (_Entity, _Claim, _Document, _IN, _OF, ...). Rename it.
 kinds named Entity and Claim, a link named IN (no longer reserved): accepted: kinds Entity, Claim; links IN
 a relationship to an undeclared label: refused: The relationship OWNS has the target Acount, which is not an entity type here. Add that entity type, or fix the relationship.
 an unknown base: refused: This file inherits _other, but no base of that name is loaded (known: _base). create-context-graph's domains inherit _base.
@@ -607,8 +644,8 @@ the example's own labels: _Document, _Section, _Sentence, _Inference, _Inference
 store.openStore on it -> StoreError legacy: this store was written by an earlier build of this page, before its own labels took a leading _ (index document_id is on :Document); empty it to use it with this page, or open another store
 afterwards: content unchanged yes; indexes document_id
 
-## a generic Ontology Graph Spec v1 document: no createContextGraph envelope (harness/fixtures.mjs GENERIC_YAML, edge_cases)
-Any valid v1 document without the createContextGraph:domain extension is read as it is and asked as create-context-graph's
+## a generic Ontology Graph Spec 1.1 document: no createContextGraph extension (harness/fixtures.mjs GENERIC_YAML, edge_cases)
+Any valid document without the createContextGraph:domain extension is read as it is and asked as create-context-graph's
 documents are, but for descriptions: each kind by its label as text with the node's own description (none when it has none),
 each link as its phrase between its endpoints' label texts. It takes the same default cutoffs (store.defaultGate). It may
 carry the two extensions that keep edgextract's names: edgextract:gazetteer (rule 1's listed names) and edgextract:symmetric.
@@ -635,7 +672,7 @@ read back = graphTypeSpec(o).spec: yes
 layer: _Ontology 1, _Kind 3, _LinkType 5, _Alias 4; _IN 8, _DOMAIN 6, _RANGE 5, _OF 4
 constraints: UNIQUE alias_name_unique, kind_key_unique, linktype_key_unique, ontology_id_unique; dependent (graph type) 14
 lookup indexes: none (the constraints' backing indexes serve the lookups)
-stored _Ontology: the v1 document (canonical JSON), its sha and graph_type, format generic; _LinkType.typed and .pairs as derived: yes
+stored _Ontology: the document (canonical JSON), its sha and graph_type, format generic; _LinkType.typed and .pairs as derived: yes
 applied again: altered false, store content and constraints unchanged: yes
 claim keep by band: "Ada Lovelace" -[FOUNDED]-> "Northwind"
 claim keep by band: "Acme Inc" -[PARTNER_OF]-> "Northwind"
@@ -651,11 +688,11 @@ publish: 4 entities, 4 relationships
 audits: 0 rows each
 
 ### edgextract's ontology YAML, which earlier builds converted, is refused; stores an earlier build made for edgextract's ontologies
-edgextract's YAML pasted or loaded -> OntologyError: This looks like edgextract's ontology YAML (`types`, `relations`, `gazetteer`), which this page no longer reads. Write it as an Ontology Graph Spec v1 document: `$schema`, `id`, `version`, `nodes` (one per type, with `label` and `description`) and `relationships` (one entry per pair: `type`, `from: {node}`, `to: {node}`); README "The ontology format" has the mapping. [legacyFormat edgextract]
-a file of neither format -> OntologyError: This is neither an Ontology Graph Spec v1 document (`$schema`, `nodes`) nor a create-context-graph domain file (`domain`, `entity_types`).
-an earlier build's store for edgextract's company_news (its v1 document, converted_from edgextract, format edgextract): ontologyFromStored reads it as generic (converted from edgextract); asked "person", "company"
+edgextract's YAML pasted or loaded -> OntologyError: This looks like edgextract's ontology YAML (`types`, `relations`, `gazetteer`), which this page no longer reads. Write it as an Ontology Graph Spec document: `schema`, `id`, `version`, `nodes` (one per type, with `label` and `description`) and `relationships` (one entry per pair: `type`, `from: {node}`, `to: {node}`); README "The ontology format" has the mapping. [legacyFormat edgextract]
+a file of neither format -> OntologyError: This is neither an Ontology Graph Spec document (`schema`, `nodes`) nor a create-context-graph domain file (`domain`, `entity_types`).
+an earlier build's store for edgextract's company_news (its document, converted_from edgextract, format edgextract): ontologyFromStored reads it as generic (converted from edgextract); asked "person", "company"
   open: the default cutoffs move from that build's 0.85/0.70 to 0.50/0.35 (3 moved; kinds now 0.5/0.5); the claim at 0.65: review by band -> keep by band; stored format now generic
-a store an earlier build made before the v1 documents, holding edgextract's YAML -> OntologyError: this store was written by an earlier build of this page for an ontology in edgextract's format, which this build no longer reads; delete it to free its space, or open another store [legacyFormat edgextract]
+a store an earlier build made before the Ontology Graph Spec documents, holding edgextract's YAML -> OntologyError: this store was written by an earlier build of this page for an ontology in edgextract's format, which this build no longer reads; delete it to free its space, or open another store [legacyFormat edgextract]
   (web/worker.js turns it into StoreError legacy-ontology: the earlier-build banner, whose button deletes the store, delete-store)
 
 ### samples (data/samples/samples.json): 27, each with its ontology
@@ -782,7 +819,7 @@ CALL db.ontology.set('neo4j', $doc) -> semantic: semantic error: SemanticError: 
 "a b:c/d" -> ex01-kg-a_b_c_d-e1b74487 (24): the engine accepts the name
 a 65-character name -> OPFS name must be 1-64 characters from [A-Za-z0-9_-]
 
-## the example's limits on a v1 document (web/ontology.js, web/ogs.js): accepted or refused as designed
+## the example's limits on a document (web/ontology.js, web/ogs.js): accepted or refused as designed
 one kind: refused (An ontology needs between 2 and 50 kinds of name. This document has 1 node. Add another node, or split a large list.). 2 to 50 kinds
 50 kinds: accepted. 2 to 50 kinds
 51 kinds: refused (An ontology needs between 2 and 50 kinds of name. This document has 51 nodes. Add another node, or split a large list.). 2 to 50 kinds

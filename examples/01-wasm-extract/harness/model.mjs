@@ -11,7 +11,7 @@
 // .verified marker against ci/gliner2.5-small-v1.sha256, and the fixture against both.
 //
 // The fixture is recorded on the Financial Services sample under the schema the page asks for that
-// domain; this checks it is still that schema (pipeline.modelSchema of its v1 document), so the parity
+// domain; this checks it is still that schema (pipeline.modelSchema of its document), so the parity
 // covers what the page asks: kinds by label text, some with a description and some bare.
 // What it prints (G5-G11): per case, whether gliner-rs finds the reference's span and edge sets
 // and how far the scores are apart; that a repeated call returns the same bytes; that offsets

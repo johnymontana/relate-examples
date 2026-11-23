@@ -65,7 +65,7 @@ import { canon, cmp, dump, sha256 } from '../../../lib/replay.mjs';
 
 /**
  * The gate's default cutoffs and margins on GLiNER2.5-small-v1, for every ontology: a
- * create-context-graph document, and any other v1 document (Ontology.format 'generic', asked the
+ * create-context-graph document, and any other document (Ontology.format 'generic', asked the
  * same way: label texts, links between their endpoints), which has no gold set of its own. Each
  * value is on a 0.05 grid, set on create-context-graph's 27 samples (written in short declarative
  * sentences, one fact each) with the model asked as pipeline.modelSchema asks
@@ -470,7 +470,7 @@ export function resetCutoffs(db, cl, format, model = DEFAULT_MODEL) {
 
 /**
  * The ontology's kinds and links as stored: {oid, kinds: [{id, implied, keep, drop, src}], links: [{id, phrase, symmetric,
- * typed, pairs, keep, drop, src}], legal: [{d, rel, r}]}. implied: the kind's implied labels (the v1 document's
+ * typed, pairs, keep, drop, src}], legal: [{d, rel, r}]}. implied: the kind's implied labels (the document's
  * labels.implied, [] for none), which publish adds beside the kind's own. src is 'default' or 'user'
  * (applyDefaultCutoffs). legal is every link's legal (source, target) pair in the document's direction
  * (_LinkType.pairs; a symmetric link is also legal reversed).
@@ -1138,7 +1138,7 @@ RETURN count(x) AS n`, { rel, rows, gen });
 /**
  * Publish the gate's kept facts as the typed knowledge graph (D16): kept mentions become
  * (:_Entity {key: 'KIND:NAME'}) nodes with their kind label (SET e:$($kind)) and the kind's implied
- * labels (the v1 document's labels.implied, _Kind.implied; none in the bundled ontologies), and with no other
+ * labels (the document's labels.implied, _Kind.implied; none in the bundled ontologies), and with no other
  * label of the ontology's (one an earlier document implied is removed: the labels follow the document), linked from their
  * mentions by OF; kept claims become one (a)-[:REL]->(b) per (head, REL, tail), carrying the max p,
  * the claim keys, the evidence sentences and the documents. Then relationships of older
@@ -1446,7 +1446,7 @@ MATCH (c:_Claim {key: k}) RETURN DISTINCT c.key AS key, c.doc AS doc, c.p AS p`)
   for (const kind of kindIds) {
     const rows = entRows.filter((e) => e.kind === kind);
     if (!rows.length) continue;
-    // the kind's label, then its implied ones (the v1 document's labels.implied)
+    // the kind's label, then its implied ones (the document's labels.implied)
     const label = [kind, ...(impliedOf.get(kind) ?? [])].map(ident).join(':');
     for (const part of chunks(rows)) {
       lines.push('UNWIND [');

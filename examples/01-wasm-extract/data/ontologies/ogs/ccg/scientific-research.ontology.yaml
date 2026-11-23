@@ -1,16 +1,15 @@
-$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
 id: scientific-research
-version: 1
 name: Scientific Research
 description: Research collaboration, publication tracking, grant management, and experiment analysis
 nodes:
   Person:
     label: Person
-    description: person
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       email:
         type: STRING
       role:
@@ -18,49 +17,51 @@ nodes:
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#22c55e'
-        caption: name
+      display:
+        x: 0
+        'y': -300
+        colour: '#22c55e'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: PERSON
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: user
-            size: 20
+        createContextGraph:pole:
+          pole_type: PERSON
+          origin: base
+        createContextGraph:display:
+          icon: user
+          size: 20
+    description: person
   Organization:
     label: Organization
-    description: organization
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
       industry:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#3b82f6'
-        caption: name
+      display:
+        x: 162
+        'y': -252
+        colour: '#3b82f6'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: ORGANIZATION
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: building
-            size: 25
+        createContextGraph:pole:
+          pole_type: ORGANIZATION
+          origin: base
+        createContextGraph:display:
+          icon: building
+          size: 25
+    description: organization
   Location:
     label: Location
-    description: location
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       address:
         type: STRING
       latitude:
@@ -68,72 +69,75 @@ nodes:
       longitude:
         type: FLOAT
     extensions:
-      neo4j:display:
-        color: '#a855f7'
-        caption: name
+      display:
+        x: 273
+        'y': -125
+        colour: '#a855f7'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: LOCATION
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: map-pin
+        createContextGraph:pole:
+          pole_type: LOCATION
+          origin: base
+        createContextGraph:display:
+          icon: map-pin
+    description: location
   Event:
     label: Event
-    description: event
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       date:
-        type: DATETIME
+        type: ZONED DATETIME
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#f97316'
-        caption: name
+      display:
+        x: 297
+        'y': 43
+        colour: '#f97316'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: calendar
+        createContextGraph:pole:
+          pole_type: EVENT
+          origin: base
+        createContextGraph:display:
+          icon: calendar
+    description: event
   Object:
     label: Object
-    description: object
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#eab308'
-        caption: name
+      display:
+        x: 227
+        'y': 196
+        colour: '#eab308'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: box
+        createContextGraph:pole:
+          pole_type: OBJECT
+          origin: base
+        createContextGraph:display:
+          icon: box
+    description: object
   Researcher:
     label: Researcher
-    description: academic (object)
     properties:
       researcher_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       orcid:
         type: STRING
         unique: true
@@ -152,76 +156,77 @@ nodes:
         type: STRING
       email:
         type: STRING
-    tools:
-      - type: canonicalQuery
-        name: search_researcher
-        description: Search for researchers by name, specialization, or institution
-        cypher: |
-          MATCH (r:Researcher)
-          WHERE toLower(r.name) CONTAINS toLower($query)
-             OR toLower(coalesce(r.specialization, '')) CONTAINS toLower($query)
-          OPTIONAL MATCH (r)-[:AFFILIATED_WITH]->(i:Institution)
-          OPTIONAL MATCH (r)-[:AUTHORED]->(p:Paper)
-          RETURN r, i.name AS institution, count(p) AS paper_count
-          ORDER BY r.h_index DESC
-          LIMIT 20
-        parameters:
-          - name: query
-            type: STRING
-            description: Researcher name or specialization to search for
-      - type: canonicalQuery
-        name: list_researchers
-        description: List researcher records with optional limit
-        cypher: |
-          MATCH (n:Researcher)
-          RETURN n
-          ORDER BY n.name
-          LIMIT toInteger($limit)
-        parameters:
-          - name: limit
-            type: STRING
-            description: 'Maximum number of results to return (default: 10)'
-      - type: canonicalQuery
-        name: get_researcher_by_id
-        description: Get a specific researcher by ID with all connections
-        cypher: |
-          MATCH (n:Researcher {researcher_id: $id})
-          OPTIONAL MATCH (n)-[r]-(related)
-          RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
-          LIMIT 50
-        parameters:
-          - name: id
-            type: STRING
-            description: The researcher_id to look up
-      - type: canonicalQuery
-        name: defaultView
-        description: create-context-graph's default visualisation query
-        cypher: MATCH (r:Researcher)-[:AUTHORED]->(p:Paper) RETURN r, p LIMIT 100
     extensions:
-      neo4j:display:
-        color: '#1d4ed8'
-        caption: name
+      display:
+        x: 85
+        'y': 288
+        colour: '#1d4ed8'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: ACADEMIC
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: user-circle
-            size: 25
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: ACADEMIC
+          origin: domain
+        createContextGraph:display:
+          icon: user-circle
+          size: 25
+        tools:
+          - type: canonicalQuery
+            name: search_researcher
+            description: Search for researchers by name, specialization, or institution
+            cypher: |
+              MATCH (r:Researcher)
+              WHERE toLower(r.name) CONTAINS toLower($query)
+                 OR toLower(coalesce(r.specialization, '')) CONTAINS toLower($query)
+              OPTIONAL MATCH (r)-[:AFFILIATED_WITH]->(i:Institution)
+              OPTIONAL MATCH (r)-[:AUTHORED]->(p:Paper)
+              RETURN r, i.name AS institution, count(p) AS paper_count
+              ORDER BY r.h_index DESC
+              LIMIT 20
+            parameters:
+              - name: query
+                type: STRING
+                description: Researcher name or specialization to search for
+          - type: canonicalQuery
+            name: list_researchers
+            description: List researcher records with optional limit
+            cypher: |
+              MATCH (n:Researcher)
+              RETURN n
+              ORDER BY n.name
+              LIMIT toInteger($limit)
+            parameters:
+              - name: limit
+                type: STRING
+                description: 'Maximum number of results to return (default: 10)'
+          - type: canonicalQuery
+            name: get_researcher_by_id
+            description: Get a specific researcher by ID with all connections
+            cypher: |
+              MATCH (n:Researcher {researcher_id: $id})
+              OPTIONAL MATCH (n)-[r]-(related)
+              RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
+              LIMIT 50
+            parameters:
+              - name: id
+                type: STRING
+                description: The researcher_id to look up
+          - type: canonicalQuery
+            name: defaultView
+            description: create-context-graph's default visualisation query
+            cypher: MATCH (r:Researcher)-[:AUTHORED]->(p:Paper) RETURN r, p LIMIT 100
+    description: academic (object)
   Paper:
     label: Paper
-    description: publication (object)
     properties:
       doi:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       title:
         type: STRING
-        mustExist: true
+        must_exist: true
       abstract:
         type: STRING
       journal:
@@ -238,48 +243,49 @@ nodes:
           - preprint
           - review
           - meta_analysis
-    tools:
-      - type: canonicalQuery
-        name: citation_network
-        description: Explore citation relationships for a paper
-        cypher: |
-          MATCH (p:Paper)
-          WHERE toLower(p.title) CONTAINS toLower($query) OR p.doi = $query
-          OPTIONAL MATCH (p)-[:CITED]->(cited:Paper)
-          OPTIONAL MATCH (citing:Paper)-[:CITED]->(p)
-          RETURN p, collect(DISTINCT cited.title) AS references,
-                 collect(DISTINCT citing.title) AS cited_by,
-                 p.citation_count
-          LIMIT 10
-        parameters:
-          - name: query
-            type: STRING
-            description: Paper title or DOI to explore citations for
     extensions:
-      neo4j:display:
-        color: '#be185d'
-        caption: name
+      display:
+        x: -85
+        'y': 288
+        colour: '#be185d'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: PUBLICATION
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: file-text
-            size: 20
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: PUBLICATION
+          origin: domain
+        createContextGraph:display:
+          icon: file-text
+          size: 20
+        tools:
+          - type: canonicalQuery
+            name: citation_network
+            description: Explore citation relationships for a paper
+            cypher: |
+              MATCH (p:Paper)
+              WHERE toLower(p.title) CONTAINS toLower($query) OR p.doi = $query
+              OPTIONAL MATCH (p)-[:CITED]->(cited:Paper)
+              OPTIONAL MATCH (citing:Paper)-[:CITED]->(p)
+              RETURN p, collect(DISTINCT cited.title) AS references,
+                     collect(DISTINCT citing.title) AS cited_by,
+                     p.citation_count
+              LIMIT 10
+            parameters:
+              - name: query
+                type: STRING
+                description: Paper title or DOI to explore citations for
+    description: publication (object)
   Dataset:
     label: Dataset
-    description: data resource (object)
     properties:
       dataset_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
       format:
@@ -306,47 +312,48 @@ nodes:
           - restricted
       access_url:
         type: STRING
-    tools:
-      - type: canonicalQuery
-        name: dataset_usage
-        description: Find which papers and experiments have used a specific dataset
-        cypher: |
-          MATCH (d:Dataset)
-          WHERE toLower(d.name) CONTAINS toLower($query)
-             OR d.dataset_id = $query
-          OPTIONAL MATCH (p:Paper)-[:USED_DATASET]->(d)
-          OPTIONAL MATCH (e:Experiment)-[:PRODUCED_DATASET]->(d)
-          RETURN d, collect(DISTINCT p.title) AS papers_using,
-                 collect(DISTINCT e.name) AS producing_experiments
-        parameters:
-          - name: query
-            type: STRING
-            description: Dataset name or ID to look up
     extensions:
-      neo4j:display:
-        color: '#0d9488'
-        caption: name
+      display:
+        x: -227
+        'y': 196
+        colour: '#0d9488'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: DATA_RESOURCE
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: database
-            size: 20
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: DATA_RESOURCE
+          origin: domain
+        createContextGraph:display:
+          icon: database
+          size: 20
+        tools:
+          - type: canonicalQuery
+            name: dataset_usage
+            description: Find which papers and experiments have used a specific dataset
+            cypher: |
+              MATCH (d:Dataset)
+              WHERE toLower(d.name) CONTAINS toLower($query)
+                 OR d.dataset_id = $query
+              OPTIONAL MATCH (p:Paper)-[:USED_DATASET]->(d)
+              OPTIONAL MATCH (e:Experiment)-[:PRODUCED_DATASET]->(d)
+              RETURN d, collect(DISTINCT p.title) AS papers_using,
+                     collect(DISTINCT e.name) AS producing_experiments
+            parameters:
+              - name: query
+                type: STRING
+                description: Dataset name or ID to look up
+    description: data resource (object)
   Experiment:
     label: Experiment
-    description: research activity (event)
     properties:
       experiment_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       methodology:
         type: STRING
       start_date:
@@ -363,60 +370,60 @@ nodes:
           - abandoned
       result_summary:
         type: STRING
-    tools:
-      - type: canonicalQuery
-        name: experiment_results
-        description: Query experiment details and outcomes
-        cypher: |
-          MATCH (e:Experiment)
-          WHERE toLower(e.name) CONTAINS toLower($query)
-             OR e.experiment_id = $query
-          OPTIONAL MATCH (r:Researcher)-[:CONDUCTED]->(e)
-          OPTIONAL MATCH (e)-[:FUNDED_BY]->(g:Grant)
-          OPTIONAL MATCH (e)-[:PRODUCED_DATASET]->(d:Dataset)
-          RETURN e, collect(DISTINCT r.name) AS researchers,
-                 collect(DISTINCT g.title) AS grants,
-                 collect(DISTINCT d.name) AS datasets_produced
-        parameters:
-          - name: query
-            type: STRING
-            description: Experiment name or ID to look up
     extensions:
-      neo4j:display:
-        color: '#d97706'
-        caption: name
+      display:
+        x: -297
+        'y': 43
+        colour: '#d97706'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: RESEARCH_ACTIVITY
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: flask
-            size: 20
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: RESEARCH_ACTIVITY
+          origin: domain
+        createContextGraph:display:
+          icon: flask
+          size: 20
+        tools:
+          - type: canonicalQuery
+            name: experiment_results
+            description: Query experiment details and outcomes
+            cypher: |
+              MATCH (e:Experiment)
+              WHERE toLower(e.name) CONTAINS toLower($query)
+                 OR e.experiment_id = $query
+              OPTIONAL MATCH (r:Researcher)-[:CONDUCTED]->(e)
+              OPTIONAL MATCH (e)-[:FUNDED_BY]->(g:Grant)
+              OPTIONAL MATCH (e)-[:PRODUCED_DATASET]->(d:Dataset)
+              RETURN e, collect(DISTINCT r.name) AS researchers,
+                     collect(DISTINCT g.title) AS grants,
+                     collect(DISTINCT d.name) AS datasets_produced
+            parameters:
+              - name: query
+                type: STRING
+                description: Experiment name or ID to look up
+    description: research activity (event)
   Grant:
     label: Grant
-    description: funding (object)
     properties:
       grant_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       title:
         type: STRING
-        mustExist: true
+        must_exist: true
       funding_agency:
         type: STRING
-        mustExist: true
+        must_exist: true
       amount:
         type: FLOAT
       currency:
         type: STRING
         extensions:
           custom:
-            - type: createContextGraph:default
-              definition: USD
+            createContextGraph:default: USD
       start_date:
         type: DATE
       end_date:
@@ -430,50 +437,51 @@ nodes:
           - active
           - completed
           - rejected
-    tools:
-      - type: canonicalQuery
-        name: grant_analysis
-        description: Analyze grant funding status and associated research output
-        cypher: |
-          MATCH (g:Grant)
-          WHERE toLower(g.title) CONTAINS toLower($query)
-             OR toLower(g.funding_agency) CONTAINS toLower($query)
-             OR g.status = $query
-          OPTIONAL MATCH (e:Experiment)-[:FUNDED_BY]->(g)
-          OPTIONAL MATCH (r:Researcher)-[:CONDUCTED]->(e)
-          RETURN g, collect(DISTINCT e.name) AS experiments,
-                 collect(DISTINCT r.name) AS researchers
-          ORDER BY g.amount DESC
-          LIMIT 20
-        parameters:
-          - name: query
-            type: STRING
-            description: Grant title, funding agency, or status to search for
     extensions:
-      neo4j:display:
-        color: '#16a34a'
-        caption: name
+      display:
+        x: -273
+        'y': -125
+        colour: '#16a34a'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: FUNDING
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: banknote
-            size: 25
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: FUNDING
+          origin: domain
+        createContextGraph:display:
+          icon: banknote
+          size: 25
+        tools:
+          - type: canonicalQuery
+            name: grant_analysis
+            description: Analyze grant funding status and associated research output
+            cypher: |
+              MATCH (g:Grant)
+              WHERE toLower(g.title) CONTAINS toLower($query)
+                 OR toLower(g.funding_agency) CONTAINS toLower($query)
+                 OR g.status = $query
+              OPTIONAL MATCH (e:Experiment)-[:FUNDED_BY]->(g)
+              OPTIONAL MATCH (r:Researcher)-[:CONDUCTED]->(e)
+              RETURN g, collect(DISTINCT e.name) AS experiments,
+                     collect(DISTINCT r.name) AS researchers
+              ORDER BY g.amount DESC
+              LIMIT 20
+            parameters:
+              - name: query
+                type: STRING
+                description: Grant title, funding agency, or status to search for
+    description: funding (object)
   Institution:
     label: Institution
-    description: academic org (object)
     properties:
       institution_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       institution_type:
         type: STRING
         one_of:
@@ -489,19 +497,21 @@ nodes:
       department:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#6366f1'
-        caption: name
+      display:
+        x: -162
+        'y': -252
+        colour: '#6366f1'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: ACADEMIC_ORG
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: building
-            size: 30
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: ACADEMIC_ORG
+          origin: domain
+        createContextGraph:display:
+          icon: building
+          size: 30
+    description: academic org (object)
 relationships:
   WORKS_FOR:
     type: WORKS_FOR
@@ -511,9 +521,8 @@ relationships:
       node: Organization
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   LOCATED_AT:
     type: LOCATED_AT
     from:
@@ -522,9 +531,8 @@ relationships:
       node: Location
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   PARTICIPATED_IN:
     type: PARTICIPATED_IN
     from:
@@ -533,9 +541,8 @@ relationships:
       node: Event
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   AUTHORED:
     type: AUTHORED
     from:
@@ -544,9 +551,8 @@ relationships:
       node: Paper
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   CITED:
     type: CITED
     from:
@@ -555,9 +561,8 @@ relationships:
       node: Paper
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   FUNDED_BY:
     type: FUNDED_BY
     from:
@@ -566,9 +571,8 @@ relationships:
       node: Grant
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   REPLICATED:
     type: REPLICATED
     from:
@@ -577,9 +581,8 @@ relationships:
       node: Experiment
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   USED_DATASET:
     type: USED_DATASET
     from:
@@ -588,9 +591,8 @@ relationships:
       node: Dataset
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   AFFILIATED_WITH:
     type: AFFILIATED_WITH
     from:
@@ -599,9 +601,8 @@ relationships:
       node: Institution
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   CONDUCTED:
     type: CONDUCTED
     from:
@@ -610,9 +611,8 @@ relationships:
       node: Experiment
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   PRODUCED_DATASET:
     type: PRODUCED_DATASET
     from:
@@ -621,244 +621,237 @@ relationships:
       node: Dataset
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
 extensions:
   custom:
-    - type: createContextGraph:domain
-      definition:
-        tagline: AI-powered Research Intelligence
-        emoji: 🔬
-        inherits: _base
-    - type: createContextGraph:documentTemplates
-      definition:
-        - id: grant_proposal
-          name: Grant Proposal
-          description: Research grant proposals and funding applications
-          count: 6
-          prompt_template: |
-            Write a grant proposal from {{researcher.name}} at {{institution.name}}
-            for the {{grant.title}} grant from {{grant.funding_agency}}.
-            Requested amount: ${{grant.amount}}. Research area: {{researcher.specialization}}.
-            Include background, objectives, methodology, timeline, and expected impact.
-          required_entities:
-            - Researcher
-            - Institution
-            - Grant
-        - id: peer_review
-          name: Peer Review
-          description: Peer review reports for submitted manuscripts
-          count: 8
-          prompt_template: |
-            Write a peer review for the paper "{{paper.title}}" submitted to
-            {{paper.journal}}. Reviewer: {{researcher.name}} from {{institution.name}}.
-            Include assessment of methodology, results, significance,
-            and recommendation (accept, revise, reject).
-          required_entities:
-            - Paper
-            - Researcher
-            - Institution
-        - id: lab_notebook
-          name: Lab Notebook Entry
-          description: Daily lab notebook entries documenting experimental work
-          count: 12
-          prompt_template: |
-            Write a lab notebook entry by {{researcher.name}} for experiment
-            "{{experiment.name}}" ({{experiment.experiment_id}}) on {{date}}.
-            Methodology: {{experiment.methodology}}. Include observations,
-            measurements, deviations from protocol, and preliminary analysis.
-          required_entities:
-            - Researcher
-            - Experiment
-            - Dataset
-        - id: experiment_log
-          name: Experiment Log
-          description: Formal experiment design and results documentation
-          count: 8
-          prompt_template: |
-            Write an experiment log for "{{experiment.name}}" conducted by
-            {{researcher.name}} at {{institution.name}}. Status: {{experiment.status}}.
-            Dataset used: {{dataset.name}}. Include hypothesis, methodology,
-            variables, results summary, and conclusions.
-          required_entities:
-            - Experiment
-            - Researcher
-            - Institution
-            - Dataset
-        - id: publication_draft
-          name: Publication Draft
-          description: Draft sections of academic publications
-          count: 6
-          prompt_template: |
-            Write a draft introduction and methods section for a paper titled
-            "{{paper.title}}" by {{researcher.name}} et al. at {{institution.name}}.
-            Based on experiment "{{experiment.name}}" using dataset {{dataset.name}}.
-            Journal target: {{paper.journal}}.
-          required_entities:
-            - Paper
-            - Researcher
-            - Institution
-            - Experiment
-            - Dataset
-    - type: createContextGraph:decisionTraces
-      definition:
-        - id: research_direction
-          task: Evaluate whether to pursue research direction based on {{paper.title}} findings
-          steps:
-            - thought: Assess the significance and reproducibility of the findings
-              action: Query citation network and replication attempts for this paper
-            - thought: Identify gaps in the literature that this direction could fill
-              action: Analyze citing papers and identify open questions
-            - thought: Evaluate resource requirements and funding availability
-              action: Check active grants, available datasets, and lab capacity
-            - thought: Consider collaboration opportunities and expertise gaps
-              action: Find researchers with complementary expertise at partner institutions
-          outcome_template: 'Decision: {{decision}} — {{rationale}}'
-        - id: dataset_selection
-          task: Select appropriate dataset for experiment {{experiment.name}}
-          steps:
-            - thought: Identify datasets matching the experimental requirements
-              action: Query datasets by domain, size, format, and availability
-            - thought: Evaluate data quality and prior usage in published research
-              action: Check which papers have used each candidate dataset
-            - thought: Consider licensing, access restrictions, and computational requirements
-              action: Review dataset metadata for compatibility constraints
-          outcome_template: 'Selected dataset: {{dataset}} — {{rationale}}'
-        - id: collaboration_assessment
-          task: Assess potential research collaboration with {{researcher.name}} at {{institution.name}}
-          steps:
-            - thought: Review the researcher's publication record and expertise
-              action: Query papers authored and citation metrics
-            - thought: Identify overlap and complementarity in research interests
-              action: Compare specializations and shared citation networks
-            - thought: Evaluate institutional compatibility and funding synergies
-              action: Check active grants and institutional agreements
-          outcome_template: 'Collaboration assessment: {{assessment}} — {{rationale}}'
-        - id: grant_proposal_strategy
-          task: Develop grant proposal strategy for researcher {{researcher.name}} targeting {{grant.funding_agency}}
-          steps:
-            - thought: Review researcher's publication record and funding history
-              action: Query papers authored and previous grants awarded to this researcher
-            - thought: Identify research gaps that align with funder priorities
-              action: Analyze funded experiments and identify underexplored areas in the researcher's field
-            - thought: Assess team composition and institutional strengths
-              action: Query co-authors, their institutions, and complementary expertise
-            - thought: Estimate competitiveness based on prior funding rates
-              action: Review grant outcomes by funding agency and research area
-          outcome_template: 'Strategy: {{strategy}}. Competitive strength: {{strength}}. Suggested budget: ${{budget}}'
-        - id: reproducibility_assessment
-          task: Assess reproducibility of findings from experiment {{experiment.name}}
-          steps:
-            - thought: Review the original experiment methodology and results
-              action: Query experiment details, methodology, and result summary
-            - thought: Search for replication attempts by independent groups
-              action: Find experiments linked via REPLICATED relationship to the original
-            - thought: Compare datasets used and their availability
-              action: Check if the original dataset is publicly accessible and has been reused
-            - thought: Evaluate statistical rigor and effect size
-              action: Review evaluation metrics and sample sizes from the original and replications
-          outcome_template: 'Reproducibility: {{rating}}. Replications: {{count}}. Confidence: {{confidence}}'
-        - id: peer_review_synthesis
-          task: Synthesize peer reviews for paper {{paper.title}} to guide revision
-          steps:
-            - thought: Collect and categorize all reviewer comments
-              action: Query documents linked to this paper for peer review reports
-            - thought: Identify common themes and critical concerns across reviewers
-              action: Find issues raised by multiple reviewers that require major revision
-            - thought: Prioritize revisions by impact on acceptance probability
-              action: Rank changes by severity and whether they address fundamental vs minor concerns
-            - thought: Identify additional experiments or analyses needed
-              action: Determine which reviewer requests require new data collection vs reanalysis
-          outcome_template: 'Revisions needed: {{count}}. Major: {{major}}. Additional experiments: {{experiments}}'
-        - id: literature_gap_analysis
-          task: Identify gaps in the literature around the research area of {{paper.title}}
-          steps:
-            - thought: Map the citation network around this paper
-              action: Query papers cited by and citing this paper to build the network
-            - thought: Identify clusters of related work and their boundaries
-              action: Analyze citation patterns to find research sub-communities
-            - thought: Detect under-explored connections between clusters
-              action: Find topic areas with few cross-cluster citations indicating research gaps
-            - thought: Assess feasibility of addressing identified gaps
-              action: Evaluate available datasets, methods, and expertise for each gap
-          outcome_template: 'Gaps identified: {{gaps}}. Most promising: {{top_gap}}. Feasibility: {{feasibility}}'
-        - id: data_management_plan
-          task: Create a data management plan for experiment {{experiment.name}} using dataset {{dataset.name}}
-          steps:
-            - thought: Assess dataset size, format, and access requirements
-              action: Query dataset metadata including size, format, and license
-            - thought: Determine appropriate storage and sharing platforms
-              action: Match dataset characteristics to repository requirements and funder mandates
-            - thought: Plan data versioning and provenance tracking
-              action: Define versioning strategy based on experiment pipeline and expected transformations
-            - thought: Address privacy, licensing, and long-term preservation
-              action: Review license restrictions and institutional data retention policies
-          outcome_template: 'DMP: {{plan}}. Repository: {{repository}}. Retention period: {{retention}}'
-        - id: impact_assessment
-          task: Assess research impact of researcher {{researcher.name}} for tenure review
-          steps:
-            - thought: Quantify publication metrics and citation impact
-              action: Query papers authored, citation counts, h-index, and journal rankings
-            - thought: Evaluate grant funding success and amount
-              action: Review grants awarded, total funding, and funding agency diversity
-            - thought: Assess mentorship and collaboration breadth
-              action: Count co-authored papers, affiliated institutions, and supervised experiments
-            - thought: Identify broader impact beyond academia
-              action: Search for dataset reuse, media mentions, and practical applications of research
-          outcome_template: 'Impact summary: h-index {{h_index}}, total citations {{citations}}, grants ${{funding}}'
-    - type: createContextGraph:demoScenarios
-      definition:
-        - name: Literature Review
-          prompts:
-            - Find the most cited papers in computational biology from the last 3 years
-            - What papers cite the landmark study on CRISPR gene editing by Doudna?
-            - Show me the citation network around deep learning in drug discovery
-        - name: Research Management
-          prompts:
-            - What grants are currently active and when do they expire?
-            - Show me all experiments that used the Genomics Benchmark dataset
-            - Which researchers at our institution have published in Nature?
-        - name: Collaboration & Impact
-          prompts:
-            - Find researchers working on similar topics to our lab's specialization
-            - What is the h-index distribution across our department?
-            - Which of our papers have been replicated by independent groups?
-    - type: createContextGraph:systemPrompt
-      definition: |
-        You are an AI research intelligence assistant with access to a comprehensive
-        knowledge graph of scientific publications, researchers, datasets, experiments,
-        and grants. You help researchers, lab managers, and research administrators
-        navigate the academic landscape, track research output, and manage
-        collaborative projects.
+    createContextGraph:domain:
+      tagline: AI-powered Research Intelligence
+      emoji: 🔬
+      inherits: _base
+    createContextGraph:documentTemplates:
+      - id: grant_proposal
+        name: Grant Proposal
+        description: Research grant proposals and funding applications
+        count: 6
+        prompt_template: |
+          Write a grant proposal from {{researcher.name}} at {{institution.name}}
+          for the {{grant.title}} grant from {{grant.funding_agency}}.
+          Requested amount: ${{grant.amount}}. Research area: {{researcher.specialization}}.
+          Include background, objectives, methodology, timeline, and expected impact.
+        required_entities:
+          - Researcher
+          - Institution
+          - Grant
+      - id: peer_review
+        name: Peer Review
+        description: Peer review reports for submitted manuscripts
+        count: 8
+        prompt_template: |
+          Write a peer review for the paper "{{paper.title}}" submitted to
+          {{paper.journal}}. Reviewer: {{researcher.name}} from {{institution.name}}.
+          Include assessment of methodology, results, significance,
+          and recommendation (accept, revise, reject).
+        required_entities:
+          - Paper
+          - Researcher
+          - Institution
+      - id: lab_notebook
+        name: Lab Notebook Entry
+        description: Daily lab notebook entries documenting experimental work
+        count: 12
+        prompt_template: |
+          Write a lab notebook entry by {{researcher.name}} for experiment
+          "{{experiment.name}}" ({{experiment.experiment_id}}) on {{date}}.
+          Methodology: {{experiment.methodology}}. Include observations,
+          measurements, deviations from protocol, and preliminary analysis.
+        required_entities:
+          - Researcher
+          - Experiment
+          - Dataset
+      - id: experiment_log
+        name: Experiment Log
+        description: Formal experiment design and results documentation
+        count: 8
+        prompt_template: |
+          Write an experiment log for "{{experiment.name}}" conducted by
+          {{researcher.name}} at {{institution.name}}. Status: {{experiment.status}}.
+          Dataset used: {{dataset.name}}. Include hypothesis, methodology,
+          variables, results summary, and conclusions.
+        required_entities:
+          - Experiment
+          - Researcher
+          - Institution
+          - Dataset
+      - id: publication_draft
+        name: Publication Draft
+        description: Draft sections of academic publications
+        count: 6
+        prompt_template: |
+          Write a draft introduction and methods section for a paper titled
+          "{{paper.title}}" by {{researcher.name}} et al. at {{institution.name}}.
+          Based on experiment "{{experiment.name}}" using dataset {{dataset.name}}.
+          Journal target: {{paper.journal}}.
+        required_entities:
+          - Paper
+          - Researcher
+          - Institution
+          - Experiment
+          - Dataset
+    createContextGraph:decisionTraces:
+      - id: research_direction
+        task: Evaluate whether to pursue research direction based on {{paper.title}} findings
+        steps:
+          - thought: Assess the significance and reproducibility of the findings
+            action: Query citation network and replication attempts for this paper
+          - thought: Identify gaps in the literature that this direction could fill
+            action: Analyze citing papers and identify open questions
+          - thought: Evaluate resource requirements and funding availability
+            action: Check active grants, available datasets, and lab capacity
+          - thought: Consider collaboration opportunities and expertise gaps
+            action: Find researchers with complementary expertise at partner institutions
+        outcome_template: 'Decision: {{decision}} — {{rationale}}'
+      - id: dataset_selection
+        task: Select appropriate dataset for experiment {{experiment.name}}
+        steps:
+          - thought: Identify datasets matching the experimental requirements
+            action: Query datasets by domain, size, format, and availability
+          - thought: Evaluate data quality and prior usage in published research
+            action: Check which papers have used each candidate dataset
+          - thought: Consider licensing, access restrictions, and computational requirements
+            action: Review dataset metadata for compatibility constraints
+        outcome_template: 'Selected dataset: {{dataset}} — {{rationale}}'
+      - id: collaboration_assessment
+        task: Assess potential research collaboration with {{researcher.name}} at {{institution.name}}
+        steps:
+          - thought: Review the researcher's publication record and expertise
+            action: Query papers authored and citation metrics
+          - thought: Identify overlap and complementarity in research interests
+            action: Compare specializations and shared citation networks
+          - thought: Evaluate institutional compatibility and funding synergies
+            action: Check active grants and institutional agreements
+        outcome_template: 'Collaboration assessment: {{assessment}} — {{rationale}}'
+      - id: grant_proposal_strategy
+        task: Develop grant proposal strategy for researcher {{researcher.name}} targeting {{grant.funding_agency}}
+        steps:
+          - thought: Review researcher's publication record and funding history
+            action: Query papers authored and previous grants awarded to this researcher
+          - thought: Identify research gaps that align with funder priorities
+            action: Analyze funded experiments and identify underexplored areas in the researcher's field
+          - thought: Assess team composition and institutional strengths
+            action: Query co-authors, their institutions, and complementary expertise
+          - thought: Estimate competitiveness based on prior funding rates
+            action: Review grant outcomes by funding agency and research area
+        outcome_template: 'Strategy: {{strategy}}. Competitive strength: {{strength}}. Suggested budget: ${{budget}}'
+      - id: reproducibility_assessment
+        task: Assess reproducibility of findings from experiment {{experiment.name}}
+        steps:
+          - thought: Review the original experiment methodology and results
+            action: Query experiment details, methodology, and result summary
+          - thought: Search for replication attempts by independent groups
+            action: Find experiments linked via REPLICATED relationship to the original
+          - thought: Compare datasets used and their availability
+            action: Check if the original dataset is publicly accessible and has been reused
+          - thought: Evaluate statistical rigor and effect size
+            action: Review evaluation metrics and sample sizes from the original and replications
+        outcome_template: 'Reproducibility: {{rating}}. Replications: {{count}}. Confidence: {{confidence}}'
+      - id: peer_review_synthesis
+        task: Synthesize peer reviews for paper {{paper.title}} to guide revision
+        steps:
+          - thought: Collect and categorize all reviewer comments
+            action: Query documents linked to this paper for peer review reports
+          - thought: Identify common themes and critical concerns across reviewers
+            action: Find issues raised by multiple reviewers that require major revision
+          - thought: Prioritize revisions by impact on acceptance probability
+            action: Rank changes by severity and whether they address fundamental vs minor concerns
+          - thought: Identify additional experiments or analyses needed
+            action: Determine which reviewer requests require new data collection vs reanalysis
+        outcome_template: 'Revisions needed: {{count}}. Major: {{major}}. Additional experiments: {{experiments}}'
+      - id: literature_gap_analysis
+        task: Identify gaps in the literature around the research area of {{paper.title}}
+        steps:
+          - thought: Map the citation network around this paper
+            action: Query papers cited by and citing this paper to build the network
+          - thought: Identify clusters of related work and their boundaries
+            action: Analyze citation patterns to find research sub-communities
+          - thought: Detect under-explored connections between clusters
+            action: Find topic areas with few cross-cluster citations indicating research gaps
+          - thought: Assess feasibility of addressing identified gaps
+            action: Evaluate available datasets, methods, and expertise for each gap
+        outcome_template: 'Gaps identified: {{gaps}}. Most promising: {{top_gap}}. Feasibility: {{feasibility}}'
+      - id: data_management_plan
+        task: Create a data management plan for experiment {{experiment.name}} using dataset {{dataset.name}}
+        steps:
+          - thought: Assess dataset size, format, and access requirements
+            action: Query dataset metadata including size, format, and license
+          - thought: Determine appropriate storage and sharing platforms
+            action: Match dataset characteristics to repository requirements and funder mandates
+          - thought: Plan data versioning and provenance tracking
+            action: Define versioning strategy based on experiment pipeline and expected transformations
+          - thought: Address privacy, licensing, and long-term preservation
+            action: Review license restrictions and institutional data retention policies
+        outcome_template: 'DMP: {{plan}}. Repository: {{repository}}. Retention period: {{retention}}'
+      - id: impact_assessment
+        task: Assess research impact of researcher {{researcher.name}} for tenure review
+        steps:
+          - thought: Quantify publication metrics and citation impact
+            action: Query papers authored, citation counts, h-index, and journal rankings
+          - thought: Evaluate grant funding success and amount
+            action: Review grants awarded, total funding, and funding agency diversity
+          - thought: Assess mentorship and collaboration breadth
+            action: Count co-authored papers, affiliated institutions, and supervised experiments
+          - thought: Identify broader impact beyond academia
+            action: Search for dataset reuse, media mentions, and practical applications of research
+        outcome_template: 'Impact summary: h-index {{h_index}}, total citations {{citations}}, grants ${{funding}}'
+    createContextGraph:demoScenarios:
+      - name: Literature Review
+        prompts:
+          - Find the most cited papers in computational biology from the last 3 years
+          - What papers cite the landmark study on CRISPR gene editing by Doudna?
+          - Show me the citation network around deep learning in drug discovery
+      - name: Research Management
+        prompts:
+          - What grants are currently active and when do they expire?
+          - Show me all experiments that used the Genomics Benchmark dataset
+          - Which researchers at our institution have published in Nature?
+      - name: Collaboration & Impact
+        prompts:
+          - Find researchers working on similar topics to our lab's specialization
+          - What is the h-index distribution across our department?
+          - Which of our papers have been replicated by independent groups?
+    createContextGraph:systemPrompt: |
+      You are an AI research intelligence assistant with access to a comprehensive
+      knowledge graph of scientific publications, researchers, datasets, experiments,
+      and grants. You help researchers, lab managers, and research administrators
+      navigate the academic landscape, track research output, and manage
+      collaborative projects.
 
-        Your capabilities include:
-        - Searching publications, researchers, and their citation networks
-        - Tracking experiment progress and results
-        - Analyzing grant funding and research output
-        - Discovering collaboration opportunities and expertise overlap
-        - Tracing dataset provenance and usage across studies
+      Your capabilities include:
+      - Searching publications, researchers, and their citation networks
+      - Tracking experiment progress and results
+      - Analyzing grant funding and research output
+      - Discovering collaboration opportunities and expertise overlap
+      - Tracing dataset provenance and usage across studies
 
-        Always provide accurate, data-driven responses. When making recommendations,
-        cite specific publications, metrics, and research data from the knowledge graph.
-    - type: createContextGraph:visualization
-      definition:
-        node_colors:
-          Person: '#22c55e'
-          Organization: '#3b82f6'
-          Researcher: '#1d4ed8'
-          Paper: '#be185d'
-          Dataset: '#0d9488'
-          Experiment: '#d97706'
-          Grant: '#16a34a'
-          Institution: '#6366f1'
-        node_sizes:
-          Person: 20
-          Organization: 25
-          Researcher: 25
-          Paper: 20
-          Dataset: 20
-          Experiment: 20
-          Grant: 25
-          Institution: 30
-        default_cypher: MATCH (r:Researcher)-[:AUTHORED]->(p:Paper) RETURN r, p LIMIT 100
+      Always provide accurate, data-driven responses. When making recommendations,
+      cite specific publications, metrics, and research data from the knowledge graph.
+    createContextGraph:visualization:
+      node_colors:
+        Person: '#22c55e'
+        Organization: '#3b82f6'
+        Researcher: '#1d4ed8'
+        Paper: '#be185d'
+        Dataset: '#0d9488'
+        Experiment: '#d97706'
+        Grant: '#16a34a'
+        Institution: '#6366f1'
+      node_sizes:
+        Person: 20
+        Organization: 25
+        Researcher: 25
+        Paper: 20
+        Dataset: 20
+        Experiment: 20
+        Grant: 25
+        Institution: 30
+      default_cypher: MATCH (r:Researcher)-[:AUTHORED]->(p:Paper) RETURN r, p LIMIT 100

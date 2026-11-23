@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * ontology.js: an ontology, an Ontology Graph Specification v1 document (ogs.js), parsed,
+ * ontology.js: an ontology, an Ontology Graph Specification 1.1 document (ogs.js), parsed,
  * validated, and kept in Relate as the document, a derived graph and an engine-enforced graph
  * type (D5, D8, D14, D15; findings E1, O1-O6; NOTES.md R7, R9, R16, R17). The ontology lives in
  * `neo4j`: there is no system_ontologies database, and the db.ontology.* procedures sit behind the
@@ -16,19 +16,22 @@
  * (relation phrases). It never imports lib/relate_wasm.mjs: the functions that touch a database take
  * that module as `cl`.
  *
- *   const o = parseOntology(text, {bases});         // v1 (YAML or JSON), or a create-context-graph file converted; OntologyError
- *   o.doc; o.yaml; o.sha; o.convertedFrom;          // the v1 document, as YAML, its sha256, 'create-context-graph'|null
+ *   const o = parseOntology(text, {bases});         // a document (YAML or JSON), or a create-context-graph file or draft document converted; OntologyError
+ *   o.doc; o.yaml; o.sha; o.convertedFrom;          // the document, as YAML, its sha256, 'create-context-graph'|DRAFT_FORMAT|null
  *   o.tools;                                        // the document's tools, each with the element it sits on
  *   storeName(o);                                   // 'ex01-kg-financial-services' (D14)
  *   graphTypeSpec(o);                               // {spec, typed, untyped} (D15)
  *   applyOntology(db, o, cl);                       // writes the D8 layer, ALTERs the graph type (sync)
- *   ontologyFromStored(readOntology(db, cl));       // the stored v1 document parsed again
+ *   ontologyFromStored(readOntology(db, cl));       // the stored document parsed again
  *   ontologyCanary(db, cl);                         // {procedures: []} while db.ontology.* stays gated off
  *
- * One format, two inputs (parseOntology tells them apart by their keys):
- *   - an Ontology Graph Spec v1 document (`$schema`, or `nodes`): read as it is;
+ * One format, three inputs (parseOntology tells them apart by their keys):
+ *   - an Ontology Graph Spec 1.1 document (`schema`, or `nodes`): read as it is;
+ *   - a document in the draft of the spec earlier builds shipped (`$schema`): converted by
+ *     lib/ogs.mjs fromDraft (ogs.js), o.convertedFrom DRAFT_FORMAT and o.sourceSha the text's sha256;
+ *     a store such a build wrote converts its stored draft document the same way on open;
  *   - create-context-graph's domain files (`domain` or `entity_types`; data/ontologies/ccg/):
- *     converted to v1 first by convert.js (its header has the mapping), with the refusals its
+ *     converted first by convert.js (its header has the mapping), with the refusals its
  *     reader made before; o.convertedFrom is 'create-context-graph' and o.sourceSha the sha256 of
  *     the file, its `inherits` name and the base's text joined by NUL (ontologySha).
  *   Anything else is refused: a file with `$schema` and `domain`/`entity_types`, and edgextract's
@@ -37,26 +40,26 @@
  * The bundled ontologies are the converted documents (data/ontologies/ogs/ccg/, which
  * harness/ontology.mjs keeps equal to a fresh conversion of the originals beside them).
  *
- * A v1 document is checked against the spec's JSON Schema and the rules ogs.js lists (an endpoint
- * names a node, a constraint names a property beside it, the id rule, ...). Then the kinds and
+ * A document is checked against the spec's JSON Schema, by the spec's SDK, and by the rules ogs.js
+ * lists (an endpoint names a node, a constraint names a property beside it, the id rule, ...). Then the kinds and
  * links are built from it, as they were from the formats before, so what the model is asked and
  * every inference cache key (D7) are what they were (harness/ontology.mjs pins it per ontology):
  *   - kinds: the nodes in document order; a kind's id is its identifier label (`label`, or
  *     `labels.identifier`), its implied labels go with it onto published entities (store.js
  *     publish); its description is the node's (else, for a create-context-graph node, derived from
- *     the pole as kindDescription does; else the label); its colour neo4j:display's (else
+ *     the pole as kindDescription does; else the label); its colour `display.colour` (else
  *     CCG_DEFAULT_COLOR in a create-context-graph document, DEFAULT_COLOR otherwise); its pole,
  *     subtype and origin come from the createContextGraph:pole extension (origin 'base' for
  *     `origin: base`, else 'own'), null and 'own' without it; aliases are the node's.
  *   - links: the relationship entries grouped by `type`, in the order each type first appears; a
  *     link's legal pairs are its entries' (from, to) identifier labels, in that order, and nothing
  *     else (government's ELIGIBLE_FOR is Citizen -> Program and Citizen -> Service, never more);
- *     symmetric when its entries carry the edgextract:symmetric extension (a symmetric link is legal
+ *     symmetric when its entries carry the edgextract:symmetric custom extension (a symmetric link is legal
  *     either way round); origin 'base' when they carry createContextGraph:origin {origin: base};
  *     its description the first entry's that has one.
  *   - the gazetteer: the edgextract:gazetteer extension at the top level (name -> node id). Both
  *     extensions keep the names edgextract gave the two features (rule 1 and symmetric links are
- *     edgextract's), and any v1 document may carry them; no bundled one does.
+ *     edgextract's), and any document may carry them; no bundled one does.
  *   - `format`, which says how the model is asked: 'create-context-graph' for a document with the
  *     createContextGraph:domain extension, 'generic' for any other. Both take the same default
  *     cutoffs (store.js defaultGate).
@@ -84,7 +87,8 @@
  * relationship entry's key in the document, `label` the node's identifier label (a node anchor),
  * `type` the relationship type (a relationship anchor); cypher and url are null when the tool has
  * none, parameters [] (each {name, type?, description?, ...} as the document has it). The spec
- * leaves each tool type's fields to its owner; these are read from canonicalQuery (cypher,
+ * has no tool field: tools ride the `tools` custom extension of their node or relationship
+ * (`extensions.custom.tools`), each {type, name?, description?, ...}, and each tool type's fields are its owner's; these are read from canonicalQuery (cypher,
  * parameters) and externalRequest (url) tools, and any tool gets its name and description.
  *
  * The id rule (isOntologyId, ogs.js): letters with their combining marks, digits and `_`, at least
@@ -98,9 +102,10 @@
  *
  * Keys and names written to the store (D8; D14's one ontology per store):
  *   (:_Ontology {id, version, title, format, spec, doc, sha, converted_from, source_sha, graph_type})
- *       doc: the v1 document as canonical JSON (ogs.js toCanonicalJson); sha: its sha256; spec:
- *       '1.0.0'; converted_from and source_sha: null for a document that came as v1. A store an
- *       earlier build wrote holds {yaml, inherits, base_yaml} instead of {spec, doc, ...}:
+ *       doc: the document as canonical JSON (ogs.js toCanonicalJson); sha: its sha256; spec:
+ *       SPEC_VERSION ('1.1.0'; '1.0.0' in a store the draft builds wrote); converted_from and
+ *       source_sha: null for a document that came in the published format. A store an earlier
+ *       build wrote holds {yaml, inherits, base_yaml} instead of {spec, doc, ...}:
  *       ontologyFromStored converts that YAML as parseOntology does, and the next apply replaces
  *       those three properties with the document.
  *   (:_Kind {key: '<ontology id>:<KIND>', id, description, color, aliases, implied, pole, origin, ord, keep, drop})-[:_IN]->(:_Ontology)
@@ -127,7 +132,7 @@
  * Cypher gate checks them. ALTER CURRENT GRAPH TYPE SET drops every existing constraint (R16;
  * plain indexes survive), so applyOntology ALTERs only when the elements change, and then
  * re-creates its UNIQUE constraints: a caller with constraints of its own (web/store.js) must
- * re-create them whenever applyOntology returns altered: true. Of what a v1 document declares,
+ * re-create them whenever applyOntology returns altered: true. Of what a document declares,
  * this example enforces the labels, the relationship types with their endpoints, and `name`; the
  * other declared properties, constraints and cardinalities stay descriptive, because the extractor
  * writes only name, display, key and its own bookkeeping on an entity (README "The ontology format").
@@ -136,8 +141,8 @@ import { relationPhrase } from './gliner.js';
 import { rustTrim } from './names.js';
 import { renderGraphType, sha256, splitGraphType } from '../../../lib/replay.mjs';
 import {
-  EXTENSIONS, OntologyError, SPEC_VERSION, cmpCodePoints, customOf, isMap, isOntologyId, loadText, nodeLabel, orderDocument,
-  toCanonicalJson, toYaml, validateDocument,
+  EXTENSIONS, OntologyError, SPEC_VERSION, cmpCodePoints, custom, fromDraft, isDraft, isMap, isOntologyId, loadText, nodeLabel, orderDocument,
+  toCanonicalJson, toolsOf as elementTools, toYaml, validateDocument,
 } from './ogs.js';
 import {
   CCG_DEFAULT_COLOR, DEFAULT_COLOR, MAX_RELATION_EDGES, MAX_TYPES, MIN_TYPES, fromCreateContextGraph, humanise, kindDescription,
@@ -149,13 +154,20 @@ export {
 };
 
 export const MAX_CHOICE_OPTIONS = 26;
-/** How the model is asked (Ontology.format): a create-context-graph document, or any other v1 document. */
+/** How the model is asked (Ontology.format): a create-context-graph document, or any other document. */
 export const FORMATS = Object.freeze(['create-context-graph', 'generic']);
-/** What parseOntology reads: v1, and the format it converts. */
-export const INPUTS = Object.freeze(['ontology-graph-spec', 'create-context-graph']);
+/** What parseOntology reads: a published Ontology Graph Spec document, and the two formats it converts. */
+export const INPUTS = Object.freeze(['ontology-graph-spec', 'create-context-graph', 'ontology-graph-spec-draft']);
+/**
+ * Ontology.convertedFrom for a document written in the draft of the Ontology Graph Spec that
+ * earlier builds shipped (`$schema`, lib/ogs.mjs DRAFT_MAPPING), pasted or loaded into the page and
+ * converted. A store an earlier build wrote keeps its own convertedFrom: its stored draft document is
+ * converted on open (ontologyFromStored) and stored again in the published format.
+ */
+export const DRAFT_FORMAT = 'ontology-graph-spec-draft';
 /**
  * The format of an ontology file earlier builds converted and this one does not read: a store that
- * holds one as its YAML (pre-v1) is refused with this mark on the OntologyError (ontologyFromStored),
+ * holds one as its YAML (before the Ontology Graph Spec documents) is refused with this mark on the OntologyError (ontologyFromStored),
  * and the page offers to delete it (web/worker.js, the earlier-build banner).
  */
 export const LEGACY_FORMAT = 'edgextract';
@@ -215,10 +227,10 @@ export class OntologyApplyError extends Error {
  *   report: {tools: any[], types: any[], dropped: string[]}|null}} Ontology
  *   format: how the model is asked; convertedFrom: the format the document was converted from ('edgextract' only
  *   in a store an earlier build wrote, ontologyFromStored); meta: the createContextGraph:domain extension's tagline
- *   and emoji with the document's name and description (null without it); doc: the v1 document (fields in the
+ *   and emoji with the document's name and description (null without it); doc: the document (fields in the
  *   schema's order); yaml: ogs.js toYaml(doc); sha: sha256 of ogs.js toCanonicalJson(doc); pairs: every legal
  *   (source, link, target) triple, a symmetric link's reversed ones included; report: what a conversion decided
- *   (convert.js), null for a v1 input
+ *   (convert.js), null for a published document
  */
 
 const uniq = (xs) => [...new Set(xs)];
@@ -234,7 +246,7 @@ export function ontologySha(text, inherits = null, baseText = null) {
   return inherits === null ? sha256(text) : sha256(`${text}\u0000${inherits}\u0000${baseText ?? ''}`);
 }
 
-/** edgextract's ontology YAML, which earlier builds converted: a mapping with `types` and none of v1's or create-context-graph's keys. */
+/** edgextract's ontology YAML, which earlier builds converted: a mapping with `types` and none of the spec's or create-context-graph's keys. */
 function isLegacyFile(data) {
   return isMap(data) && Object.hasOwn(data, 'types') && !['$schema', 'nodes', 'domain', 'entity_types'].some((k) => Object.hasOwn(data, k));
 }
@@ -244,37 +256,40 @@ function isLegacyFile(data) {
  * edgextract's ontology YAML with an OntologyError marked legacyFormat (LEGACY_FORMAT).
  */
 function inputOf(data) {
-  if (!isMap(data)) throw new OntologyError('An ontology is a mapping (YAML or JSON): an Ontology Graph Spec v1 document, or a create-context-graph domain file');
+  if (!isMap(data)) throw new OntologyError('An ontology is a mapping (YAML or JSON): an Ontology Graph Spec document, or a create-context-graph domain file');
   const ccg = Object.hasOwn(data, 'domain') || Object.hasOwn(data, 'entity_types');
-  if (ccg && Object.hasOwn(data, '$schema')) {
-    throw new OntologyError('This file mixes two formats: `$schema` marks an Ontology Graph Spec document, `domain` and ' +
+  const marker = Object.hasOwn(data, 'schema') ? 'schema' : Object.hasOwn(data, '$schema') ? '$schema' : null;
+  if (ccg && marker) {
+    throw new OntologyError(`This file mixes two formats: \`${marker}\` marks an Ontology Graph Spec document, \`domain\` and ` +
       '`entity_types` are create-context-graph\'s. Keep one of them.');
   }
   if (ccg) return 'create-context-graph';
-  if (Object.hasOwn(data, '$schema') || Object.hasOwn(data, 'nodes')) return 'ontology-graph-spec';
+  if (isDraft(data)) return DRAFT_FORMAT;
+  if (marker || Object.hasOwn(data, 'nodes')) return 'ontology-graph-spec';
   if (isLegacyFile(data)) {
     const e = new OntologyError('This looks like edgextract\'s ontology YAML (`types`, `relations`, `gazetteer`), which this page no ' +
-      'longer reads. Write it as an Ontology Graph Spec v1 document: `$schema`, `id`, `version`, `nodes` (one per type, with ' +
+      'longer reads. Write it as an Ontology Graph Spec document: `schema`, `id`, `version`, `nodes` (one per type, with ' +
       '`label` and `description`) and `relationships` (one entry per pair: `type`, `from: {node}`, `to: {node}`); README ' +
       '"The ontology format" has the mapping.');
     /** @type {any} */ (e).legacyFormat = LEGACY_FORMAT;
     throw e;
   }
-  throw new OntologyError('This is neither an Ontology Graph Spec v1 document (`$schema`, `nodes`) nor a create-context-graph ' +
+  throw new OntologyError('This is neither an Ontology Graph Spec document (`schema`, `nodes`) nor a create-context-graph ' +
     'domain file (`domain`, `entity_types`).');
 }
 
 /** The first problems of a document that failed its checks, as one message. @param {{stage: string|null, errors: any[]}} v */
 function invalidMessage(v) {
   const n = v.errors.length;
-  const what = v.stage === 'schema' ? 'does not follow the Ontology Graph Spec v1 schema' : 'breaks the rules this page needs';
+  const what = v.stage === 'schema' ? `does not follow the Ontology Graph Spec ${SPEC_VERSION} schema`
+    : v.stage === 'sdk' ? 'is refused by the Ontology Graph Spec SDK' : 'breaks the rules this page needs';
   const shown = v.errors.slice(0, 5).map((e) => `${e.path || '(the document)'}: ${e.message}`).join('; ');
   return `This document ${what} (${n} problem${n === 1 ? '' : 's'}): ${shown}${n > 5 ? '; …' : ''}`;
 }
 
 /**
- * Parse and validate an ontology: a v1 document, or a create-context-graph file, converted (see the
- * header). Throws OntologyError with a plain-English reason (and .errors, with paths, for a v1
+ * Parse and validate an ontology: a document, or a create-context-graph file, converted (see the
+ * header). Throws OntologyError with a plain-English reason (and .errors, with paths, for a
  * document that fails its checks; .legacyFormat for edgextract's ontology YAML, no longer read).
  * @param {string} text  YAML or JSON
  * @param {{bases?: Object<string, string>}} [opts]  bases: create-context-graph base ontologies by name, as a domain
@@ -286,15 +301,16 @@ export function parseOntology(text, { bases = {} } = {}) {
   const data = loadText(text, /^\s*\{/.test(text) ? 'The JSON' : 'The YAML');
   const input = inputOf(data);
   if (input === 'ontology-graph-spec') return fromDocument(data);
+  if (input === DRAFT_FORMAT) return fromDocument(fromDraft(data), { convertedFrom: DRAFT_FORMAT, sourceSha: sha256(text) });
   const c = fromCreateContextGraph(text, { bases: bases ?? {} });
   return fromDocument(c.doc, { convertedFrom: 'create-context-graph', sourceSha: ontologySha(text, c.inherits, c.baseText), report: c.report });
 }
 
 /**
- * The stored ontology (readOntology's row) parsed again: its v1 document, or, in a store an
- * earlier build wrote, its YAML (with the base it was stored with), converted. A v1 document an
- * earlier build converted from edgextract's YAML (converted_from 'edgextract') is read as any v1
- * document is ('generic'). A store whose YAML is edgextract's (written before the v1 documents) is
+ * The stored ontology (readOntology's row) parsed again: its document, or, in a store an
+ * earlier build wrote, its YAML (with the base it was stored with), converted. A document an
+ * earlier build converted from edgextract's YAML (converted_from 'edgextract') is read as any
+ * document is ('generic'). A store whose YAML is edgextract's (written before the documents) is
  * refused: an OntologyError marked legacyFormat, which the worker turns into the earlier-build banner.
  * @param {{doc?: string|null, converted_from?: string|null, source_sha?: string|null, yaml?: string|null,
  *   inherits?: string|null, base_yaml?: string|null}} row
@@ -308,8 +324,10 @@ export function ontologyFromStored(row) {
     } catch (e) {
       throw new OntologyError(`the stored ontology document is not JSON (${String(/** @type {any} */ (e)?.message ?? e)})`);
     }
-    const from = row.converted_from === 'create-context-graph' || row.converted_from === LEGACY_FORMAT ? row.converted_from : null;
-    return fromDocument(doc, { convertedFrom: from, sourceSha: row.source_sha ?? null });
+    const from = row.converted_from === 'create-context-graph' || row.converted_from === LEGACY_FORMAT || row.converted_from === DRAFT_FORMAT ? row.converted_from : null;
+    // A store an earlier build wrote keeps its document in the draft format: converted here, and stored
+    // again in the published one when the worker applies it (its sha changes, so it is gated and published again once).
+    return fromDocument(isDraft(doc) ? fromDraft(doc) : doc, { convertedFrom: from, sourceSha: row.source_sha ?? null });
   }
   if (typeof row.yaml === 'string') {
     const bases = row.inherits ? { [row.inherits]: row.base_yaml ?? '' } : {};
@@ -353,7 +371,7 @@ function finish(kindIds, relations) {
 }
 
 /**
- * The ontology a v1 document defines (see the header): checked (ogs.js validateDocument, then the
+ * The ontology a document defines (see the header): checked (ogs.js validateDocument, then the
  * kind and pair limits), with kinds, links, asks, the gazetteer and the tools.
  * @param {any} input  the document
  * @param {{convertedFrom?: 'create-context-graph'|'edgextract'|null, sourceSha?: string|null, report?: any}} [opts]  'edgextract'
@@ -365,7 +383,7 @@ export function fromDocument(input, { convertedFrom = null, sourceSha = null, re
   const v = validateDocument(input);
   if (!v.ok) throw new OntologyError(invalidMessage(v), v.errors);
   const doc = orderDocument(input);
-  const ccg = customOf(doc.extensions, EXTENSIONS.domain).length > 0;
+  const ccg = custom(doc.extensions, EXTENSIONS.domain) !== undefined;
   const nodeEntries = Object.entries(doc.nodes ?? {});
   /** @type {Map<string, string>} node key -> identifier label */
   const labelOfKey = new Map(nodeEntries.map(([key, n]) => [key, /** @type {string} */ (nodeLabel(n))]));
@@ -373,15 +391,15 @@ export function fromDocument(input, { convertedFrom = null, sourceSha = null, re
   /** @type {Kind[]} */
   const types = nodeEntries.map(([key, n]) => {
     const id = /** @type {string} */ (nodeLabel(n));
-    const pole = customOf(n.extensions, EXTENSIONS.pole)[0]?.definition ?? null;
-    const display = isMap(n.extensions?.[EXTENSIONS.display]) ? n.extensions[EXTENSIONS.display] : {};
+    const pole = custom(n.extensions, EXTENSIONS.pole) ?? null;
+    const display = isMap(n.extensions?.display) ? n.extensions.display : {};
     return {
       id,
       key,
       description: n.description ?? (pole ? kindDescription(pole.pole_type, pole.subtype) : id),
       aliases: n.aliases ?? [],
       implied: n.labels?.implied ?? [],
-      color: display.color ?? (ccg ? CCG_DEFAULT_COLOR : DEFAULT_COLOR),
+      color: display.colour ?? (ccg ? CCG_DEFAULT_COLOR : DEFAULT_COLOR),
       pole: pole?.pole_type ?? null,
       subtype: pole?.subtype ?? null,
       origin: /** @type {'own'|'base'} */ (pole?.origin === 'base' ? 'base' : 'own'),
@@ -398,10 +416,10 @@ export function fromDocument(input, { convertedFrom = null, sourceSha = null, re
   const byType = new Map();
   for (const [key, r] of Object.entries(doc.relationships ?? {})) {
     const rel = byType.get(r.type) ?? {
-      id: r.type, description: '', domain: [], range: [], symmetric: customOf(r.extensions, EXTENSIONS.symmetric).length > 0,
+      id: r.type, description: '', domain: [], range: [], symmetric: custom(r.extensions, EXTENSIONS.symmetric) !== undefined,
       phrase: '', pairs: [], keys: [], origin: /** @type {'own'|'base'} */ ('own'), ask: '',
     };
-    if (customOf(r.extensions, EXTENSIONS.origin).some((e) => e.definition?.origin === 'base')) rel.origin = 'base';
+    if (custom(r.extensions, EXTENSIONS.origin)?.origin === 'base') rel.origin = 'base';
     if (rel.description === '' && typeof r.description === 'string') rel.description = r.description;
     rel.pairs.push([/** @type {string} */ (labelOfKey.get(r.from.node)), /** @type {string} */ (labelOfKey.get(r.to.node))]);
     rel.keys.push(key);
@@ -420,8 +438,9 @@ export function fromDocument(input, { convertedFrom = null, sourceSha = null, re
 
   /** @type {Map<string, string>} */
   const names = new Map();
-  for (const e of customOf(doc.extensions, EXTENSIONS.gazetteer)) {
-    for (const [name, key] of Object.entries(e.definition)) names.set(rustTrim(name), /** @type {string} */ (labelOfKey.get(key)));
+  const gazetteer = custom(doc.extensions, EXTENSIONS.gazetteer);
+  if (isMap(gazetteer)) {
+    for (const [name, key] of Object.entries(gazetteer)) names.set(rustTrim(name), /** @type {string} */ (labelOfKey.get(key)));
   }
 
   const pairs = finish(kindIds, relations);
@@ -431,7 +450,7 @@ export function fromDocument(input, { convertedFrom = null, sourceSha = null, re
   const asks = modelAsks(types, relations, ccg ? { domainName: typeof doc.name === 'string' ? doc.name : '' } : { ownDescription });
   for (const t of types) t.ask = asks.get(t.id) ?? null;
 
-  const domainExt = customOf(doc.extensions, EXTENSIONS.domain)[0]?.definition;
+  const domainExt = custom(doc.extensions, EXTENSIONS.domain);
   const str = (x) => (typeof x === 'string' ? x : '');
   return {
     format: ccg ? 'create-context-graph' : 'generic',
@@ -468,8 +487,8 @@ function toolsOf(doc, labelOfKey) {
       });
     }
   };
-  for (const [key, n] of Object.entries(doc.nodes ?? {})) take({ kind: 'node', key, label: labelOfKey.get(key) }, n.tools);
-  for (const [key, r] of Object.entries(doc.relationships ?? {})) take({ kind: 'relationship', key, type: r.type }, r.tools);
+  for (const [key, n] of Object.entries(doc.nodes ?? {})) take({ kind: 'node', key, label: labelOfKey.get(key) }, elementTools(n));
+  for (const [key, r] of Object.entries(doc.relationships ?? {})) take({ kind: 'relationship', key, type: r.type }, elementTools(r));
   return out;
 }
 

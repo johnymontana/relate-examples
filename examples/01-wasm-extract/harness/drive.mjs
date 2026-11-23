@@ -24,7 +24,7 @@
  *       model, as lib/replay.mjs canon text. `main` (the default): the store the browser section
  *       dumps when it did not run (financial-services, create-context-graph's domain, with its
  *       sample, titled by sample id as the page extracts it). `generic`: a generic Ontology Graph
- *       Spec v1 document's store (harness/fixtures.mjs GENERIC_YAML, with a gazetteer, a symmetric
+ *       Spec document's store (harness/fixtures.mjs GENERIC_YAML, with a gazetteer, a symmetric
  *       link and a two-pair link, on GENERIC_TEXT), for native.py's second round trip.
  *   node harness/drive.mjs wasm-queries <dump.json> <out.json>
  *       For harness/native.py: the dump loaded into Relate WASM (in memory, lib/replay.mjs), then
@@ -118,7 +118,7 @@ function nodeEnv() {
     const modelInfo = { repo: SMALL.repo, rev: SMALL.rev, weights: sums.get('model.safetensors'), build: pipeline.BUILD };
     /** @type {Map<string, any>} */
     const ontologies = new Map();
-    // the bundled ontologies as the page's picker loads them: Ontology Graph Spec v1 documents (data/ontologies/ogs/ccg/),
+    // the bundled ontologies as the page's picker loads them: Ontology Graph Spec 1.1 documents (data/ontologies/ogs/ccg/),
     // and the generic document of native.py's second round trip
     const dir = path.join(EX, 'data/ontologies/ogs/ccg');
     for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.ontology.yaml')).sort()) {
@@ -150,7 +150,7 @@ async function nodeStore(oid, docs) {
 
 /**
  * A store built in Node, as dump.json text: 'main' is the browser section's (the financial-services
- * sample in its domain's store), 'generic' the generic v1 document's (GENERIC_YAML on GENERIC_TEXT).
+ * sample in its domain's store), 'generic' the generic document's (GENERIC_YAML on GENERIC_TEXT).
  * @param {'main'|'generic'} which
  */
 async function nodeDump(which = 'main') {
@@ -869,7 +869,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
 
     // ---- the ontology tab -------------------------------------------------------------------------------------
     say();
-    say('## the ontology tab: the ontology as a picture (NVL) and its v1 document');
+    say('## the ontology tab: the ontology as a picture (NVL) and its document');
     await page.click(tid('tab-ontology'));
     const fo = await fitted(page, 'ontologyView');
     await settled(page, 'ontologyView');
@@ -1141,7 +1141,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
 
     // ---- the ontology's tools ------------------------------------------------------------------------------------
     say();
-    say("## the ontology's tools in the console (Ontology Graph Spec v1 `tools`): listed with their notes, run, refused, run from the side panel");
+    say("## the ontology's tools in the console (the `tools` custom extension): listed with their notes, run, refused, run from the side panel");
     await page.click(tid('tab-console'));
     // "Ontology tools" sits under the results, collapsed: its summary counts them.
     const toolsShut = await page.$eval(tid('tools-box'), (e) => ({ open: /** @type {HTMLDetailsElement} */ (e).open, summary: (e.querySelector('summary')?.textContent ?? '').trim(),
@@ -1335,17 +1335,17 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     // ---- a store that keeps another version of its bundled ontology ---------------------------------------------------
     say();
     say("## a store that keeps another version of its bundled ontology (an earlier build's conversion), and Re-apply");
-    // The financial-services document as earlier builds converted it: create-context-graph's icon
-    // and node size in neo4j:display, not in a createContextGraph:display envelope. Applied through the editor.
+    // The financial-services document converted another way: create-context-graph's icon and node size in
+    // display.custom, beside the caption, not in a createContextGraph:display extension. Applied through the editor.
     const olderDoc = parseDocument(fs.readFileSync(path.join(EX, 'data/ontologies/ogs/ccg', `${ONTOLOGY}.ontology.yaml`), 'utf8'));
     let olderMoved = 0;
     for (const node of Object.values(olderDoc.nodes)) {
-      const custom = node.extensions?.custom ?? [];
-      const disp = custom.find((/** @type {any} */ c) => c.type === 'createContextGraph:display');
+      const custom = node.extensions?.custom ?? {};
+      const disp = custom['createContextGraph:display'];
       if (!disp) continue;
-      node.extensions['neo4j:display'] = { ...node.extensions['neo4j:display'], ...disp.definition };
-      node.extensions.custom = custom.filter((/** @type {any} */ c) => c !== disp);
-      if (!node.extensions.custom.length) delete node.extensions.custom;
+      node.extensions.display = { ...node.extensions.display, custom: { ...node.extensions.display.custom, ...disp } };
+      delete custom['createContextGraph:display'];
+      if (!Object.keys(custom).length) delete node.extensions.custom;
       olderMoved++;
     }
     // A cutoff the user set (at its default value, small-v1's store.DEFAULT_GATE, so the graph does not move): it must
@@ -1369,7 +1369,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const keep1 = await keeps();
     const staleText = ((await page.textContent('#ontology-stale-text')) ?? '').trim();
     const pick1 = await page.$eval(tid('domain-select'), (e) => /** @type {HTMLSelectElement} */ (e).selectedOptions[0]?.textContent ?? '');
-    say(`applied through the editor: the ${ONTOLOGY} document with the icon and size of its ${olderMoved} nodes in neo4j:display; the page says: ${JSON.stringify(staleText)}; ` +
+    say(`applied through the editor: the ${ONTOLOGY} document with the icon and size of its ${olderMoved} nodes in display.custom; the page says: ${JSON.stringify(staleText)}; ` +
       `the picker shows ${JSON.stringify(pick1)}: ${yes(await page.isVisible(tid('ontology-stale')) && /an earlier build's conversion, or an edit/.test(staleText) && keep1.sha !== keep0.sha, 'a store with another version of a bundled ontology says so')}`);
     say(`  ${(await text(page, 'notice')) || 'no notice'}`);
     await page.click(tid('ontology-reapply'));

@@ -13,7 +13,7 @@
  * that fill the rest of the viewport: Graph (an empty state saying what to do next, a progress banner
  * over the canvas while an extraction runs, a summary line after it, the view fitted after an
  * extraction and a store switch), Review, Ontology (the ontology as an NVL picture of its kinds and
- * links, and the v1 document's editor), Cutoffs, Console (editor first; the ontology's tools
+ * links, and the document's editor), Cutoffs, Console (editor first; the ontology's tools
  * collapsed below the results) and Store (the store picker, facts, download and restore). A store
  * switch clears the side panels and the console's result.
  *
@@ -37,7 +37,7 @@
  * and data-review (the store's) and data-doc-entities, data-doc-rels and data-doc-review (the
  * document's share).
  *
- * The ontology's tools (Ontology Graph Spec v1 `tools`, stats().ontology.tools): the console tab lists
+ * The ontology's tools (the ontology's `tools` custom extension, stats().ontology.tools): the console tab lists
  * the open store's, grouped by the element each sits on, each with its note (console.js toolCompat:
  * what it can do on an extracted graph), its Cypher, its parameters and Run; the graph tab's side
  * panel lists the tools of a clicked entity's kind (or relationship's type), with Run prefilled
@@ -267,7 +267,7 @@ const state = {
   engineReady: false,
   /** @type {any} the open store, as open-store describes it */ store: null,
   /** @type {any} */ stats: null,
-  /** @type {Array<{file: string, group: string, yaml: string, id: string, title: string, format: string, meta: any}>} the bundled v1 documents */ ontologies: [],
+  /** @type {Array<{file: string, group: string, yaml: string, id: string, title: string, format: string, meta: any}>} the bundled documents */ ontologies: [],
   /** @type {Array<{id: string, label: string}>} the picker's groups, in order (data/ontologies/index.json) */ ontologyGroups: [],
   /** @type {Record<string, string>} create-context-graph base ontologies by name ({_base: text}), for a pasted file's `inherits` */ bases: {},
   /** @type {{args: any, name: string, remove: boolean}|null} a store an earlier build wrote (the legacy banner; remove: its ontology
@@ -643,7 +643,7 @@ async function text(url) {
 
 /**
  * The bundled ontologies (data/ontologies/index.json, written by build.mjs): {bases: {name: file},
- * groups: [{id, label, files}]}: Ontology Graph Spec v1 documents (data/ontologies/ogs/ccg/,
+ * groups: [{id, label, files}]}: Ontology Graph Spec 1.1 documents (data/ontologies/ogs/ccg/,
  * converted from create-context-graph's 27 domains). The bases (create-context-graph's _base.yaml)
  * are for a create-context-graph file pasted or uploaded into the editor, whose `inherits: _base`
  * names it.
@@ -831,7 +831,7 @@ function applyStore(r) {
   $('#domain-select').value = bundled && bundled.yaml === o.yaml ? bundled.file : '';
   if (!$('#domain-select').value) ensureCustomOption(o.id);
   // A store whose document has a bundled ontology's id but differs from it (an earlier build's conversion,
-  // such as one with the icon and size in neo4j:display, or an edit): say so, and offer the bundled one,
+  // such as one with the icon and size in display, or an edit): say so, and offer the bundled one,
   // re-applied as the picker applies it (one re-gate; verdicts and the cutoffs you moved stay).
   state.staleBundled = bundled && bundled.yaml !== o.yaml ? bundled : null;
   $('#ontology-stale').hidden = !state.staleBundled;
@@ -860,7 +860,8 @@ function renderDomainStatus() {
 }
 
 /** A source format's name in a sentence ('edgextract': a document an earlier build converted). @param {string|null|undefined} f */
-const formatName = (f) => (f === 'create-context-graph' ? "create-context-graph's format" : f === 'edgextract' ? "edgextract's format, by an earlier build" : 'Ontology Graph Spec v1');
+const formatName = (f) => (f === 'create-context-graph' ? "create-context-graph's format" : f === 'edgextract' ? "edgextract's format, by an earlier build"
+  : f === 'ontology-graph-spec-draft' ? 'the draft Ontology Graph Spec format earlier builds used' : 'Ontology Graph Spec 1.1');
 
 /**
  * The line under the picker: the domain's description and tagline (create-context-graph), or the
@@ -871,8 +872,8 @@ function renderOntologyAbout(o) {
   const bundled = state.ontologies.find((x) => x.id === o.id && x.yaml === o.yaml);
   const original = bundled ? bundled.file.replace(/^ogs\/ccg\//, '').replace(/\.ontology\.yaml$/, '.yaml') : '';
   const source = bundled
-    ? `create-context-graph's ${original}, as an Ontology Graph Spec v1 document`
-    : `this store's own Ontology Graph Spec v1 document${o.convertedFrom ? `, converted from ${formatName(o.convertedFrom)}` : ''}`;
+    ? `create-context-graph's ${original}, as an Ontology Graph Spec 1.1 document`
+    : `this store's own Ontology Graph Spec 1.1 document${o.convertedFrom ? `, converted from ${formatName(o.convertedFrom)}` : ''}`;
   const what = o.meta ? `${o.meta.emoji ? `${o.meta.emoji} ` : ''}${o.meta.name}: ${o.meta.description}${o.meta.tagline ? ` (${o.meta.tagline})` : ''}` : o.title;
   $('#ontology-about').textContent = `${what}. From ${source}: ${plural(o.kinds.length, 'kind')} and ${plural(o.links.length, 'link')}, ` +
     `${plural((o.tools ?? []).length, 'tool')}.`;
@@ -987,14 +988,14 @@ function setYaml(yaml) {
 
 /**
  * The editor's controls the page adds next to index.html's textarea: a file input (an ontology from
- * disk: a v1 document in YAML or JSON, or a create-context-graph file, converted on load) and "Show
- * as v1" (the editor's create-context-graph text replaced by its v1 document).
+ * disk: a document in YAML or JSON, or a create-context-graph file, converted on load) and "Show
+ * as 1.1" (the editor's create-context-graph text replaced by its document).
  */
 function ontologyEditorControls() {
   const row = $('#apply-ontology').parentElement;
   const file = h('input', { type: 'file', id: 'ontology-file', accept: '.yaml,.yml,.json', 'data-testid': 'ontology-file', hidden: true });
   const pick = h('button', { type: 'button', id: 'ontology-load', 'data-testid': 'ontology-load', text: 'Load a file…', onclick: () => file.click() });
-  const toV1 = h('button', { type: 'button', id: 'ontology-to-v1', 'data-testid': 'ontology-to-v1', text: 'Show as v1', hidden: true, onclick: () => {
+  const toV1 = h('button', { type: 'button', id: 'ontology-to-v1', 'data-testid': 'ontology-to-v1', text: 'Show as 1.1', hidden: true, onclick: () => {
     try {
       const o = parseOntology($('#yaml').value, { bases: state.bases });
       $('#yaml').value = o.yaml;
@@ -1012,7 +1013,7 @@ function ontologyEditorControls() {
     }
     const text = await f.text();
     const ta = $('#yaml');
-    // Converted on load: the editor holds what Apply stores, the v1 document, in YAML.
+    // Converted on load: the editor holds what Apply stores, the document, in YAML.
     let loaded = text;
     let from = null;
     try {
@@ -1041,8 +1042,8 @@ function validateYaml(lead = '') {
     out.className = 'hint ok-text';
     const legalPairs = o.relations.reduce((n, r) => n + r.pairs.length, 0);
     const what = o.convertedFrom
-      ? `A valid ${o.convertedFrom} file, converted to Ontology Graph Spec v1: the v1 document is what is stored ("Show as v1" puts it here)`
-      : 'A valid Ontology Graph Spec v1 document';
+      ? `A valid file in ${formatName(o.convertedFrom)}, converted to Ontology Graph Spec 1.1: the converted document is what is stored ("Show as 1.1" puts it here)`
+      : 'A valid Ontology Graph Spec 1.1 document';
     out.textContent = `${lead ? `${lead} ` : ''}${what}: ${o.types.length} kinds, ${o.relations.length} links ` +
       `(${legalPairs} legal kind pairs), ${o.names.length} listed names, ${o.tools.length} tools; ${gt.typed.length} typed links. ` +
       `${same ? `Applies to ${storeName(o)}.` : `Opens its own store, ${storeName(o)}.`}`;
@@ -1052,10 +1053,10 @@ function validateYaml(lead = '') {
     $('#apply-ontology').disabled = false;
   } catch (e) {
     out.className = 'hint error-text';
-    // A v1 document's problems, one per line, each with its place in the document.
+    // A document's problems, one per line, each with its place in the document.
     const errors = e instanceof OntologyError ? e.errors ?? [] : [];
     out.textContent = (lead ? `${lead}\n` : '') + (errors.length
-      ? [`Not a valid Ontology Graph Spec v1 document (${errors.length} problem${errors.length === 1 ? '' : 's'}):`,
+      ? [`Not a valid Ontology Graph Spec 1.1 document (${errors.length} problem${errors.length === 1 ? '' : 's'}):`,
         ...errors.slice(0, 12).map((x) => `${x.path || '(the document)'}: ${x.message}`), ...(errors.length > 12 ? [`… and ${errors.length - 12} more`] : [])].join('\n')
       : e instanceof OntologyError ? e.message : `Invalid: ${message(e)}`);
     out.dataset.valid = '0';
@@ -2008,7 +2009,7 @@ function renderCutoffs() {
   const s = state.stats;
   const d = s?.defaults;
   // format: how the ontology is asked and which defaults apply (create-context-graph's documents, or any other)
-  const fmtName = s?.ontology.format === 'create-context-graph' ? "create-context-graph's ontologies" : 'Ontology Graph Spec v1 documents (asked as create-context-graph\'s are)';
+  const fmtName = s?.ontology.format === 'create-context-graph' ? "create-context-graph's ontologies" : 'Ontology Graph Spec 1.1 documents (asked as create-context-graph\'s are)';
   $('#cutoff-defaults').textContent = d
     ? `Defaults for ${fmtName} with ${modelLabel(s.defaultsModel)}: kinds keep at p ≥ ${d.entKeep.toFixed(2)}, drop at p ≤ ${d.entDrop.toFixed(2)}; ` +
       `links keep at p ≥ ${d.relKeep.toFixed(2)}, drop at p ≤ ${d.relDrop.toFixed(2)}. A cutoff you move is yours: loading the other model ` +
@@ -2435,7 +2436,7 @@ function renderTable(columns, rows) {
   if (rows.length > 1000) t.append(h('caption', { text: `first 1000 of ${rows.length} rows` }));
 }
 
-// ---- the ontology's tools (Ontology Graph Spec v1 `tools`; README "The ontology's tools") ----------------
+// ---- the ontology's tools (the ontology's `tools` custom extension; README "The ontology's tools") ----------------
 
 /** The index names SHOW INDEXES lists on any store this page made (harness/run.mjs checks them on all 27 samples' stores). */
 const STORE_INDEX_NAMES = storeIndexNames(LOOKUP_INDEXES, [...STORE_CONSTRAINTS, ...ONTOLOGY_CONSTRAINTS, STORE_FULLTEXT]);
@@ -2467,7 +2468,7 @@ function renderTools(o) {
   $('#tools-count').textContent = `(${state.tools.length})`;
   $('#tools-box').dataset.count = String(state.tools.length);
   if (!state.tools.length) {
-    $('#tools-about').textContent = `The ${o.title} document has no tools. An Ontology Graph Spec v1 document can give a node or a relationship tools (example queries for agents); create-context-graph's domains bring theirs.`;
+    $('#tools-about').textContent = `The ${o.title} document has no tools. An Ontology Graph Spec 1.1 document can give a node or a relationship tools (example queries for agents); create-context-graph's domains bring theirs.`;
     return;
   }
   $('#tools-about').textContent = `The example queries (tools) of the ${o.title} document, each on the element its query starts from. They were written for create-context-graph's ` +

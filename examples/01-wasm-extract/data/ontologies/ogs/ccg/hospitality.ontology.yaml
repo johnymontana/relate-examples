@@ -1,16 +1,15 @@
-$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
 id: hospitality
-version: 1
 name: Hospitality
 description: Hotel operations, guest services, room management, and revenue optimization
 nodes:
   Person:
     label: Person
-    description: person
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       email:
         type: STRING
       role:
@@ -18,49 +17,51 @@ nodes:
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#22c55e'
-        caption: name
+      display:
+        x: 0
+        'y': -300
+        colour: '#22c55e'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: PERSON
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: user
-            size: 20
+        createContextGraph:pole:
+          pole_type: PERSON
+          origin: base
+        createContextGraph:display:
+          icon: user
+          size: 20
+    description: person
   Organization:
     label: Organization
-    description: organization
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
       industry:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#3b82f6'
-        caption: name
+      display:
+        x: 162
+        'y': -252
+        colour: '#3b82f6'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: ORGANIZATION
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: building
-            size: 25
+        createContextGraph:pole:
+          pole_type: ORGANIZATION
+          origin: base
+        createContextGraph:display:
+          icon: building
+          size: 25
+    description: organization
   Location:
     label: Location
-    description: location
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       address:
         type: STRING
       latitude:
@@ -68,72 +69,75 @@ nodes:
       longitude:
         type: FLOAT
     extensions:
-      neo4j:display:
-        color: '#a855f7'
-        caption: name
+      display:
+        x: 273
+        'y': -125
+        colour: '#a855f7'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: LOCATION
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: map-pin
+        createContextGraph:pole:
+          pole_type: LOCATION
+          origin: base
+        createContextGraph:display:
+          icon: map-pin
+    description: location
   Event:
     label: Event
-    description: event
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       date:
-        type: DATETIME
+        type: ZONED DATETIME
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#f97316'
-        caption: name
+      display:
+        x: 297
+        'y': 43
+        colour: '#f97316'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: calendar
+        createContextGraph:pole:
+          pole_type: EVENT
+          origin: base
+        createContextGraph:display:
+          icon: calendar
+    description: event
   Object:
     label: Object
-    description: object
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#eab308'
-        caption: name
+      display:
+        x: 227
+        'y': 196
+        colour: '#eab308'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: box
+        createContextGraph:pole:
+          pole_type: OBJECT
+          origin: base
+        createContextGraph:display:
+          icon: box
+    description: object
   Hotel:
     label: Hotel
-    description: hospitality property (object)
     properties:
       hotel_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       brand:
         type: STRING
       hotel_class:
@@ -154,106 +158,107 @@ nodes:
         type: STRING
       country:
         type: STRING
-    tools:
-      - type: canonicalQuery
-        name: search_hotel
-        description: Search for hotels by name, city, brand, or class
-        cypher: |
-          MATCH (h:Hotel)
-          WHERE toLower(h.name) CONTAINS toLower($query)
-             OR toLower(coalesce(h.city, '')) CONTAINS toLower($query)
-             OR toLower(coalesce(h.brand, '')) CONTAINS toLower($query)
-          OPTIONAL MATCH (r:Room)-[:LOCATED_IN]->(h)
-          RETURN h, count(r) AS room_count,
-                 avg(r.base_rate) AS avg_rate
-          LIMIT 20
-        parameters:
-          - name: query
-            type: STRING
-            description: Hotel name, city, or brand to search for
-      - type: canonicalQuery
-        name: room_availability
-        description: Check room availability by hotel and date range
-        cypher: |
-          MATCH (rm:Room)-[:LOCATED_IN]->(h:Hotel)
-          WHERE toLower(h.name) CONTAINS toLower($query)
-            AND rm.status = 'available'
-          RETURN h.name AS hotel, rm.room_number, rm.room_type, rm.floor,
-                 rm.base_rate, rm.view, rm.max_occupancy
-          ORDER BY rm.room_type, rm.floor
-          LIMIT 30
-        parameters:
-          - name: query
-            type: STRING
-            description: Hotel name to check availability for
-      - type: canonicalQuery
-        name: revenue_metrics
-        description: Get revenue metrics and occupancy data for a hotel
-        cypher: |
-          MATCH (h:Hotel)
-          WHERE toLower(h.name) CONTAINS toLower($query)
-          OPTIONAL MATCH (rm:Room)-[:LOCATED_IN]->(h)
-          OPTIONAL MATCH (res:Reservation)-[:ASSIGNED_TO]->(rm)
-          WHERE res.reservation_status IN ['confirmed', 'checked_in', 'checked_out']
-          RETURN h.name AS hotel, h.total_rooms,
-                 count(DISTINCT res) AS total_reservations,
-                 sum(res.total_amount) AS total_revenue,
-                 avg(res.total_amount) AS avg_booking_value,
-                 collect(DISTINCT res.channel) AS booking_channels
-          LIMIT 10
-        parameters:
-          - name: query
-            type: STRING
-            description: Hotel name to get revenue metrics for
-      - type: canonicalQuery
-        name: list_hotels
-        description: List hotel records with optional limit
-        cypher: |
-          MATCH (n:Hotel)
-          RETURN n
-          ORDER BY n.name
-          LIMIT toInteger($limit)
-        parameters:
-          - name: limit
-            type: STRING
-            description: 'Maximum number of results to return (default: 10)'
-      - type: canonicalQuery
-        name: get_hotel_by_id
-        description: Get a specific hotel by ID with all connections
-        cypher: |
-          MATCH (n:Hotel {hotel_id: $id})
-          OPTIONAL MATCH (n)-[r]-(related)
-          RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
-          LIMIT 50
-        parameters:
-          - name: id
-            type: STRING
-            description: The hotel_id to look up
     extensions:
-      neo4j:display:
-        color: '#1e40af'
-        caption: name
+      display:
+        x: 85
+        'y': 288
+        colour: '#1e40af'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: HOSPITALITY_PROPERTY
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: building-2
-            size: 30
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: HOSPITALITY_PROPERTY
+          origin: domain
+        createContextGraph:display:
+          icon: building-2
+          size: 30
+        tools:
+          - type: canonicalQuery
+            name: search_hotel
+            description: Search for hotels by name, city, brand, or class
+            cypher: |
+              MATCH (h:Hotel)
+              WHERE toLower(h.name) CONTAINS toLower($query)
+                 OR toLower(coalesce(h.city, '')) CONTAINS toLower($query)
+                 OR toLower(coalesce(h.brand, '')) CONTAINS toLower($query)
+              OPTIONAL MATCH (r:Room)-[:LOCATED_IN]->(h)
+              RETURN h, count(r) AS room_count,
+                     avg(r.base_rate) AS avg_rate
+              LIMIT 20
+            parameters:
+              - name: query
+                type: STRING
+                description: Hotel name, city, or brand to search for
+          - type: canonicalQuery
+            name: room_availability
+            description: Check room availability by hotel and date range
+            cypher: |
+              MATCH (rm:Room)-[:LOCATED_IN]->(h:Hotel)
+              WHERE toLower(h.name) CONTAINS toLower($query)
+                AND rm.status = 'available'
+              RETURN h.name AS hotel, rm.room_number, rm.room_type, rm.floor,
+                     rm.base_rate, rm.view, rm.max_occupancy
+              ORDER BY rm.room_type, rm.floor
+              LIMIT 30
+            parameters:
+              - name: query
+                type: STRING
+                description: Hotel name to check availability for
+          - type: canonicalQuery
+            name: revenue_metrics
+            description: Get revenue metrics and occupancy data for a hotel
+            cypher: |
+              MATCH (h:Hotel)
+              WHERE toLower(h.name) CONTAINS toLower($query)
+              OPTIONAL MATCH (rm:Room)-[:LOCATED_IN]->(h)
+              OPTIONAL MATCH (res:Reservation)-[:ASSIGNED_TO]->(rm)
+              WHERE res.reservation_status IN ['confirmed', 'checked_in', 'checked_out']
+              RETURN h.name AS hotel, h.total_rooms,
+                     count(DISTINCT res) AS total_reservations,
+                     sum(res.total_amount) AS total_revenue,
+                     avg(res.total_amount) AS avg_booking_value,
+                     collect(DISTINCT res.channel) AS booking_channels
+              LIMIT 10
+            parameters:
+              - name: query
+                type: STRING
+                description: Hotel name to get revenue metrics for
+          - type: canonicalQuery
+            name: list_hotels
+            description: List hotel records with optional limit
+            cypher: |
+              MATCH (n:Hotel)
+              RETURN n
+              ORDER BY n.name
+              LIMIT toInteger($limit)
+            parameters:
+              - name: limit
+                type: STRING
+                description: 'Maximum number of results to return (default: 10)'
+          - type: canonicalQuery
+            name: get_hotel_by_id
+            description: Get a specific hotel by ID with all connections
+            cypher: |
+              MATCH (n:Hotel {hotel_id: $id})
+              OPTIONAL MATCH (n)-[r]-(related)
+              RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
+              LIMIT 50
+            parameters:
+              - name: id
+                type: STRING
+                description: The hotel_id to look up
+    description: hospitality property (object)
   Room:
     label: Room
-    description: hotel room (object)
     properties:
       room_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       room_number:
         type: STRING
-        mustExist: true
+        must_exist: true
       room_type:
         type: STRING
         one_of:
@@ -288,36 +293,37 @@ nodes:
           - mountain
           - interior
     extensions:
-      neo4j:display:
-        color: '#0891b2'
-        caption: name
+      display:
+        x: -85
+        'y': 288
+        colour: '#0891b2'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: HOTEL_ROOM
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: door-open
-            size: 15
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: HOTEL_ROOM
+          origin: domain
+        createContextGraph:display:
+          icon: door-open
+          size: 15
+    description: hotel room (object)
   Reservation:
     label: Reservation
-    description: hotel reservation (event)
     properties:
       reservation_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       check_in:
         type: DATE
-        mustExist: true
+        must_exist: true
       check_out:
         type: DATE
-        mustExist: true
+        must_exist: true
       total_amount:
         type: FLOAT
-        mustExist: true
+        must_exist: true
       reservation_status:
         type: STRING
         one_of:
@@ -340,30 +346,31 @@ nodes:
       num_guests:
         type: INTEGER
     extensions:
-      neo4j:display:
-        color: '#16a34a'
-        caption: name
+      display:
+        x: -227
+        'y': 196
+        colour: '#16a34a'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: HOTEL_RESERVATION
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: calendar-check
-            size: 15
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: HOTEL_RESERVATION
+          origin: domain
+        createContextGraph:display:
+          icon: calendar-check
+          size: 15
+    description: hotel reservation (event)
   Guest:
     label: Guest
-    description: hotel guest (object)
     properties:
       guest_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       email:
         type: STRING
       phone:
@@ -388,53 +395,54 @@ nodes:
         type: INTEGER
       lifetime_value:
         type: FLOAT
-    tools:
-      - type: canonicalQuery
-        name: guest_history
-        description: Get guest stay history and preferences
-        cypher: |
-          MATCH (g:Guest)
-          WHERE toLower(g.name) CONTAINS toLower($query)
-          OPTIONAL MATCH (g)-[:RESERVED]->(res:Reservation)-[:ASSIGNED_TO]->(rm:Room)
-          OPTIONAL MATCH (res)-[:ASSIGNED_TO]->(rm)-[:LOCATED_IN]->(h:Hotel)
-          OPTIONAL MATCH (g)-[:SERVED_BY]->(svc:Service)
-          RETURN g, collect(DISTINCT {hotel: h.name, check_in: res.check_in,
-                 room_type: rm.room_type, amount: res.total_amount}) AS stays,
-                 collect(DISTINCT svc.name) AS services_used
-          LIMIT 10
-        parameters:
-          - name: query
-            type: STRING
-            description: Guest name to look up
-      - type: canonicalQuery
-        name: defaultView
-        description: create-context-graph's default visualisation query
-        cypher: MATCH (g:Guest)-[r:RESERVED]->(res:Reservation)-[:ASSIGNED_TO]->(rm:Room)-[:LOCATED_IN]->(h:Hotel) RETURN g, r, res, rm, h LIMIT 100
     extensions:
-      neo4j:display:
-        color: '#dc2626'
-        caption: name
+      display:
+        x: -297
+        'y': 43
+        colour: '#dc2626'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: HOTEL_GUEST
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: user-check
-            size: 25
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: HOTEL_GUEST
+          origin: domain
+        createContextGraph:display:
+          icon: user-check
+          size: 25
+        tools:
+          - type: canonicalQuery
+            name: guest_history
+            description: Get guest stay history and preferences
+            cypher: |
+              MATCH (g:Guest)
+              WHERE toLower(g.name) CONTAINS toLower($query)
+              OPTIONAL MATCH (g)-[:RESERVED]->(res:Reservation)-[:ASSIGNED_TO]->(rm:Room)
+              OPTIONAL MATCH (res)-[:ASSIGNED_TO]->(rm)-[:LOCATED_IN]->(h:Hotel)
+              OPTIONAL MATCH (g)-[:SERVED_BY]->(svc:Service)
+              RETURN g, collect(DISTINCT {hotel: h.name, check_in: res.check_in,
+                     room_type: rm.room_type, amount: res.total_amount}) AS stays,
+                     collect(DISTINCT svc.name) AS services_used
+              LIMIT 10
+            parameters:
+              - name: query
+                type: STRING
+                description: Guest name to look up
+          - type: canonicalQuery
+            name: defaultView
+            description: create-context-graph's default visualisation query
+            cypher: MATCH (g:Guest)-[r:RESERVED]->(res:Reservation)-[:ASSIGNED_TO]->(rm:Room)-[:LOCATED_IN]->(h:Hotel) RETURN g, r, res, rm, h LIMIT 100
+    description: hotel guest (object)
   Service:
     label: Service
-    description: hotel service (object)
     properties:
       service_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       service_type:
         type: STRING
         one_of:
@@ -454,50 +462,51 @@ nodes:
         type: STRING
       satisfaction_score:
         type: FLOAT
-    tools:
-      - type: canonicalQuery
-        name: service_analysis
-        description: Analyze service performance and guest satisfaction
-        cypher: |
-          MATCH (svc:Service)
-          WHERE toLower(svc.name) CONTAINS toLower($query)
-             OR toLower(coalesce(svc.service_type, '')) CONTAINS toLower($query)
-          OPTIONAL MATCH (g:Guest)-[:SERVED_BY]->(svc)
-          OPTIONAL MATCH (svc)-[:DELIVERED_BY]->(st:Staff)
-          RETURN svc, count(DISTINCT g) AS guests_served,
-                 collect(DISTINCT st.name) AS staff_members,
-                 svc.satisfaction_score AS satisfaction
-          ORDER BY svc.satisfaction_score DESC
-          LIMIT 20
-        parameters:
-          - name: query
-            type: STRING
-            description: Service name or type to analyze
     extensions:
-      neo4j:display:
-        color: '#d97706'
-        caption: name
+      display:
+        x: -273
+        'y': -125
+        colour: '#d97706'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: HOTEL_SERVICE
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: concierge-bell
-            size: 20
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: HOTEL_SERVICE
+          origin: domain
+        createContextGraph:display:
+          icon: concierge-bell
+          size: 20
+        tools:
+          - type: canonicalQuery
+            name: service_analysis
+            description: Analyze service performance and guest satisfaction
+            cypher: |
+              MATCH (svc:Service)
+              WHERE toLower(svc.name) CONTAINS toLower($query)
+                 OR toLower(coalesce(svc.service_type, '')) CONTAINS toLower($query)
+              OPTIONAL MATCH (g:Guest)-[:SERVED_BY]->(svc)
+              OPTIONAL MATCH (svc)-[:DELIVERED_BY]->(st:Staff)
+              RETURN svc, count(DISTINCT g) AS guests_served,
+                     collect(DISTINCT st.name) AS staff_members,
+                     svc.satisfaction_score AS satisfaction
+              ORDER BY svc.satisfaction_score DESC
+              LIMIT 20
+            parameters:
+              - name: query
+                type: STRING
+                description: Service name or type to analyze
+    description: hotel service (object)
   Staff:
     label: Staff
-    description: hotel staff (object)
     properties:
       staff_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       role:
         type: STRING
         one_of:
@@ -530,19 +539,21 @@ nodes:
       performance_rating:
         type: FLOAT
     extensions:
-      neo4j:display:
-        color: '#7c3aed'
-        caption: name
+      display:
+        x: -162
+        'y': -252
+        colour: '#7c3aed'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: HOTEL_STAFF
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: badge
-            size: 20
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: HOTEL_STAFF
+          origin: domain
+        createContextGraph:display:
+          icon: badge
+          size: 20
+    description: hotel staff (object)
 relationships:
   WORKS_FOR:
     type: WORKS_FOR
@@ -552,9 +563,8 @@ relationships:
       node: Organization
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   LOCATED_AT:
     type: LOCATED_AT
     from:
@@ -563,9 +573,8 @@ relationships:
       node: Location
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   PARTICIPATED_IN:
     type: PARTICIPATED_IN
     from:
@@ -574,9 +583,8 @@ relationships:
       node: Event
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   STAYED_AT:
     type: STAYED_AT
     from:
@@ -585,9 +593,8 @@ relationships:
       node: Hotel
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   RESERVED:
     type: RESERVED
     from:
@@ -596,9 +603,8 @@ relationships:
       node: Reservation
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   SERVED_BY:
     type: SERVED_BY
     from:
@@ -607,9 +613,8 @@ relationships:
       node: Service
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   RATED:
     type: RATED
     from:
@@ -618,9 +623,8 @@ relationships:
       node: Hotel
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   ASSIGNED_TO:
     type: ASSIGNED_TO
     from:
@@ -629,9 +633,8 @@ relationships:
       node: Room
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   MANAGED_BY:
     type: MANAGED_BY
     from:
@@ -640,9 +643,8 @@ relationships:
       node: Staff
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   DELIVERED_BY:
     type: DELIVERED_BY
     from:
@@ -651,9 +653,8 @@ relationships:
       node: Staff
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   LOCATED_IN:
     type: LOCATED_IN
     from:
@@ -662,235 +663,228 @@ relationships:
       node: Hotel
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
 extensions:
   custom:
-    - type: createContextGraph:domain
-      definition:
-        tagline: AI-powered Hospitality Intelligence
-        emoji: 🏨
-        inherits: _base
-    - type: createContextGraph:documentTemplates
-      definition:
-        - id: reservation_confirmation
-          name: Reservation Confirmation
-          description: Guest reservation confirmation with stay details
-          count: 15
-          prompt_template: |
-            Write a reservation confirmation for {{guest.name}} at {{hotel.name}}.
-            Reservation: {{reservation.reservation_id}}. Check-in: {{reservation.check_in}}.
-            Check-out: {{reservation.check_out}}. Room: {{room.room_type}} ({{room.room_number}}).
-            Total: ${{reservation.total_amount}}. Include hotel amenities, policies, and directions.
-          required_entities:
-            - Guest
-            - Reservation
-            - Hotel
-            - Room
-        - id: guest_review
-          name: Guest Review Summary
-          description: Aggregated guest reviews and satisfaction analysis
-          count: 8
-          prompt_template: |
-            Write a guest review summary for {{hotel.name}}.
-            Include overall satisfaction trends, service highlights, common complaints,
-            room quality feedback, and competitive positioning.
-          required_entities:
-            - Hotel
-            - Guest
-            - Service
-        - id: service_request
-          name: Service Request Log
-          description: Service request documentation and resolution tracking
-          count: 10
-          prompt_template: |
-            Write a service request log for {{guest.name}} in room {{room.room_number}}
-            at {{hotel.name}}. Service: {{service.name}} ({{service.service_type}}).
-            Include request details, assigned staff, response time, and resolution.
-          required_entities:
-            - Guest
-            - Room
-            - Service
-            - Staff
-        - id: staff_schedule
-          name: Staff Schedule
-          description: Department staff schedule and shift assignments
-          count: 6
-          prompt_template: |
-            Write a staff schedule for the {{staff.department}} department at {{hotel.name}}.
-            Include shift assignments, coverage requirements, special events,
-            and staffing notes for the week.
-          required_entities:
-            - Staff
-            - Hotel
-            - Service
-        - id: revenue_report
-          name: Revenue Report
-          description: Hotel revenue and performance report
-          count: 6
-          prompt_template: |
-            Write a revenue report for {{hotel.name}}.
-            Include room revenue by type, occupancy rates, ADR, RevPAR,
-            ancillary revenue from services, and channel mix analysis.
-          required_entities:
-            - Hotel
-            - Reservation
-            - Room
-            - Service
-    - type: createContextGraph:decisionTraces
-      definition:
-        - id: room_upgrade
-          task: Decide whether to upgrade {{guest.name}} to a {{room.room_type}} room
-          steps:
-            - thought: Check guest loyalty status and stay history
-              action: Query guest profile, loyalty tier, total stays, and lifetime value
-            - thought: Assess room availability and upgrade cost
-              action: Check availability of upgrade room types and revenue displacement
-            - thought: Evaluate potential guest satisfaction and loyalty impact
-              action: Review guest preferences and past feedback
-          outcome_template: 'Decision: {{decision}} upgrade based on {{rationale}}'
-        - id: rate_optimization
-          task: Optimize room rates for {{hotel.name}} for the upcoming week
-          steps:
-            - thought: Analyze current occupancy and booking pace
-              action: Query reservations and room availability for the period
-            - thought: Review historical performance for comparable periods
-              action: Compare with same week in previous years and recent trends
-            - thought: Consider channel mix and segment demand
-              action: Analyze booking channel distribution and guest type mix
-            - thought: Calculate optimal rate by room type
-              action: Model revenue at different rate points and occupancy levels
-          outcome_template: 'Rate plan: {{rates}} with projected RevPAR of ${{revpar}}'
-        - id: service_recovery
-          task: Address service failure for {{guest.name}} at {{hotel.name}}
-          steps:
-            - thought: Understand the service issue and its impact on the guest
-              action: Review service request log and guest complaint details
-            - thought: Assess guest value and relationship history
-              action: Query loyalty tier, lifetime value, and past interactions
-            - thought: Determine appropriate recovery action
-              action: Match recovery option to issue severity and guest profile
-          outcome_template: 'Recovery: {{action}} with estimated retention impact {{impact}}'
-        - id: staffing_optimization
-          task: Optimize staffing levels for {{hotel.name}} across departments
-          steps:
-            - thought: Analyze occupancy patterns and guest arrival/departure schedules
-              action: Query reservations grouped by check-in/check-out dates and guest counts
-            - thought: Map service demand to staffing requirements by department
-              action: Correlate service request volumes with staff shift schedules
-            - thought: Identify over-staffed and under-staffed periods
-              action: Compare current staff schedules against demand patterns
-            - thought: Model optimal shift assignments
-              action: Calculate minimum staff needed per shift while maintaining service standards
-          outcome_template: 'Optimized schedule: {{schedule}}. Cost savings: ${{savings}}/week. Coverage: {{coverage}}%'
-        - id: loyalty_program_evaluation
-          task: Evaluate loyalty program effectiveness for {{hotel.name}} guest retention
-          steps:
-            - thought: Analyze repeat visit rates across loyalty tiers
-              action: Query guest revisit frequency segmented by loyalty_tier
-            - thought: Compare lifetime value between loyalty members and non-members
-              action: Calculate average lifetime_value and total_stays by loyalty tier
-            - thought: Assess upgrade and benefit utilization costs
-              action: Review service usage and room upgrade frequency by loyalty tier
-            - thought: Calculate program ROI
-              action: Compare loyalty program costs against incremental revenue from member retention
-          outcome_template: 'Program ROI: {{roi}}%. Top-performing tier: {{tier}}. Recommendation: {{recommendation}}'
-        - id: channel_mix_optimization
-          task: Optimize booking channel mix for {{hotel.name}} to maximize profitability
-          steps:
-            - thought: Analyze revenue and margin by booking channel
-              action: Query reservations grouped by channel with total revenue and average rates
-            - thought: Evaluate channel-specific guest quality and repeat rates
-              action: Compare guest lifetime value and loyalty enrollment by booking channel
-            - thought: Assess channel costs including commissions and marketing spend
-              action: Calculate net revenue per booking after channel-specific costs
-            - thought: Model optimal channel allocation
-              action: Determine target mix that maximizes net revenue while maintaining occupancy
-          outcome_template: 'Optimal mix: {{mix}}. Projected net revenue increase: {{increase}}%'
-        - id: room_assignment_optimization
-          task: Optimize room assignment for reservation {{reservation.reservation_id}} at {{hotel.name}}
-          steps:
-            - thought: Review guest preferences and loyalty status
-              action: Query guest profile, past room preferences, and special requests
-            - thought: Check available rooms matching guest requirements
-              action: Search rooms by type, view, floor, and occupancy matching reservation needs
-            - thought: Consider operational efficiency and housekeeping schedules
-              action: Factor in room turnover status, maintenance schedule, and floor utilization
-          outcome_template: 'Assigned room: {{room}}. Guest match score: {{score}}. Upgrade applied: {{upgrade}}'
-        - id: competitive_benchmarking
-          task: Benchmark {{hotel.name}} performance against competitive set
-          steps:
-            - thought: Compare key performance indicators with market averages
-              action: Calculate hotel ADR, occupancy, and RevPAR against targets
-            - thought: Analyze guest satisfaction scores by service category
-              action: Query service satisfaction scores and compare against industry benchmarks
-            - thought: Identify differentiating strengths and competitive gaps
-              action: Map highest and lowest scoring services against competitor offerings
-            - thought: Recommend strategic improvements
-              action: Prioritize service improvements by impact on guest satisfaction and revenue
-          outcome_template: 'Market position: {{position}}. Strengths: {{strengths}}. Gaps: {{gaps}}'
-        - id: maintenance_priority
-          task: Prioritize room maintenance requests across {{hotel.name}} properties
-          steps:
-            - thought: Assess urgency based on room status and upcoming reservations
-              action: Check rooms in maintenance or out_of_order status against booking calendar
-            - thought: Evaluate revenue impact of each out-of-service room
-              action: Calculate lost revenue per night for each affected room type
-            - thought: Allocate maintenance staff based on skill requirements and availability
-              action: Match maintenance tasks to available staff by department and shift
-          outcome_template: 'Priority order: {{order}}. Estimated completion: {{timeline}}. Revenue recovered: ${{revenue}}'
-    - type: createContextGraph:demoScenarios
-      definition:
-        - name: Guest Management
-          prompts:
-            - Show me all platinum guests arriving this week
-            - What is the lifetime value of our top 10 repeat guests?
-            - Which guests have outstanding service requests?
-        - name: Operations
-          prompts:
-            - What is the current room availability by type?
-            - Show me the housekeeping schedule for today
-            - Which services have the lowest satisfaction scores?
-        - name: Revenue Intelligence
-          prompts:
-            - What is our RevPAR trend for the last 3 months?
-            - Compare revenue by booking channel
-            - Which room types generate the highest profit margin?
-    - type: createContextGraph:systemPrompt
-      definition: |
-        You are an AI hospitality intelligence assistant with access to a comprehensive
-        knowledge graph of hotel operations data. You help hotel managers, front desk
-        staff, revenue managers, and service teams optimize guest experiences, manage
-        reservations, and drive revenue performance.
+    createContextGraph:domain:
+      tagline: AI-powered Hospitality Intelligence
+      emoji: 🏨
+      inherits: _base
+    createContextGraph:documentTemplates:
+      - id: reservation_confirmation
+        name: Reservation Confirmation
+        description: Guest reservation confirmation with stay details
+        count: 15
+        prompt_template: |
+          Write a reservation confirmation for {{guest.name}} at {{hotel.name}}.
+          Reservation: {{reservation.reservation_id}}. Check-in: {{reservation.check_in}}.
+          Check-out: {{reservation.check_out}}. Room: {{room.room_type}} ({{room.room_number}}).
+          Total: ${{reservation.total_amount}}. Include hotel amenities, policies, and directions.
+        required_entities:
+          - Guest
+          - Reservation
+          - Hotel
+          - Room
+      - id: guest_review
+        name: Guest Review Summary
+        description: Aggregated guest reviews and satisfaction analysis
+        count: 8
+        prompt_template: |
+          Write a guest review summary for {{hotel.name}}.
+          Include overall satisfaction trends, service highlights, common complaints,
+          room quality feedback, and competitive positioning.
+        required_entities:
+          - Hotel
+          - Guest
+          - Service
+      - id: service_request
+        name: Service Request Log
+        description: Service request documentation and resolution tracking
+        count: 10
+        prompt_template: |
+          Write a service request log for {{guest.name}} in room {{room.room_number}}
+          at {{hotel.name}}. Service: {{service.name}} ({{service.service_type}}).
+          Include request details, assigned staff, response time, and resolution.
+        required_entities:
+          - Guest
+          - Room
+          - Service
+          - Staff
+      - id: staff_schedule
+        name: Staff Schedule
+        description: Department staff schedule and shift assignments
+        count: 6
+        prompt_template: |
+          Write a staff schedule for the {{staff.department}} department at {{hotel.name}}.
+          Include shift assignments, coverage requirements, special events,
+          and staffing notes for the week.
+        required_entities:
+          - Staff
+          - Hotel
+          - Service
+      - id: revenue_report
+        name: Revenue Report
+        description: Hotel revenue and performance report
+        count: 6
+        prompt_template: |
+          Write a revenue report for {{hotel.name}}.
+          Include room revenue by type, occupancy rates, ADR, RevPAR,
+          ancillary revenue from services, and channel mix analysis.
+        required_entities:
+          - Hotel
+          - Reservation
+          - Room
+          - Service
+    createContextGraph:decisionTraces:
+      - id: room_upgrade
+        task: Decide whether to upgrade {{guest.name}} to a {{room.room_type}} room
+        steps:
+          - thought: Check guest loyalty status and stay history
+            action: Query guest profile, loyalty tier, total stays, and lifetime value
+          - thought: Assess room availability and upgrade cost
+            action: Check availability of upgrade room types and revenue displacement
+          - thought: Evaluate potential guest satisfaction and loyalty impact
+            action: Review guest preferences and past feedback
+        outcome_template: 'Decision: {{decision}} upgrade based on {{rationale}}'
+      - id: rate_optimization
+        task: Optimize room rates for {{hotel.name}} for the upcoming week
+        steps:
+          - thought: Analyze current occupancy and booking pace
+            action: Query reservations and room availability for the period
+          - thought: Review historical performance for comparable periods
+            action: Compare with same week in previous years and recent trends
+          - thought: Consider channel mix and segment demand
+            action: Analyze booking channel distribution and guest type mix
+          - thought: Calculate optimal rate by room type
+            action: Model revenue at different rate points and occupancy levels
+        outcome_template: 'Rate plan: {{rates}} with projected RevPAR of ${{revpar}}'
+      - id: service_recovery
+        task: Address service failure for {{guest.name}} at {{hotel.name}}
+        steps:
+          - thought: Understand the service issue and its impact on the guest
+            action: Review service request log and guest complaint details
+          - thought: Assess guest value and relationship history
+            action: Query loyalty tier, lifetime value, and past interactions
+          - thought: Determine appropriate recovery action
+            action: Match recovery option to issue severity and guest profile
+        outcome_template: 'Recovery: {{action}} with estimated retention impact {{impact}}'
+      - id: staffing_optimization
+        task: Optimize staffing levels for {{hotel.name}} across departments
+        steps:
+          - thought: Analyze occupancy patterns and guest arrival/departure schedules
+            action: Query reservations grouped by check-in/check-out dates and guest counts
+          - thought: Map service demand to staffing requirements by department
+            action: Correlate service request volumes with staff shift schedules
+          - thought: Identify over-staffed and under-staffed periods
+            action: Compare current staff schedules against demand patterns
+          - thought: Model optimal shift assignments
+            action: Calculate minimum staff needed per shift while maintaining service standards
+        outcome_template: 'Optimized schedule: {{schedule}}. Cost savings: ${{savings}}/week. Coverage: {{coverage}}%'
+      - id: loyalty_program_evaluation
+        task: Evaluate loyalty program effectiveness for {{hotel.name}} guest retention
+        steps:
+          - thought: Analyze repeat visit rates across loyalty tiers
+            action: Query guest revisit frequency segmented by loyalty_tier
+          - thought: Compare lifetime value between loyalty members and non-members
+            action: Calculate average lifetime_value and total_stays by loyalty tier
+          - thought: Assess upgrade and benefit utilization costs
+            action: Review service usage and room upgrade frequency by loyalty tier
+          - thought: Calculate program ROI
+            action: Compare loyalty program costs against incremental revenue from member retention
+        outcome_template: 'Program ROI: {{roi}}%. Top-performing tier: {{tier}}. Recommendation: {{recommendation}}'
+      - id: channel_mix_optimization
+        task: Optimize booking channel mix for {{hotel.name}} to maximize profitability
+        steps:
+          - thought: Analyze revenue and margin by booking channel
+            action: Query reservations grouped by channel with total revenue and average rates
+          - thought: Evaluate channel-specific guest quality and repeat rates
+            action: Compare guest lifetime value and loyalty enrollment by booking channel
+          - thought: Assess channel costs including commissions and marketing spend
+            action: Calculate net revenue per booking after channel-specific costs
+          - thought: Model optimal channel allocation
+            action: Determine target mix that maximizes net revenue while maintaining occupancy
+        outcome_template: 'Optimal mix: {{mix}}. Projected net revenue increase: {{increase}}%'
+      - id: room_assignment_optimization
+        task: Optimize room assignment for reservation {{reservation.reservation_id}} at {{hotel.name}}
+        steps:
+          - thought: Review guest preferences and loyalty status
+            action: Query guest profile, past room preferences, and special requests
+          - thought: Check available rooms matching guest requirements
+            action: Search rooms by type, view, floor, and occupancy matching reservation needs
+          - thought: Consider operational efficiency and housekeeping schedules
+            action: Factor in room turnover status, maintenance schedule, and floor utilization
+        outcome_template: 'Assigned room: {{room}}. Guest match score: {{score}}. Upgrade applied: {{upgrade}}'
+      - id: competitive_benchmarking
+        task: Benchmark {{hotel.name}} performance against competitive set
+        steps:
+          - thought: Compare key performance indicators with market averages
+            action: Calculate hotel ADR, occupancy, and RevPAR against targets
+          - thought: Analyze guest satisfaction scores by service category
+            action: Query service satisfaction scores and compare against industry benchmarks
+          - thought: Identify differentiating strengths and competitive gaps
+            action: Map highest and lowest scoring services against competitor offerings
+          - thought: Recommend strategic improvements
+            action: Prioritize service improvements by impact on guest satisfaction and revenue
+        outcome_template: 'Market position: {{position}}. Strengths: {{strengths}}. Gaps: {{gaps}}'
+      - id: maintenance_priority
+        task: Prioritize room maintenance requests across {{hotel.name}} properties
+        steps:
+          - thought: Assess urgency based on room status and upcoming reservations
+            action: Check rooms in maintenance or out_of_order status against booking calendar
+          - thought: Evaluate revenue impact of each out-of-service room
+            action: Calculate lost revenue per night for each affected room type
+          - thought: Allocate maintenance staff based on skill requirements and availability
+            action: Match maintenance tasks to available staff by department and shift
+        outcome_template: 'Priority order: {{order}}. Estimated completion: {{timeline}}. Revenue recovered: ${{revenue}}'
+    createContextGraph:demoScenarios:
+      - name: Guest Management
+        prompts:
+          - Show me all platinum guests arriving this week
+          - What is the lifetime value of our top 10 repeat guests?
+          - Which guests have outstanding service requests?
+      - name: Operations
+        prompts:
+          - What is the current room availability by type?
+          - Show me the housekeeping schedule for today
+          - Which services have the lowest satisfaction scores?
+      - name: Revenue Intelligence
+        prompts:
+          - What is our RevPAR trend for the last 3 months?
+          - Compare revenue by booking channel
+          - Which room types generate the highest profit margin?
+    createContextGraph:systemPrompt: |
+      You are an AI hospitality intelligence assistant with access to a comprehensive
+      knowledge graph of hotel operations data. You help hotel managers, front desk
+      staff, revenue managers, and service teams optimize guest experiences, manage
+      reservations, and drive revenue performance.
 
-        Your capabilities include:
-        - Searching and analyzing hotel properties and room inventory
-        - Tracking guest history, preferences, and loyalty status
-        - Managing reservations and room assignments
-        - Analyzing service delivery and guest satisfaction
-        - Monitoring revenue metrics including ADR, occupancy, and RevPAR
+      Your capabilities include:
+      - Searching and analyzing hotel properties and room inventory
+      - Tracking guest history, preferences, and loyalty status
+      - Managing reservations and room assignments
+      - Analyzing service delivery and guest satisfaction
+      - Monitoring revenue metrics including ADR, occupancy, and RevPAR
 
-        Always provide accurate, data-driven responses. When making recommendations,
-        cite the specific data points and guest insights from the knowledge graph.
-    - type: createContextGraph:visualization
-      definition:
-        node_colors:
-          Person: '#22c55e'
-          Organization: '#3b82f6'
-          Hotel: '#1e40af'
-          Room: '#0891b2'
-          Reservation: '#16a34a'
-          Guest: '#dc2626'
-          Service: '#d97706'
-          Staff: '#7c3aed'
-        node_sizes:
-          Person: 20
-          Organization: 25
-          Hotel: 30
-          Room: 15
-          Reservation: 15
-          Guest: 25
-          Service: 20
-          Staff: 20
-        default_cypher: MATCH (g:Guest)-[r:RESERVED]->(res:Reservation)-[:ASSIGNED_TO]->(rm:Room)-[:LOCATED_IN]->(h:Hotel) RETURN g, r, res, rm, h LIMIT 100
+      Always provide accurate, data-driven responses. When making recommendations,
+      cite the specific data points and guest insights from the knowledge graph.
+    createContextGraph:visualization:
+      node_colors:
+        Person: '#22c55e'
+        Organization: '#3b82f6'
+        Hotel: '#1e40af'
+        Room: '#0891b2'
+        Reservation: '#16a34a'
+        Guest: '#dc2626'
+        Service: '#d97706'
+        Staff: '#7c3aed'
+      node_sizes:
+        Person: 20
+        Organization: 25
+        Hotel: 30
+        Room: 15
+        Reservation: 15
+        Guest: 25
+        Service: 20
+        Staff: 20
+      default_cypher: MATCH (g:Guest)-[r:RESERVED]->(res:Reservation)-[:ASSIGNED_TO]->(rm:Room)-[:LOCATED_IN]->(h:Hotel) RETURN g, r, res, rm, h LIMIT 100

@@ -1,6 +1,6 @@
 // @ts-check
 // harness/fixtures.mjs: the edge cases the Node harness feeds the pipeline (harness/run.mjs) and the
-// splitter parity (harness/ontology.mjs), and the generic Ontology Graph Spec v1 document the gate's
+// splitter parity (harness/ontology.mjs), and the generic Ontology Graph Spec 1.1 document the gate's
 // edge cases, ontology.txt and native.txt use. Harness-only: nothing here ships in dist/ or appears
 // in the page's sample picker.
 //
@@ -94,19 +94,19 @@ export const FIXTURES = Object.freeze([
 ]);
 
 /**
- * A generic Ontology Graph Spec v1 document: no createContextGraph:domain envelope, so the page
+ * A generic Ontology Graph Spec 1.1 document: no createContextGraph:domain extension, so the page
  * asks its kinds by label text with each node's own description, and its links between their
  * endpoints, at the same default cutoffs as create-context-graph's (ontology.js 'generic',
- * store.js defaultGate). It carries the two edgextract extensions a v1 document may: a gazetteer
+ * store.js defaultGate). It carries the two edgextract extensions a document may: a gazetteer
  * (rule 1), with a name that has no canonical form (東京: names.js keeps ASCII letters and digits
  * only), and a symmetric link (PARTNER_OF); INVESTED_IN has two legal pairs (gate-only: a graph type allows one source and one target label per relationship type, R16);
  * Location has no description. gate.txt extracts GENERIC_TEXT with it on the real model;
  * ontology.txt applies it, edits it and pins the graph type with it; native.txt round-trips its
  * store (drive.mjs node-dump generic).
  */
-export const GENERIC_YAML = `$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+export const GENERIC_YAML = `schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
 id: edge_cases
-version: 1
 name: Edge cases
 nodes:
   person:
@@ -138,10 +138,10 @@ relationships:
       node: company
     to:
       node: company
-    description: The two companies work together.
     extensions:
       custom:
-        - type: edgextract:symmetric
+        edgextract:symmetric: {}
+    description: The two companies work together.
   INVESTED_IN__person__company:
     type: INVESTED_IN
     from:
@@ -165,12 +165,11 @@ relationships:
     description: The company is based in this place.
 extensions:
   custom:
-    - type: edgextract:gazetteer
-      definition:
-        Ada Lovelace: person
-        Northwind: company
-        Acme Inc: company
-        東京: location
+    edgextract:gazetteer:
+      Ada Lovelace: person
+      Northwind: company
+      Acme Inc: company
+      東京: location
 `;
 
 /** The text gate.txt extracts with GENERIC_YAML: a listed name with no canonical form, a symmetric link both ways, a pronoun. */

@@ -13,9 +13,9 @@
  *
  *   init           {}                        -> {version, opfs, syncAccessHandle, memoryMiB}
  *   open-store     {yaml, bases?} | {name}   -> describe() + {regated, regatedBecause}: opens (creates) the ontology's store,
- *                                               (yaml: the ontology's text, an Ontology Graph Spec v1 document in YAML
- *                                               or JSON, or a create-context-graph file, converted to v1 by
- *                                               ontology.js parseOntology; the v1 document is what is stored)
+ *                                               (yaml: the ontology's text, an Ontology Graph Spec 1.1 document in YAML
+ *                                               or JSON, or a create-context-graph file, converted by
+ *                                               ontology.js parseOntology; the converted document is what is stored)
  *                  [cutoffs, gate, model,       or an existing store by name with the ontology it holds; applies
  *                   retryLocked,                the ontology (store.openStore: R9 indexes, R16 repair, D15) and
  *                   discardLegacy]              the default cutoffs of its format and model (the loaded model's,
@@ -24,7 +24,7 @@
  *                                               a changed ontology, or moved default cutoffs, over data is gated
  *                                               and published again (regatedBecause 'ontology' or 'cutoffs').
  *                                               bases: create-context-graph base ontologies by name ({_base: text}),
- *                                               for a create-context-graph file; a stored ontology is a v1 document
+ *                                               for a create-context-graph file; a stored ontology is a document
  *                                               (ontologyFromStored; an earlier build's stored YAML is converted).
  *                                               retryLocked: retry `storage locked` for LOCK_WAIT_MS (the page's
  *                                               reopen after a crash or a recycle; R11). A store an earlier
@@ -517,9 +517,9 @@ const JOBS = {
         h.reset();
       }
       if (!o) {
-        // The stored v1 document, or the YAML an earlier build stored (converted, then replaced by the
+        // The stored document, or the YAML an earlier build stored (converted, then replaced by the
         // document when openStore applies it: its sha changes, so it is gated and published again once).
-        // A v1 document an earlier build converted from edgextract's YAML opens as any v1 document; a store
+        // A document an earlier build converted from edgextract's YAML opens as any document; a store
         // that kept edgextract's YAML itself is refused (legacy-ontology), and the page offers to delete it.
         const row = readOntology(hdb, cl);
         if (!row || (typeof row.doc !== 'string' && typeof row.yaml !== 'string')) {

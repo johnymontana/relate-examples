@@ -1,26 +1,39 @@
 # Where `data/ontology-spec/` comes from
 
-The JSON Schema of the **Neo4j Ontology Graph Specification v1** (`$id`
-`https://neo4j.com/ontology-graph-spec/1.0.0/schema.json`, JSON Schema draft 2020-12), copied
-verbatim from [neo4j/graph-spec](https://github.com/neo4j/graph-spec), branch
-`oskar/ontology-spec-v1-jsonschema`, at commit `35e74c06a7c400ba6aff336935a42ff28725631b`
-(`35e74c0`, committed 2026-10-02, fetched 2026-10-09). The spec is a draft; its prose is
-`docs/ontology-graph-spec-v1-proposal.md` at the same commit (changelog up to 2026-10-02:
-the "Ontology Graph Spec" rename, ADR-0009, and non-empty property names, ADR-0010).
+The JSON Schema of the **Neo4j Ontology Graph Specification 1.1.0** (`$id`
+`https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json`, JSON Schema draft 2020-12; the spec is
+documented at <https://neo4j.com/docs/ontology-graph-spec/>), copied verbatim from
+[neo4j/ontology-graph-spec](https://github.com/neo4j/ontology-graph-spec) at tag `release/v0.12.2`,
+commit `30e9122cb035e58b8e0c51e090f1dad2c66a26f9` (`30e9122`, committed 2026-11-23, fetched
+2026-11-23): the release of the official SDK this example pins (npm `@neo4j/ontology-graph-spec`
+0.12.2). The file is byte for byte what <https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json>
+and <https://neo4j.com/docs/ontology-graph-spec/current/schema.json> served the same day (sha256
+`c8fc0021c86b944a3090e7c5e084409970274fdabea79c8b715976fc09da78eb`).
 
 **Licence:** Apache License 2.0. The licence text is in
 [`LICENSE-graph-spec.txt`](LICENSE-graph-spec.txt), the repository's `LICENSE` copied unchanged
-from the same commit. The repository ships no NOTICE file.
+from the same commit (the same text, blob for blob, as the draft's repository had). The repository
+ships no NOTICE file.
 
 **Changes:** none.
 
-| Here | Upstream at `35e74c0` | Git blob |
+| Here | Upstream at `30e9122` | Git blob |
 |---|---|---|
-| `ontology-graph-spec.schema.json` | `ontology-graph-spec.schema.json` | `ad9e11077e7587627603ffe75c8a846814cffd3b` |
+| `ontology-graph-spec.schema.json` | `ontology-graph-spec.schema.json` | `0e0d79e72ec257d5bbd67a4a41c2344b6b6f0931` |
 | `LICENSE-graph-spec.txt` | `LICENSE` | `261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64` |
 
 **How this example uses it.** `web/ogs.js` carries the same schema as a JavaScript object and
-validates documents with a small interpreter of the keywords the schema uses;
-`harness/ontology.mjs` pins that the object equals this file, and that ajv 8 (with
-ajv-formats, a dev dependency) and `web/ogs.js` report the same errors on every bundled document
-and on a set of tampered ones (`expected/ontology.txt`).
+validates documents with a small interpreter of the keywords the schema uses: the strict check,
+which refuses fields the spec does not have. Then the SDK, through `lib/ogs.mjs`, decodes each
+document and runs its core validation. `harness/ontology.mjs` pins three things
+(`expected/ontology.txt`):
+- the object equals this file;
+- ajv 8 (a dev dependency) and `web/ogs.js` report the same errors on every bundled document and on
+  a set of tampered ones;
+- the SDK accepts every bundled document.
+
+Earlier builds of this example vendored a draft of the spec instead (neo4j/graph-spec, branch
+`oskar/ontology-spec-v1-jsonschema` at `35e74c0`, `$id`
+`https://neo4j.com/ontology-graph-spec/1.0.0/schema.json`). A document in that draft is converted by
+`lib/ogs.mjs` `fromDraft` (README, "Ontologies: the Ontology Graph Spec"). Two of that build's own
+files are kept as fixtures in `harness/fixtures/`.

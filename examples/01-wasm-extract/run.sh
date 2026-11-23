@@ -212,7 +212,7 @@ diffed+=(model.txt)
 # ---- ontology: every bundled ontology, its graph type, the D15 canary -> out/ontology.txt ---
 # web/ontology.js, split.js and names.js on the WASM bundle (in memory): create-context-graph's 27
 # domains with _base.yaml (data/ontologies/ccg/), three of them through the gate and publish without
-# the model, the id rule (no leading _), a generic v1 document (harness/fixtures.mjs), edgextract's YAML
+# the model, the id rule (no leading _), a generic document (harness/fixtures.mjs), edgextract's YAML
 # refused and the stores earlier builds made for its ontologies, the example's limits, and the ported
 # splitter and names checked against edgextract 0.1.0's own WASM (the dev dependency). A pin that stops
 # reproducing, a parity mismatch, or the canary finding db.ontology.* prints `PIN: ...` on stderr and

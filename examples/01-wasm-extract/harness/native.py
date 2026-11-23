@@ -19,7 +19,7 @@ sample, the same store, so the same content but for the (:_Run) timestamps, whic
 prints), and the snapshot tar natively from that dump (lib/replay.py into a .rl, `relate clone
 --to-snapshot-format json`, lib/opfsfmt.py to-tar: the download's form, written by native code
 instead of OPFS). native.txt is the same either way. A second store, of a generic Ontology Graph
-Spec v1 document (no createContextGraph envelope; a gazetteer, a symmetric link and a two-pair link:
+Spec 1.1 document (no createContextGraph extension; a gazetteer, a symmetric link and a two-pair link:
 harness/fixtures.mjs GENERIC_YAML on GENERIC_TEXT), comes from Node only (`drive.mjs node-dump <out>
 generic`) for one more lib/replay.py round trip.
 
@@ -299,7 +299,7 @@ def main() -> int:
     say(f"# Native Relate {VER} (harness/native.py): the repository's engine, the CLI on PATH and the project env's binding")
     say("# The store is the browser section's opfs://ex01-kg-financial-services (create-context-graph's format) after the")
     say("# financial-services sample: its dump.json and its database download, taken at the same moment (made in Node and")
-    say("# natively when the browser section is skipped, with the same content; stderr says which). Then a generic v1 document's")
+    say("# natively when the browser section is skipped, with the same content; stderr says which). Then a generic Ontology Graph Spec document's")
     say("# store (harness/fixtures.mjs GENERIC_YAML: a gazetteer, a symmetric link), made in Node. Paths are left out of `path` columns.")
 
     dump_text, tar_file, _source = inputs(work)
@@ -513,9 +513,9 @@ def main() -> int:
     say(f"lib/opfsfmt.py check --snapshot: ok ({', '.join(back['files'])}); harness/drive.mjs restores this form in the page")
     conn.close()
 
-    # ---- 5. a generic v1 document's store, made in Node ---------------------------------------------
+    # ---- 5. a generic Ontology Graph Spec document's store, made in Node ---------------------------------------------
     say("")
-    say("## a generic Ontology Graph Spec v1 document too: its store (GENERIC_YAML on GENERIC_TEXT), made in Node, through lib/replay.py")
+    say("## a generic Ontology Graph Spec 1.1 document too: its store (GENERIC_YAML on GENERIC_TEXT), made in Node, through lib/replay.py")
     gd = work / "generic.dump.json"
     r = run(["node", HERE / "drive.mjs", "node-dump", gd, "generic"], cwd=EX)
     if r.returncode != 0:

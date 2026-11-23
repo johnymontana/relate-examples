@@ -9,7 +9,8 @@
  *       as build.mjs rewrites them. /models/ serves .cache/gliner/ (GLINER_CACHE_DIR), so
  *       http://127.0.0.1:PORT/?models=local loads the weights without the Hugging Face Hub.
  *   node harness/serve.mjs --site [--dist <dir>] [--port N] [--host H] [--local-models]
- *       dist/ (npm run build) as GitHub Pages serves this project site: under the repository's
+ *       dist/ (npm run build) as GitHub Pages serves this project site (lib/serve.mjs, shared with
+ *       the other browser examples): under the repository's
  *       sub-path, at <PAGES_BASE><site.json path>/ (/relate-examples/01-wasm-extract/; EX01_PAGES_BASE
  *       overrides the base), with no custom response headers (the Content-Security-Policy is the
  *       page's own <meta>), Pages' 10-minute Cache-Control on every file, a 301 from a directory
@@ -28,24 +29,11 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { contents, inputDirs, plan, verifyInputs } from '../build.mjs';
+import { MIME, start as startPages } from '../../../lib/serve.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EX = path.resolve(HERE, '..');
 
-const MIME = /** @type {Record<string, string>} */ ({
-  '.html': 'text/html; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.wasm': 'application/wasm',
-  '.txt': 'text/plain; charset=utf-8',
-  '.md': 'text/markdown; charset=utf-8',
-  '.yaml': 'text/yaml; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.png': 'image/png',
-});
 const mime = (/** @type {string} */ p) => MIME[path.extname(p).toLowerCase()] ?? 'application/octet-stream';
 /** The project site's sub-path on GitHub Pages: https://<owner>.github.io/relate-examples/. */
 export const PAGES_BASE = process.env.EX01_PAGES_BASE ?? '/relate-examples/';
@@ -57,20 +45,19 @@ if (!/^\/(?:[A-Za-z0-9._-]+\/)*$/.test(PAGES_BASE)) throw new Error(`EX01_PAGES_
  * @returns {Promise<{url: string, base: string, server: http.Server, close: () => Promise<void>}>}
  */
 export async function start({ mode, port = 0, host = '127.0.0.1', dist = path.join(EX, 'dist'), localModels = mode === 'dev', log = () => {} }) {
-  const site = JSON.parse(fs.readFileSync(path.join(EX, 'site.json'), 'utf8'));
-  const prefix = mode === 'site' ? `${PAGES_BASE}${site.path}/` : '/';
-  const modelsDir = inputDirs().models;
-  if (mode === 'dev') {
-    const problems = await verifyInputs();
-    if (problems.length) throw new Error(`serve.mjs --dev: the page's inputs are not ready:\n  ${problems.join('\n  ')}`);
-  } else if (!fs.existsSync(path.join(dist, 'index.html'))) {
-    throw new Error(`serve.mjs --site: no ${path.relative(process.cwd(), dist) || dist}/index.html: run npm run build first`);
+  // --site is lib/serve.mjs, the Pages emulator every browser example shares; --local-models adds /models/.
+  if (mode === 'site') {
+    return startPages({ example: path.basename(EX), dist, port, host, base: PAGES_BASE, routes: localModels ? { 'models/': inputDirs().models } : {}, log });
   }
+  const prefix = '/';
+  const modelsDir = inputDirs().models;
+  const problems = await verifyInputs();
+  if (problems.length) throw new Error(`serve.mjs --dev: the page's inputs are not ready:\n  ${problems.join('\n  ')}`);
 
-  /** Only what a static host sends: GitHub Pages caches every file for 10 minutes, the dev server never. */
+  /** Only what a static host sends; the dev server never caches. */
   /** @param {http.ServerResponse} res @param {string} _pathname @param {number} status @param {Record<string, string|number>} [extra] */
   const head = (res, _pathname, status, extra = {}) => {
-    res.writeHead(status, { 'Cache-Control': mode === 'dev' ? 'no-store' : 'max-age=600', ...extra });
+    res.writeHead(status, { 'Cache-Control': 'no-store', ...extra });
   };
   /** @param {http.ServerResponse} res @param {string} pathname @param {number} status @param {string} text */
   const plain = (res, pathname, status, text) => {
@@ -99,31 +86,8 @@ export async function start({ mode, port = 0, host = '127.0.0.1', dist = path.jo
     log(`${req.method} ${pathname}`);
     if (req.method !== 'GET' && req.method !== 'HEAD') return plain(res, pathname, 405, 'method not allowed');
     if (pathname.split('/').includes('..') || pathname.includes('\0')) return plain(res, pathname, 400, 'bad path');
-    if (mode === 'site') {
-      if (pathname === PAGES_BASE) {
-        const html = `<!doctype html><meta charset="utf-8"><title>Browser examples (local)</title>\n<p><a href="${site.path}/">${site.title}</a></p>\n`;
-        head(res, pathname, 200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html) });
-        return res.end(req.method === 'HEAD' ? undefined : html);
-      }
-      // Pages: a directory URL without its trailing slash answers 301 to the one with it.
-      if (pathname === PAGES_BASE.slice(0, -1) || pathname === prefix.slice(0, -1)) {
-        head(res, pathname, 301, { Location: `${pathname}/` });
-        return res.end();
-      }
-      if (!pathname.startsWith(prefix)) return plain(res, pathname, 404, 'not found');
-    }
     const inner = pathname.slice(prefix.length);
     if (localModels && inner.startsWith('models/')) return sendFile(req, res, pathname, modelsDir, inner.slice('models/'.length));
-    if (mode === 'site') {
-      const root = path.resolve(dist);
-      const target = path.resolve(root, inner);
-      if (inner !== '' && !inner.endsWith('/') && (target === root || target.startsWith(root + path.sep))
-          && fs.statSync(target, { throwIfNoEntry: false })?.isDirectory()) {
-        head(res, pathname, 301, { Location: `${pathname}/` });
-        return res.end();
-      }
-      return sendFile(req, res, pathname, root, inner === '' || inner.endsWith('/') ? `${inner}index.html` : inner);
-    }
     const file = inner === '' || inner.endsWith('/') ? `${inner}index.html` : inner;
     let entry;
     try {

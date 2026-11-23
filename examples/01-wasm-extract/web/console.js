@@ -40,7 +40,7 @@
  * as well, after the page's own checks (toolArgs, below) refused it first. They travel as JSON text
  * (R5: a typed 3.0 binds as INTEGER 3).
  *
- * The tools (Ontology Graph Spec v1 `tools`, ontology.js o.tools; README "The ontology's tools"):
+ * The tools (the ontology's `tools` custom extension, ontology.js o.tools; README "The ontology's tools"):
  *   readQuery(cypher)            the query read statically: its MATCH parts (required, optional or in
  *                                a subquery), node and relationship patterns with labels, types, map
  *                                keys and hop bounds, the properties read per variable, procedure

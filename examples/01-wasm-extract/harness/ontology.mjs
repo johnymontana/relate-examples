@@ -7,19 +7,19 @@
 // reproducing, or a parity mismatch nobody explained, prints `PIN: <row> ...` on stderr and
 // exits 1 after printing everything else.
 //
-// Sections: the Ontology Graph Spec v1 (data/ontology-spec/: the vendored schema; the 27 bundled documents in
+// Sections: the Ontology Graph Spec 1.1 (data/ontology-spec/: the vendored schema; the 27 bundled documents in
 // data/ontologies/ogs/ccg/ equal to a fresh conversion of their originals, read back losslessly; property types and
 // tool placement; ajv and web/ogs.js agreeing on every document and on tampered ones; the rules ogs.js adds);
-// create-context-graph's 27 domains (their v1 documents, converted from data/ontologies/ccg/ with _base.yaml: counts with
+// create-context-graph's 27 domains (their documents, converted from data/ontologies/ccg/ with _base.yaml: counts with
 // the base, typed and untyped links with the reason, the graph type read back, the stored document
 // and its base, a no-op re-apply; _merge_base; three of them through the gate and publish without
 // the model: exact-pair legality, Person OWNS Account, kinds named Entity and Claim); the id rule
 // (no leading _: the example's own labels) and the format's refusals; a store an earlier build wrote;
-// then a generic v1 document (harness/fixtures.mjs GENERIC_YAML: asked by label text, the same defaults),
+// then a generic document (harness/fixtures.mjs GENERIC_YAML: asked by label text, the same defaults),
 // edgextract's YAML refused, and the stores earlier builds made for edgextract's ontologies; the
 // graph-type pins on the generic document (O4, O5, R16, data blocking an ALTER, Unicode and keyword ids
 // end to end); system_ontologies, which does not exist (O3, R17); the D15 canary; store names (D14); the example's limits
-// on a v1 document; parity with edgextract (the splitter on every sample and fixture, names).
+// on a document; parity with edgextract (the splitter on every sample and fixture, names).
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -28,12 +28,17 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as cl from '../../../lib/relate_wasm.mjs';
 import { conversions, losses, stale } from './convert.mjs';
 import { PROPERTY_TYPES, paramBindings, toolAnchor } from '../web/convert.js';
-import { SCHEMA, SCHEMA_ID, checkDocument, parseDocument, toCanonicalJson, toYaml, validateSchema } from '../web/ogs.js';
+import yaml from 'js-yaml';
+import * as sdk from '@neo4j/ontology-graph-spec';
+import { createOgs, DRAFT_MAPPING, VALIDATION_SETS } from '../../../lib/ogs.mjs';
+import {
+  SCHEMA, SCHEMA_ID, SDK_VERSION, SPEC_VERSION, checkDocument, fromDraft, isDraft, parseDocument, toCanonicalJson, toYaml, validateSchema, validateSpec,
+} from '../web/ogs.js';
 import * as replay from '../../../lib/replay.mjs';
 import { checkSchema, relationPhrase } from '../web/gliner.js';
 import { entityName, kindWords, normalizeEntityName } from '../web/names.js';
 import {
-  applyOntology, currentGraphType, graphTypeSpec, INTERNAL_LABELS, INTERNAL_TYPES, isOntologyId, kindDescription,
+  applyOntology, currentGraphType, DRAFT_FORMAT, graphTypeSpec, INTERNAL_LABELS, INTERNAL_TYPES, isOntologyId, kindDescription,
   labelText, MAX_ID_CHARS, MAX_TYPES, MIN_TYPES, ONTOLOGY_CONSTRAINTS, ontologyCanary, OntologyApplyError, OntologyError, ontologyFromStored,
   ontologySha, parseOntology, readOntology, RESERVED_PREFIX, storeName,
 } from '../web/ontology.js';
@@ -178,24 +183,23 @@ function keysBuilt(db) {
 const UNIQUES = ONTOLOGY_CONSTRAINTS.map((s) => /CONSTRAINT (\S+)/.exec(s)[1]).sort();
 
 say(`# Ontologies in Relate WASM ${VER} (harness/ontology.mjs)`);
-say('Every ontology is an Ontology Graph Spec v1 document (web/ogs.js): parsed by web/ontology.js, kept in an in-memory');
+say('Every ontology is an Ontology Graph Spec 1.1 document (web/ogs.js): parsed by web/ontology.js, kept in an in-memory');
 say('store by applyOntology (the D8 layer and a CIP-176 graph type, D15) and read back. The 27 bundled ones are converted');
 say('(web/convert.js) from create-context-graph\'s domain files (data/ontologies/ccg/); the page and the harnesses load the');
 say('converted documents (data/ontologies/ogs/ccg/), and a create-context-graph file is converted on load. edgextract 0.1.0 (npm,');
 say('its own WASM) is the parity oracle for the ported splitter and names.');
 say('The example\'s own labels and relationship types all start with _ (_Entity, _Claim, _IN, ...); an ontology id may not.');
 
-// ---- 0. the Ontology Graph Spec v1 -------------------------------------------------------------------------
+// ---- 0. the Ontology Graph Spec 1.1 ------------------------------------------------------------------------
 const SPEC_DIR = join(DATA, 'ontology-spec');
 const OGS_DIR = join(DATA, 'ontologies', 'ogs');
 const BASE_TEXT = readFileSync(join(DATA, 'ontologies', 'ccg', '_base.yaml'), 'utf8');
-/** ajv 8 with ajv-formats (fast uri, regex), the cross-check of web/ogs.js's validator. */
+const DRAFT_FIXTURES = join(EX, 'harness', 'fixtures');
+/** ajv 8 (draft 2020-12), the cross-check of web/ogs.js's validator. */
 const ajvValidate = (() => {
   const require = createRequire(join(EX, 'package.json'));
   const Ajv2020 = require('ajv/dist/2020').default;
-  const addFormats = require('ajv-formats').default;
   const ajv = new Ajv2020({ allErrors: true, strict: true, strictTypes: false, strictNumbers: true });
-  addFormats(ajv, { mode: 'fast', formats: ['uri', 'regex'] });
   return ajv.compile(JSON.parse(readFileSync(join(SPEC_DIR, 'ontology-graph-spec.schema.json'), 'utf8')));
 })();
 const ajvPkg = (name) => JSON.parse(readFileSync(join(EX, 'node_modules', name, 'package.json'), 'utf8')).version;
@@ -206,7 +210,7 @@ function bothValidate(doc) {
   const mine = validateSchema(doc).map((e) => `${e.path || '/'} ${e.keyword}`).sort();
   return { same: canonJson(theirs) === canonJson(mine), ajv: theirs, ogs: mine };
 }
-section('the Ontology Graph Spec v1 (data/ontology-spec/: neo4j/graph-spec 35e74c0, Apache-2.0)');
+section(`the Ontology Graph Spec ${SPEC_VERSION} (data/ontology-spec/: neo4j/ontology-graph-spec release/v0.12.2, Apache-2.0)`);
 {
   const file = JSON.parse(readFileSync(join(SPEC_DIR, 'ontology-graph-spec.schema.json'), 'utf8'));
   const keywords = new Set();
@@ -218,7 +222,10 @@ section('the Ontology Graph Spec v1 (data/ontology-spec/: neo4j/graph-spec 35e74
   say(`schema: ${file.$id} (draft 2020-12; ${Object.keys(file.$defs).length} definitions)`);
   say(`web/ogs.js SCHEMA equals the vendored file: ${canonJson(SCHEMA) === canonJson(file) ? 'yes' : 'NO'}; SCHEMA_ID is its $id: ${SCHEMA_ID === file.$id ? 'yes' : 'NO'}`);
   pin('the vendored schema (web/ogs.js SCHEMA = data/ontology-spec/ontology-graph-spec.schema.json)', canonJson(SCHEMA) === canonJson(file) && SCHEMA_ID === file.$id, 'equal', 'different');
-  say(`keywords it uses (the ones web/ogs.js interprets, annotations aside): ${[...keywords].filter((k) => ['$ref', 'type', 'required', 'properties', 'additionalProperties', 'propertyNames', 'items', 'minItems', 'minimum', 'pattern', 'enum', 'minLength', 'format'].includes(k)).sort().join(', ')}`);
+  say(`keywords it uses (the ones web/ogs.js interprets, annotations aside): ${[...keywords].filter((k) => ['$ref', 'type', 'required', 'properties', 'additionalProperties', 'items', 'enum', 'const', 'oneOf'].includes(k)).sort().join(', ')}`);
+  const sdkPkg = ajvPkg('@neo4j/ontology-graph-spec');
+  say(`the SDK: npm @neo4j/ontology-graph-spec ${sdkPkg} (web/ogs.js SDK_VERSION ${SDK_VERSION}), through lib/ogs.mjs`);
+  pin('the SDK pin (package.json = web/ogs.js SDK_VERSION)', sdkPkg === SDK_VERSION, SDK_VERSION, sdkPkg);
 }
 /** @type {Array<{group: string, source: string, file: string, text: string, o: any}>} */
 const CONVERTED = conversions();
@@ -232,7 +239,7 @@ const CONVERTED = conversions();
   let trips = 0;
   for (const c of CONVERTED) {
     const text = readFileSync(join(DATA, 'ontologies', c.file), 'utf8');
-    const v1 = parseOntology(text);
+    const loaded = parseOntology(text);
     // the document as the page loads it gives the ontology its original gives (kinds, links, asks, the graph type)
     const key = (o) => canonJson({
       types: o.types.map((t) => [t.id, t.description, t.aliases, t.color, t.pole, t.subtype, t.origin, t.ask]),
@@ -240,11 +247,11 @@ const CONVERTED = conversions();
       names: o.names, pairs: o.pairs, format: o.format, id: o.id, version: o.version, title: o.title, meta: o.meta, spec: graphTypeSpec(o).spec,
       schema: modelSchema(o).schema, tools: o.tools,
     });
-    if (key(v1) === key(c.o) && v1.sha === c.o.sha && v1.convertedFrom === null && c.o.convertedFrom === c.group.replace('ccg', 'create-context-graph')) same++;
-    else pins.push(`PIN: ${c.file}: the v1 document and its original give different ontologies`);
+    if (key(loaded) === key(c.o) && loaded.sha === c.o.sha && loaded.convertedFrom === null && c.o.convertedFrom === c.group.replace('ccg', 'create-context-graph')) same++;
+    else pins.push(`PIN: ${c.file}: the document and its original give different ontologies`);
     // YAML and canonical JSON both read back to the same document
     const doc = parseDocument(text);
-    if (toYaml(doc) === text && toCanonicalJson(JSON.parse(toCanonicalJson(doc))) === toCanonicalJson(doc) && v1.sha === sha256(toCanonicalJson(doc))) trips++;
+    if (toYaml(doc) === text && toCanonicalJson(JSON.parse(toCanonicalJson(doc))) === toCanonicalJson(doc) && loaded.sha === sha256(toCanonicalJson(doc))) trips++;
     else pins.push(`PIN: ${c.file}: toYaml or toCanonicalJson does not read back`);
   }
   say(`each gives the ontology its original gives (kinds, links, legal pairs, asks, the graph type, the model's schema, the tools): ${same} of ${CONVERTED.length}`);
@@ -254,7 +261,7 @@ const CONVERTED = conversions();
     const l = losses(readFileSync(join(DATA, 'ontologies', c.source), 'utf8'), BASE_TEXT, c.o.doc);
     if (l.length) lossy.push(`${c.o.id} (${l.join(', ')})`);
   }
-  say('create-context-graph, read back from each v1 document into its own model (domain, inherits, entity types with their');
+  say('create-context-graph, read back from each document into its own model (domain, inherits, entity types with their');
   say('properties, colours and icons, relationships, agent tools, document templates, decision traces, demo scenarios, system');
   say(`prompt, visualization; harness/convert.mjs toCreateContextGraph) and compared with the file flattened by _merge_base: ${lossy.length ? `LOSSES in ${lossy.join('; ')}` : `nothing lost in ${CONVERTED.filter((x) => x.group === 'ccg').length} of 27`}`);
   pin('the create-context-graph conversion is lossless', lossy.length === 0, 'nothing lost', lossy.join('; '));
@@ -262,7 +269,73 @@ const CONVERTED = conversions();
   say(`keys a conversion dropped (keys the format's own reader ignores): ${dropped.length ? dropped.join('; ') : 'none'}`);
 }
 {
-  sub('create-context-graph property types as v1 type tokens (web/convert.js PROPERTY_TYPES), over the 27 files and _base.yaml');
+  sub('the SDK on the bundled documents (lib/ogs.mjs: GraphSpec.Json decodes the js-yaml reading; the SDK\'s validation sets)');
+  const ogs = createOgs({ yaml, sdk, sdkVersion: SDK_VERSION });
+  /** @type {Map<string, number>} 'set code' -> count */
+  const counts = new Map();
+  let decoded = 0;
+  for (const c of CONVERTED) {
+    const text = readFileSync(join(DATA, 'ontologies', c.file), 'utf8');
+    const v = ogs.validate(parseDocument(text), VALIDATION_SETS);
+    if (!v.issues.some((i) => i.set === 'decode' || i.set === 'core')) decoded++;
+    else pins.push(`PIN: ${c.file}: the SDK refuses it (${v.issues.filter((i) => i.set === 'decode' || i.set === 'core').map((i) => i.message).join('; ')})`);
+    for (const i of v.issues) counts.set(`${i.set} ${i.code}`, (counts.get(`${i.set} ${i.code}`) ?? 0) + 1);
+  }
+  say(`decoded, with no core issue: ${decoded} of ${CONVERTED.length}`);
+  say(`the other validation sets (informational: the page checks core): ${counts.size ? [...counts].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(([k, n]) => `${k} ${n}`).join(', ') : 'no issues'}`);
+  pin('the SDK accepts every bundled document', decoded === CONVERTED.length, 'all', `${decoded} decoded`);
+  // Y1: the SDK's own YAML decoder misreads plain YAML: a plain <…> scalar, and a plain URL before a single-quoted
+  // scalar (and more: js-yaml's output of the bundled documents fails in it at other places too)
+  const tryYaml = (t) => { try { sdk.GraphSpec.Yaml.decodeFromString(t); return 'decoded'; } catch (e) { return `refused: ${String(e?.message ?? e).split('\n')[0]}`; } };
+  const q = `schema: "${SCHEMA_ID}"\nversion: "1"\nid: y\nnodes:\n  a:\n    label: A\n    properties:\n      tags:\n        type: `;
+  const plain = tryYaml(`${q}LIST<STRING>\n`);
+  const quoted = tryYaml(`${q}"LIST<STRING>"\n`);
+  const url = tryYaml(`schema: ${SCHEMA_ID}\nversion: '1'\nid: y\nnodes:\n  a:\n    label: A\n`);
+  const urlQuoted = tryYaml(`schema: "${SCHEMA_ID}"\nversion: '1'\nid: y\nnodes:\n  a:\n    label: A\n`);
+  const viaJson = (() => { try { ogs.decode(parseDocument(`${q}LIST<STRING>\n`)); return 'decoded'; } catch (e) { return describe(e); } })();
+  const bundled = CONVERTED.filter((c) => tryYaml(readFileSync(join(DATA, 'ontologies', c.file), 'utf8')) === 'decoded').length;
+  say(`Y1: through the SDK's YAML decoder: type: LIST<STRING> -> ${plain}; quoted -> ${quoted}`);
+  say(`    schema: <a plain URL> then version: '1' -> ${url}; the URL quoted -> ${urlQuoted}`);
+  say(`    the bundled documents (js-yaml's YAML) -> ${bundled} of ${CONVERTED.length} decoded; through js-yaml and GraphSpec.Json (lib/ogs.mjs) -> ${viaJson}, and all ${decoded} above`);
+  pin('Y1 (the SDK\'s YAML decoder misreads plain YAML)', plain.startsWith("refused: Neo4jType does not contain element with name ''") && quoted === 'decoded' &&
+    url.startsWith('refused: Top-level decoder') && urlQuoted === 'decoded' && viaJson === 'decoded', 'plain refused, quoted and JSON decoded', `${plain} / ${quoted} / ${url} / ${urlQuoted} / ${viaJson}`);
+  // Y2: the decoder is lenient where the schema is strict
+  const lenient = { ...parseDocument(readFileSync(join(DATA, 'ontologies', CONVERTED[0].file), 'utf8')), version: 1, extra_field: true };
+  const lv = ogs.validate(lenient, ['core']);
+  say(`Y2: a document with an integer version and an unknown field: the SDK -> ${lv.ok ? 'accepted' : lv.issues.map((i) => i.code).join(', ')}; ` +
+    `the JSON Schema -> ${validateSchema(lenient).map((e) => `${e.path || '/'} ${e.keyword}`).join(', ')}`);
+  pin('Y2 (the SDK\'s decoder ignores unknown fields; the schema refuses them)', lv.ok && validateSchema(lenient).length === 2, 'SDK accepts, schema refuses', JSON.stringify(lv));
+}
+{
+  sub('the draft format earlier builds shipped (lib/ogs.mjs fromDraft; harness/fixtures/*.draft.ontology.yaml: the last draft build\'s own files)');
+  for (const [from, to] of DRAFT_MAPPING) say(`  ${from}  ->  ${to}`);
+  const fin = CONVERTED.find((c) => c.o.id === 'financial-services').o;
+  const draftText = readFileSync(join(DRAFT_FIXTURES, 'financial-services.draft.ontology.yaml'), 'utf8');
+  const draft = parseDocument(draftText);
+  const converted = fromDraft(draft);
+  const sameDoc = toCanonicalJson(converted) === toCanonicalJson(fin.doc);
+  say(`financial-services as the last draft build bundled it: isDraft ${isDraft(draft)}; fromDraft gives the bundled document: ${sameDoc ? 'yes' : 'NO'}`);
+  const pasted = parseOntology(draftText);
+  say(`pasted into the page (parseOntology): converted from ${pasted.convertedFrom}; the same kinds, links, asks and sha as the bundled one: ${canonJson(modelSchema(pasted)) === canonJson(modelSchema(fin)) && pasted.sha === fin.sha ? 'yes' : 'NO'}`);
+  const genericDraft = parseDocument(readFileSync(join(DRAFT_FIXTURES, 'edge-cases.draft.ontology.yaml'), 'utf8'));
+  const genericSame = toCanonicalJson(fromDraft(genericDraft)) === toCanonicalJson(parseDocument(GENERIC_YAML));
+  say(`the generic document (harness/fixtures.mjs GENERIC_YAML) as the last draft build had it: fromDraft gives it: ${genericSame ? 'yes' : 'NO'}`);
+  pin('fromDraft (the last draft build\'s documents convert to this build\'s)', sameDoc && genericSame && pasted.convertedFrom === DRAFT_FORMAT && pasted.sha === fin.sha,
+    'equal', `${sameDoc} ${genericSame} ${pasted.convertedFrom}`);
+  const refusals = [
+    ['a BYTES property', (() => { const d = structuredClone(genericDraft); d.nodes.person.properties = { photo: { type: 'BYTES' } }; return d; })()],
+    ['two custom envelopes of one type', (() => { const d = structuredClone(genericDraft); d.extensions.custom.push(structuredClone(d.extensions.custom[0])); return d; })()],
+    ['a constraint of an unknown kind', (() => { const d = structuredClone(genericDraft); d.nodes.person.properties = { id: { type: 'STRING' } }; d.nodes.person.constraints = [{ constraint_type: 'exists', properties: ['id'] }]; return d; })()],
+  ];
+  for (const [name, d] of refusals) {
+    let got;
+    try { fromDraft(d); got = 'converted'; } catch (e) { got = describe(e); }
+    say(`fromDraft on ${name}: ${got}`);
+    if (!got.startsWith('OntologyError')) pins.push(`PIN: fromDraft accepts ${name}`);
+  }
+}
+{
+  sub('create-context-graph property types as type tokens (web/convert.js PROPERTY_TYPES), over the 27 files and _base.yaml');
   /** @type {Map<string, {n: number, base: number}>} */
   const seen = new Map();
   const count = (t, base) => {
@@ -282,20 +355,20 @@ const CONVERTED = conversions();
   for (const [t, c] of [...seen].sort((a, b) => b[1].n - a[1].n || (a[0] < b[0] ? -1 : 1))) {
     const token = PROPERTY_TYPES[t.trim().toLowerCase()];
     if (!token) unknown.push(t);
-    say(`  ${t.padEnd(9)} -> ${(token ?? 'ANY (unknown, kept in a createContextGraph:type extension)').padEnd(9)} ${String(c.n).padStart(4)} properties${c.base ? ` (${c.base} in _base.yaml)` : ''}`);
+    say(`  ${t.padEnd(9)} -> ${(token ?? 'ANY (unknown, kept in a createContextGraph:type extension)').padEnd(14)} ${String(c.n).padStart(4)} properties${c.base ? ` (${c.base} in _base.yaml)` : ''}`);
   }
   const reported = CONVERTED.flatMap((c) => c.o.report?.types ?? []);
   say(`types with no token (ANY): ${unknown.length ? unknown.join(', ') : 'none'}; reported by the conversions: ${reported.length}`);
-  pin('every property type of the 27 domains has a v1 token', unknown.length === 0 && reported.length === 0, 'all mapped', unknown.join(', '));
+  pin('every property type of the 27 domains has a token', unknown.length === 0 && reported.length === 0, 'all mapped', unknown.join(', '));
   const tokens = new Map();
   for (const c of CONVERTED.filter((x) => x.group === 'ccg')) {
     for (const el of [...Object.values(c.o.doc.nodes), ...Object.values(c.o.doc.relationships ?? {})]) {
       for (const p of Object.values(el.properties ?? {})) tokens.set(p.type, (tokens.get(p.type) ?? 0) + 1);
     }
   }
-  say(`in the 27 v1 documents (the base's properties on every domain that keeps its kind): ${[...tokens].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(', ')}`);
-  say('flags: required -> mustExist: true, unique -> unique: true, enum -> one_of, default -> a createContextGraph:default extension');
-  say('(v1 has no default field), description -> description; tool parameters get the same type tokens.');
+  say(`in the 27 documents (the base's properties on every domain that keeps its kind): ${[...tokens].sort((a, b) => b[1] - a[1]).map(([t, n]) => `${t} ${n}`).join(', ')}`);
+  say('flags: required -> must_exist: true, unique -> unique: true, enum -> one_of, default -> a createContextGraph:default extension');
+  say('(the spec has no default field), description -> description; tool parameters get the same type tokens.');
 }
 {
   sub('create-context-graph\'s agent_tools and visualization.default_cypher as canonicalQuery tools (web/convert.js toolAnchor)');
@@ -353,66 +426,72 @@ const CONVERTED = conversions();
   say(`o.tools (financial-services, the interface the page's tools view reads): ${fin.length}; the first: ${JSON.stringify({ ...fin[0], cypher: `${fin[0].cypher.split('\n')[0]} …` })}`);
 }
 {
-  sub(`the two validators: ajv ${ajvPkg('ajv')} with ajv-formats ${ajvPkg('ajv-formats')} (fast uri, regex) and web/ogs.js validateSchema`);
-  say('Compared error for error, as (instance path, keyword) pairs; then the rules web/ogs.js adds (checkDocument), which the');
-  say('schema cannot say. ajv runs with allErrors, strict mode (strictTypes off: the schema\'s propertyNames has no type) and strictNumbers.');
+  sub(`the checks: ajv ${ajvPkg('ajv')} and web/ogs.js validateSchema (the JSON Schema), the SDK (validateSpec), the rules (checkDocument)`);
+  say('The two schema validators are compared error for error, as (instance path, keyword) pairs; ajv runs with allErrors, strict');
+  say('mode (strictTypes off) and strictNumbers. A document the schema accepts goes to the SDK (decode, Validations.core), and one');
+  say('the SDK accepts to the rules web/ogs.js adds, which neither can say.');
   let agree = 0;
   for (const c of CONVERTED) {
     const doc = parseDocument(readFileSync(join(DATA, 'ontologies', c.file), 'utf8'));
     const v = bothValidate(doc);
+    const spec = validateSpec(doc);
     const rules = checkDocument(doc);
-    if (v.same && v.ajv.length === 0 && rules.length === 0) agree++;
-    else pins.push(`PIN: ${c.file}: ajv ${v.ajv.join(', ') || 'valid'}, ogs.js ${v.ogs.join(', ') || 'valid'}, rules ${rules.map((r) => r.message).join('; ') || 'none'}`);
+    if (v.same && v.ajv.length === 0 && spec.length === 0 && rules.length === 0) agree++;
+    else pins.push(`PIN: ${c.file}: ajv ${v.ajv.join(', ') || 'valid'}, ogs.js ${v.ogs.join(', ') || 'valid'}, SDK ${spec.map((r) => r.keyword).join(', ') || 'valid'}, rules ${rules.map((r) => r.message).join('; ') || 'none'}`);
   }
-  say(`the ${CONVERTED.length} bundled documents: valid for both, no rule broken: ${agree} of ${CONVERTED.length}`);
+  say(`the ${CONVERTED.length} bundled documents: valid for both validators and the SDK, no rule broken: ${agree} of ${CONVERTED.length}`);
   const base = () => structuredClone(CONVERTED.find((c) => c.o.id === 'financial-services').o.doc);
   const small = () => ({
-    $schema: SCHEMA_ID, id: 'staff', version: 2, name: 'Staff',
+    schema: SCHEMA_ID, version: '2', id: 'staff', name: 'Staff',
     nodes: {
-      person: { label: 'Person', properties: { name: { type: 'STRING', mustExist: true }, id: { type: 'STRING', key: true } } },
+      person: { label: 'Person', properties: { name: { type: 'STRING', must_exist: true }, id: { type: 'STRING', key: true } } },
       employee: {
-        labels: { identifier: 'Employee', implied: ['Person'], optional: ['Contractor'] }, reference: 'https://example.com/Employee',
-        properties: { employee_id: { type: 'STRING' }, embedding: { type: 'VECTOR<FLOAT>', dimension: 384 }, grade: { type: 'STRING', one_of: ['a', 'b'], pattern: '^[ab]$' } },
-        constraints: [{ constraint_type: 'unique', name: 'employee_id', properties: ['employee_id'] }],
-        tools: [{ type: 'externalRequest', name: 'hr', description: 'HR record', url: 'https://example.com/hr' }],
+        labels: { identifier: 'Employee', implied: ['Person'], optional: ['Contractor'] },
+        properties: { employee_id: { type: 'STRING' }, embedding: { type: 'VECTOR<FLOAT>', dimension: 384 }, grade: { type: 'STRING', pattern: '^[ab]$' }, level: { type: 'STRING', one_of: ['junior', 'senior'] } },
+        constraints: { employee_id: { type: 'UNIQUE', properties: ['employee_id'], name: 'employee_id' } },
+        extensions: { custom: { tools: [{ type: 'externalRequest', name: 'hr', description: 'HR record', url: 'https://example.com/hr' }] } },
+        reference: 'https://example.com/Employee',
       },
       team: { label: 'Team', aliases: ['squad'] },
     },
     relationships: {
       MEMBER_OF: { type: 'MEMBER_OF', from: { node: 'employee', min_count: 1 }, to: { node: 'team', max_count: 3 }, properties: { since: { type: 'DATE' } } },
-      KNOWS: { type: 'KNOWS', from: { node: 'person' }, to: { node: 'person' }, extensions: { custom: [{ type: 'edgextract:symmetric' }] } },
+      KNOWS: { type: 'KNOWS', from: { node: 'person' }, to: { node: 'person' }, extensions: { custom: { 'edgextract:symmetric': {} } } },
     },
   });
-  /** [name, document, 'schema'|'rules'|'valid'] */
+  /** [name, document, 'schema'|'sdk'|'rules'|'valid'] */
   const CASES = [
-    ['valid: implied and optional labels, a constraint object, a VECTOR with its dimension, cardinalities, an externalRequest tool', small(), 'valid'],
-    ['no $schema', (({ $schema, ...r }) => r)(base()), 'schema'],
-    ['$schema not a URI', { ...base(), $schema: 'ontology graph spec 1.0.0' }, 'schema'],
-    ['version 1.5', { ...base(), version: 1.5 }, 'schema'],
-    ['version -1', { ...base(), version: -1 }, 'schema'],
-    ['version "1"', { ...base(), version: '1' }, 'schema'],
+    ['valid: implied and optional labels, a constraint, a VECTOR with its dimension, cardinalities, an externalRequest tool', small(), 'valid'],
+    ['no schema', (({ schema, ...r }) => r)(base()), 'schema'],
+    ['schema a number', { ...base(), schema: 1 }, 'schema'],
+    ['version 1 (an integer, as the draft had it)', { ...base(), version: 1 }, 'schema'],
+    ['$schema beside schema (the draft\'s marker)', { ...base(), $schema: SCHEMA_ID }, 'schema'],
     ['an unknown top-level field (types)', { ...base(), types: [] }, 'schema'],
     ['nodes as a list', { ...base(), nodes: [] }, 'schema'],
     ['a node that is text', (() => { const d = base(); d.nodes.Person = 'Person'; return d; })(), 'schema'],
     ['an extra field on a node (colour)', (() => { const d = base(); d.nodes.Account.colour = 'blue'; return d; })(), 'schema'],
+    ['a draft field on a property (mustExist)', (() => { const d = small(); d.nodes.person.properties.name.mustExist = true; return d; })(), 'schema'],
+    ['a draft field on a node (tools)', (() => { const d = small(); d.nodes.team.tools = []; return d; })(), 'schema'],
     ['a bad type token (TEXT)', (() => { const d = base(); d.nodes.Account.properties.balance.type = 'TEXT'; return d; })(), 'schema'],
+    ['a draft type token (DATETIME)', (() => { const d = base(); d.nodes.Account.properties.balance.type = 'DATETIME'; return d; })(), 'schema'],
     ['a nested list token (LIST<LIST<STRING>>)', (() => { const d = base(); d.nodes.Account.properties.balance.type = 'LIST<LIST<STRING>>'; return d; })(), 'schema'],
-    ['an empty property name (graph-spec\'s ADR-0010)', (() => { const d = base(); d.nodes.Account.properties[''] = { type: 'STRING' }; return d; })(), 'schema'],
-    ['an empty property name on a relationship', (() => { const d = base(); d.relationships.OWNS.properties = { '': { type: 'STRING' } }; return d; })(), 'schema'],
     ['one_of that is not a list', (() => { const d = base(); d.nodes.Account.properties.status.one_of = 'active'; return d; })(), 'schema'],
-    ['a pattern that is not a regular expression', (() => { const d = base(); d.nodes.Account.properties.status.pattern = '(['; return d; })(), 'schema'],
-    ['dimension 0', (() => { const d = small(); d.nodes.employee.properties.embedding.dimension = 0; return d; })(), 'schema'],
-    ['a constraint of an unknown kind with no properties', (() => { const d = small(); d.nodes.employee.constraints = [{ constraint_type: 'exists', properties: [] }]; return d; })(), 'schema'],
-    ['labels without an identifier, an implied label that is a number', (() => { const d = small(); d.nodes.employee.labels = { implied: ['Person', 3] }; return d; })(), 'schema'],
-    ['a reference that is not a URI', (() => { const d = small(); d.nodes.employee.reference = 'Employee'; return d; })(), 'schema'],
+    ['dimension 1.5', (() => { const d = small(); d.nodes.employee.properties.embedding.dimension = 1.5; return d; })(), 'schema'],
+    ['a constraint of an unknown kind', (() => { const d = small(); d.nodes.employee.constraints.employee_id.type = 'exists'; return d; })(), 'schema'],
+    ['constraints as a list (the draft\'s form)', (() => { const d = small(); d.nodes.employee.constraints = [{ type: 'UNIQUE', properties: ['employee_id'] }]; return d; })(), 'schema'],
+    ['an implied label that is a number', (() => { const d = small(); d.nodes.employee.labels.implied = ['Person', 3]; return d; })(), 'schema'],
     ['a relationship without `to`', (() => { const d = base(); delete d.relationships.OWNS.to; return d; })(), 'schema'],
-    ['an endpoint with an extra field (label) and max_count 0', (() => { const d = base(); d.relationships.OWNS.to = { node: 'Account', label: 'Account', max_count: 0 }; return d; })(), 'schema'],
-    ['a custom extension without a type', (() => { const d = base(); d.extensions.custom.push({ name: 'x' }); return d; })(), 'schema'],
-    ['custom extensions that are not a list', (() => { const d = base(); d.nodes.Account.extensions.custom = { type: 'x' }; return d; })(), 'schema'],
-    ['a tool without a type', (() => { const d = base(); delete d.nodes.Account.tools[0].type; return d; })(), 'schema'],
+    ['an endpoint with an extra field (labels)', (() => { const d = base(); d.relationships.OWNS.to = { node: 'Account', labels: ['Account'] }; return d; })(), 'schema'],
+    ['custom extensions as a list (the draft\'s form)', (() => { const d = base(); d.nodes.Account.extensions.custom = [{ type: 'x' }]; return d; })(), 'schema'],
+    ['display without x and y', (() => { const d = base(); d.nodes.Account.extensions.display = { colour: '#123456' }; return d; })(), 'schema'],
+    ['display on a relationship', (() => { const d = base(); d.relationships.OWNS.extensions.display = { x: 0, y: 0 }; return d; })(), 'schema'],
     ['the document a list', [base()], 'schema'],
-    ['an endpoint to an unknown node', (() => { const d = base(); d.relationships.OWNS.to.node = 'Acount'; return d; })(), 'rules'],
-    ['a constraint naming a property the node does not have', (() => { const d = small(); d.nodes.employee.constraints[0].properties = ['employee_number']; return d; })(), 'rules'],
+    ['an endpoint to an unknown node', (() => { const d = base(); d.relationships.OWNS.to.node = 'Acount'; return d; })(), 'sdk'],
+    ['a constraint naming a property the node does not have', (() => { const d = small(); d.nodes.employee.constraints.employee_id.properties = ['employee_number']; return d; })(), 'sdk'],
+    ['count with min_count', (() => { const d = small(); d.relationships.MEMBER_OF.to = { node: 'team', count: 1, min_count: 1 }; return d; })(), 'sdk'],
+    ['min_count above max_count', (() => { const d = small(); d.relationships.MEMBER_OF.to = { node: 'team', min_count: 4, max_count: 3 }; return d; })(), 'sdk'],
+    ['pattern with one_of on one property', (() => { const d = small(); d.nodes.employee.properties.grade.one_of = ['a', 'b']; return d; })(), 'sdk'],
+    ['a null custom extension', (() => { const d = small(); d.relationships.KNOWS.extensions.custom['edgextract:symmetric'] = null; return d; })(), 'sdk'],
     ['a node with no label', (() => { const d = base(); delete d.nodes.Policy.label; return d; })(), 'rules'],
     ['label and labels.identifier disagree', (() => { const d = small(); d.nodes.employee.label = 'Worker'; return d; })(), 'rules'],
     ['two nodes with one label', (() => { const d = base(); d.nodes.Policy.label = 'Account'; return d; })(), 'rules'],
@@ -420,25 +499,29 @@ const CONVERTED = conversions();
     ['a relationship type with a hyphen', (() => { const d = base(); d.relationships.OWNS.type = 'OWNS-ACCOUNT'; return d; })(), 'rules'],
     ['an implied label equal to the identifier', (() => { const d = small(); d.nodes.employee.labels.implied = ['Employee']; return d; })(), 'rules'],
     ['dimension on a STRING', (() => { const d = small(); d.nodes.employee.properties.grade.dimension = 3; return d; })(), 'rules'],
-    ['key with mustExist: false', (() => { const d = small(); d.nodes.person.properties.id.mustExist = false; return d; })(), 'rules'],
-    ['count with min_count', (() => { const d = small(); d.relationships.MEMBER_OF.to = { node: 'team', count: 1, min_count: 1 }; return d; })(), 'rules'],
+    ['key with must_exist: false', (() => { const d = small(); d.nodes.person.properties.id.must_exist = false; return d; })(), 'rules'],
     ['the same type between the same nodes twice', (() => { const d = base(); d.relationships.OWNS_AGAIN = structuredClone(d.relationships.OWNS); return d; })(), 'rules'],
     ['edgextract:symmetric on one entry of a type only', (() => { const d = small(); d.relationships.KNOWS_TEAM = { type: 'KNOWS', from: { node: 'team' }, to: { node: 'team' } }; return d; })(), 'rules'],
-    ['$schema naming another version', { ...base(), $schema: 'https://neo4j.com/ontology-graph-spec/2.0.0/schema.json' }, 'rules'],
-    ['a create-context-graph document with a node lacking createContextGraph:pole', (() => { const d = base(); d.nodes.Policy.extensions.custom = []; return d; })(), 'rules'],
-    ['a gazetteer naming a node the document does not have', (() => { const d = small(); d.extensions = { custom: [{ type: 'edgextract:gazetteer', definition: { 'Ada Lovelace': 'manager' } }] }; return d; })(), 'rules'],
+    ['schema naming spec 1.0.0', { ...base(), schema: 'https://neo4j.com/docs/ontology-graph-spec/1.0.0/schema.json' }, 'rules'],
+    ['a create-context-graph document with a node lacking createContextGraph:pole', (() => { const d = base(); delete d.nodes.Policy.extensions.custom['createContextGraph:pole']; return d; })(), 'rules'],
+    ['a gazetteer naming a node the document does not have', (() => { const d = small(); d.extensions = { custom: { 'edgextract:gazetteer': { 'Ada Lovelace': 'manager' } } }; return d; })(), 'rules'],
+    ['tools that are not a list', (() => { const d = small(); d.nodes.team.extensions = { custom: { tools: { type: 'canonicalQuery' } } }; return d; })(), 'rules'],
+    ['two tools with one name', (() => { const d = small(); const t = d.nodes.employee.extensions.custom.tools; t.push({ ...t[0] }); return d; })(), 'rules'],
   ];
   let schemaAgree = 0;
   let asDesigned = 0;
   for (const [name, doc, want] of CASES) {
     const v = bothValidate(doc);
-    const rules = v.ajv.length === 0 ? checkDocument(doc) : [];
-    const got = v.ajv.length ? 'schema' : rules.length ? 'rules' : 'valid';
+    const spec = v.ajv.length === 0 ? validateSpec(doc) : [];
+    const rules = v.ajv.length === 0 && spec.length === 0 ? checkDocument(doc) : [];
+    const got = v.ajv.length ? 'schema' : spec.length ? 'sdk' : rules.length ? 'rules' : 'valid';
     if (v.same) schemaAgree++;
     else pins.push(`PIN: validators disagree (${name}): ajv ${v.ajv.join(', ')} | ogs.js ${v.ogs.join(', ')}`);
     if (got === want) asDesigned++;
     else pins.push(`PIN: tampered document (${name}): expected ${want}, got ${got}`);
-    const what = v.ajv.length ? `both refuse: ${v.ajv.join('; ')}` : rules.length ? `schema-valid for both; the rules: ${rules.map((r) => `${r.path} ${r.message}`).join('; ')}` : 'valid for both, no rule broken';
+    const what = v.ajv.length ? `both validators refuse: ${v.ajv.join('; ')}`
+      : spec.length ? `schema-valid; the SDK: ${spec.map((r) => `${r.path || '/'} ${r.keyword}: ${r.message}`).join('; ')}`
+        : rules.length ? `schema- and SDK-valid; the rules: ${rules.map((r) => `${r.path} ${r.message}`).join('; ')}` : 'valid for all three, no rule broken';
     say(`${name}: ${v.same ? '' : 'MISMATCH '}${what}`);
   }
   say(`=> the two validators report the same errors on ${schemaAgree} of ${CASES.length} documents; ${asDesigned} of ${CASES.length} refused (or accepted) where designed`);
@@ -452,10 +535,10 @@ const CONVERTED = conversions();
     `asked as ${okSmall.format}; tools ${okSmall.tools.map((t) => `${t.name} on ${t.anchor.kind} ${t.anchor.key}`).join(', ')}`);
   const json = parseOntology(JSON.stringify(small()));
   say(`the same document as JSON: the same ontology and sha: ${json.sha === okSmall.sha && json.yaml === okSmall.yaml ? 'yes' : 'NO'}`);
-  pin('v1 in YAML or JSON', json.sha === okSmall.sha && json.yaml === okSmall.yaml, 'the same', 'different');
+  pin('a document in YAML or JSON', json.sha === okSmall.sha && json.yaml === okSmall.yaml, 'the same', 'different');
   let mixed;
-  try { parseOntology(`$schema: ${SCHEMA_ID}\nid: x\nversion: 1\ndomain: {id: x, name: X}\n`); mixed = 'accepted'; } catch (e) { mixed = describe(e); }
-  say(`a file with $schema and domain: ${mixed}`);
+  try { parseOntology(`schema: ${SCHEMA_ID}\nversion: '1'\nid: x\ndomain: {id: x, name: X}\n`); mixed = 'accepted'; } catch (e) { mixed = describe(e); }
+  say(`a file with schema and domain: ${mixed}`);
 }
 
 // ---- 1. create-context-graph's domains ------------------------------------------------------------------
@@ -463,7 +546,7 @@ const CCG_DIR = join(DATA, 'ontologies', 'ccg');
 const baseText = readFileSync(join(CCG_DIR, '_base.yaml'), 'utf8');
 const BASES = { _base: baseText };
 const ccgFiles = readdirSync(CCG_DIR).filter((f) => f.endsWith('.yaml') && !f.startsWith('_')).sort();
-/** @type {Map<string, {o: any, text: string, src: string, file: string}>} text: the v1 document; src: the original */
+/** @type {Map<string, {o: any, text: string, src: string, file: string}>} text: the document; src: the original */
 const ccg = new Map();
 const ccgOf = (id) => /** @type {any} */ (ccg.get(id)).o;
 const typedLine = (o, gt) => `typed (${gt.typed.length}): ${gt.typed.map((id) => {
@@ -471,7 +554,7 @@ const typedLine = (o, gt) => `typed (${gt.typed.length}): ${gt.typed.map((id) =>
   return `${id} (${r.pairs[0][0]} -> ${r.pairs[0][1]})`;
 }).join(', ') || 'none'}`;
 section(`create-context-graph's domains (data/ontologies/ccg/, neo4j-labs/create-context-graph 707b168): ${ccgFiles.length}, each inheriting _base.yaml`);
-say('Each is loaded as the page loads it, its v1 document (data/ontologies/ogs/ccg/), converted from the file and _base.yaml.');
+say('Each is loaded as the page loads it, its document (data/ontologies/ogs/ccg/), converted from the file and _base.yaml.');
 say('Labels and relationship types are the files\' own, verbatim. _base.yaml is merged as ontology.py _merge_base does: the');
 say('base\'s entity types and relationships first, unless the domain declares that label or relationship type itself. Entries');
 say('sharing a relationship type are one link with several legal (source, target) pairs, which is what the gate checks; a link');
@@ -563,12 +646,12 @@ for (const file of ccgFiles) {
   say(`layer: ${layerText(c1)}`);
   const stored = readOntology(db, cl);
   const linkRows = cl.exec(db, 'MATCH (l:_LinkType) RETURN l.id AS id, l.typed AS typed, l.pairs AS pairs ORDER BY l.ord').rows;
-  const okStored = stored.sha === o.sha && stored.doc === toCanonicalJson(o.doc) && stored.spec === '1.0.0' && stored.converted_from === null &&
+  const okStored = stored.sha === o.sha && stored.doc === toCanonicalJson(o.doc) && stored.spec === SPEC_VERSION && stored.converted_from === null &&
     stored.yaml === null && stored.base_yaml === null && stored.inherits === null &&
     stored.format === 'create-context-graph' && stored.graph_type === gt.spec &&
     canonJson(linkRows.map((r) => [r.id, r.typed, r.pairs])) === canonJson(o.relations.map((r) => [r.id, gt.typed.includes(r.id), r.pairs.map(([s, t]) => `${s}|${t}`)])) &&
     ontologyFromStored(stored).sha === o.sha && ontologyFromStored(stored).yaml === text;
-  say(`stored _Ontology: the v1 document (canonical JSON), spec 1.0.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: ${okStored ? 'yes' : 'NO'}`);
+  say(`stored _Ontology: the document (canonical JSON), spec ${SPEC_VERSION}, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: ${okStored ? 'yes' : 'NO'}`);
   pin(`D8 stored ontology (${o.id})`, okStored, 'the document, its sha, spec and pairs', JSON.stringify({ ...stored, doc: stored.doc?.slice(0, 40) }).slice(0, 160));
   const d1 = replay.contentDigest(db);
   const res2 = applyOntology(db, o, cl);
@@ -752,7 +835,7 @@ say('the default cutoffs. The gate and publish run as in the page; the audits (q
 
 {
   sub('implied labels (labels.implied, none in the bundled ontologies): published entities carry them beside their kind');
-  const text = [`$schema: ${SCHEMA_ID}`, 'id: implied', 'version: 1', 'name: Implied labels', 'nodes:',
+  const text = [`schema: ${SCHEMA_ID}`, "version: '1'", 'id: implied', 'name: Implied labels', 'nodes:',
     '  person:', '    label: Person', '  employee:', '    labels:', '      identifier: Employee', '      implied: [Person, Staff]',
     '  company:', '    label: Company', 'relationships:',
     '  WORKS_AT:', '    type: WORKS_AT', '    from: {node: employee}', '    to: {node: company}', ''].join('\n');
@@ -811,7 +894,7 @@ say('the default cutoffs. The gate and publish run as in the page; the audits (q
   db.free();
 }
 {
-  sub('a store an earlier build of this page wrote: its ontology as YAML (with its base), no v1 document');
+  sub('a store an earlier build of this page wrote: its ontology as YAML (with its base), no document');
   const db = fresh();
   const o = ccgOf('financial-services');
   store.openStore(db, cl, o);
@@ -825,11 +908,34 @@ REMOVE x.doc, x.spec, x.converted_from, x.source_sha RETURN count(x) AS n`, { ya
     `(from ${back.convertedFrom}): the same kinds, links and asks as the bundled document: ${canonJson(modelSchema(back)) === canonJson(modelSchema(o)) && back.sha === o.sha ? 'yes' : 'NO'}`);
   const res = store.openStore(db, cl, back);
   const after = readOntology(db, cl);
-  say(`opened with it: previous sha the YAML's ${res.ontology.previousSha === oldSha ? 'yes' : 'NO'}, altered ${res.ontology.altered}; now stored: the v1 document ` +
+  say(`opened with it: previous sha the YAML's ${res.ontology.previousSha === oldSha ? 'yes' : 'NO'}, altered ${res.ontology.altered}; now stored: the document ` +
     `${after.doc === toCanonicalJson(o.doc) ? 'yes' : 'NO'}, yaml, inherits and base_yaml gone ${after.yaml === null && after.inherits === null && after.base_yaml === null ? 'yes' : 'NO'}, ` +
     `converted_from ${after.converted_from}`);
-  pin('an earlier build\'s stored YAML opens and is replaced by the v1 document', back.sha === o.sha && res.ontology.previousSha === oldSha && !res.ontology.altered &&
-    after.doc === toCanonicalJson(o.doc) && after.yaml === null && after.converted_from === 'create-context-graph', 'converted, then stored as v1', JSON.stringify({ ...after, doc: null }).slice(0, 120));
+  pin('an earlier build\'s stored YAML opens and is replaced by the document', back.sha === o.sha && res.ontology.previousSha === oldSha && !res.ontology.altered &&
+    after.doc === toCanonicalJson(o.doc) && after.yaml === null && after.converted_from === 'create-context-graph', 'converted, then stored as a document', JSON.stringify({ ...after, doc: null }).slice(0, 120));
+  db.free();
+}
+
+{
+  sub('a store the last draft build wrote: its document in the draft format (the live site before this build), converted on open');
+  const db = fresh();
+  const o = ccgOf('financial-services');
+  store.openStore(db, cl, o);
+  // What that build stored: its draft document as JSON (harness/fixtures/financial-services.draft.ontology.yaml is its
+  // bundled file), its spec 1.0.0 and a sha of its own.
+  const draftDoc = parseDocument(readFileSync(join(DRAFT_FIXTURES, 'financial-services.draft.ontology.yaml'), 'utf8'));
+  const oldSha = sha256(JSON.stringify(draftDoc));
+  cl.exec(db, "MATCH (x:_Ontology) SET x.doc = $doc, x.spec = '1.0.0', x.sha = $sha RETURN count(x) AS n", { doc: JSON.stringify(draftDoc), sha: oldSha });
+  const row = readOntology(db, cl);
+  const back = ontologyFromStored(row);
+  say(`readOntology: a draft document (isDraft ${isDraft(JSON.parse(row.doc))}), spec ${row.spec}; ontologyFromStored converts it: the same kinds, links, asks and sha as the bundled document: ` +
+    `${canonJson(modelSchema(back)) === canonJson(modelSchema(o)) && back.sha === o.sha ? 'yes' : 'NO'}`);
+  const res = store.openStore(db, cl, back);
+  const after = readOntology(db, cl);
+  say(`opened with it: previous sha the draft's ${res.ontology.previousSha === oldSha ? 'yes' : 'NO'}, altered ${res.ontology.altered}; now stored: the published document ` +
+    `${after.doc === toCanonicalJson(o.doc) ? 'yes' : 'NO'}, spec ${after.spec}, sha the bundled one's ${after.sha === o.sha ? 'yes' : 'NO'}`);
+  pin('a draft build\'s store opens and its document is stored again in the published format', back.sha === o.sha && res.ontology.previousSha === oldSha && !res.ontology.altered &&
+    after.doc === toCanonicalJson(o.doc) && after.spec === SPEC_VERSION && after.sha === o.sha, 'converted, stored as 1.1', JSON.stringify({ ...after, doc: null }).slice(0, 160));
   db.free();
 }
 
@@ -837,13 +943,13 @@ section('the id rule and the create-context-graph format\'s refusals (D8)');
 {
   const ccgDoc = (types, rels, extra = '') => `${extra}domain: {id: t, name: T}\nentity_types:\n${types.map((l) => `  - {label: ${l}, pole_type: OBJECT}`).join('\n')}\n` +
     `relationships:\n${rels.map(([t, s, x]) => `  - {type: ${t}, source: ${s}, target: ${x}}`).join('\n')}\n`;
-  const v1 = (labels, rels) => `$schema: ${SCHEMA_ID}\nid: t\nversion: 1\nnodes:\n${labels.map((l) => `  ${l}:\n    label: ${l}`).join('\n')}\n` +
+  const v1 = (labels, rels) => `schema: ${SCHEMA_ID}\nversion: '1'\nid: t\nnodes:\n${labels.map((l) => `  ${l}:\n    label: ${l}`).join('\n')}\n` +
     `relationships:\n${rels.map(([t, s, x]) => `  ${t}:\n    type: ${t}\n    from: {node: ${s}}\n    to: {node: ${x}}`).join('\n')}\n`;
   const cases = [
     ['an entity type label with a leading _ (create-context-graph)', ccgDoc(['_Secret', 'Account'], [['OWNS', '_Secret', 'Account']]), false],
     ['a relationship type with a leading _ (create-context-graph)', ccgDoc(['Person', 'Account'], [['_OWNS', 'Person', 'Account']]), false],
-    ['a node label with a leading _ (v1)', v1(['_Private', 'Account'], [['OWNS', '_Private', 'Account']]), false],
-    ['a relationship type with a leading _ (v1)', v1(['Person', 'Account'], [['_OWNS', 'Person', 'Account']]), false],
+    ['a node label with a leading _ (Ontology Graph Spec)', v1(['_Private', 'Account'], [['OWNS', '_Private', 'Account']]), false],
+    ['a relationship type with a leading _ (Ontology Graph Spec)', v1(['Person', 'Account'], [['_OWNS', 'Person', 'Account']]), false],
     ['kinds named Entity and Claim, a link named IN (no longer reserved)', ccgDoc(['Entity', 'Claim'], [['IN', 'Claim', 'Entity']]), true],
     ['a relationship to an undeclared label', ccgDoc(['Person', 'Account'], [['OWNS', 'Person', 'Acount']]), false],
     ['an unknown base', ccgDoc(['Person', 'Account'], [['OWNS', 'Person', 'Account']], 'inherits: _other\n'), false],
@@ -897,9 +1003,9 @@ section('the id rule and the create-context-graph format\'s refusals (D8)');
   db.free();
 }
 
-// ---- 2. a generic v1 document (no createContextGraph envelope) ------------------------------------------
+// ---- 2. a generic document (no createContextGraph extension) ------------------------------------------
 /**
- * A v1 document as an object: nodes keyed by label ([label, description?]), relationship entries
+ * A document as an object: nodes keyed by label ([label, description?]), relationship entries
  * keyed by type, or TYPE__FROM__TO when a type has several pairs ([type, from, to, extra?]).
  * @param {string} id @param {Array<[string, string?]>} kinds @param {Array<[string, string, string, any?]>} [links] @param {any} [extra]
  */
@@ -911,9 +1017,9 @@ function v1doc(id, kinds, links = [], extra = {}) {
   for (const [type, from, to, more] of links) {
     relationships[pairsOf(type) > 1 ? `${type}__${from}__${to}` : type] = { type, from: { node: from }, to: { node: to }, ...(more ?? {}) };
   }
-  return { $schema: SCHEMA_ID, id, version: 1, ...extra, nodes, ...(links.length ? { relationships } : {}) };
+  return { schema: SCHEMA_ID, version: '1', id, ...extra, nodes, ...(links.length ? { relationships } : {}) };
 }
-/** parseOntology on a v1 object: {ok, o} or {ok: false, error}. @param {any} doc */
+/** parseOntology on a document object: {ok, o} or {ok: false, error}. @param {any} doc */
 function ours(doc) {
   try {
     return { ok: true, o: parseOntology(JSON.stringify(doc)) };
@@ -925,8 +1031,8 @@ function ours(doc) {
 const generic = parseOntology(GENERIC_YAML);
 /** GENERIC_YAML as an object, for the edits below. */
 const genericDoc = () => structuredClone(generic.doc);
-section(`a generic Ontology Graph Spec v1 document: no createContextGraph envelope (harness/fixtures.mjs GENERIC_YAML, ${generic.id})`);
-say('Any valid v1 document without the createContextGraph:domain extension is read as it is and asked as create-context-graph\'s');
+section(`a generic Ontology Graph Spec 1.1 document: no createContextGraph extension (harness/fixtures.mjs GENERIC_YAML, ${generic.id})`);
+say('Any valid document without the createContextGraph:domain extension is read as it is and asked as create-context-graph\'s');
 say('documents are, but for descriptions: each kind by its label as text with the node\'s own description (none when it has none),');
 say('each link as its phrase between its endpoints\' label texts. It takes the same default cutoffs (store.defaultGate). It may');
 say('carry the two extensions that keep edgextract\'s names: edgextract:gazetteer (rule 1\'s listed names) and edgextract:symmetric.');
@@ -970,11 +1076,11 @@ say('carry the two extensions that keep edgextract\'s names: edgextract:gazettee
   say(`lookup indexes: ${lookupIndexes(db).join(', ') || 'none (the constraints\' backing indexes serve the lookups)'}`);
   const stored = readOntology(db, cl);
   const linkRows = cl.exec(db, 'MATCH (l:_LinkType) RETURN l.id AS id, l.typed AS typed, l.pairs AS pairs ORDER BY l.ord').rows;
-  const okStored = stored.sha === o.sha && stored.doc === toCanonicalJson(o.doc) && stored.spec === '1.0.0' && stored.graph_type === gt.spec &&
+  const okStored = stored.sha === o.sha && stored.doc === toCanonicalJson(o.doc) && stored.spec === SPEC_VERSION && stored.graph_type === gt.spec &&
     stored.format === 'generic' && stored.converted_from === null && stored.yaml === null &&
     canonJson(linkRows.map((r) => [r.id, r.typed, r.pairs])) === canonJson(o.relations.map((r) => [r.id, gt.typed.includes(r.id), r.pairs.map(([x, y]) => `${x}|${y}`)])) &&
     ontologyFromStored(stored).sha === o.sha;
-  say(`stored _Ontology: the v1 document (canonical JSON), its sha and graph_type, format generic; _LinkType.typed and .pairs as derived: ${okStored ? 'yes' : 'NO'}`);
+  say(`stored _Ontology: the document (canonical JSON), its sha and graph_type, format generic; _LinkType.typed and .pairs as derived: ${okStored ? 'yes' : 'NO'}`);
   pin(`D8 stored ontology (${o.id})`, okStored, 'the document, its sha and spec', JSON.stringify({ ...stored, doc: null }).slice(0, 120));
   const d1 = replay.contentDigest(db);
   const res2 = applyOntology(db, o, cl);
@@ -1024,11 +1130,11 @@ say('carry the two extensions that keep edgextract\'s names: edgextract:gazettee
   try { parseOntology('id: x\nkinds: [A, B]\n'); other = 'accepted'; } catch (e) { other = describe(e); }
   say(`a file of neither format -> ${other}`);
 
-  // A store an earlier build made for an edgextract ontology, after the v1 documents: it holds the document that build
+  // A store an earlier build made for an edgextract ontology, after the documents: it holds the document that build
   // converted from edgextract's YAML (converted_from 'edgextract', its format 'edgextract', kinds and links at the
   // cutoffs that build gave edgextract's format, 0.85/0.70, following the defaults). It opens with that document.
   const conv = v1doc('company_news', [['PERSON', 'A named person.'], ['COMPANY', 'A named company.']], [['WORKS_FOR', 'PERSON', 'COMPANY', { description: 'The person works for the company.' }]],
-    { name: 'Company news', extensions: { custom: [{ type: 'edgextract:gazetteer', definition: { 'Jane Doe': 'PERSON' } }] } });
+    { name: 'Company news', extensions: { custom: { 'edgextract:gazetteer': { 'Jane Doe': 'PERSON' } } } });
   const db = fresh();
   const first = parseOntology(JSON.stringify(conv));
   store.openStore(db, cl, first, {}, { model: 'small' });
@@ -1047,7 +1153,7 @@ say('carry the two extensions that keep edgextract\'s names: edgextract:gazettee
   store.publish(db, cl);
   const now = readOntology(db, cl);
   const band = (gg) => gg.claims.map((c) => `${c.band} by ${c.rule}`).join(', ');
-  say(`an earlier build's store for edgextract's company_news (its v1 document, converted_from ${row.converted_from}, format ${row.format}): ` +
+  say(`an earlier build's store for edgextract's company_news (its document, converted_from ${row.converted_from}, format ${row.format}): ` +
     `ontologyFromStored reads it as ${back.format} (converted from ${back.convertedFrom}); asked ${modelSchema(back).schema.entities.map((e) => `"${e.id}"`).join(', ')}`);
   say(`  open: the default cutoffs move from that build's 0.85/0.70 to ${store.defaultGate(back.format, 'small').entKeep.toFixed(2)}/${store.defaultGate(back.format, 'small').relKeep.toFixed(2)} ` +
     `(${opened.ontology.cutoffs.moved} moved; kinds now ${cut}); the claim at 0.65: ${band(before)} -> ${band(after)}; stored format now ${now.format}`);
@@ -1056,14 +1162,14 @@ say('carry the two extensions that keep edgextract\'s names: edgextract:gazettee
   'generic, its own document, defaults moved, re-gated', `${back.format} ${opened.ontology.cutoffs.moved} ${now.format} ${band(after)}`);
   db.free();
 
-  // Before the v1 documents, a store kept edgextract's YAML itself: refused, marked, and the page offers to delete it.
+  // Before the documents, a store kept edgextract's YAML itself: refused, marked, and the page offers to delete it.
   const pre = fresh();
   store.openStore(pre, cl, parseOntology(JSON.stringify(conv)), {}, { model: 'small' });
   cl.exec(pre, `MATCH (x:_Ontology) SET x.yaml = $yaml, x.sha = $sha
 REMOVE x.doc, x.spec, x.converted_from, x.source_sha RETURN count(x) AS n`, { yaml: old, sha: sha256(old) });
   let refused;
   try { ontologyFromStored(readOntology(pre, cl)); refused = 'opened'; } catch (e) { refused = `${describe(e)} [legacyFormat ${e.legacyFormat ?? 'none'}]`; }
-  say(`a store an earlier build made before the v1 documents, holding edgextract's YAML -> ${refused}`);
+  say(`a store an earlier build made before the Ontology Graph Spec documents, holding edgextract's YAML -> ${refused}`);
   say('  (web/worker.js turns it into StoreError legacy-ontology: the earlier-build banner, whose button deletes the store, delete-store)');
   pin('a store holding edgextract\'s YAML is refused', refused.startsWith('OntologyError: this store was written by an earlier build of this page for an ontology in edgextract\'s format') &&
     refused.endsWith('[legacyFormat edgextract]'), 'refused, marked legacyFormat', refused);
@@ -1207,7 +1313,7 @@ section('editing an ontology: the derived layer follows the document; moved cuto
     { id: 'FOUNDED', keep: 0.9 });
   const d = genericDoc();
   delete d.relationships.WORKS_FOR;
-  const gaz = d.extensions.custom.find((x) => x.type === 'edgextract:gazetteer').definition;
+  const gaz = d.extensions.custom['edgextract:gazetteer'];
   delete gaz['東京'];
   gaz['Ada Lovelace'] = 'company';
   const edited = parseOntology(JSON.stringify(d));
@@ -1238,7 +1344,7 @@ section('editing an ontology: the derived layer follows the document; moved cuto
 section('a Unicode kind id end to end (D8; unquoted Unicode identifiers parse)');
 {
   const doc = v1doc('ärzte_netz', [['ÄRZTE', 'Ärztinnen und Ärzte.'], ['KLINIK', 'Eine Klinik.']], [['ARBEITET_IN', 'ÄRZTE', 'KLINIK', { description: 'Die Ärztin arbeitet in der Klinik.' }]],
-    { name: 'Ärzte und Kliniken', extensions: { custom: [{ type: 'edgextract:gazetteer', definition: { 'Dr. Müller': 'ÄRZTE' } }] } });
+    { name: 'Ärzte und Kliniken', extensions: { custom: { 'edgextract:gazetteer': { 'Dr. Müller': 'ÄRZTE' } } } });
   const o = parseOntology(JSON.stringify(doc));
   say(`parseOntology: kinds ${o.types.map((t) => t.id).join(', ')}; link ${o.relations[0].id} ("${o.relations[0].phrase}"); asked ${modelSchema(o).schema.entities.map((e) => `"${e.id}"`).join(', ')}`);
   const nfd = JSON.stringify(doc).normalize('NFD');
@@ -1436,8 +1542,8 @@ section('store names (D14): ex01-kg-<slug>, at most 64 of [A-Za-z0-9_-]');
   pin('D14 (the engine\'s OPFS name rule)', tooLong.startsWith('OPFS name must be 1-64 characters from [A-Za-z0-9_-]'), 'the 1-64 rule', tooLong);
 }
 
-// ---- 9. the example's limits on a v1 document ----------------------------------------------------------------
-section('the example\'s limits on a v1 document (web/ontology.js, web/ogs.js): accepted or refused as designed');
+// ---- 9. the example's limits on a document ----------------------------------------------------------------
+section('the example\'s limits on a document (web/ontology.js, web/ogs.js): accepted or refused as designed');
 {
   const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
   const kindsN = (n) => Array.from({ length: n }, (_, i) => [`T${String(i).padStart(2, '0')}`]);

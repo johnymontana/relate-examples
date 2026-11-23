@@ -1,7 +1,7 @@
 # Native Relate 1.2.0 (harness/native.py): the repository's engine, the CLI on PATH and the project env's binding
 # The store is the browser section's opfs://ex01-kg-financial-services (create-context-graph's format) after the
 # financial-services sample: its dump.json and its database download, taken at the same moment (made in Node and
-# natively when the browser section is skipped, with the same content; stderr says which). Then a generic v1 document's
+# natively when the browser section is skipped, with the same content; stderr says which). Then a generic Ontology Graph Spec document's
 # store (harness/fixtures.mjs GENERIC_YAML: a gazetteer, a symmetric link), made in Node. Paths are left out of `path` columns.
 
 ## lib/replay.py loads the browser-format dump (D18)
@@ -56,7 +56,7 @@ relate clone --to-snapshot-format json kg.rl dir: ok; the engine's side files in
 python3 -I lib/opfsfmt.py to-tar dir from-native.tar (the page's route, nothing removed by hand): ok; it skipped them: yes
 lib/opfsfmt.py check --snapshot: ok (graph.json, manifest.json); harness/drive.mjs restores this form in the page
 
-## a generic Ontology Graph Spec v1 document too: its store (GENERIC_YAML on GENERIC_TEXT), made in Node, through lib/replay.py
+## a generic Ontology Graph Spec 1.1 document too: its store (GENERIC_YAML on GENERIC_TEXT), made in Node, through lib/replay.py
 dump.json: 73 nodes, 119 relationships, a graph type of 7 elements; loaded: 73 nodes, 119 relationships, 15 constraints, 4 indexes
 content_digest == digest(dump): yes; the graph type reads back equal: yes; Python's dump is the JS dump byte for byte: yes
   its node types: Company, Location, Person

@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * convert.js: create-context-graph's domain files, the format this example read before it read
- * Ontology Graph Spec v1 documents, converted one way into v1 (ogs.js), deterministically: the same
+ * Ontology Graph Spec documents, converted one way into the spec's 1.1 format (ogs.js), deterministically: the same
  * file gives the same document, byte for byte, through ogs.js toYaml. harness/convert.mjs writes
  * data/ontologies/ogs/ with it, and the page converts a pasted or uploaded file with it. (edgextract's
  * ontology YAML, which earlier builds also converted, is no longer read: README "The ontology format".)
@@ -11,38 +11,38 @@
  * It throws OntologyError (ogs.js) with the plain-English reasons the format's reader gave before
  * (harness/ontology.mjs pins them), in the same order: a converted document is one the old reader
  * accepted. The checks that are about the model (phrases, choices per kind pair, what the model is
- * asked) run on the v1 document, in ontology.js, for every document alike. `report` lists what the
+ * asked) run on the document, in ontology.js, for every document alike. `report` lists what the
  * conversion decided: {tools: [{name, anchor: 'node'|'relationship', element, rule}], types: [{at,
  * from, to}], dropped: [...]}.
  *
  * create-context-graph (neo4j-labs/create-context-graph 707b168, src/create_context_graph/domains/
- * and ontology.py; Apache-2.0) to v1. The file is flattened with its base first, exactly as
+ * and ontology.py; Apache-2.0) to Ontology Graph Spec 1.1. The file is flattened with its base first, exactly as
  * ontology.py `_merge_base` does: the base's entity types first, except a label the domain declares
  * itself, then the domain's; the base's relationships likewise, except a type the domain declares
  * itself. A base entity type is {label, pole_type (default OBJECT), color (default #6366f1), icon
  * (default circle), properties: its base_properties}, as `_merge_base` builds it. Then:
- *   `$schema` the spec's id; `id` domain.id; `version` 1; `name` domain.name; `description`
+ *   `schema` the spec's id; `version` "1"; `id` domain.id; `name` domain.name; `description`
  *     domain.description (absent when empty).
  *   nodes, keyed by label, in that order: `label`; `description` derived as the page always showed
  *     it, "<subtype> (<pole type>)" (kindDescription); `properties` from the entity type's
- *     properties (below); `tools` (below); `extensions`: `neo4j:display` {color, caption: name} (what
- *     the spec's example shows), and the custom envelopes {type: createContextGraph:pole, definition:
- *     {pole_type, subtype?, origin: base|domain}} and {type: createContextGraph:display, definition:
- *     {icon, size? (from visualization.node_sizes)}}. No implied labels: they would add labels to the
+ *     properties (below); `extensions`: `display` {x, y (ogs.js layoutPoint: the kinds on a circle, in
+ *     order), colour, custom: {caption: name}}, and the custom extensions createContextGraph:pole
+ *     {pole_type, subtype?, origin: base|domain}, createContextGraph:display {icon, size? (from
+ *     visualization.node_sizes)} and `tools` (below). No implied labels: they would add labels to the
  *     published graph.
  *   a property (PropertyDef: name, type, required, unique, enum, default, description): `type` by
  *     PROPERTY_TYPES (string STRING, integer INTEGER, float FLOAT, boolean BOOLEAN, date DATE,
- *     datetime DATETIME, ...; an unknown one ANY, with its text in a createContextGraph:type
- *     envelope and a line in the report); `mustExist: true` for required, `unique: true` for
- *     unique, `one_of` for enum, `description`; `default` in a createContextGraph:default envelope
- *     (v1 has no default field).
+ *     datetime ZONED DATETIME, ...; an unknown one ANY, with its text in a createContextGraph:type
+ *     extension and a line in the report); `must_exist: true` for required, `unique: true` for
+ *     unique, `one_of` for enum, `description`; `default` in a createContextGraph:default extension
+ *     (the spec has no default field).
  *   relationships: one entry per (type, source, target), keyed by the type when the type has one
  *     pair, else TYPE__SOURCE__TARGET (with __2, __3, ... should a key be taken); each {type, from:
- *     {node}, to: {node}, properties?} with a createContextGraph:origin envelope {origin: base|domain}.
+ *     {node}, to: {node}, properties?} with a createContextGraph:origin extension {origin: base|domain}.
  *   agent_tools: each a canonicalQuery tool {type, name, description, cypher, parameters: [{name,
- *     type (a v1 token), description?, required?, default?, one_of?}]}, on the element its query
- *     starts from (toolAnchor); visualization.default_cypher likewise, as the tool `defaultView`.
- *   The rest, verbatim, in custom envelopes at the top level: createContextGraph:domain {tagline,
+ *     type (a type token), description?, required?, default?, one_of?}]}, in the `tools` custom
+ *     extension of the element its query starts from (toolAnchor); visualization.default_cypher likewise, as the tool `defaultView`.
+ *   The rest, verbatim, in custom extensions at the top level: createContextGraph:domain {tagline,
  *     emoji, ... (the domain map but its id, name and description), inherits?},
  *     createContextGraph:documentTemplates, :decisionTraces, :demoScenarios, :systemPrompt and
  *     :visualization (node_colors, node_sizes, default_cypher). Keys create-context-graph's model
@@ -59,7 +59,7 @@
  * first entry); else (4) the first label test (`n:Label`) in that clause's WHERE naming a node of
  * the ontology; else (5) the ontology's first node. Strings and comments are blanked first.
  */
-import { EXTENSIONS, OntologyError, SCHEMA_ID, cmpCodePoints, idProblem, isMap, loadText, setOwn } from './ogs.js';
+import { EXTENSIONS, OntologyError, SCHEMA_ID, cmpCodePoints, idProblem, isMap, layoutPoint, loadText, setOwn } from './ogs.js';
 import { rustTrim } from './names.js';
 
 export const MIN_TYPES = 2;
@@ -79,13 +79,13 @@ export const CCG_DISPLAY = 'createContextGraph:display';
 
 /**
  * create-context-graph's property types (ontology.py PropertyDef.type, free text, default
- * "string") as v1 type tokens. The 27 domains use the first six; the rest are the obvious
+ * "string") as the spec's type tokens. The 27 domains use the first six; the rest are the obvious
  * spellings. Anything else becomes ANY (with its text kept, and reported).
  */
 export const PROPERTY_TYPES = Object.freeze({
-  string: 'STRING', integer: 'INTEGER', float: 'FLOAT', boolean: 'BOOLEAN', date: 'DATE', datetime: 'DATETIME',
-  str: 'STRING', text: 'STRING', int: 'INTEGER', bool: 'BOOLEAN', time: 'TIME', localtime: 'LOCALTIME',
-  localdatetime: 'LOCALDATETIME', duration: 'DURATION', point: 'POINT', list: 'LIST<ANY>',
+  string: 'STRING', integer: 'INTEGER', float: 'FLOAT', boolean: 'BOOLEAN', date: 'DATE', datetime: 'ZONED DATETIME',
+  str: 'STRING', text: 'STRING', int: 'INTEGER', bool: 'BOOLEAN', time: 'ZONED TIME', localtime: 'LOCAL TIME',
+  localdatetime: 'LOCAL DATETIME', duration: 'DURATION', point: 'POINT', list: 'LIST<ANY>',
 });
 
 const show = (v) => (v === undefined ? 'nothing' : JSON.stringify(v));
@@ -479,7 +479,7 @@ export function toolAnchor(cypher, nodes, rels, params = []) {
 // ---- create-context-graph -----------------------------------------------------------------------
 
 /**
- * One create-context-graph PropertyDef as a v1 property; `where` names it in errors.
+ * One create-context-graph PropertyDef as a property of the spec; `where` names it in errors.
  * @param {string} where @param {any} p @param {{types: any[]}} report
  * @returns {[string, any]}
  */
@@ -493,10 +493,10 @@ function ccgProperty(where, p, report) {
   let token = Object.hasOwn(PROPERTY_TYPES, key) ? PROPERTY_TYPES[key] : null;
   const list = /^list\s*[<[]\s*(\w+)\s*[>\]]$/.exec(key);
   if (!token && list && Object.hasOwn(PROPERTY_TYPES, list[1]) && !PROPERTY_TYPES[list[1]].startsWith('LIST')) token = `LIST<${PROPERTY_TYPES[list[1]]}>`;
-  const custom = [];
+  const custom = {};
   if (!token) {
     token = 'ANY';
-    custom.push({ type: 'createContextGraph:type', definition: raw });
+    setOwn(custom, 'createContextGraph:type', raw);
     report.types.push({ at: w, from: raw, to: 'ANY' });
   }
   for (const flag of ['required', 'unique']) {
@@ -508,18 +508,18 @@ function ccgProperty(where, p, report) {
     if (p.enum.length) oneOf = p.enum.slice();
   }
   const description = stringField(w, p, 'description', { optional: true });
-  if (Object.hasOwn(p, 'default') && p.default !== null) custom.push({ type: 'createContextGraph:default', definition: p.default });
+  if (Object.hasOwn(p, 'default') && p.default !== null) setOwn(custom, 'createContextGraph:default', p.default);
   return [name, obj([
     ['type', token],
-    ['mustExist', p.required === true ? true : undefined],
+    ['must_exist', p.required === true ? true : undefined],
     ['unique', p.unique === true ? true : undefined],
     ['one_of', oneOf],
     ['description', description || undefined],
-    ['extensions', custom.length ? { custom } : undefined],
+    ['extensions', Object.keys(custom).length ? { custom } : undefined],
   ])];
 }
 
-/** A list of PropertyDefs as a v1 properties map (absent when empty). @param {string} where @param {any} list @param {any} report */
+/** A list of PropertyDefs as a properties map (absent when empty). @param {string} where @param {any} list @param {any} report */
 function ccgProperties(where, list, report) {
   if (list === undefined || list === null) return undefined;
   if (!Array.isArray(list)) throw new OntologyError(`${where}: \`properties\` must be a list, not ${show(list)}`);
@@ -562,7 +562,7 @@ const CCG_REL_KEYS = new Set(['type', 'source', 'target', 'properties']);
 const CCG_TOOL_KEYS = new Set(['name', 'description', 'cypher', 'parameters']);
 
 /**
- * create-context-graph's domain file as an Ontology Graph Spec v1 document (see the header).
+ * create-context-graph's domain file as an Ontology Graph Spec 1.1 document (see the header).
  * @param {string} text  the domain YAML
  * @param {{bases?: Record<string, string>}} [opts]  bases: base ontologies by name, as `inherits` names them
  *   ({_base: <the text of data/ontologies/ccg/_base.yaml>})
@@ -720,17 +720,18 @@ export function fromCreateContextGraph(text, { bases = {} } = {}) {
 
   // nodes (keyed by label) and relationship entries, without their tools yet
   const nodes = {};
-  for (const k of allKinds) {
-    // neo4j:display carries what the spec's example shows (color, caption); create-context-graph's icon and
-    // node size, which neo4j:display does not define, ride a custom envelope of their own.
-    const display = obj([['color', k.color], ['caption', 'name']]);
+  for (const [i, k] of allKinds.entries()) {
+    // The spec's display carries the colour and a place (layoutPoint: create-context-graph has none); the
+    // caption rides display.custom, and create-context-graph's icon and node size, which display does not
+    // define, ride a custom extension of their own.
+    const display = obj([...Object.entries(layoutPoint(i, allKinds.length)), ['colour', k.color], ['custom', { caption: 'name' }]]);
     const looks = obj([['icon', k.icon], ['size', Object.hasOwn(sizes, k.label) ? sizes[k.label] : undefined]]);
     const pole = obj([['pole_type', k.pole], ['subtype', k.subtype ?? undefined], ['origin', k.origin]]);
     setOwn(nodes, k.label, obj([
       ['label', k.label],
       ['description', kindDescription(k.pole, k.subtype) || undefined],
       ['properties', ccgProperties(k.where, k.properties, report)],
-      ['extensions', obj([[EXTENSIONS.display, display], ['custom', [{ type: EXTENSIONS.pole, definition: pole }, { type: CCG_DISPLAY, definition: looks }]]])],
+      ['extensions', obj([['display', display], ['custom', obj([[EXTENSIONS.pole, pole], [CCG_DISPLAY, looks]])]])],
     ]));
   }
   const relationships = {};
@@ -743,7 +744,7 @@ export function fromCreateContextGraph(text, { bases = {} } = {}) {
         ['from', { node: e.source }],
         ['to', { node: e.target }],
         ['properties', ccgProperties(e.where, e.properties, report)],
-        ['extensions', { custom: [{ type: EXTENSIONS.origin, definition: { origin: e.origin } }] }],
+        ['extensions', { custom: obj([[EXTENSIONS.origin, { origin: e.origin }]]) }],
       ]));
     }
   }
@@ -780,26 +781,27 @@ export function fromCreateContextGraph(text, { bases = {} } = {}) {
   }
   for (const { tool, anchor } of placed) {
     const el = anchor.kind === 'node' ? nodes[anchor.key] : relationships[anchor.key];
-    if (!el.tools) el.tools = []; // toYaml writes it before extensions, in the schema's order
-    el.tools.push(tool);
+    // The spec has no tool field: the tools ride extensions.custom.tools, after the element's other custom extensions.
+    const tools = el.extensions.custom.tools ?? setOwn(el.extensions.custom, 'tools', []).tools;
+    tools.push(tool);
     report.tools.push({ name: tool.name, anchor: anchor.kind, element: anchor.key, rule: anchor.rule });
   }
 
   // everything else create-context-graph carries, verbatim, at the top level
   const domainRest = obj(Object.entries(dom).filter(([k]) => !['id', 'name', 'description', 'inherits'].includes(k)));
   if (inherits !== null) setOwn(domainRest, 'inherits', inherits);
-  const custom = [{ type: EXTENSIONS.domain, definition: domainRest }];
+  const custom = obj([[EXTENSIONS.domain, domainRest]]);
   const verbatim = [['document_templates', 'createContextGraph:documentTemplates'], ['decision_traces', 'createContextGraph:decisionTraces'],
     ['demo_scenarios', 'createContextGraph:demoScenarios'], ['system_prompt', 'createContextGraph:systemPrompt'], ['visualization', 'createContextGraph:visualization']];
   for (const [key, type] of verbatim) {
     const v = data[key];
     if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0) || (isMap(v) && Object.keys(v).length === 0)) continue;
-    custom.push({ type, definition: v });
+    setOwn(custom, type, v);
   }
   const doc = obj([
-    ['$schema', SCHEMA_ID],
+    ['schema', SCHEMA_ID],
+    ['version', '1'],
     ['id', id],
-    ['version', 1],
     ['name', name],
     ['description', description || undefined],
     ['nodes', nodes],

@@ -1,16 +1,15 @@
-$schema: https://neo4j.com/ontology-graph-spec/1.0.0/schema.json
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
 id: digital-twin
-version: 1
 name: Digital Twin
 description: IoT asset monitoring, sensor data management, predictive maintenance, and system health analysis
 nodes:
   Person:
     label: Person
-    description: person
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       email:
         type: STRING
       role:
@@ -18,47 +17,49 @@ nodes:
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#22c55e'
-        caption: name
+      display:
+        x: 0
+        'y': -300
+        colour: '#22c55e'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: PERSON
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: user
+        createContextGraph:pole:
+          pole_type: PERSON
+          origin: base
+        createContextGraph:display:
+          icon: user
+    description: person
   Organization:
     label: Organization
-    description: organization
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
       industry:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#3b82f6'
-        caption: name
+      display:
+        x: 162
+        'y': -252
+        colour: '#3b82f6'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: ORGANIZATION
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: building
+        createContextGraph:pole:
+          pole_type: ORGANIZATION
+          origin: base
+        createContextGraph:display:
+          icon: building
+    description: organization
   Location:
     label: Location
-    description: location
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       address:
         type: STRING
       latitude:
@@ -66,72 +67,75 @@ nodes:
       longitude:
         type: FLOAT
     extensions:
-      neo4j:display:
-        color: '#a855f7'
-        caption: name
+      display:
+        x: 273
+        'y': -125
+        colour: '#a855f7'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: LOCATION
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: map-pin
+        createContextGraph:pole:
+          pole_type: LOCATION
+          origin: base
+        createContextGraph:display:
+          icon: map-pin
+    description: location
   Event:
     label: Event
-    description: event
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       date:
-        type: DATETIME
+        type: ZONED DATETIME
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#f97316'
-        caption: name
+      display:
+        x: 297
+        'y': 43
+        colour: '#f97316'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: calendar
+        createContextGraph:pole:
+          pole_type: EVENT
+          origin: base
+        createContextGraph:display:
+          icon: calendar
+    description: event
   Object:
     label: Object
-    description: object
     properties:
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       description:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#eab308'
-        caption: name
+      display:
+        x: 227
+        'y': 196
+        colour: '#eab308'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            origin: base
-        - type: createContextGraph:display
-          definition:
-            icon: box
+        createContextGraph:pole:
+          pole_type: OBJECT
+          origin: base
+        createContextGraph:display:
+          icon: box
+    description: object
   Asset:
     label: Asset
-    description: physical asset (object)
     properties:
       asset_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       asset_type:
         type: STRING
         one_of:
@@ -156,113 +160,114 @@ nodes:
           - offline
           - maintenance
           - decommissioned
-    tools:
-      - type: canonicalQuery
-        name: search_asset
-        description: Search for assets by name, type, location, or status
-        cypher: |
-          MATCH (a:Asset)
-          WHERE toLower(a.name) CONTAINS toLower($query)
-             OR toLower(coalesce(a.asset_type, '')) CONTAINS toLower($query)
-             OR toLower(coalesce(a.location, '')) CONTAINS toLower($query)
-          OPTIONAL MATCH (a)-[:PART_OF]->(s:System)
-          OPTIONAL MATCH (a)-[:MONITORED_BY]->(sen:Sensor)
-          RETURN a, s, collect(DISTINCT sen) AS sensors
-          LIMIT 20
-        parameters:
-          - name: query
-            type: STRING
-            description: Asset name, type, or location to search for
-      - type: canonicalQuery
-        name: sensor_readings
-        description: Get recent sensor readings for an asset or sensor
-        cypher: |
-          MATCH (a:Asset {name: $asset_name})-[:MONITORED_BY]->(s:Sensor)-[:GENERATED]->(r:Reading)
-          RETURN s.name, s.sensor_type, s.unit, r.value, r.timestamp, r.quality,
-                 s.min_threshold, s.max_threshold
-          ORDER BY r.timestamp DESC
-          LIMIT 50
-        parameters:
-          - name: asset_name
-            type: STRING
-            description: Name of the asset to get readings for
-      - type: canonicalQuery
-        name: alert_history
-        description: Get alert history for an asset or system
-        cypher: |
-          MATCH (al:Alert)-[:CAUSED_BY]->(a:Asset)
-          WHERE a.name = $asset_name OR $asset_name = ''
-          OPTIONAL MATCH (a)-[:PART_OF]->(s:System)
-          RETURN al, a.name AS asset_name, s.name AS system_name
-          ORDER BY al.triggered_at DESC
-          LIMIT 20
-        parameters:
-          - name: asset_name
-            type: STRING
-            description: Asset name to filter alerts (empty for all)
-      - type: canonicalQuery
-        name: maintenance_schedule
-        description: View maintenance history and upcoming scheduled maintenance
-        cypher: |
-          MATCH (mr:MaintenanceRecord)-[:MAINTAINED]->(a:Asset)
-          WHERE a.name = $asset_name OR $asset_name = ''
-          OPTIONAL MATCH (mr)-[:FOLLOWED_UP]->(al:Alert)
-          RETURN mr, a.name AS asset_name, al
-          ORDER BY coalesce(mr.scheduled_date, mr.completed_date) DESC
-          LIMIT 20
-        parameters:
-          - name: asset_name
-            type: STRING
-            description: Asset name to filter maintenance records (empty for all)
-      - type: canonicalQuery
-        name: list_assets
-        description: List asset records with optional limit
-        cypher: |
-          MATCH (n:Asset)
-          RETURN n
-          ORDER BY n.name
-          LIMIT toInteger($limit)
-        parameters:
-          - name: limit
-            type: STRING
-            description: 'Maximum number of results to return (default: 10)'
-      - type: canonicalQuery
-        name: get_asset_by_id
-        description: Get a specific asset by ID with all connections
-        cypher: |
-          MATCH (n:Asset {asset_id: $id})
-          OPTIONAL MATCH (n)-[r]-(related)
-          RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
-          LIMIT 50
-        parameters:
-          - name: id
-            type: STRING
-            description: The asset_id to look up
     extensions:
-      neo4j:display:
-        color: '#2563eb'
-        caption: name
+      display:
+        x: 85
+        'y': 288
+        colour: '#2563eb'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: PHYSICAL_ASSET
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: hard-drive
-            size: 30
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: PHYSICAL_ASSET
+          origin: domain
+        createContextGraph:display:
+          icon: hard-drive
+          size: 30
+        tools:
+          - type: canonicalQuery
+            name: search_asset
+            description: Search for assets by name, type, location, or status
+            cypher: |
+              MATCH (a:Asset)
+              WHERE toLower(a.name) CONTAINS toLower($query)
+                 OR toLower(coalesce(a.asset_type, '')) CONTAINS toLower($query)
+                 OR toLower(coalesce(a.location, '')) CONTAINS toLower($query)
+              OPTIONAL MATCH (a)-[:PART_OF]->(s:System)
+              OPTIONAL MATCH (a)-[:MONITORED_BY]->(sen:Sensor)
+              RETURN a, s, collect(DISTINCT sen) AS sensors
+              LIMIT 20
+            parameters:
+              - name: query
+                type: STRING
+                description: Asset name, type, or location to search for
+          - type: canonicalQuery
+            name: sensor_readings
+            description: Get recent sensor readings for an asset or sensor
+            cypher: |
+              MATCH (a:Asset {name: $asset_name})-[:MONITORED_BY]->(s:Sensor)-[:GENERATED]->(r:Reading)
+              RETURN s.name, s.sensor_type, s.unit, r.value, r.timestamp, r.quality,
+                     s.min_threshold, s.max_threshold
+              ORDER BY r.timestamp DESC
+              LIMIT 50
+            parameters:
+              - name: asset_name
+                type: STRING
+                description: Name of the asset to get readings for
+          - type: canonicalQuery
+            name: alert_history
+            description: Get alert history for an asset or system
+            cypher: |
+              MATCH (al:Alert)-[:CAUSED_BY]->(a:Asset)
+              WHERE a.name = $asset_name OR $asset_name = ''
+              OPTIONAL MATCH (a)-[:PART_OF]->(s:System)
+              RETURN al, a.name AS asset_name, s.name AS system_name
+              ORDER BY al.triggered_at DESC
+              LIMIT 20
+            parameters:
+              - name: asset_name
+                type: STRING
+                description: Asset name to filter alerts (empty for all)
+          - type: canonicalQuery
+            name: maintenance_schedule
+            description: View maintenance history and upcoming scheduled maintenance
+            cypher: |
+              MATCH (mr:MaintenanceRecord)-[:MAINTAINED]->(a:Asset)
+              WHERE a.name = $asset_name OR $asset_name = ''
+              OPTIONAL MATCH (mr)-[:FOLLOWED_UP]->(al:Alert)
+              RETURN mr, a.name AS asset_name, al
+              ORDER BY coalesce(mr.scheduled_date, mr.completed_date) DESC
+              LIMIT 20
+            parameters:
+              - name: asset_name
+                type: STRING
+                description: Asset name to filter maintenance records (empty for all)
+          - type: canonicalQuery
+            name: list_assets
+            description: List asset records with optional limit
+            cypher: |
+              MATCH (n:Asset)
+              RETURN n
+              ORDER BY n.name
+              LIMIT toInteger($limit)
+            parameters:
+              - name: limit
+                type: STRING
+                description: 'Maximum number of results to return (default: 10)'
+          - type: canonicalQuery
+            name: get_asset_by_id
+            description: Get a specific asset by ID with all connections
+            cypher: |
+              MATCH (n:Asset {asset_id: $id})
+              OPTIONAL MATCH (n)-[r]-(related)
+              RETURN n, type(r) AS relationship, labels(related) AS related_labels, related.name AS related_name
+              LIMIT 50
+            parameters:
+              - name: id
+                type: STRING
+                description: The asset_id to look up
+    description: physical asset (object)
   Sensor:
     label: Sensor
-    description: iot sensor (object)
     properties:
       sensor_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       sensor_type:
         type: STRING
         one_of:
@@ -287,33 +292,34 @@ nodes:
           - faulty
           - offline
     extensions:
-      neo4j:display:
-        color: '#10b981'
-        caption: name
+      display:
+        x: -85
+        'y': 288
+        colour: '#10b981'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: IOT_SENSOR
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: radio
-            size: 20
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: IOT_SENSOR
+          origin: domain
+        createContextGraph:display:
+          icon: radio
+          size: 20
+    description: iot sensor (object)
   Reading:
     label: Reading
-    description: sensor reading (event)
     properties:
       reading_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       value:
         type: FLOAT
-        mustExist: true
+        must_exist: true
       timestamp:
-        type: DATETIME
-        mustExist: true
+        type: ZONED DATETIME
+        must_exist: true
       quality:
         type: STRING
         one_of:
@@ -322,30 +328,31 @@ nodes:
           - bad
           - interpolated
     extensions:
-      neo4j:display:
-        color: '#06b6d4'
-        caption: name
+      display:
+        x: -227
+        'y': 196
+        colour: '#06b6d4'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: SENSOR_READING
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: activity
-            size: 10
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: SENSOR_READING
+          origin: domain
+        createContextGraph:display:
+          icon: activity
+          size: 10
+    description: sensor reading (event)
   Alert:
     label: Alert
-    description: system alert (event)
     properties:
       alert_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       severity:
         type: STRING
-        mustExist: true
+        must_exist: true
         one_of:
           - info
           - warning
@@ -353,14 +360,14 @@ nodes:
           - emergency
       message:
         type: STRING
-        mustExist: true
+        must_exist: true
       triggered_at:
-        type: DATETIME
-        mustExist: true
+        type: ZONED DATETIME
+        must_exist: true
       acknowledged_at:
-        type: DATETIME
+        type: ZONED DATETIME
       resolved_at:
-        type: DATETIME
+        type: ZONED DATETIME
       status:
         type: STRING
         one_of:
@@ -369,30 +376,31 @@ nodes:
           - resolved
           - suppressed
     extensions:
-      neo4j:display:
-        color: '#ef4444'
-        caption: name
+      display:
+        x: -297
+        'y': 43
+        colour: '#ef4444'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: SYSTEM_ALERT
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: alert-triangle
-            size: 25
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: SYSTEM_ALERT
+          origin: domain
+        createContextGraph:display:
+          icon: alert-triangle
+          size: 25
+    description: system alert (event)
   MaintenanceRecord:
     label: MaintenanceRecord
-    description: maintenance (event)
     properties:
       record_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       maintenance_type:
         type: STRING
-        mustExist: true
+        must_exist: true
         one_of:
           - preventive
           - corrective
@@ -409,30 +417,31 @@ nodes:
       technician:
         type: STRING
     extensions:
-      neo4j:display:
-        color: '#f59e0b'
-        caption: name
+      display:
+        x: -273
+        'y': -125
+        colour: '#f59e0b'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: EVENT
-            subtype: MAINTENANCE
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: wrench
-            size: 20
+        createContextGraph:pole:
+          pole_type: EVENT
+          subtype: MAINTENANCE
+          origin: domain
+        createContextGraph:display:
+          icon: wrench
+          size: 20
+    description: maintenance (event)
   System:
     label: System
-    description: asset system (object)
     properties:
       system_id:
         type: STRING
-        mustExist: true
+        must_exist: true
         unique: true
       name:
         type: STRING
-        mustExist: true
+        must_exist: true
       system_type:
         type: STRING
         one_of:
@@ -451,41 +460,43 @@ nodes:
           - critical
       location:
         type: STRING
-    tools:
-      - type: canonicalQuery
-        name: system_health
-        description: Get overall health status for a system and its assets
-        cypher: |
-          MATCH (s:System {name: $system_name})<-[:PART_OF]-(a:Asset)
-          OPTIONAL MATCH (a)-[:MONITORED_BY]->(sen:Sensor)
-          OPTIONAL MATCH (al:Alert)-[:CAUSED_BY]->(a)
-          WHERE al.status = 'active'
-          RETURN s, a.name AS asset_name, a.status AS asset_status,
-                 count(DISTINCT sen) AS sensor_count,
-                 count(DISTINCT al) AS active_alerts
-          ORDER BY active_alerts DESC
-        parameters:
-          - name: system_name
-            type: STRING
-            description: Name of the system to check health for
-      - type: canonicalQuery
-        name: defaultView
-        description: create-context-graph's default visualisation query
-        cypher: MATCH (s:System)<-[:PART_OF]-(a:Asset) OPTIONAL MATCH (a)-[r]-(n) RETURN s, a, r, n LIMIT 100
     extensions:
-      neo4j:display:
-        color: '#8b5cf6'
-        caption: name
+      display:
+        x: -162
+        'y': -252
+        colour: '#8b5cf6'
+        custom:
+          caption: name
       custom:
-        - type: createContextGraph:pole
-          definition:
-            pole_type: OBJECT
-            subtype: ASSET_SYSTEM
-            origin: domain
-        - type: createContextGraph:display
-          definition:
-            icon: network
-            size: 30
+        createContextGraph:pole:
+          pole_type: OBJECT
+          subtype: ASSET_SYSTEM
+          origin: domain
+        createContextGraph:display:
+          icon: network
+          size: 30
+        tools:
+          - type: canonicalQuery
+            name: system_health
+            description: Get overall health status for a system and its assets
+            cypher: |
+              MATCH (s:System {name: $system_name})<-[:PART_OF]-(a:Asset)
+              OPTIONAL MATCH (a)-[:MONITORED_BY]->(sen:Sensor)
+              OPTIONAL MATCH (al:Alert)-[:CAUSED_BY]->(a)
+              WHERE al.status = 'active'
+              RETURN s, a.name AS asset_name, a.status AS asset_status,
+                     count(DISTINCT sen) AS sensor_count,
+                     count(DISTINCT al) AS active_alerts
+              ORDER BY active_alerts DESC
+            parameters:
+              - name: system_name
+                type: STRING
+                description: Name of the system to check health for
+          - type: canonicalQuery
+            name: defaultView
+            description: create-context-graph's default visualisation query
+            cypher: MATCH (s:System)<-[:PART_OF]-(a:Asset) OPTIONAL MATCH (a)-[r]-(n) RETURN s, a, r, n LIMIT 100
+    description: asset system (object)
 relationships:
   WORKS_FOR:
     type: WORKS_FOR
@@ -495,9 +506,8 @@ relationships:
       node: Organization
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   LOCATED_AT:
     type: LOCATED_AT
     from:
@@ -506,9 +516,8 @@ relationships:
       node: Location
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   PARTICIPATED_IN:
     type: PARTICIPATED_IN
     from:
@@ -517,9 +526,8 @@ relationships:
       node: Event
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: base
+        createContextGraph:origin:
+          origin: base
   MONITORED_BY:
     type: MONITORED_BY
     from:
@@ -528,9 +536,8 @@ relationships:
       node: Sensor
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   TRIGGERED:
     type: TRIGGERED
     from:
@@ -539,9 +546,8 @@ relationships:
       node: Alert
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   MAINTAINED:
     type: MAINTAINED
     from:
@@ -550,9 +556,8 @@ relationships:
       node: Asset
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   CONNECTED_TO:
     type: CONNECTED_TO
     from:
@@ -561,9 +566,8 @@ relationships:
       node: Asset
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   PART_OF:
     type: PART_OF
     from:
@@ -572,9 +576,8 @@ relationships:
       node: System
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   GENERATED:
     type: GENERATED
     from:
@@ -583,9 +586,8 @@ relationships:
       node: Reading
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   CAUSED_BY:
     type: CAUSED_BY
     from:
@@ -594,9 +596,8 @@ relationships:
       node: Asset
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
   FOLLOWED_UP:
     type: FOLLOWED_UP
     from:
@@ -605,234 +606,227 @@ relationships:
       node: Alert
     extensions:
       custom:
-        - type: createContextGraph:origin
-          definition:
-            origin: domain
+        createContextGraph:origin:
+          origin: domain
 extensions:
   custom:
-    - type: createContextGraph:domain
-      definition:
-        tagline: AI-powered Digital Twin Intelligence
-        emoji: 🏭
-        inherits: _base
-    - type: createContextGraph:documentTemplates
-      definition:
-        - id: sensor_report
-          name: Sensor Report
-          description: Periodic sensor reading summary and trend analysis
-          count: 10
-          prompt_template: |
-            Write a sensor report for {{sensor.name}} ({{sensor.sensor_type}})
-            monitoring asset {{asset.name}} at {{asset.location}}.
-            Include recent readings, trend analysis, threshold status,
-            and anomaly detection results.
-          required_entities:
-            - Sensor
-            - Asset
-            - Reading
-        - id: maintenance_log
-          name: Maintenance Log
-          description: Detailed log of maintenance activities performed
-          count: 8
-          prompt_template: |
-            Write a maintenance log entry for {{maintenancerecord.maintenance_type}}
-            maintenance on asset {{asset.name}} ({{asset.asset_type}}).
-            Technician: {{maintenancerecord.technician}}. Date: {{maintenancerecord.completed_date}}.
-            Include work performed, parts replaced, and post-maintenance test results.
-          required_entities:
-            - MaintenanceRecord
-            - Asset
-        - id: alert_digest
-          name: Alert Digest
-          description: Summary of alerts and their resolution status
-          count: 8
-          prompt_template: |
-            Write an alert digest for system {{system.name}} covering recent
-            alerts. Include alert {{alert.alert_id}} (severity: {{alert.severity}})
-            for asset {{asset.name}}. Summarize root causes, response actions,
-            and current status.
-          required_entities:
-            - Alert
-            - Asset
-            - System
-        - id: system_status_report
-          name: System Status Report
-          description: Overall system health and performance report
-          count: 6
-          prompt_template: |
-            Write a system status report for {{system.name}} ({{system.system_type}},
-            criticality: {{system.criticality}}). Include health of all assets
-            in the system, sensor readings summary, active alerts, and
-            upcoming maintenance schedule.
-          required_entities:
-            - System
-            - Asset
-            - Sensor
-        - id: performance_analysis
-          name: Performance Analysis
-          description: Deep analysis of asset performance and efficiency
-          count: 6
-          prompt_template: |
-            Write a performance analysis for asset {{asset.name}} ({{asset.asset_type}})
-            in system {{system.name}}. Include efficiency metrics from sensor data,
-            maintenance history impact, downtime analysis, and recommendations
-            for optimization.
-          required_entities:
-            - Asset
-            - System
-            - Sensor
-            - MaintenanceRecord
-    - type: createContextGraph:decisionTraces
-      definition:
-        - id: predictive_maintenance
-          task: Determine if asset {{asset.name}} requires predictive maintenance
-          steps:
-            - thought: Analyze recent sensor readings for degradation patterns
-              action: Query sensor readings and identify trend deviations from baseline
-            - thought: Review maintenance history and failure patterns
-              action: Pull maintenance records and calculate mean time between failures
-            - thought: Assess impact of downtime on connected systems
-              action: Map asset dependencies and evaluate criticality of connected systems
-            - thought: Compare cost of preventive action vs risk of failure
-              action: Calculate maintenance cost vs estimated cost of unplanned downtime
-          outcome_template: 'Recommendation: {{action}} within {{timeframe}} based on {{evidence}}'
-        - id: alert_triage
-          task: Triage and prioritize alert {{alert.alert_id}} for asset {{asset.name}}
-          steps:
-            - thought: Assess alert severity and affected asset criticality
-              action: Query alert details and asset system criticality level
-            - thought: Check for correlated alerts on connected assets
-              action: Search for alerts on assets connected to or in the same system
-            - thought: Determine root cause vs symptom
-              action: Analyze sensor reading patterns leading up to the alert trigger
-          outcome_template: 'Priority: {{priority}}. Root cause: {{cause}}. Action: {{action}}'
-        - id: system_optimization
-          task: Optimize performance of system {{system.name}}
-          steps:
-            - thought: Identify underperforming assets based on sensor baselines
-              action: Compare current sensor readings against optimal operating ranges
-            - thought: Analyze maintenance patterns for efficiency opportunities
-              action: Review maintenance frequency and correlate with performance metrics
-            - thought: Model impact of proposed changes on overall system output
-              action: Simulate adjustments based on historical sensor-performance correlations
-          outcome_template: 'Optimization plan: {{plan}} with expected {{improvement}}% gain'
-        - id: sensor_anomaly_investigation
-          task: Investigate anomalous readings from sensor {{sensor.name}} on asset {{asset.name}}
-          steps:
-            - thought: Determine if the anomaly is a sensor malfunction or genuine asset issue
-              action: Compare readings against sensor calibration data and other sensors on the same asset
-            - thought: Check for environmental factors that could explain the anomaly
-              action: Review correlated readings from nearby sensors and system conditions
-            - thought: Assess historical patterns for similar anomalies on this asset type
-              action: Query maintenance records and past alerts for comparable deviation patterns
-            - thought: Recommend immediate action based on severity assessment
-              action: Evaluate risk of continued operation vs shutting down for inspection
-          outcome_template: 'Finding: {{finding}}. Cause: {{cause}}. Action: {{action}}'
-        - id: spare_parts_planning
-          task: Plan spare parts inventory for system {{system.name}} based on failure predictions
-          steps:
-            - thought: Identify assets most likely to require maintenance in the next quarter
-              action: Query assets by degradation status and time since last maintenance
-            - thought: Analyze historical failure modes and parts consumed
-              action: Review maintenance records for common replacement parts by asset type
-            - thought: Calculate optimal stock levels based on lead times and criticality
-              action: Model parts demand against supplier lead times and system criticality
-          outcome_template: 'Parts plan: {{plan}} with estimated cost ${{cost}} covering {{coverage}}% of expected needs'
-        - id: asset_retirement_decision
-          task: Evaluate whether to retire asset {{asset.name}} or extend its operational life
-          steps:
-            - thought: Review total maintenance cost history and trend
-              action: Query all maintenance records and calculate cumulative and trending costs
-            - thought: Assess current performance against design specifications
-              action: Compare recent sensor readings with baseline operating parameters
-            - thought: Evaluate impact on system if asset is removed
-              action: Check connected assets and system dependencies
-            - thought: Compare cost of continued operation vs replacement
-              action: Estimate remaining useful life, ongoing maintenance costs, and replacement capital cost
-          outcome_template: 'Decision: {{decision}}. Remaining useful life: {{life}} months. Net savings: ${{savings}}'
-        - id: root_cause_analysis
-          task: Perform root cause analysis for critical alert {{alert.alert_id}} on asset {{asset.name}}
-          steps:
-            - thought: Trace the alert back to originating sensor readings
-              action: Follow the alert trigger chain to specific sensor reading deviations
-            - thought: Identify concurrent events and correlated failures
-              action: Search for alerts and readings on connected assets within the same time window
-            - thought: Review maintenance and operational changes prior to the event
-              action: Query recent maintenance records and system configuration changes
-            - thought: Determine root cause vs contributing factors
-              action: Classify findings into primary cause, contributing factors, and coincidental events
-          outcome_template: 'Root cause: {{cause}}. Contributing factors: {{factors}}. Corrective action: {{action}}'
-        - id: digital_twin_calibration
-          task: Calibrate digital twin model for system {{system.name}} against real-world data
-          steps:
-            - thought: Compare predicted sensor values from the model against actual readings
-              action: Query recent readings and calculate deviation from model predictions
-            - thought: Identify parameters with the largest prediction errors
-              action: Rank sensors and assets by prediction accuracy gap
-            - thought: Adjust model parameters based on latest operating conditions
-              action: Update calibration factors using recent maintenance records and operating data
-          outcome_template: 'Calibration result: prediction accuracy improved from {{before}}% to {{after}}%'
-        - id: energy_efficiency_audit
-          task: Audit energy efficiency of system {{system.name}} and identify waste
-          steps:
-            - thought: Analyze power consumption patterns across system assets
-              action: Query sensor readings for voltage, current, and power metrics
-            - thought: Identify assets operating outside optimal efficiency ranges
-              action: Compare current readings against manufacturer efficiency curves
-            - thought: Calculate potential savings from operational adjustments
-              action: Model energy savings from scheduling changes and maintenance interventions
-            - thought: Prioritize improvements by cost-effectiveness
-              action: Rank opportunities by energy savings per dollar invested
-          outcome_template: 'Efficiency: {{current}}%. Potential: {{target}}%. Annual savings: ${{savings}}'
-    - type: createContextGraph:demoScenarios
-      definition:
-        - name: Asset Monitoring
-          prompts:
-            - Show me all assets currently in degraded status
-            - What are the latest sensor readings for Turbine A3?
-            - Which assets have the most maintenance records this quarter?
-        - name: Alert Management
-          prompts:
-            - Show me all critical alerts that haven't been acknowledged
-            - What caused the pressure alert on Pump B2 yesterday?
-            - Are there any correlated alerts across the cooling system?
-        - name: Predictive Insights
-          prompts:
-            - Which assets are likely to need maintenance in the next 30 days?
-            - Show me the performance trend for the electrical system
-            - What is the mean time between failures for our compressors?
-    - type: createContextGraph:systemPrompt
-      definition: |
-        You are an AI assistant for digital twin and industrial IoT management. You have
-        access to a knowledge graph of physical assets, sensors, readings, alerts,
-        maintenance records, and interconnected systems.
+    createContextGraph:domain:
+      tagline: AI-powered Digital Twin Intelligence
+      emoji: 🏭
+      inherits: _base
+    createContextGraph:documentTemplates:
+      - id: sensor_report
+        name: Sensor Report
+        description: Periodic sensor reading summary and trend analysis
+        count: 10
+        prompt_template: |
+          Write a sensor report for {{sensor.name}} ({{sensor.sensor_type}})
+          monitoring asset {{asset.name}} at {{asset.location}}.
+          Include recent readings, trend analysis, threshold status,
+          and anomaly detection results.
+        required_entities:
+          - Sensor
+          - Asset
+          - Reading
+      - id: maintenance_log
+        name: Maintenance Log
+        description: Detailed log of maintenance activities performed
+        count: 8
+        prompt_template: |
+          Write a maintenance log entry for {{maintenancerecord.maintenance_type}}
+          maintenance on asset {{asset.name}} ({{asset.asset_type}}).
+          Technician: {{maintenancerecord.technician}}. Date: {{maintenancerecord.completed_date}}.
+          Include work performed, parts replaced, and post-maintenance test results.
+        required_entities:
+          - MaintenanceRecord
+          - Asset
+      - id: alert_digest
+        name: Alert Digest
+        description: Summary of alerts and their resolution status
+        count: 8
+        prompt_template: |
+          Write an alert digest for system {{system.name}} covering recent
+          alerts. Include alert {{alert.alert_id}} (severity: {{alert.severity}})
+          for asset {{asset.name}}. Summarize root causes, response actions,
+          and current status.
+        required_entities:
+          - Alert
+          - Asset
+          - System
+      - id: system_status_report
+        name: System Status Report
+        description: Overall system health and performance report
+        count: 6
+        prompt_template: |
+          Write a system status report for {{system.name}} ({{system.system_type}},
+          criticality: {{system.criticality}}). Include health of all assets
+          in the system, sensor readings summary, active alerts, and
+          upcoming maintenance schedule.
+        required_entities:
+          - System
+          - Asset
+          - Sensor
+      - id: performance_analysis
+        name: Performance Analysis
+        description: Deep analysis of asset performance and efficiency
+        count: 6
+        prompt_template: |
+          Write a performance analysis for asset {{asset.name}} ({{asset.asset_type}})
+          in system {{system.name}}. Include efficiency metrics from sensor data,
+          maintenance history impact, downtime analysis, and recommendations
+          for optimization.
+        required_entities:
+          - Asset
+          - System
+          - Sensor
+          - MaintenanceRecord
+    createContextGraph:decisionTraces:
+      - id: predictive_maintenance
+        task: Determine if asset {{asset.name}} requires predictive maintenance
+        steps:
+          - thought: Analyze recent sensor readings for degradation patterns
+            action: Query sensor readings and identify trend deviations from baseline
+          - thought: Review maintenance history and failure patterns
+            action: Pull maintenance records and calculate mean time between failures
+          - thought: Assess impact of downtime on connected systems
+            action: Map asset dependencies and evaluate criticality of connected systems
+          - thought: Compare cost of preventive action vs risk of failure
+            action: Calculate maintenance cost vs estimated cost of unplanned downtime
+        outcome_template: 'Recommendation: {{action}} within {{timeframe}} based on {{evidence}}'
+      - id: alert_triage
+        task: Triage and prioritize alert {{alert.alert_id}} for asset {{asset.name}}
+        steps:
+          - thought: Assess alert severity and affected asset criticality
+            action: Query alert details and asset system criticality level
+          - thought: Check for correlated alerts on connected assets
+            action: Search for alerts on assets connected to or in the same system
+          - thought: Determine root cause vs symptom
+            action: Analyze sensor reading patterns leading up to the alert trigger
+        outcome_template: 'Priority: {{priority}}. Root cause: {{cause}}. Action: {{action}}'
+      - id: system_optimization
+        task: Optimize performance of system {{system.name}}
+        steps:
+          - thought: Identify underperforming assets based on sensor baselines
+            action: Compare current sensor readings against optimal operating ranges
+          - thought: Analyze maintenance patterns for efficiency opportunities
+            action: Review maintenance frequency and correlate with performance metrics
+          - thought: Model impact of proposed changes on overall system output
+            action: Simulate adjustments based on historical sensor-performance correlations
+        outcome_template: 'Optimization plan: {{plan}} with expected {{improvement}}% gain'
+      - id: sensor_anomaly_investigation
+        task: Investigate anomalous readings from sensor {{sensor.name}} on asset {{asset.name}}
+        steps:
+          - thought: Determine if the anomaly is a sensor malfunction or genuine asset issue
+            action: Compare readings against sensor calibration data and other sensors on the same asset
+          - thought: Check for environmental factors that could explain the anomaly
+            action: Review correlated readings from nearby sensors and system conditions
+          - thought: Assess historical patterns for similar anomalies on this asset type
+            action: Query maintenance records and past alerts for comparable deviation patterns
+          - thought: Recommend immediate action based on severity assessment
+            action: Evaluate risk of continued operation vs shutting down for inspection
+        outcome_template: 'Finding: {{finding}}. Cause: {{cause}}. Action: {{action}}'
+      - id: spare_parts_planning
+        task: Plan spare parts inventory for system {{system.name}} based on failure predictions
+        steps:
+          - thought: Identify assets most likely to require maintenance in the next quarter
+            action: Query assets by degradation status and time since last maintenance
+          - thought: Analyze historical failure modes and parts consumed
+            action: Review maintenance records for common replacement parts by asset type
+          - thought: Calculate optimal stock levels based on lead times and criticality
+            action: Model parts demand against supplier lead times and system criticality
+        outcome_template: 'Parts plan: {{plan}} with estimated cost ${{cost}} covering {{coverage}}% of expected needs'
+      - id: asset_retirement_decision
+        task: Evaluate whether to retire asset {{asset.name}} or extend its operational life
+        steps:
+          - thought: Review total maintenance cost history and trend
+            action: Query all maintenance records and calculate cumulative and trending costs
+          - thought: Assess current performance against design specifications
+            action: Compare recent sensor readings with baseline operating parameters
+          - thought: Evaluate impact on system if asset is removed
+            action: Check connected assets and system dependencies
+          - thought: Compare cost of continued operation vs replacement
+            action: Estimate remaining useful life, ongoing maintenance costs, and replacement capital cost
+        outcome_template: 'Decision: {{decision}}. Remaining useful life: {{life}} months. Net savings: ${{savings}}'
+      - id: root_cause_analysis
+        task: Perform root cause analysis for critical alert {{alert.alert_id}} on asset {{asset.name}}
+        steps:
+          - thought: Trace the alert back to originating sensor readings
+            action: Follow the alert trigger chain to specific sensor reading deviations
+          - thought: Identify concurrent events and correlated failures
+            action: Search for alerts and readings on connected assets within the same time window
+          - thought: Review maintenance and operational changes prior to the event
+            action: Query recent maintenance records and system configuration changes
+          - thought: Determine root cause vs contributing factors
+            action: Classify findings into primary cause, contributing factors, and coincidental events
+        outcome_template: 'Root cause: {{cause}}. Contributing factors: {{factors}}. Corrective action: {{action}}'
+      - id: digital_twin_calibration
+        task: Calibrate digital twin model for system {{system.name}} against real-world data
+        steps:
+          - thought: Compare predicted sensor values from the model against actual readings
+            action: Query recent readings and calculate deviation from model predictions
+          - thought: Identify parameters with the largest prediction errors
+            action: Rank sensors and assets by prediction accuracy gap
+          - thought: Adjust model parameters based on latest operating conditions
+            action: Update calibration factors using recent maintenance records and operating data
+        outcome_template: 'Calibration result: prediction accuracy improved from {{before}}% to {{after}}%'
+      - id: energy_efficiency_audit
+        task: Audit energy efficiency of system {{system.name}} and identify waste
+        steps:
+          - thought: Analyze power consumption patterns across system assets
+            action: Query sensor readings for voltage, current, and power metrics
+          - thought: Identify assets operating outside optimal efficiency ranges
+            action: Compare current readings against manufacturer efficiency curves
+          - thought: Calculate potential savings from operational adjustments
+            action: Model energy savings from scheduling changes and maintenance interventions
+          - thought: Prioritize improvements by cost-effectiveness
+            action: Rank opportunities by energy savings per dollar invested
+        outcome_template: 'Efficiency: {{current}}%. Potential: {{target}}%. Annual savings: ${{savings}}'
+    createContextGraph:demoScenarios:
+      - name: Asset Monitoring
+        prompts:
+          - Show me all assets currently in degraded status
+          - What are the latest sensor readings for Turbine A3?
+          - Which assets have the most maintenance records this quarter?
+      - name: Alert Management
+        prompts:
+          - Show me all critical alerts that haven't been acknowledged
+          - What caused the pressure alert on Pump B2 yesterday?
+          - Are there any correlated alerts across the cooling system?
+      - name: Predictive Insights
+        prompts:
+          - Which assets are likely to need maintenance in the next 30 days?
+          - Show me the performance trend for the electrical system
+          - What is the mean time between failures for our compressors?
+    createContextGraph:systemPrompt: |
+      You are an AI assistant for digital twin and industrial IoT management. You have
+      access to a knowledge graph of physical assets, sensors, readings, alerts,
+      maintenance records, and interconnected systems.
 
-        Your capabilities include:
-        - Monitoring asset health and sensor readings in real time
-        - Analyzing alert patterns and performing root cause analysis
-        - Reviewing maintenance history and predicting future needs
-        - Mapping asset dependencies and system-level impacts
-        - Identifying performance optimization opportunities
+      Your capabilities include:
+      - Monitoring asset health and sensor readings in real time
+      - Analyzing alert patterns and performing root cause analysis
+      - Reviewing maintenance history and predicting future needs
+      - Mapping asset dependencies and system-level impacts
+      - Identifying performance optimization opportunities
 
-        Always ground your analysis in sensor data and maintenance records. When raising
-        concerns, cite specific readings, thresholds, and historical patterns from the
-        knowledge graph. Prioritize safety-critical alerts above all else.
-    - type: createContextGraph:visualization
-      definition:
-        node_colors:
-          Asset: '#2563eb'
-          Sensor: '#10b981'
-          Reading: '#06b6d4'
-          Alert: '#ef4444'
-          MaintenanceRecord: '#f59e0b'
-          System: '#8b5cf6'
-          Person: '#22c55e'
-          Location: '#a855f7'
-        node_sizes:
-          Asset: 30
-          Sensor: 20
-          Reading: 10
-          Alert: 25
-          MaintenanceRecord: 20
-          System: 30
-        default_cypher: MATCH (s:System)<-[:PART_OF]-(a:Asset) OPTIONAL MATCH (a)-[r]-(n) RETURN s, a, r, n LIMIT 100
+      Always ground your analysis in sensor data and maintenance records. When raising
+      concerns, cite specific readings, thresholds, and historical patterns from the
+      knowledge graph. Prioritize safety-critical alerts above all else.
+    createContextGraph:visualization:
+      node_colors:
+        Asset: '#2563eb'
+        Sensor: '#10b981'
+        Reading: '#06b6d4'
+        Alert: '#ef4444'
+        MaintenanceRecord: '#f59e0b'
+        System: '#8b5cf6'
+        Person: '#22c55e'
+        Location: '#a855f7'
+      node_sizes:
+        Asset: 30
+        Sensor: 20
+        Reading: 10
+        Alert: 25
+        MaintenanceRecord: 20
+        System: 30
+      default_cypher: MATCH (s:System)<-[:PART_OF]-(a:Asset) OPTIONAL MATCH (a)-[r]-(n) RETURN s, a, r, n LIMIT 100

@@ -107,7 +107,7 @@ fixtures: 112 mentions, 57 claims, 0 pole-specific, 0 end-in-review
   defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
 
 ## edge cases the bundled data does not reach, under the same invariant
-A generic Ontology Graph Spec v1 document (harness/fixtures.mjs GENERIC_YAML: no createContextGraph envelope, so its kinds are
+A generic Ontology Graph Spec 1.1 document (harness/fixtures.mjs GENERIC_YAML: no createContextGraph extension, so its kinds are
 asked by label text with each node's own description and its links between their endpoints, at the same defaults): a
 symmetric link (PARTNER_OF, Company to Company) and a listed name with no canonical form (東京: names.js keeps ASCII letters
 and digits only, E3), through the edgextract:symmetric and edgextract:gazetteer extensions; a pronoun the model may type as Person.

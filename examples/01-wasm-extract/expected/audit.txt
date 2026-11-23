@@ -84,7 +84,7 @@ vacation-industry: 138 nodes, 219 relationships, 15 constraints, 4 indexes; cont
 wildlife-management: 161 nodes, 269 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
 fixtures: 347 nodes, 478 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
 
-## the ontologies' example queries (Ontology Graph Spec v1 `tools`) on the create-context-graph stores
+## the ontologies' example queries (the `tools` custom extension) on the create-context-graph stores
 create-context-graph's agent tools and default views, written for its full Neo4j graphs, run on the graphs this example
 extracts from the samples: every canonicalQuery tool of each domain, on a copy of its store (store.dumpStore loaded by
 lib/replay.mjs into a fresh in-memory database), with its arguments checked and typed as the page checks them
@@ -293,7 +293,7 @@ on a copy of the financial-services store:
   a map of a mention and its entity: 24 rows; on: 24 shown, "24 values inside lists/maps hidden (bookkeeping).", NVL 12 nodes and 0 relationships; off: NVL 36 and 0
   the persons' untyped neighbours (financial-services' defaultView): 14 rows; on: 6 shown, "8 of 14 rows hidden (bookkeeping).", NVL 7 nodes and 6 relationships; off: NVL 15 and 14
   every node: 158 rows; on: 35 shown, "123 of 158 rows hidden (bookkeeping).", NVL 35 nodes and 0 relationships; off: NVL 158 and 0
-on a store of the generic v1 document (harness/fixtures.mjs GENERIC_YAML, with a gazetteer), its ontology applied:
+on a store of the generic document (harness/fixtures.mjs GENERIC_YAML, with a gazetteer), its ontology applied:
   the gazetteer: _Alias -[:_OF]-> _Kind: 4 rows; on: 4 shown, "", NVL 7 nodes and 4 relationships; off: NVL 7 and 4
   the gazetteer's _OF relationships alone: 4 rows; on: 4 shown, "", NVL 0 nodes and 4 relationships; off: NVL 0 and 4
 the cap after the filter: 1,200 _Sentence nodes created before 300 (:_Entity:Person) nodes, MATCH (n) RETURN n:

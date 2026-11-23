@@ -25,7 +25,12 @@
  *                                   LICENSE-<package>-<version>.txt, and THIRD_PARTY-npm.txt listing them,
  *                                   all from esbuild's metafiles (web/vendor/*.meta.json)
  *   assets/js-yaml-<ver>/           js-yaml.js (its ESM build) and LICENSE.txt
- *   assets/lib-<sha8>/              lib/replay.mjs and lib/relate_wasm.mjs as replay.js and relate_wasm.js
+ *   assets/ontology-graph-spec-<ver>/  ontology-graph-spec.js (npm @neo4j/ontology-graph-spec, the Ontology Graph
+ *                                   Spec SDK, bundled into one minified module by npm run vendor: the package is
+ *                                   Kotlin/JS output spread over 13 modules), LICENSE.txt (the SDK repository's
+ *                                   Apache-2.0 text, data/ontology-spec/LICENSE-graph-spec.txt) and
+ *                                   THIRD_PARTY.txt (the Kotlin libraries compiled into it)
+ *   assets/lib-<sha8>/              lib/replay.mjs, lib/relate_wasm.mjs and lib/ogs.mjs as replay.js, relate_wasm.js and ogs.js
  *   data/ontologies/ogs/            the 27 bundled ontologies as Ontology Graph Spec v1 documents (ogs/ccg/*.ontology.yaml;
  *                                   harness/convert.mjs) and SOURCE.md: what the picker loads
  *   data/ontologies/ccg/            _base.yaml (verbatim: a pasted or uploaded create-context-graph file inherits it),
@@ -40,7 +45,7 @@
  *   THIRD_PARTY.md
  *
  * The page's modules keep the import specifiers that work in Node (`../../../lib/replay.mjs`,
- * `js-yaml`, `./vendor/nvl.js`); build.mjs rewrites them to the relative asset paths above, and
+ * `js-yaml`, `@neo4j/ontology-graph-spec`, `./vendor/nvl.js`); build.mjs rewrites them to the relative asset paths above, and
  * refuses any other bare or out-of-tree specifier. The page's CSP has no 'unsafe-inline' for
  * scripts, which also rules out an inline import map, and module workers ignore import maps,
  * so the rewrite is the only way. models.js gets the model pins (repository, revision, sha256
@@ -67,6 +72,20 @@ export const RELATE = '1.2.0';
 const GLINER_REV = '4fa741eec466660daf4adc8703210138295e0b1b';
 const GLINER_DIR_NAME = `gliner-rs-${GLINER_REV.slice(0, 7)}`;
 const NVL_VERSION = '2.0.0';
+/** The Ontology Graph Spec SDK the page ships (package.json; web/ogs.js SDK_VERSION must agree). */
+const OGS_SDK_VERSION = '0.12.2';
+/**
+ * The Kotlin libraries compiled into the SDK's modules (neo4j/ontology-graph-spec at release/v0.12.2,
+ * gradle/libs.versions.toml and the module names in its npm package), for THIRD_PARTY.txt. Each is
+ * Apache-2.0.
+ */
+const OGS_SDK_RUNTIME = [
+  'Kotlin standard library 2.3.20 (JetBrains, Apache-2.0)',
+  'kotlinx.serialization 1.10.0, core and JSON (JetBrains, Apache-2.0)',
+  'kotlinx.coroutines and kotlinx-atomicfu (JetBrains, Apache-2.0)',
+  'kotlin-wrappers kotlin-typescript and kotlin-js-plain-objects, with seskar (JetBrains and contributors, Apache-2.0)',
+  'yamlkt 0.13.0 (Him188, Apache-2.0)',
+];
 
 /** The page's modules, in web/; every other web/*.js is an error (a module build.mjs forgot). */
 const WEB_MODULES = ['app.js', 'console.js', 'convert.js', 'export.js', 'gliner.js', 'graphview.js', 'models.js', 'names.js',
@@ -217,7 +236,10 @@ export async function verifyInputs() {
     const listed = (fs.readFileSync(built, 'utf8').split('\n---\n')[1] ?? '').split('\n').map((l) => l.split(/\s+/)).find(([, f]) => f === 'THIRD_PARTY-crates.txt');
     if (listed && listed[0] !== sha256(read(crates))) problems.push(`${rel(crates)} does not match ${rel(built)}: run scripts/build-gliner-wasm.sh --force`);
   }
-  for (const [pkg, want] of [['@neo4j-nvl/base', NVL_VERSION], ['@neo4j-nvl/interaction-handlers', NVL_VERSION]]) {
+  for (const f of ['ontology-graph-spec.js', 'ontology-graph-spec.js.meta.json']) {
+    if (!fs.existsSync(path.join(dirs.vendor, f))) problems.push(`no web/vendor/${f}: run npm run vendor (after npm ci --omit=peer)`);
+  }
+  for (const [pkg, want] of [['@neo4j-nvl/base', NVL_VERSION], ['@neo4j-nvl/interaction-handlers', NVL_VERSION], ['@neo4j/ontology-graph-spec', OGS_SDK_VERSION]]) {
     const got = readJson(path.join(dirs.modules, pkg, 'package.json'))?.version;
     if (got !== want) problems.push(`node_modules/${pkg} is ${got ?? 'missing'}, the page ships ${want}: run npm ci --omit=peer`);
   }
@@ -632,7 +654,19 @@ export function plan() {
   const yamlDir = `assets/js-yaml-${yamlPkg.version}`;
   add(`${yamlDir}/js-yaml.js`, { from: path.join(dirs.modules, 'js-yaml/dist/js-yaml.mjs') });
   add(`${yamlDir}/LICENSE.txt`, { from: path.join(dirs.modules, 'js-yaml/LICENSE') });
-  const libSrc = { 'replay.js': path.join(ROOT, 'lib/replay.mjs'), 'relate_wasm.js': path.join(ROOT, 'lib/relate_wasm.mjs') };
+  const ogsDir = `assets/ontology-graph-spec-${OGS_SDK_VERSION}`;
+  add(`${ogsDir}/ontology-graph-spec.js`, { from: path.join(dirs.vendor, 'ontology-graph-spec.js') });
+  add(`${ogsDir}/LICENSE.txt`, { from: path.join(EX, 'data/ontology-spec/LICENSE-graph-spec.txt') });
+  add(`${ogsDir}/THIRD_PARTY.txt`, {
+    data: () => Buffer.from([
+      `npm @neo4j/ontology-graph-spec ${OGS_SDK_VERSION} (neo4j/ontology-graph-spec, Apache-2.0: LICENSE.txt), bundled by npm run vendor.`,
+      'Its modules are Kotlin/JS output, with these Kotlin libraries compiled in:',
+      ...OGS_SDK_RUNTIME.map((x) => `  ${x}`),
+      'The Apache License 2.0 text is LICENSE.txt.',
+      '',
+    ].join('\n')),
+  });
+  const libSrc = { 'replay.js': path.join(ROOT, 'lib/replay.mjs'), 'relate_wasm.js': path.join(ROOT, 'lib/relate_wasm.mjs'), 'ogs.js': path.join(ROOT, 'lib/ogs.mjs') };
   const libHash = sha256(Buffer.concat(Object.values(libSrc).flatMap((p) => [read(p), Buffer.from([0])]))).slice(0, 8);
   const libDir = `assets/lib-${libHash}`;
 
@@ -640,7 +674,9 @@ export function plan() {
   const map = new Map([
     ['../../../lib/replay.mjs', `${libDir}/replay.js`],
     ['../../../lib/relate_wasm.mjs', `${libDir}/relate_wasm.js`],
+    ['../../../lib/ogs.mjs', `${libDir}/ogs.js`],
     ['js-yaml', `${yamlDir}/js-yaml.js`],
+    ['@neo4j/ontology-graph-spec', `${ogsDir}/ontology-graph-spec.js`],
     ['./vendor/nvl.js', `assets/nvl-${NVL_VERSION}/nvl.js`],
   ]);
   const exists = (/** @type {string} */ p) => files.has(p) || [...WEB_MODULES, ...Object.keys(libSrc).map((f) => `${libDir}/${f}`)].includes(p);

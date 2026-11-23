@@ -66,7 +66,7 @@ a click on Person:DANA_WHITLOCK shows "Dana Whitlock", Person, "mentioned 1 time
 selected, Dana Whitlock's relationships show their labels: WORKS_FOR: yes
 a kept relationship's label with no room on its line at a smaller zoom (APPLIED_POLICY): hidden, shown on its midpoint while the pointer is over the line, hidden again when it leaves: yes
 
-## the ontology tab: the ontology as a picture (NVL) and its v1 document
+## the ontology tab: the ontology as a picture (NVL) and its document
 NVL draws 10 kinds and 12 relationships, the store's 10 kinds and the 12 kind pairs its 12 links may join: yes; fitted, every kind inside and labelled: yes
 a click on Person shows:
   Person a base kind (create-context-graph's POLE+O)
@@ -112,7 +112,7 @@ Accept: Accepted "Nadia Okoro" -[WORKS_FOR]-> "Halvorsen Pryce Wealth": this cla
   the kept graph: 15 -> 15 entities, 10 -> 11 relationships (the store's: 15, 11); candidates: 0 -> 0 entities, 4 -> 3 relationships: yes
 "Show review candidates" off: candidates 0 and 0, the kept graph 15 and 11; remembered as ex01.graphCandidates = 0: yes
 
-## the ontology's tools in the console (Ontology Graph Spec v1 `tools`): listed with their notes, run, refused, run from the side panel
+## the ontology's tools in the console (the `tools` custom extension): listed with their notes, run, refused, run from the side panel
 the console tab: the editor first, "Ontology tools (8)" collapsed below the results: yes
 the tools section lists 8 tools of the financial-services document, by node: Person (search_customer, get_customer_decisions, defaultView); Account (detect_fraud_patterns, list_accounts, get_account_by_id); Decision (find_similar_decisions, get_causal_chain): yes
   Person search_customer [rows]: On an extracted graph: can return rows; role is never written (null); an untyped relationship also reaches the store's bookkeeping (_Mention -[:_OF]-> each entity), which the console's "Hide the example's bookkeeping" leaves out.
@@ -148,7 +148,7 @@ handover: tab 2 holds ex01-kg-financial-services; tab 1 holds nothing and says "
 tab 2 loads the model from Cache Storage: ready
 
 ## a store that keeps another version of its bundled ontology (an earlier build's conversion), and Re-apply
-applied through the editor: the financial-services document with the icon and size of its 10 nodes in neo4j:display; the page says: "This store keeps a version of Financial Services that differs from the bundled one (an earlier build's conversion, or an edit)."; the picker shows "financial-services (this store's own document)": yes
+applied through the editor: the financial-services document with the icon and size of its 10 nodes in display.custom; the page says: "This store keeps a version of Financial Services that differs from the bundled one (an earlier build's conversion, or an edit)."; the picker shows "financial-services (this store's own document)": yes
   The changed ontology was applied; the gate and the publish ran again: claims keep 11, review 4, drop 17; typed graph 15 entities, 11 relationships.
 Re-apply the bundled one: the note is gone, the picker holds ogs/ccg/financial-services.ontology.yaml, the store's document is the bundled one again (its sha): yes
   The changed ontology was applied; the gate and the publish ran again: claims keep 11, review 4, drop 17; typed graph 15 entities, 11 relationships.

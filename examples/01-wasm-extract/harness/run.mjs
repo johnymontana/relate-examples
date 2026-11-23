@@ -12,7 +12,7 @@
 //                (0 inferences); stop, a crash mid-section and resume (D9)
 //   gate.txt     the floor invariant (stored candidates at t = gliner-rs at t) and the rule invariant
 //                (the Cypher gate = a plain-JS gate over the raw JSON, on every store); differences are
-//                rows; a generic v1 document's edge cases; a scripted model on the rules' boundaries
+//                rows; a generic document's edge cases; a scripted model on the rules' boundaries
 //   audit.txt    queries/audit-*.cypher (0 rows each), an illegal publish refused by the graph type,
 //                entities across documents, keys with more than one display, the saved queries, dump.json,
 //                the ontologies' tools, the console's bookkeeping filter
@@ -23,7 +23,7 @@
 //                scores of true and false facts)
 //   graph.cypher exportCypher of the Financial Services sample's typed graph and of the fixtures' store
 // The stores: every create-context-graph domain with a sample (data/samples/ccg/, its gold beside it),
-// each ontology the Ontology Graph Spec v1 document the page loads (data/ontologies/ogs/ccg/), and one
+// each ontology the Ontology Graph Spec 1.1 document the page loads (data/ontologies/ogs/ccg/), and one
 // more with Financial Services' ontology for the harness's fixtures (harness/fixtures.mjs: the edge
 // cases edgextract's golden set covered, written for that domain).
 // gliner-rs runs on a pool of worker threads first (harness/infer.mjs): every question this run asks the
@@ -127,7 +127,7 @@ note(`${M.name} loaded in ${Math.round(performance.now() - t)} ms, ${memoryBytes
 const freshDb = () => new mod.RelateDb();
 
 // ---- data ------------------------------------------------------------------------------------------
-// The bundled ontologies as the page loads them, Ontology Graph Spec v1 documents (data/ontologies/ogs/ccg/,
+// The bundled ontologies as the page loads them, Ontology Graph Spec 1.1 documents (data/ontologies/ogs/ccg/,
 // harness/convert.mjs): every create-context-graph domain that has a sample. The base, _base.yaml, is for the
 // scripted ontology below (create-context-graph's format, converted as the page converts a pasted file).
 // `ontologies` and `stores` are keyed by store: a domain's id, and FIX, the fixtures' store, which reads
@@ -271,7 +271,7 @@ if (FULL) {
     const o = ontologies.get(d.ontology);
     for (const th of SWEEP) requests.push({ text: s.text, schema: pipeline.modelSchema(o, { threshold: th }).schema });
   }
-  // gate.txt's generic v1 document, on its own text.
+  // gate.txt's generic document, on its own text.
   for (const s of splitSentences(GENERIC_TEXT)) requests.push({ text: s.text, schema: pipeline.modelSchema(genericOntology).schema });
   // score.txt's comparison: the create-context-graph samples asked as before experiment B (ids and descriptions).
   for (const d of ccgSamples) {
@@ -986,7 +986,7 @@ RETURN c.rel AS rel, c.hs - s.start AS hs, c.he - s.start AS he, c.ts - s.start 
 
   g();
   g('## edge cases the bundled data does not reach, under the same invariant');
-  g('A generic Ontology Graph Spec v1 document (harness/fixtures.mjs GENERIC_YAML: no createContextGraph envelope, so its kinds are');
+  g('A generic Ontology Graph Spec 1.1 document (harness/fixtures.mjs GENERIC_YAML: no createContextGraph extension, so its kinds are');
   g("asked by label text with each node's own description and its links between their endpoints, at the same defaults): a");
   g('symmetric link (PARTNER_OF, Company to Company) and a listed name with no canonical form (東京: names.js keeps ASCII letters');
   g("and digits only, E3), through the edgextract:symmetric and edgextract:gazetteer extensions; a pronoun the model may type as Person.");
@@ -1152,10 +1152,10 @@ if (FULL) {
   a('## R16: an ontology edit (ALTER CURRENT GRAPH TYPE SET) drops every UNIQUE constraint; the store puts its own back');
   {
     const o = ontologies.get(FIXTURE_ONTOLOGY);
-    // one more kind, first: a node Product at the top of the v1 document's nodes
-    if (!o.yaml.includes('\nnodes:\n')) throw new Error(`${FIXTURE_ONTOLOGY}: the v1 document has no nodes map to edit`);
+    // one more kind, first: a node Product at the top of the document's nodes
+    if (!o.yaml.includes('\nnodes:\n')) throw new Error(`${FIXTURE_ONTOLOGY}: the document has no nodes map to edit`);
     const edited = parseOntology(o.yaml.replace('\nnodes:\n', '\nnodes:\n  Product:\n    label: Product\n    description: A named product.\n' +
-      '    extensions:\n      custom:\n        - type: createContextGraph:pole\n          definition:\n            pole_type: OBJECT\n            origin: domain\n'));
+      '    extensions:\n      custom:\n        createContextGraph:pole:\n          pole_type: OBJECT\n          origin: domain\n'));
     const names = store.STORE_CONSTRAINTS.map((x) => /^CREATE CONSTRAINT (\S+) /.exec(x)[1]);
     const have = (db) => {
       const got = new Set(cl.exec(db, 'SHOW CONSTRAINTS YIELD name, type RETURN name, type').rows
@@ -1270,7 +1270,7 @@ function sampleArgs(tool, name) {
 
 /**
  * audit.txt's last section: every canonicalQuery tool of each create-context-graph domain (the
- * Ontology Graph Spec v1 `tools`, ontology.js o.tools) run on a copy of that domain's store, with
+ * the `tools` custom extension, ontology.js o.tools) run on a copy of that domain's store, with
  * the page's argument checks (web/console.js toolArgs) and its note's prediction (toolCompat) beside
  * the outcome. Read-only: a copy loaded from store.dumpStore, whose content digest must not move.
  * @param {(s?: string) => void} a
@@ -1279,7 +1279,7 @@ function toolsAudit(a) {
   const ccg = ccgStores().sort((x, y) => cmp(x[0], y[0]));
   const indexes = storeIndexNames(store.LOOKUP_INDEXES, [...store.STORE_CONSTRAINTS, ...ONTOLOGY_CONSTRAINTS, store.STORE_FULLTEXT]);
   const procedures = cl.exec(ccg[0][1].db, 'SHOW PROCEDURES YIELD name RETURN name ORDER BY name').rows.map((r) => String(r.name));
-  a("## the ontologies' example queries (Ontology Graph Spec v1 `tools`) on the create-context-graph stores");
+  a("## the ontologies' example queries (the `tools` custom extension) on the create-context-graph stores");
   a("create-context-graph's agent tools and default views, written for its full Neo4j graphs, run on the graphs this example");
   a('extracts from the samples: every canonicalQuery tool of each domain, on a copy of its store (store.dumpStore loaded by');
   a('lib/replay.mjs into a fresh in-memory database), with its arguments checked and typed as the page checks them');
@@ -1633,7 +1633,7 @@ function bookkeepingAudit(a, ccg) {
   row('the persons\' untyped neighbours (financial-services\' defaultView)', fs, 'MATCH (p:Person)-[r]-(n) RETURN p, r, n LIMIT 100', '');
   row('every node', fs, 'MATCH (n) RETURN n', '');
   fs.free();
-  a('on a store of the generic v1 document (harness/fixtures.mjs GENERIC_YAML, with a gazetteer), its ontology applied:');
+  a('on a store of the generic document (harness/fixtures.mjs GENERIC_YAML, with a gazetteer), its ontology applied:');
   const cn = freshDb();
   store.openStore(cn, cl, genericOntology, {}, { model: WHICH });
   const nAl = Number(cl.exec(cn, 'MATCH (x:_Alias)-[r:_OF]->(:_Kind) RETURN count(r) AS n').rows[0].n);
@@ -2300,7 +2300,7 @@ RETURN c.key AS key, c.htext AS htext, c.ttext AS ttext, c.p AS p, c.band AS ban
     sc('its phrase ("owns"): what this example asked before. "labels": what it asks now (pipeline.modelSchema): each kind\'s label');
     sc('as text ("account"), "<subtype> in <domain>" for a domain kind ("financial account in financial services"), the base');
     sc('kinds bare, a base kind no link names and a domain kind covers not asked (Object in all 27, Event in agent-memory and');
-    sc('vacation-industry), and each link between its endpoints ("person owns account"); a generic v1 document is asked the same');
+    sc('vacation-industry), and each link between its endpoints ("person owns account"); a generic document is asked the same');
     sc('way. Both on a fresh store per domain, gated by the Cypher gate; P/R/F1 (tp/fp/fn), the distractors kept, and the review');
     sc('queue (mentions, claims).');
     const idsStores = new Map(ccgOids.map((oid) => [oid, newStore(oid)]));

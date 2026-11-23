@@ -1,68 +1,82 @@
 // @ts-check
 /**
- * ogs.js: the Ontology Graph Specification v1 (neo4j/graph-spec, branch
- * oskar/ontology-spec-v1-jsonschema at 35e74c0, Apache-2.0; vendored in data/ontology-spec/): a
- * document read from YAML or JSON, checked against the spec's JSON Schema and against the rules
- * this example needs, and written back out in one canonical form. The ontology format every other
- * module of the example reads (ontology.js builds its kinds and links from a v1 document; convert.js
- * turns create-context-graph's domain files into one).
+ * ogs.js: the Neo4j Ontology Graph Specification, spec 1.1.0 (https://neo4j.com/docs/ontology-graph-spec/,
+ * Apache-2.0; its JSON Schema vendored in data/ontology-spec/ from neo4j/ontology-graph-spec at tag
+ * release/v0.12.2): a document read from YAML or JSON, checked against the spec's JSON Schema, the
+ * spec's official SDK (npm @neo4j/ontology-graph-spec, through lib/ogs.mjs) and the rules this
+ * example needs, and written back out in one canonical form. The ontology format every other module
+ * of the example reads (ontology.js builds its kinds and links from a document; convert.js turns
+ * create-context-graph's domain files into one).
  *
  * Shared by the engine worker, the page and the Node harness: no Node-only import. It imports
- * js-yaml by its bare name (build.mjs and harness/serve.mjs rewrite the specifier for the page) and
- * names.js (rustTrim).
+ * js-yaml and the SDK by their bare names (build.mjs and harness/serve.mjs rewrite the specifiers for
+ * the page), lib/ogs.mjs by a relative path (rewritten to assets/lib-<sha8>/) and names.js (rustTrim).
  *
  *   const doc = parseDocument(text);           // YAML or JSON -> a plain object (OntologyError on a syntax error)
  *   validateSchema(doc);                       // [{path, keyword, message}]: the JSON Schema, as ajv reports it
+ *   validateSpec(doc);                         // [{path, keyword: 'sdk:<code>', message}]: the SDK's decode and core validation
  *   checkDocument(doc);                        // [{path, keyword: 'semantic', message}]: the rules below
- *   validateDocument(doc);                     // {ok, errors}: the schema first, then (when it holds) the rules
+ *   validateDocument(doc);                     // {ok, stage, errors}: the schema, then the SDK, then the rules
  *   toYaml(doc); toCanonicalJson(doc);         // the two serialisations (below)
+ *   isDraft(doc); fromDraft(doc);              // an earlier build's draft document, converted (lib/ogs.mjs)
  *
- * The schema check (validateSchema) is a small interpreter of exactly the JSON Schema 2020-12
- * keywords the spec's schema uses: $ref (to #/$defs/…), type, required, properties,
- * additionalProperties (false, true or a schema), propertyNames (minLength), items, minItems,
- * minimum, pattern (a `u` regular expression), enum, minLength, boolean schemas, and format as a
- * light check: `uri` is ajv-formats' fast form (a scheme, then no whitespace) and `regex` is
- * ajv-formats' check (a JavaScript regular expression, no \Z). Annotations ($id, $schema, title,
- * description) are ignored. Errors carry ajv's instancePath and keyword, so harness/ontology.mjs
- * compares the two validators error for error, on every bundled document and on tampered ones.
- * SCHEMA below is the vendored file's content; the harness pins that they are equal.
- *
- * The rules (checkDocument), run on a document the schema accepts. The spec's own, which its
- * schema cannot say: `$schema` names version 1.0.0 (this file's SCHEMA_ID); every node has a label
- * (`label`, or `labels.identifier`; both only when they agree); an endpoint names a node of the
- * document; a constraint's properties are declared on the same element (graph-spec's ADR-0010); `dimension`
- * goes with a VECTOR<…> type; `key` is not combined with `mustExist: false` or `unique: false`;
- * `count` is not combined with `min_count` or `max_count`, and `min_count` is at most `max_count`.
- * And this example's: every identifier label and implied or optional label, and every relationship
- * type, follows the id rule (isOntologyId: they become labels and relationship types in
- * Relate); one identifier label per node; one entry per (type, from, to); a node's implied and
- * optional labels differ from each other and from its identifier; the extensions this example reads
- * have the shape it reads (createContextGraph:pole, createContextGraph:origin,
- * createContextGraph:domain, edgextract:gazetteer, edgextract:symmetric, neo4j:display's color),
- * and a document with createContextGraph:domain gives every node a createContextGraph:pole; a
- * canonicalQuery tool's cypher, when it has one, is text, a tool's parameters are a list of
- * {name, ...}, and a node's or relationship's tools have distinct names.
+ * Three checks, in order, each only when the one before it holds. (1) The JSON Schema
+ * (validateSchema), the spec's normative definition and the strict one: it refuses a field the
+ * spec does not have, where the SDK's decoder drops it without a word (a leftover draft
+ * `mustExist`, say). It is a small interpreter of exactly the JSON Schema 2020-12 keywords the
+ * spec's schema uses: $ref (to #/$defs/…), type (a name or a list of names), required, properties,
+ * additionalProperties (false or a schema), items, enum, const and oneOf (ajv's way: the branches'
+ * errors and a oneOf error when no branch holds, only the oneOf error when several do).
+ * Annotations ($id, $schema, title, description) are ignored. Errors carry ajv's instancePath and
+ * keyword, so harness/ontology.mjs compares the two validators error for error, on every bundled
+ * document and on tampered ones. SCHEMA below is the vendored file's content; the harness pins that
+ * they are equal. (2) The SDK (validateSpec): GraphSpec.Json decodes the document and
+ * Validations.core checks it (an endpoint names a node, a constraint names a property beside it,
+ * `count` is not combined with `min_count` or `max_count`, `min_count` is at most `max_count`, …).
+ * (3) This example's rules (checkDocument), which neither can say: `schema` names spec 1.1.0 (this
+ * file's SCHEMA_ID); every node has a label (`label`, or `labels.identifier`; both only when they
+ * agree); `dimension` goes with a VECTOR<…> type; `key` is not combined with `must_exist: false` or
+ * `unique: false`; every identifier label and implied or optional label, and every relationship
+ * type, follows the id rule (isOntologyId: they become labels and relationship types in Relate);
+ * one identifier label per node; one entry per (type, from, to); a node's implied and optional
+ * labels differ from each other and from its identifier; the extensions this example reads have
+ * the shape it reads (createContextGraph:pole, createContextGraph:origin, createContextGraph:domain,
+ * edgextract:gazetteer, edgextract:symmetric under `extensions.custom`; `display.colour`), and a
+ * document with createContextGraph:domain gives every node a createContextGraph:pole; the tools
+ * (`extensions.custom.tools`, a list) are {type, name, …} with distinct names per element, a
+ * canonicalQuery tool's cypher, when it has one, is text, and a tool's parameters are a list of
+ * {name, ...}.
  *
  * Serialisations. The spec has one wire format (absent means none: empty maps and lists are
  * never written). toYaml writes the document with each object's fields in the order the spec's
- * schema lists them, and the entries of `nodes`, `relationships` and each `properties` map in the
- * document's order; it is what data/ontologies/ogs/ holds and what the page's editor shows.
+ * schema lists them, and the entries of the maps keyed by the document's own names (`nodes`,
+ * `relationships`, `properties`, `constraints`, `indexes`, `extensions.custom`) in the document's
+ * order; it is what data/ontologies/ogs/ holds and what the page's editor shows. YAML is read with
+ * js-yaml and handed to the SDK as JSON, never through the SDK's own YAML decoder, which misreads
+ * plain YAML (lib/ogs.mjs; NOTES.md Y1).
  * toCanonicalJson writes compact JSON with the keys of every spec-defined object sorted by code
  * point, except two things kept as they are: the order of the maps keyed by the document's own
- * names (`nodes`, `relationships`, `properties`), because this example asks the model about kinds
- * and links in that order (the order is part of every inference cache key, D7), and the content of
- * extension payloads and tools' owner-defined fields, which the spec says are carried untouched.
- * It is what the store keeps and what the ontology's sha256 is taken over.
+ * names, because this example asks the model about kinds and links in that order (the order is
+ * part of every inference cache key, D7), and the content of extension payloads (each
+ * `extensions.custom` value, `display.custom`, an index's `options` and `custom`, the data source
+ * tables and mappings), which the spec carries untouched. It is what the store keeps and what the
+ * ontology's sha256 is taken over.
  */
 import yaml from 'js-yaml';
+import * as sdk from '@neo4j/ontology-graph-spec';
+import { createOgs, FIELD_ORDER, SCHEMA_URL, SPEC_VERSION as LIB_SPEC_VERSION, isDraft as libIsDraft, fromDraft as libFromDraft, layoutPoint, OntologyError as LibOntologyError } from '../../../lib/ogs.mjs';
+
+export { layoutPoint };
 import { rustTrim } from './names.js';
 
 /** The spec version this module reads. */
-export const SPEC_VERSION = '1.0.0';
-/** The schema's $id, which a v1 document's `$schema` names. */
-export const SCHEMA_ID = 'https://neo4j.com/ontology-graph-spec/1.0.0/schema.json';
+export const SPEC_VERSION = LIB_SPEC_VERSION;
+/** The schema's $id, which a document's `schema` names. */
+export const SCHEMA_ID = SCHEMA_URL;
+/** The SDK version this example pins (package.json; build.mjs and harness/ontology.mjs check it). */
+export const SDK_VERSION = '0.12.2';
 
-/** An ontology the rules refuse; the message is meant for the person who wrote it. errors: [{path, keyword, message}] when a v1 document failed its checks. */
+/** An ontology the rules refuse; the message is meant for the person who wrote it. errors: [{path, keyword, message}] when a document failed its checks. */
 export class OntologyError extends Error {
   /** @param {string} message @param {Array<{path: string, keyword: string, message: string}>} [errors] */
   constructor(message, errors = []) {
@@ -71,6 +85,8 @@ export class OntologyError extends Error {
     this.errors = errors;
   }
 }
+
+const OGS = createOgs({ yaml, sdk, sdkVersion: SDK_VERSION });
 
 // ---- the id rule (D8): one rule for every ontology id that becomes a label or a type ---------------
 
@@ -154,7 +170,7 @@ export function loadText(text, what = 'The YAML') {
 }
 
 /**
- * A v1 document's text (YAML or JSON) as a value. It is not checked here: validateDocument does that.
+ * A document's text (YAML or JSON) as a value. It is not checked here: validateDocument does that.
  * @param {string} text
  */
 export function parseDocument(text) {
@@ -164,209 +180,1239 @@ export function parseDocument(text) {
 
 // ---- the schema (data/ontology-spec/ontology-graph-spec.schema.json, verbatim) ----------------------
 
-/** The spec's JSON Schema (draft 2020-12), as vendored; harness/ontology.mjs pins it equal to the file. */
 export const SCHEMA = deepFreeze(/*@ogs:schema*/{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://neo4j.com/ontology-graph-spec/1.0.0/schema.json",
-  "title": "Neo4j Ontology Graph Specification v1",
-  "description": "Draft JSON Schema for the Ontology Graph spec v1 proposal (2026-09-25 doc state, working-session revision). Nodes and relationships are keyed by local ids; the label/type lives inside the entry. Types are tokens. Tools are core. Extensions ride the named extensions map: first-party keys, custom envelope under custom; extension payloads are never validated by this schema.",
-  "type": "object",
-  "required": ["$schema", "id", "version"],
-  "additionalProperties": false,
-  "properties": {
-    "$schema": {
-      "type": "string",
-      "format": "uri",
-      "description": "Spec link including the version. Meta-level; doubles as document-type marker."
-    },
-    "id": {
-      "type": "string",
-      "description": "Unique identifier of the ontology."
-    },
-    "version": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "The ontology's own version. Identity metadata, not lifecycle."
-    },
-    "name": { "type": "string" },
-    "description": { "type": "string" },
-    "nodes": {
-      "type": "object",
-      "description": "Map key is the identifier within the document, not the label. The label lives in label / labels.identifier, so label renames do not break references.",
-      "additionalProperties": { "$ref": "#/$defs/node" }
-    },
-    "relationships": {
-      "type": "object",
-      "description": "Map key is the intra-document identifier; the relationship type lives in the type field. Several keys may share a type across different endpoint pairs, but note graph-type enforcement keys on the type alone and cannot distinguish pairs yet.",
-      "additionalProperties": { "$ref": "#/$defs/relationshipEntry" }
-    },
-    "extensions": { "$ref": "#/$defs/extensionsMap" }
-  },
-  "$defs": {
-    "propertyType": {
-      "type": "string",
-      "description": "Type token: a Neo4j scalar, ANY, LIST<...> or VECTOR<...> (a VECTOR may carry a companion dimension field on the property). Element types are always scalars: no nested lists, no lists of vectors. No union types in v1: a property is a single type or ANY.",
-      "pattern": "^(ANY|LIST<ANY>|(STRING|INTEGER|FLOAT|BOOLEAN|DATE|TIME|LOCALTIME|DATETIME|LOCALDATETIME|DURATION|POINT|BYTES)|(LIST|VECTOR)<(STRING|INTEGER|FLOAT|BOOLEAN|DATE|TIME|LOCALTIME|DATETIME|LOCALDATETIME|DURATION|POINT|BYTES)>)$"
-    },
-    "labels": {
-      "type": "object",
-      "required": ["identifier"],
-      "additionalProperties": false,
-      "properties": {
-        "identifier": { "type": "string", "description": "The identifying (main) label." },
-        "implied": { "type": "array", "items": { "type": "string" } },
-        "optional": { "type": "array", "items": { "type": "string" } }
-      }
-    },
-    "constraint": {
-      "description": "Constraint object form (the alternative to the mustExist/unique/key shorthand flags). Nameable, so tooling can reference individual constraints.",
-      "type": "object",
-      "required": ["constraint_type", "properties"],
-      "additionalProperties": false,
-      "properties": {
-        "constraint_type": { "type": "string", "enum": ["key", "unique", "mustExist"] },
-        "name": { "type": "string" },
-        "properties": {
-          "type": "array",
-          "items": { "type": "string" },
-          "minItems": 1
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json",
+    "title": "GraphModel",
+    "type": "object",
+    "properties": {
+        "schema": {
+            "type": "string",
+            "description": "Schema specification uri used."
+        },
+        "version": {
+            "type": "string",
+            "description": "User-defined version of this model document, e.g. a revision number or label."
+        },
+        "id": {
+            "type": "string",
+            "description": "Unique identifier of the model, typically a kebab-case version of the name, used for referencing."
+        },
+        "name": {
+            "type": "string",
+            "description": "Human readable name for the model."
+        },
+        "description": {
+            "type": "string",
+            "description": "Description of the model."
+        },
+        "nodes": {
+            "type": "object",
+            "description": "Node definitions keyed by node id.",
+            "additionalProperties": {
+                "$ref": "#/$defs/Node"
+            }
+        },
+        "relationships": {
+            "type": "object",
+            "description": "Relationship definitions keyed by relationship id.",
+            "additionalProperties": {
+                "$ref": "#/$defs/Relationship"
+            }
+        },
+        "extensions": {
+            "$ref": "#/$defs/GraphModelExtensions",
+            "description": "Extensions to the model: data source tables, mappings and external custom data."
         }
-      }
     },
-    "property": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "type": { "$ref": "#/$defs/propertyType" },
-        "dimension": {
-          "type": "integer",
-          "minimum": 1,
-          "description": "VECTOR companion: element count. Absent = unconstrained."
+    "additionalProperties": false,
+    "required": [
+        "schema",
+        "version",
+        "id"
+    ],
+    "$defs": {
+        "Node": {
+            "type": "object",
+            "description": "A node of the graph.",
+            "properties": {
+                "label": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Shorthand for the identifying label. Expanded into labels when the model is decoded."
+                },
+                "labels": {
+                    "$ref": "#/$defs/Labels",
+                    "description": "Labels of the node."
+                },
+                "properties": {
+                    "type": "object",
+                    "description": "Properties of the node keyed by id.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/Property"
+                    }
+                },
+                "constraints": {
+                    "type": "object",
+                    "description": "Constraints on the node keyed by id.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/NodeConstraint"
+                    }
+                },
+                "extensions": {
+                    "$ref": "#/$defs/NodeExtensions",
+                    "description": "Extensions for the node."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of the node."
+                },
+                "aliases": {
+                    "type": "array",
+                    "description": "Alternative names for the node.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reference": {
+                    "type": "string",
+                    "description": "Reference or URI of an external resource describing the node."
+                }
+            },
+            "required": [],
+            "additionalProperties": false
         },
-        "mustExist": { "type": "boolean" },
-        "unique": { "type": "boolean" },
-        "key": { "type": "boolean" },
-        "one_of": {
-          "type": "array",
-          "description": "Allowed values. JSON Schema's word. Default value support."
+        "Labels": {
+            "type": "object",
+            "description": "The labels of a node.",
+            "properties": {
+                "identifier": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "The label which identifies the node."
+                },
+                "implied": {
+                    "type": "array",
+                    "description": "Labels implied by the node in addition to the identifier.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "optional": {
+                    "type": "array",
+                    "description": "Labels which may be present on the node but aren't required.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "extensions": {
+                    "$ref": "#/$defs/LabelsExtensions",
+                    "description": "Extensions for the labels."
+                }
+            },
+            "required": [],
+            "additionalProperties": false
         },
-        "pattern": { "type": "string", "format": "regex" },
-        "description": { "type": "string" },
-        "aliases": { "type": "array", "items": { "type": "string" } },
-        "reference": { "$ref": "#/$defs/reference" },
-        "extensions": { "$ref": "#/$defs/extensionsMap" }
-      }
-    },
-    "endpoint": {
-      "type": "object",
-      "required": ["node"],
-      "additionalProperties": false,
-      "description": "Endpoint cardinality: count is the exact form, min_count/max_count the ranged form; absent means unconstrained (0..*). Counts on to constrain relationships per from-instance; counts on from constrain per to-instance.",
-      "properties": {
-        "node": { "type": "string", "description": "A node id from the nodes map." },
-        "count": { "type": "integer", "minimum": 0 },
-        "min_count": { "type": "integer", "minimum": 0 },
-        "max_count": { "type": "integer", "minimum": 1 }
-      }
-    },
-    "reference": {
-      "type": "string",
-      "format": "uri",
-      "description": "A single informational URI pointing at an external definition of this element (e.g. the original RDF resource)."
-    },
-    "tool": {
-      "type": "object",
-      "required": ["type"],
-      "description": "Core tool definition for agents: type discriminates (canonicalQuery, externalRequest, ...), name and description are the readable surface; remaining fields are defined per tool type by its owner (cypher, url, ...). Definitions only, no behaviour.",
-      "properties": {
-        "type": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": "string" }
-      },
-      "additionalProperties": true
-    },
-    "extension": {
-      "description": "Custom extension envelope, four fields: type required; $schema, name, definition optional. definition is free-form and never validated by this spec. Unknown extra fields are carried untouched.",
-      "type": "object",
-      "required": ["type"],
-      "properties": {
-        "type": { "type": "string" },
-        "$schema": { "type": "string", "format": "uri" },
-        "name": { "type": "string" },
-        "definition": true
-      }
-    },
-    "extensionsMap": {
-      "type": "object",
-      "description": "Named extensions: first-party extensions as keys (neo4j:*), each shape defined by its owner, available in the ontology graph spec SDK, not validated by this spec. Custom extensions ride the fixed envelope under the reserved custom key.",
-      "properties": {
-        "custom": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/extension" }
+        "LabelsExtensions": {
+            "type": "object",
+            "description": "Extensions for the labels of a node.",
+            "properties": {
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "Property": {
+            "type": "object",
+            "description": "A property of a node or relationship.",
+            "properties": {
+                "type": {
+                    "$ref": "#/$defs/Neo4jType",
+                    "description": "Neo4j type of the property."
+                },
+                "dimension": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "description": "Dimension of the property when it holds a vector."
+                },
+                "must_exist": {
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "description": "Shorthand for an existence constraint. Expanded into constraints when the model is decoded."
+                },
+                "unique": {
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "description": "Shorthand for a uniqueness constraint. Expanded into constraints when the model is decoded."
+                },
+                "key": {
+                    "type": [
+                        "boolean",
+                        "null"
+                    ],
+                    "description": "Shorthand for a key constraint. Expanded into constraints when the model is decoded."
+                },
+                "extensions": {
+                    "$ref": "#/$defs/PropertyExtensions",
+                    "description": "Extensions for the property."
+                },
+                "name": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Name of the property in the database, when different from its id."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of the property."
+                },
+                "aliases": {
+                    "type": "array",
+                    "description": "Alternative names for the property.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reference": {
+                    "type": "string",
+                    "description": "Reference or URI of an external resource describing the property."
+                },
+                "pattern": {
+                    "type": "string",
+                    "description": "Pattern values of the property are expected to match."
+                },
+                "one_of": {
+                    "type": "array",
+                    "description": "Values the property is restricted to.",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "Neo4jType": {
+            "type": "string",
+            "description": "A Neo4j property type.",
+            "enum": [
+                "ANY",
+                "LIST<ANY>",
+                "BOOLEAN",
+                "LIST<BOOLEAN>",
+                "DATE",
+                "LIST<DATE>",
+                "DURATION",
+                "LIST<DURATION>",
+                "FLOAT32",
+                "LIST<FLOAT32>",
+                "FLOAT",
+                "LIST<FLOAT>",
+                "INTEGER8",
+                "LIST<INTEGER8>",
+                "INTEGER16",
+                "LIST<INTEGER16>",
+                "INTEGER32",
+                "LIST<INTEGER32>",
+                "INTEGER",
+                "LIST<INTEGER>",
+                "LOCAL DATETIME",
+                "LIST<LOCAL DATETIME>",
+                "LOCAL TIME",
+                "LIST<LOCAL TIME>",
+                "POINT",
+                "LIST<POINT>",
+                "STRING",
+                "LIST<STRING>",
+                "VECTOR<FLOAT>",
+                "VECTOR<FLOAT32>",
+                "VECTOR<INTEGER>",
+                "VECTOR<INTEGER32>",
+                "VECTOR<INTEGER16>",
+                "VECTOR<INTEGER8>",
+                "ZONED DATETIME",
+                "LIST<ZONED DATETIME>",
+                "ZONED TIME",
+                "LIST<ZONED TIME>",
+                "UUID"
+            ]
+        },
+        "PropertyExtensions": {
+            "type": "object",
+            "description": "Extensions for a property.",
+            "properties": {
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "NodeConstraint": {
+            "type": "object",
+            "description": "A constraint on a node.",
+            "properties": {
+                "type": {
+                    "$ref": "#/$defs/ConstraintType",
+                    "description": "Type of the constraint."
+                },
+                "properties": {
+                    "type": "array",
+                    "description": "Ids of the properties the constraint covers.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "extensions": {
+                    "$ref": "#/$defs/NodeConstraintExtensions",
+                    "description": "Extensions for the constraint."
+                },
+                "name": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Name of the constraint in the database."
+                }
+            },
+            "required": [
+                "type",
+                "properties"
+            ],
+            "additionalProperties": false
+        },
+        "ConstraintType": {
+            "type": "string",
+            "description": "The type of a constraint.",
+            "enum": [
+                "EXISTS",
+                "KEY",
+                "PROPERTY_TYPE",
+                "UNIQUE"
+            ]
+        },
+        "NodeConstraintExtensions": {
+            "type": "object",
+            "description": "Extensions for a node constraint.",
+            "properties": {
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "NodeExtensions": {
+            "type": "object",
+            "description": "Extensions for a node.",
+            "properties": {
+                "indexes": {
+                    "type": "object",
+                    "description": "Database indexes on this node keyed by id.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/NodeIndex"
+                    }
+                },
+                "display": {
+                    "oneOf": [
+                        {
+                            "type": "null"
+                        },
+                        {
+                            "$ref": "#/$defs/NodeDisplay"
+                        }
+                    ],
+                    "description": "Optional visual information of this node."
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "NodeIndex": {
+            "type": "object",
+            "description": "An index on a node.",
+            "properties": {
+                "type": {
+                    "$ref": "#/$defs/IndexType",
+                    "description": "Type of the index."
+                },
+                "labels": {
+                    "type": "array",
+                    "description": "Labels the index covers.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "properties": {
+                    "type": "array",
+                    "description": "Ids of the properties the index covers.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "options": {
+                    "oneOf": [
+                        {
+                            "type": "null"
+                        },
+                        {
+                            "$ref": "#/$defs/IndexOption"
+                        }
+                    ],
+                    "description": "Configuration specific to the type of index."
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                },
+                "name": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Name of the index in the database."
+                }
+            },
+            "required": [
+                "type",
+                "labels",
+                "properties"
+            ],
+            "additionalProperties": false
+        },
+        "IndexType": {
+            "type": "string",
+            "description": "The type of an index.",
+            "enum": [
+                "FULLTEXT",
+                "POINT",
+                "RANGE",
+                "TEXT",
+                "VECTOR",
+                "LOOKUP"
+            ]
+        },
+        "IndexOption": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/FULLTEXT"
+                },
+                {
+                    "$ref": "#/$defs/POINT"
+                },
+                {
+                    "$ref": "#/$defs/VECTOR"
+                }
+            ],
+            "description": "Configuration specific to the type of an index."
+        },
+        "FULLTEXT": {
+            "type": "object",
+            "description": "Configuration of a full-text index.",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "FULLTEXT"
+                },
+                "fulltext.default_analyzer": {
+                    "type": "string",
+                    "description": "Analyzer used when the index doesn't specify one."
+                },
+                "fulltext.analyzer": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Analyzer used by the index."
+                },
+                "fulltext.eventually_consistent": {
+                    "type": "boolean",
+                    "description": "Whether the index is eventually consistent, updating asynchronously after transactions commit."
+                },
+                "fulltext.eventually_consistent_apply_parallelism": {
+                    "type": "integer",
+                    "description": "Number of threads used to apply updates to an eventually consistent index."
+                },
+                "fulltext.eventually_consistent_refresh_interval": {
+                    "type": "string",
+                    "description": "How often an eventually consistent index is refreshed."
+                },
+                "fulltext.eventually_consistent_refresh_parallelism": {
+                    "type": "integer",
+                    "description": "Number of threads used to refresh an eventually consistent index."
+                },
+                "fulltext.eventually_consistent_index_update_queue_max_length": {
+                    "type": "integer",
+                    "description": "Maximum number of pending updates queued for an eventually consistent index."
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false
+        },
+        "POINT": {
+            "type": "object",
+            "description": "Configuration of a point index.",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "POINT"
+                },
+                "spatial.cartesian.min": {
+                    "type": "array",
+                    "description": "Lower bounds of the 2D cartesian space.",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "spatial.cartesian.max": {
+                    "type": "array",
+                    "description": "Upper bounds of the 2D cartesian space.",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "spatial.cartesian-3d.min": {
+                    "type": "array",
+                    "description": "Lower bounds of the 3D cartesian space.",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "spatial.cartesian-3d.max": {
+                    "type": "array",
+                    "description": "Upper bounds of the 3D cartesian space.",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "spatial.wgs-84.min": {
+                    "type": "array",
+                    "description": "Lower bounds of the 2D WGS-84 space.",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "spatial.wgs-84.max": {
+                    "type": "array",
+                    "description": "Upper bounds of the 2D WGS-84 space.",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "spatial.wgs-84-3d.min": {
+                    "type": "array",
+                    "description": "Lower bounds of the 3D WGS-84 space.",
+                    "items": {
+                        "type": "number"
+                    }
+                },
+                "spatial.wgs-84-3d.max": {
+                    "type": "array",
+                    "description": "Upper bounds of the 3D WGS-84 space.",
+                    "items": {
+                        "type": "number"
+                    }
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false
+        },
+        "VECTOR": {
+            "type": "object",
+            "description": "Configuration of a vector index.",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "VECTOR"
+                },
+                "vector.dimensions": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "description": "Number of dimensions of the indexed vectors."
+                },
+                "vector.similarity_function": {
+                    "type": "string",
+                    "description": "Function used to compare vectors, e.g. cosine or euclidean."
+                },
+                "vector.default_search_expansion_factor": {
+                    "type": [
+                        "number",
+                        "null"
+                    ],
+                    "description": "Default expansion factor applied to searches of the index."
+                },
+                "vector.quantization.enabled": {
+                    "type": "boolean",
+                    "description": "Whether vector quantization is enabled."
+                },
+                "vector.quantization.type": {
+                    "type": "string",
+                    "description": "Type of vector quantization used."
+                },
+                "vector.hnsw.m": {
+                    "type": "integer",
+                    "description": "Maximum number of connections per node in the HNSW graph."
+                },
+                "vector.hnsw.ef_construction": {
+                    "type": "integer",
+                    "description": "Number of nearest neighbours considered when building the HNSW graph."
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "additionalProperties": false
+        },
+        "NodeDisplay": {
+            "type": "object",
+            "description": "Visual information for a node.",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "Horizontal position."
+                },
+                "y": {
+                    "type": "number",
+                    "description": "Vertical position."
+                },
+                "colour": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Display colour of the node as a hex string, e.g. #FF8800."
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [
+                "x",
+                "y"
+            ],
+            "additionalProperties": false
+        },
+        "Relationship": {
+            "type": "object",
+            "description": "A relationship of the graph.",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "description": "Type of the relationship."
+                },
+                "from": {
+                    "$ref": "#/$defs/RelationshipTarget",
+                    "description": "The node the relationship starts at."
+                },
+                "to": {
+                    "$ref": "#/$defs/RelationshipTarget",
+                    "description": "The node the relationship ends at."
+                },
+                "properties": {
+                    "type": "object",
+                    "description": "Properties of the relationship keyed by id.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/Property"
+                    }
+                },
+                "constraints": {
+                    "type": "object",
+                    "description": "Constraints on the relationship keyed by id.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/RelationshipConstraint"
+                    }
+                },
+                "extensions": {
+                    "$ref": "#/$defs/RelationshipExtensions",
+                    "description": "Extensions for the relationship."
+                },
+                "description": {
+                    "type": "string",
+                    "description": "Description of the relationship."
+                },
+                "aliases": {
+                    "type": "array",
+                    "description": "Alternative names for the relationship.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "reference": {
+                    "type": "string",
+                    "description": "Reference or URI of an external resource describing the relationship."
+                }
+            },
+            "required": [
+                "type",
+                "from",
+                "to"
+            ],
+            "additionalProperties": false
+        },
+        "RelationshipTarget": {
+            "type": "object",
+            "description": "One end of a relationship.",
+            "properties": {
+                "node": {
+                    "type": "string",
+                    "description": "Id of the node at this end."
+                },
+                "label": {
+                    "type": "string",
+                    "description": "Label of the node at this end."
+                },
+                "count": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "description": "Exact number of relationships per node at this end. Null when unconstrained."
+                },
+                "min_count": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "description": "Minimum number of relationships per node at this end."
+                },
+                "max_count": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "description": "Maximum number of relationships per node at this end."
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "RelationshipConstraint": {
+            "type": "object",
+            "description": "A constraint on a relationship.",
+            "properties": {
+                "type": {
+                    "$ref": "#/$defs/ConstraintType",
+                    "description": "Type of the constraint."
+                },
+                "properties": {
+                    "type": "array",
+                    "description": "Ids of the properties the constraint covers.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "extensions": {
+                    "$ref": "#/$defs/RelationshipConstraintExtensions",
+                    "description": "Extensions for the constraint."
+                },
+                "name": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Name of the constraint in the database."
+                }
+            },
+            "required": [
+                "type",
+                "properties"
+            ],
+            "additionalProperties": false
+        },
+        "RelationshipConstraintExtensions": {
+            "type": "object",
+            "description": "Extensions for a relationship constraint.",
+            "properties": {
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "RelationshipExtensions": {
+            "type": "object",
+            "description": "Extensions for a relationship.",
+            "properties": {
+                "indexes": {
+                    "type": "object",
+                    "description": "Indexes on this relationship keyed by id.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/RelationshipIndex"
+                    }
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "RelationshipIndex": {
+            "type": "object",
+            "description": "An index on a relationship.",
+            "properties": {
+                "type": {
+                    "$ref": "#/$defs/IndexType",
+                    "description": "Type of the index."
+                },
+                "properties": {
+                    "type": "array",
+                    "description": "Ids of the properties the index covers.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "options": {
+                    "oneOf": [
+                        {
+                            "type": "null"
+                        },
+                        {
+                            "$ref": "#/$defs/IndexOption"
+                        }
+                    ],
+                    "description": "Configuration specific to the type of index."
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                },
+                "name": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Name of the index in the database."
+                }
+            },
+            "required": [
+                "type",
+                "properties"
+            ],
+            "additionalProperties": false
+        },
+        "GraphModelExtensions": {
+            "type": "object",
+            "description": "Extensions for a graph model.",
+            "properties": {
+                "data_source_tables": {
+                    "type": "object",
+                    "description": "Data source table schemas keyed by table id.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/Table"
+                    }
+                },
+                "data_source_mappings": {
+                    "type": "object",
+                    "description": "Sets of data source mappings from tables to nodes and relationships, often used for importing.",
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/$defs/Mapping"
+                        }
+                    }
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "Table": {
+            "type": "object",
+            "description": "A data source table schema.",
+            "properties": {
+                "source": {
+                    "type": "string",
+                    "description": "Where the table's data comes from."
+                },
+                "columns": {
+                    "type": "array",
+                    "description": "Columns of the table in their source order.",
+                    "items": {
+                        "$ref": "#/$defs/TableColumn"
+                    }
+                },
+                "primary_keys": {
+                    "type": "array",
+                    "description": "Names of the columns making up the primary key.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "foreign_keys": {
+                    "type": "object",
+                    "description": "Foreign keys of the table keyed by id.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/ForeignKey"
+                    }
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [
+                "source"
+            ],
+            "additionalProperties": false
+        },
+        "TableColumn": {
+            "type": "object",
+            "description": "A column of a data source table.",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Name of the column in the source. Unique within the table."
+                },
+                "type": {
+                    "type": "string",
+                    "description": "Data type of the column in the source."
+                },
+                "size": {
+                    "type": "integer",
+                    "description": "Size of the column."
+                },
+                "suggested": {
+                    "$ref": "#/$defs/Neo4jType",
+                    "description": "Neo4j type suggested for values of this column."
+                },
+                "supported": {
+                    "type": "array",
+                    "description": "Neo4j types values of this column can be converted to when using the import tool.",
+                    "items": {
+                        "$ref": "#/$defs/Neo4jType"
+                    }
+                },
+                "nullable": {
+                    "type": "boolean",
+                    "description": "Whether the column can hold null values."
+                },
+                "dimension": {
+                    "type": [
+                        "integer",
+                        "null"
+                    ],
+                    "description": "Dimension of the column when it holds vectors."
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [],
+            "additionalProperties": false
+        },
+        "ForeignKey": {
+            "type": "object",
+            "description": "A foreign key of a table.",
+            "properties": {
+                "columns": {
+                    "type": "array",
+                    "description": "Names of the columns in this table which make up the key.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "references": {
+                    "$ref": "#/$defs/ForeignKeyReference",
+                    "description": "The table and columns the key refers to."
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [
+                "columns",
+                "references"
+            ],
+            "additionalProperties": false
+        },
+        "ForeignKeyReference": {
+            "type": "object",
+            "description": "The target of a foreign key.",
+            "properties": {
+                "table": {
+                    "type": "string",
+                    "description": "Id of the referenced table."
+                },
+                "columns": {
+                    "type": "array",
+                    "description": "Names of the referenced columns.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "custom": {
+                    "type": "object",
+                    "description": "User-defined arbitrary data.",
+                    "additionalProperties": {}
+                }
+            },
+            "required": [
+                "table"
+            ],
+            "additionalProperties": false
+        },
+        "Mapping": {
+            "oneOf": [
+                {
+                    "$ref": "#/$defs/NODE"
+                },
+                {
+                    "$ref": "#/$defs/QUERY"
+                },
+                {
+                    "$ref": "#/$defs/RELATIONSHIP"
+                }
+            ],
+            "description": "A mapping from a data source table to the graph. Either a node, relationship or query mapping."
+        },
+        "NODE": {
+            "type": "object",
+            "description": "Maps rows of a table to nodes.",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "NODE"
+                },
+                "node": {
+                    "type": "string",
+                    "description": "Id of the node being mapped."
+                },
+                "table": {
+                    "type": "string",
+                    "description": "Id of the source table."
+                },
+                "properties": {
+                    "type": "object",
+                    "description": "Mappings from property ids to source columns.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/PropertyMapping"
+                    }
+                },
+                "mode": {
+                    "$ref": "#/$defs/MappingMode",
+                    "description": "Whether nodes are merged with existing nodes or always created."
+                },
+                "match_label": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Label used to match existing nodes."
+                },
+                "key": {
+                    "type": "array",
+                    "description": "Ids of the properties which identify a node.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "depends_on": {
+                    "type": "string",
+                    "description": "Id of another mapping in the same list which must be imported before this one. Empty when there is no dependency."
+                },
+                "id": {
+                    "type": "string",
+                    "description": "Optional id of this mapping, so other mappings in the same list can reference it in depends_on."
+                }
+            },
+            "required": [
+                "type",
+                "node",
+                "table",
+                "properties"
+            ],
+            "additionalProperties": false
+        },
+        "PropertyMapping": {
+            "type": "object",
+            "description": "Maps a property to a source column.",
+            "properties": {
+                "column": {
+                    "type": "string",
+                    "description": "Name of the source column."
+                }
+            },
+            "required": [
+                "column"
+            ],
+            "additionalProperties": false
+        },
+        "MappingMode": {
+            "type": "string",
+            "description": "Write approach used when importing data (merged into existing data or always created).",
+            "enum": [
+                "MERGE",
+                "CREATE"
+            ]
+        },
+        "QUERY": {
+            "type": "object",
+            "description": "Maps the results of a query run against a table.",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "QUERY"
+                },
+                "table": {
+                    "type": "string",
+                    "description": "Id of the source table."
+                },
+                "query": {
+                    "type": "string",
+                    "description": "The query to run."
+                },
+                "depends_on": {
+                    "type": "string",
+                    "description": "Id of another mapping in the same list which must be imported before this one. Empty when there is no dependency."
+                },
+                "id": {
+                    "type": "string",
+                    "description": "Optional id of this mapping, so other mappings in the same list can reference it in depends_on."
+                }
+            },
+            "required": [
+                "type",
+                "table",
+                "query"
+            ],
+            "additionalProperties": false
+        },
+        "RELATIONSHIP": {
+            "type": "object",
+            "description": "Maps rows of a table to relationships.",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "const": "RELATIONSHIP"
+                },
+                "relationship": {
+                    "type": "string",
+                    "description": "Id of the relationship being mapped."
+                },
+                "table": {
+                    "type": "string",
+                    "description": "Id of the source table."
+                },
+                "from_node": {
+                    "$ref": "#/$defs/TargetMapping",
+                    "description": "How the start node of the relationship is matched."
+                },
+                "to_node": {
+                    "$ref": "#/$defs/TargetMapping",
+                    "description": "How the end node of the relationship is matched."
+                },
+                "match_label": {
+                    "type": [
+                        "string",
+                        "null"
+                    ],
+                    "description": "Label used to match existing relationships."
+                },
+                "properties": {
+                    "type": "object",
+                    "description": "Mappings from property ids to source columns.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/PropertyMapping"
+                    }
+                },
+                "mode": {
+                    "$ref": "#/$defs/MappingMode",
+                    "description": "Whether relationships are merged with existing relationships or always created."
+                },
+                "key": {
+                    "type": "array",
+                    "description": "Ids of the properties which identify a relationship.",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "depends_on": {
+                    "type": "string",
+                    "description": "Id of another mapping in the same list which must be imported before this one. Empty when there is no dependency."
+                },
+                "id": {
+                    "type": "string",
+                    "description": "Optional id of this mapping, so other mappings in the same list can reference it in depends_on."
+                }
+            },
+            "required": [
+                "type",
+                "relationship",
+                "table",
+                "from_node",
+                "to_node"
+            ],
+            "additionalProperties": false
+        },
+        "TargetMapping": {
+            "type": "object",
+            "description": "Identifies a node at one end of a mapped relationship.",
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "description": "Label of the node."
+                },
+                "properties": {
+                    "type": "object",
+                    "description": "Mappings from property ids to source columns used to match the node.",
+                    "additionalProperties": {
+                        "$ref": "#/$defs/PropertyMapping"
+                    }
+                }
+            },
+            "required": [],
+            "additionalProperties": false
         }
-      },
-      "additionalProperties": true
-    },
-    "node": {
-      "type": "object",
-      "additionalProperties": false,
-      "description": "Every node carries its label in label (shorthand for an identifier-only labels) or labels.identifier (when implied/optional labels exist). Not schema-enforced; a node with neither is meaningless.",
-      "properties": {
-        "label": { "type": "string", "description": "Shorthand for labels.identifier when no implied/optional labels exist." },
-        "labels": { "$ref": "#/$defs/labels" },
-        "description": { "type": "string" },
-        "aliases": { "type": "array", "items": { "type": "string" } },
-        "reference": { "$ref": "#/$defs/reference" },
-        "properties": {
-          "type": "object",
-          "propertyNames": {
-            "minLength": 1,
-            "description": "Property names are non-empty (ADR-0010): the map key is the property's addressable name, the string constraint objects and extensions reference."
-          },
-          "additionalProperties": { "$ref": "#/$defs/property" }
-        },
-        "constraints": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/constraint" }
-        },
-        "tools": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/tool" }
-        },
-        "extensions": { "$ref": "#/$defs/extensionsMap" }
-      }
-    },
-    "relationshipEntry": {
-      "type": "object",
-      "required": ["type", "from", "to"],
-      "additionalProperties": false,
-      "properties": {
-        "type": { "type": "string", "description": "The relationship type. One-to-one with the map key in the common case; several keys may share a type across different endpoint pairs." },
-        "from": { "$ref": "#/$defs/endpoint" },
-        "to": { "$ref": "#/$defs/endpoint" },
-        "description": { "type": "string" },
-        "aliases": { "type": "array", "items": { "type": "string" } },
-        "reference": { "$ref": "#/$defs/reference" },
-        "properties": {
-          "type": "object",
-          "propertyNames": {
-            "minLength": 1,
-            "description": "Property names are non-empty (ADR-0010): the map key is the property's addressable name, the string constraint objects and extensions reference."
-          },
-          "additionalProperties": { "$ref": "#/$defs/property" }
-        },
-        "constraints": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/constraint" }
-        },
-        "tools": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/tool" }
-        },
-        "extensions": { "$ref": "#/$defs/extensionsMap" }
-      }
     }
-  }
 }/*@ogs:schema-end*/);
 
 /** @template T @param {T} v @returns {T} */
@@ -380,28 +1426,16 @@ function deepFreeze(v) {
 
 // ---- the schema check ---------------------------------------------------------------------------------
 
-/** ajv-formats' fast `uri` (formats.js fastFormats.uri at 3.0.1): a scheme, then no whitespace. */
-const URI = /^(?:[a-z][a-z0-9+\-.]*:)(?:\/?\/)?[^\s]*$/i;
-/** ajv-formats' `regex`: a JavaScript regular expression without a \Z anchor. @param {string} s */
-function isRegex(s) {
-  if (/[^\\]\\Z/.test(s)) return false;
-  try {
-    new RegExp(s); // eslint-disable-line no-new
-    return true;
-  } catch {
-    return false;
-  }
-}
-/** @type {Record<string, (s: string) => boolean>} */
-const FORMATS = { uri: (s) => URI.test(s), regex: isRegex };
-
 /** How a type error names the JSON Schema type it wanted. @type {Readonly<Record<string, string>>} */
 const TYPE_WORDS = Object.freeze({ object: 'a mapping', array: 'a list', integer: 'an integer', null: 'null' });
 /** A word with its indefinite article: 'an integer', 'a string'. @param {string} word */
 const withArticle = (word) => `${/^[aeiou]/iu.test(word) ? 'an' : 'a'} ${word}`;
+/** A type list in words: 'a string or null'. @param {string|string[]} t */
+const typeWords = (t) => (Array.isArray(t) ? t : [t]).map((x) => TYPE_WORDS[x] ?? withArticle(x)).join(' or ');
 
 /** A JSON Schema type test as ajv makes it with strictNumbers (no NaN or Infinity). */
 function hasType(type, v) {
+  if (Array.isArray(type)) return type.some((t) => hasType(t, v));
   switch (type) {
     case 'object': return isMap(v);
     case 'array': return Array.isArray(v);
@@ -415,7 +1449,18 @@ function hasType(type, v) {
 }
 
 const KNOWN_KEYWORDS = new Set(['$schema', '$id', '$defs', '$ref', 'title', 'description', 'type', 'required', 'properties',
-  'additionalProperties', 'propertyNames', 'items', 'minItems', 'minimum', 'pattern', 'enum', 'minLength', 'format']);
+  'additionalProperties', 'items', 'enum', 'const', 'oneOf']);
+
+/** JSON equality, as ajv's `const` and `enum` compare. @param {unknown} a @param {unknown} b @returns {boolean} */
+function jsonEqual(a, b) {
+  if (a === b) return true;
+  if (Array.isArray(a)) return Array.isArray(b) && a.length === b.length && a.every((x, i) => jsonEqual(x, b[i]));
+  if (isMap(a) && isMap(b)) {
+    const ka = Object.keys(a);
+    return ka.length === Object.keys(b).length && ka.every((k) => Object.hasOwn(b, k) && jsonEqual(a[k], b[k]));
+  }
+  return false;
+}
 
 /**
  * The document checked against a JSON Schema (by default the spec's): every error, as ajv with
@@ -425,73 +1470,95 @@ const KNOWN_KEYWORDS = new Set(['$schema', '$id', '$defs', '$ref', 'title', 'des
  * @returns {Array<{path: string, keyword: string, message: string}>}
  */
 export function validateSchema(doc, schema = SCHEMA) {
-  /** @type {Array<{path: string, keyword: string, message: string}>} */
-  const errors = [];
   /** @param {string} ref */
   const resolve = (ref) => {
     if (!ref.startsWith('#/')) throw new Error(`ogs.js: only local $refs are supported, not ${ref}`);
     return ref.slice(2).split('/').reduce((s, k) => s?.[k.replaceAll('~1', '/').replaceAll('~0', '~')], schema);
   };
-  /** @param {any} s @param {any} v @param {string} path */
-  const walk = (s, v, path) => {
+  const typeEnum = schema.$defs?.Neo4jType?.enum;
+  /** @param {any} s @param {any} v @param {string} path @param {Array<{path: string, keyword: string, message: string}>} errors */
+  const walk = (s, v, path, errors) => {
     if (s === true) return;
     if (s === false) { errors.push({ path, keyword: 'false schema', message: 'boolean schema is false' }); return; }
     for (const k of Object.keys(s)) if (!KNOWN_KEYWORDS.has(k)) throw new Error(`ogs.js: the schema uses ${k}, which this validator does not know`);
-    if (s.$ref) walk(resolve(s.$ref), v, path);
-    if (s.type !== undefined && !hasType(s.type, v)) errors.push({ path, keyword: 'type', message: `must be ${TYPE_WORDS[s.type] ?? withArticle(s.type)}, not ${show(v)}` });
-    if (s.enum && !s.enum.some((x) => x === v)) errors.push({ path, keyword: 'enum', message: `must be one of ${s.enum.join(', ')}, not ${show(v)}` });
-    if (typeof v === 'number') {
-      if (s.minimum !== undefined && v < s.minimum) errors.push({ path, keyword: 'minimum', message: `must be ${s.minimum} or more, not ${v}` });
+    if (s.$ref) walk(resolve(s.$ref), v, path, errors);
+    if (s.type !== undefined && !hasType(s.type, v)) errors.push({ path, keyword: 'type', message: `must be ${typeWords(s.type)}, not ${show(v)}` });
+    if (s.const !== undefined && !jsonEqual(s.const, v)) errors.push({ path, keyword: 'const', message: `must be ${show(s.const)}, not ${show(v)}` });
+    if (s.enum && !s.enum.some((x) => jsonEqual(x, v))) {
+      errors.push({ path, keyword: 'enum', message: s.enum === typeEnum
+        ? `${show(v)} is not one of the spec's type tokens (STRING, INTEGER, FLOAT, BOOLEAN, DATE, ZONED DATETIME, LOCAL DATETIME, ZONED TIME, LOCAL TIME, DURATION, POINT, UUID, ANY, the sized INTEGER8/16/32 and FLOAT32, LIST<…> of most of them, VECTOR<…> of a number type)`
+        : `must be one of ${s.enum.join(', ')}, not ${show(v)}` });
     }
-    if (typeof v === 'string') {
-      if (s.minLength !== undefined && [...v].length < s.minLength) errors.push({ path, keyword: 'minLength', message: `must not be shorter than ${s.minLength} character${s.minLength === 1 ? '' : 's'}` });
-      if (s.pattern !== undefined && !new RegExp(s.pattern, 'u').test(v)) {
-        errors.push({ path, keyword: 'pattern', message: s.pattern === SCHEMA.$defs.propertyType.pattern
-          ? `${show(v)} is not a type token (STRING, INTEGER, FLOAT, BOOLEAN, DATE, TIME, LOCALTIME, DATETIME, LOCALDATETIME, DURATION, POINT, BYTES, ANY, LIST<…> or VECTOR<…> of a scalar)`
-          : `must match ${s.pattern}` });
+    if (s.oneOf) {
+      const branches = s.oneOf.map((b) => {
+        /** @type {Array<{path: string, keyword: string, message: string}>} */
+        const e = [];
+        walk(b, v, path, e);
+        return e;
+      });
+      const passing = branches.filter((e) => e.length === 0).length;
+      if (passing === 0) {
+        for (const e of branches) errors.push(...e);
+        errors.push({ path, keyword: 'oneOf', message: 'matches none of the forms this field takes' });
+      } else if (passing > 1) {
+        errors.push({ path, keyword: 'oneOf', message: 'matches more than one of the forms this field takes' });
       }
-      if (s.format !== undefined) {
-        const f = FORMATS[s.format];
-        if (!f) throw new Error(`ogs.js: the schema uses the format ${s.format}, which this validator does not know`);
-        if (!f(v)) errors.push({ path, keyword: 'format', message: s.format === 'uri' ? `${show(v)} is not a URI (a scheme such as https:, then no spaces)` : `${show(v)} is not a regular expression` });
-      }
     }
-    if (Array.isArray(v)) {
-      if (s.minItems !== undefined && v.length < s.minItems) errors.push({ path, keyword: 'minItems', message: `must list at least ${s.minItems} item${s.minItems === 1 ? '' : 's'}` });
-      if (s.items !== undefined) v.forEach((x, i) => walk(s.items, x, path + ptr(i)));
-    }
+    if (Array.isArray(v) && s.items !== undefined) v.forEach((x, i) => walk(s.items, x, path + ptr(i), errors));
     if (isMap(v)) {
       for (const k of s.required ?? []) {
         if (!Object.hasOwn(v, k)) errors.push({ path, keyword: 'required', message: `\`${k}\` is missing` });
       }
-      if (s.propertyNames !== undefined) {
-        for (const k of Object.keys(v)) {
-          const before = errors.length;
-          walk(s.propertyNames, k, path);
-          if (errors.length > before) {
-            // ajv words a bad name twice: the subschema's error, then propertyNames' own.
-            for (const e of errors.slice(before)) e.message = `the name ${show(k)}: ${e.message}`;
-            errors.push({ path, keyword: 'propertyNames', message: `the name ${show(k)} is not a valid property name (names are non-empty, ADR-0010)` });
-          }
-        }
-      }
       const props = s.properties ?? {};
       for (const [k, x] of Object.entries(v)) {
-        if (Object.hasOwn(props, k)) walk(props[k], x, path + ptr(k));
+        if (Object.hasOwn(props, k)) walk(props[k], x, path + ptr(k), errors);
         else if (s.additionalProperties === false) errors.push({ path, keyword: 'additionalProperties', message: `\`${k}\` is not a field here` });
-        else if (s.additionalProperties !== undefined) walk(s.additionalProperties, x, path + ptr(k));
+        else if (s.additionalProperties !== undefined) walk(s.additionalProperties, x, path + ptr(k), errors);
       }
     }
   };
-  walk(schema, doc, '');
+  /** @type {Array<{path: string, keyword: string, message: string}>} */
+  const errors = [];
+  walk(schema, doc, '', errors);
   return errors;
+}
+
+// ---- the SDK check ------------------------------------------------------------------------------------
+
+/** `$.nodes['a'].properties['b'].type` (a decoder path) as a JSON Pointer. @param {string} p */
+function decoderPointer(p) {
+  let out = '';
+  const re = /\.([A-Za-z_][\w]*)|\['((?:[^'\\]|\\.)*)'\]|\[(\d+)\]/g;
+  for (const m of p.replace(/^\$/, '').matchAll(re)) out += ptr(m[1] ?? m[2] ?? m[3]);
+  return out;
+}
+
+/**
+ * The SDK's decode and core validation (lib/ogs.mjs): [{path, keyword: 'sdk:<code>', message}].
+ * @param {unknown} doc
+ */
+export function validateSpec(doc) {
+  const v = OGS.validate(doc, ['core']);
+  return v.issues.map((i) => {
+    const at = /\bat path:? (\$\S*)/.exec(i.message);
+    return {
+      path: i.set === 'decode' ? (at ? decoderPointer(at[1]) : '') : i.path,
+      keyword: `sdk:${i.code}`,
+      message: i.message,
+    };
+  });
 }
 
 // ---- the rules (checkDocument) ----------------------------------------------------------------------------
 
-/** The custom extension envelopes of one type in an `extensions` map. @param {any} ext @param {string} type */
-export function customOf(ext, type) {
-  return isMap(ext) && Array.isArray(ext.custom) ? ext.custom.filter((e) => isMap(e) && e.type === type) : [];
+/** One custom extension's value in an `extensions` map, or undefined. @param {any} ext @param {string} type */
+export function custom(ext, type) {
+  return isMap(ext) && isMap(ext.custom) && Object.hasOwn(ext.custom, type) ? ext.custom[type] : undefined;
+}
+/** An element's tools (`extensions.custom.tools`), or []. @param {any} el */
+export function toolsOf(el) {
+  const t = custom(el?.extensions, EXTENSIONS.tools);
+  return Array.isArray(t) ? t : [];
 }
 /** A node's identifier label (labels.identifier, else label), or null. @param {any} node */
 export function nodeLabel(node) {
@@ -501,9 +1568,10 @@ export function nodeLabel(node) {
 }
 
 /**
- * The extensions this example reads and the place each may sit. edgextract:gazetteer (rule 1's
- * listed names) and edgextract:symmetric keep the names edgextract gave the two features; any v1
- * document may carry them.
+ * The custom extensions this example reads, under `extensions.custom`, and the place each may sit.
+ * edgextract:gazetteer (rule 1's listed names) and edgextract:symmetric keep the names edgextract
+ * gave the two features; any document may carry them. `tools` holds the ontology's tools (the
+ * published spec has no tool field).
  */
 export const EXTENSIONS = Object.freeze({
   pole: 'createContextGraph:pole',
@@ -511,54 +1579,61 @@ export const EXTENSIONS = Object.freeze({
   domain: 'createContextGraph:domain',
   gazetteer: 'edgextract:gazetteer',
   symmetric: 'edgextract:symmetric',
-  display: 'neo4j:display',
+  tools: 'tools',
 });
 
 /**
- * The rules a schema-valid document must also follow (see the header): [{path, keyword: 'semantic', message}].
- * @param {any} doc  a document validateSchema accepted
+ * The rules a schema- and SDK-valid document must also follow (see the header): [{path, keyword: 'semantic', message}].
+ * @param {any} doc  a document validateSchema and validateSpec accepted
  */
 export function checkDocument(doc) {
   /** @type {Array<{path: string, keyword: string, message: string}>} */
   const errors = [];
   const err = (path, message) => errors.push({ path, keyword: 'semantic', message });
-  if (doc.$schema !== SCHEMA_ID) {
-    err('/$schema', `names ${show(doc.$schema)}; this page reads version ${SPEC_VERSION} of the Ontology Graph Spec, ${SCHEMA_ID}`);
+  if (doc.schema !== SCHEMA_ID) {
+    err('/schema', `names ${show(doc.schema)}; this page reads version ${SPEC_VERSION} of the Ontology Graph Spec, ${SCHEMA_ID}`);
   }
   const nodes = isMap(doc.nodes) ? doc.nodes : {};
   const rels = isMap(doc.relationships) ? doc.relationships : {};
-  const ccg = customOf(doc.extensions, EXTENSIONS.domain).length > 0;
+  const ccg = custom(doc.extensions, EXTENSIONS.domain) !== undefined;
 
   /** @type {Map<string, string>} identifier label -> node id */
   const byLabel = new Map();
-  /** Properties, constraints and tools of a node or relationship entry. @param {string} at @param {any} el */
+  /** Properties and tools of a node or relationship entry. @param {string} at @param {any} el */
   const element = (at, el) => {
     const props = isMap(el.properties) ? el.properties : {};
     for (const [name, p] of Object.entries(props)) {
       const pp = `${at}/properties${ptr(name)}`;
-      if (p.dimension !== undefined && !(typeof p.type === 'string' && p.type.startsWith('VECTOR<'))) {
+      if (p.dimension !== undefined && p.dimension !== null && !(typeof p.type === 'string' && p.type.startsWith('VECTOR<'))) {
         err(`${pp}/dimension`, `goes with a VECTOR<…> type, not ${show(p.type ?? null)}`);
       }
-      if (p.key === true && (p.mustExist === false || p.unique === false)) {
-        err(pp, 'key implies unique and mustExist; it cannot go with mustExist: false or unique: false');
+      if (p.key === true && (p.must_exist === false || p.unique === false)) {
+        err(pp, 'key implies unique and must_exist; it cannot go with must_exist: false or unique: false');
       }
     }
-    (el.constraints ?? []).forEach((c, i) => {
-      for (const name of c.properties) {
-        if (!Object.hasOwn(props, name)) err(`${at}/constraints/${i}/properties`, `${show(name)} is not a property of this element (a constraint names properties declared beside it)`);
-      }
-    });
+    const tp = `${at}/extensions/custom/tools`;
+    const raw = custom(el.extensions, EXTENSIONS.tools);
+    if (raw !== undefined && !Array.isArray(raw)) {
+      err(tp, `the tools are a list, not ${show(raw)}`);
+      return;
+    }
     const names = new Set();
-    (el.tools ?? []).forEach((t, i) => {
+    (raw ?? []).forEach((t, i) => {
+      if (!isMap(t) || typeof t.type !== 'string' || t.type === '') {
+        err(`${tp}/${i}`, `a tool is {type, name?, description?, …}, not ${show(t)}`);
+        return;
+      }
+      if (t.name !== undefined && typeof t.name !== 'string') err(`${tp}/${i}/name`, `a tool's name is text, not ${show(t.name)}`);
+      if (t.description !== undefined && typeof t.description !== 'string') err(`${tp}/${i}/description`, `a tool's description is text, not ${show(t.description)}`);
       if (typeof t.name === 'string') {
-        if (names.has(t.name)) err(`${at}/tools/${i}/name`, `two tools here are named ${show(t.name)}`);
+        if (names.has(t.name)) err(`${tp}/${i}/name`, `two tools here are named ${show(t.name)}`);
         names.add(t.name);
       }
       if (t.type === 'canonicalQuery' && t.cypher !== undefined && typeof t.cypher !== 'string') {
-        err(`${at}/tools/${i}/cypher`, `a canonicalQuery tool's query is text, not ${show(t.cypher)}`);
+        err(`${tp}/${i}/cypher`, `a canonicalQuery tool's query is text, not ${show(t.cypher)}`);
       }
       if (t.parameters !== undefined && (!Array.isArray(t.parameters) || t.parameters.some((x) => !isMap(x) || typeof x.name !== 'string' || x.name === ''))) {
-        err(`${at}/tools/${i}/parameters`, 'parameters are a list of {name, type?, description?, ...}, each with a name');
+        err(`${tp}/${i}/parameters`, 'parameters are a list of {name, type?, description?, ...}, each with a name');
       }
     });
   };
@@ -570,11 +1645,11 @@ export function checkDocument(doc) {
       err(at, 'has no label: give it `label` (or `labels` with an `identifier`)');
       continue;
     }
-    if (typeof node.label === 'string' && isMap(node.labels) && node.label !== node.labels.identifier) {
+    if (typeof node.label === 'string' && isMap(node.labels) && typeof node.labels.identifier === 'string' && node.label !== node.labels.identifier) {
       err(at, `\`label\` (${node.label}) and \`labels.identifier\` (${node.labels.identifier}) disagree; keep one of them`);
     }
     const bad = idProblem('label', id);
-    if (bad) err(isMap(node.labels) ? `${at}/labels/identifier` : `${at}/label`, bad);
+    if (bad) err(isMap(node.labels) && typeof node.labels.identifier === 'string' ? `${at}/labels/identifier` : `${at}/label`, bad);
     const other = byLabel.get(id);
     if (other !== undefined) err(at, `the label ${id} already identifies the node ${show(other)}; one node per label`);
     else byLabel.set(id, key);
@@ -591,21 +1666,13 @@ export function checkDocument(doc) {
       }
     }
     element(at, node);
-    const poles = customOf(node.extensions, EXTENSIONS.pole);
-    if (poles.length > 1) err(`${at}/extensions/custom`, `more than one ${EXTENSIONS.pole}`);
-    for (const e of poles) {
-      const d = e.definition;
-      if (!isMap(d) || typeof d.pole_type !== 'string' || d.pole_type.trim() === '' ||
-        (d.subtype !== undefined && d.subtype !== null && typeof d.subtype !== 'string') ||
-        (d.origin !== undefined && d.origin !== 'base' && d.origin !== 'domain')) {
-        err(`${at}/extensions/custom`, `${EXTENSIONS.pole}'s definition is {pole_type, subtype?, origin?: base|domain}, not ${show(d)}`);
-      }
+    const pole = custom(node.extensions, EXTENSIONS.pole);
+    if (pole !== undefined && (!isMap(pole) || typeof pole.pole_type !== 'string' || pole.pole_type.trim() === '' ||
+      (pole.subtype !== undefined && pole.subtype !== null && typeof pole.subtype !== 'string') ||
+      (pole.origin !== undefined && pole.origin !== 'base' && pole.origin !== 'domain'))) {
+      err(`${at}/extensions/custom/${EXTENSIONS.pole}`, `is {pole_type, subtype?, origin?: base|domain}, not ${show(pole)}`);
     }
-    if (ccg && poles.length === 0) err(at, `a create-context-graph document (${EXTENSIONS.domain}) gives every node a ${EXTENSIONS.pole} extension`);
-    const display = isMap(node.extensions) ? node.extensions[EXTENSIONS.display] : undefined;
-    if (display !== undefined && (!isMap(display) || (display.color !== undefined && typeof display.color !== 'string'))) {
-      err(`${at}/extensions/${EXTENSIONS.display}`, `is a mapping whose color is text, not ${show(display)}`);
-    }
+    if (ccg && pole === undefined) err(at, `a create-context-graph document (${EXTENSIONS.domain}) gives every node a ${EXTENSIONS.pole} extension`);
   }
 
   /** @type {Map<string, string>} 'TYPE|from|to' -> relationship id */
@@ -617,10 +1684,7 @@ export function checkDocument(doc) {
     const bad = idProblem('relationship type', r.type);
     if (bad) err(`${at}/type`, bad);
     for (const end of /** @type {const} */ (['from', 'to'])) {
-      if (!Object.hasOwn(nodes, r[end].node)) err(`${at}/${end}/node`, `${show(r[end].node)} is not a node of this document`);
-      const { count, min_count: min, max_count: max } = r[end];
-      if (count !== undefined && (min !== undefined || max !== undefined)) err(`${at}/${end}`, '`count` is the exact form; it does not go with min_count or max_count');
-      if (min !== undefined && max !== undefined && min > max) err(`${at}/${end}`, `min_count ${min} is above max_count ${max}`);
+      if (typeof r[end].node !== 'string') err(`${at}/${end}`, 'names its node with `node` (the node\'s id in this document)');
     }
     const t = `${r.type}|${r.from.node}|${r.to.node}`;
     const dup = triples.get(t);
@@ -628,11 +1692,12 @@ export function checkDocument(doc) {
     else triples.set(t, key);
     element(at, r);
     const s = byType.get(r.type) ?? { symmetric: new Set(), origin: new Set() };
-    s.symmetric.add(customOf(r.extensions, EXTENSIONS.symmetric).length > 0);
-    for (const e of customOf(r.extensions, EXTENSIONS.origin)) {
-      if (!isMap(e.definition) || (e.definition.origin !== 'base' && e.definition.origin !== 'domain')) {
-        err(`${at}/extensions/custom`, `${EXTENSIONS.origin}'s definition is {origin: base|domain}, not ${show(e.definition)}`);
-      } else s.origin.add(e.definition.origin);
+    s.symmetric.add(custom(r.extensions, EXTENSIONS.symmetric) !== undefined);
+    const origin = custom(r.extensions, EXTENSIONS.origin);
+    if (origin !== undefined) {
+      if (!isMap(origin) || (origin.origin !== 'base' && origin.origin !== 'domain')) {
+        err(`${at}/extensions/custom/${EXTENSIONS.origin}`, `is {origin: base|domain}, not ${show(origin)}`);
+      } else s.origin.add(origin.origin);
     }
     byType.set(r.type, s);
   }
@@ -641,48 +1706,72 @@ export function checkDocument(doc) {
     if (s.origin.size > 1) err('/relationships', `the entries of ${type} disagree on ${EXTENSIONS.origin}`);
   }
 
-  for (const e of customOf(doc.extensions, EXTENSIONS.gazetteer)) {
-    const d = e.definition;
-    if (!isMap(d)) {
-      err('/extensions/custom', `${EXTENSIONS.gazetteer}'s definition maps names to node ids, not ${show(d)}`);
-      continue;
-    }
-    for (const [name, kind] of Object.entries(d)) {
-      if (rustTrim(name) === '') err('/extensions/custom', `${EXTENSIONS.gazetteer}: an empty name`);
-      if (typeof kind !== 'string' || !Object.hasOwn(nodes, kind)) err('/extensions/custom', `${EXTENSIONS.gazetteer}: ${show(name)} maps to ${show(kind)}, which is not a node of this document`);
+  const gaz = custom(doc.extensions, EXTENSIONS.gazetteer);
+  if (gaz !== undefined) {
+    if (!isMap(gaz)) {
+      err(`/extensions/custom/${EXTENSIONS.gazetteer}`, `maps names to node ids, not ${show(gaz)}`);
+    } else {
+      for (const [name, kind] of Object.entries(gaz)) {
+        if (rustTrim(name) === '') err(`/extensions/custom/${EXTENSIONS.gazetteer}`, 'an empty name');
+        if (typeof kind !== 'string' || !Object.hasOwn(nodes, kind)) err(`/extensions/custom/${EXTENSIONS.gazetteer}`, `${show(name)} maps to ${show(kind)}, which is not a node of this document`);
+      }
     }
   }
-  for (const e of customOf(doc.extensions, EXTENSIONS.domain)) {
-    if (e.definition !== undefined && !isMap(e.definition)) err('/extensions/custom', `${EXTENSIONS.domain}'s definition is a mapping, not ${show(e.definition)}`);
-  }
+  const dom = custom(doc.extensions, EXTENSIONS.domain);
+  if (dom !== undefined && dom !== null && !isMap(dom)) err(`/extensions/custom/${EXTENSIONS.domain}`, `is a mapping, not ${show(dom)}`);
+  if (custom(doc.extensions, EXTENSIONS.tools) !== undefined) err(`/extensions/custom/${EXTENSIONS.tools}`, 'tools sit on a node or a relationship, not on the document');
   return errors;
 }
 
 /**
- * The schema, then (when the schema holds) the rules.
+ * The schema, then (when the schema holds) the SDK, then (when the SDK accepts it) the rules.
  * @param {unknown} doc
- * @returns {{ok: boolean, stage: 'schema'|'rules'|null, errors: Array<{path: string, keyword: string, message: string}>}}
+ * @returns {{ok: boolean, stage: 'schema'|'sdk'|'rules'|null, errors: Array<{path: string, keyword: string, message: string}>}}
  */
 export function validateDocument(doc) {
   const schema = validateSchema(doc);
   if (schema.length) return { ok: false, stage: 'schema', errors: schema };
+  const spec = validateSpec(doc);
+  if (spec.length) return { ok: false, stage: 'sdk', errors: spec };
   const rules = checkDocument(doc);
   return { ok: rules.length === 0, stage: rules.length ? 'rules' : null, errors: rules };
+}
+
+// ---- earlier builds' draft documents ------------------------------------------------------------------
+
+/** Is this a document in the draft format earlier builds shipped (`$schema`)? @param {unknown} doc */
+export const isDraft = (doc) => libIsDraft(doc);
+
+/**
+ * A draft document converted to the published format (lib/ogs.mjs DRAFT_MAPPING), or an
+ * OntologyError naming what has no place there.
+ * @param {any} doc
+ */
+export function fromDraft(doc) {
+  try {
+    return libFromDraft(doc);
+  } catch (e) {
+    if (e instanceof LibOntologyError) throw new OntologyError(`This draft Ontology Graph Spec document cannot be converted: ${e.message}`);
+    throw e;
+  }
 }
 
 // ---- serialisation ------------------------------------------------------------------------------------
 
 /** Each spec-defined object's fields, in the order the schema lists them. */
 const ORDER = {
-  root: ['$schema', 'id', 'version', 'name', 'description', 'nodes', 'relationships', 'extensions'],
-  node: ['label', 'labels', 'description', 'aliases', 'reference', 'properties', 'constraints', 'tools', 'extensions'],
-  labels: ['identifier', 'implied', 'optional'],
-  property: ['type', 'dimension', 'mustExist', 'unique', 'key', 'one_of', 'pattern', 'description', 'aliases', 'reference', 'extensions'],
-  relationship: ['type', 'from', 'to', 'description', 'aliases', 'reference', 'properties', 'constraints', 'tools', 'extensions'],
-  endpoint: ['node', 'count', 'min_count', 'max_count'],
-  constraint: ['constraint_type', 'name', 'properties'],
-  tool: ['type', 'name', 'description'],
-  extension: ['type', '$schema', 'name', 'definition'],
+  root: FIELD_ORDER.doc,
+  node: FIELD_ORDER.node,
+  labels: ['identifier', 'implied', 'optional', 'extensions'],
+  property: FIELD_ORDER.property,
+  relationship: FIELD_ORDER.relationship,
+  endpoint: FIELD_ORDER.target,
+  constraint: ['type', 'properties', 'extensions', 'name'],
+  nodeExt: FIELD_ORDER.nodeExt,
+  relExt: FIELD_ORDER.relExt,
+  docExt: FIELD_ORDER.docExt,
+  display: FIELD_ORDER.display,
+  index: ['type', 'labels', 'properties', 'options', 'custom', 'name'],
 };
 
 /** A deep copy that keeps `__proto__` keys as own properties. @param {any} v */
@@ -697,7 +1786,7 @@ function clone(v) {
 }
 
 /**
- * The document rebuilt with its known structure walked: `fixed(shape, obj)` makes a spec-defined
+ * The document rebuilt with its known structure walked: `fixed(order, obj)` makes a spec-defined
  * object from its fields (`order`: the field names in the order to write them), and the maps and
  * payloads are copied as they come. sort: true orders spec-defined fields by code point (canonical
  * JSON), else in the schema's order (YAML).
@@ -722,33 +1811,24 @@ function shape(doc, sort) {
     for (const [k, v] of Object.entries(m)) setOwn(out, k, f(v));
     return out;
   };
-  const list = (l, f) => (Array.isArray(l) ? l.map(f) : clone(l));
-  const extensions = (e) => {
-    if (!isMap(e)) return clone(e);
-    const keys = Object.keys(e).filter((k) => k !== 'custom');
-    const named = sort ? keys.sort(cmpCodePoints) : keys;
-    const out = {};
-    for (const k of named) setOwn(out, k, clone(e[k]));
-    if (Object.hasOwn(e, 'custom')) setOwn(out, 'custom', list(e.custom, (x) => fixed(ORDER.extension, x)));
-    if (sort && Object.hasOwn(e, 'custom')) {
-      // custom sorts among the named keys too
-      const sorted = {};
-      for (const k of Object.keys(out).sort(cmpCodePoints)) setOwn(sorted, k, out[k]);
-      return sorted;
-    }
-    return out;
-  };
-  const property = (p) => fixed(ORDER.property, p, { extensions });
+  const payloads = (/** @type {any} */ m) => map(m, clone);
+  const nodeIndex = (x) => fixed(ORDER.index, x);
+  const relIndex = (x) => fixed(ORDER.index.filter((k) => k !== 'labels'), x);
+  const display = (d) => fixed(ORDER.display, d);
+  const nodeExt = (e) => fixed(ORDER.nodeExt, e, { indexes: (m) => map(m, nodeIndex), display, custom: payloads });
+  const relExt = (e) => fixed(ORDER.relExt, e, { indexes: (m) => map(m, relIndex), custom: payloads });
+  const plainExt = (e) => fixed(['custom'], e, { custom: payloads });
+  const docExt = (e) => fixed(ORDER.docExt, e, { custom: payloads });
+  const property = (p) => fixed(ORDER.property, p, { extensions: plainExt });
+  const constraint = (c) => fixed(ORDER.constraint, c, { extensions: plainExt });
   const element = {
     properties: (m) => map(m, property),
-    constraints: (l) => list(l, (c) => fixed(ORDER.constraint, c)),
-    tools: (l) => list(l, (t) => fixed(ORDER.tool, t)),
-    extensions,
+    constraints: (m) => map(m, constraint),
   };
-  const node = (n) => fixed(ORDER.node, n, { ...element, labels: (l) => fixed(ORDER.labels, l) });
+  const node = (n) => fixed(ORDER.node, n, { ...element, labels: (l) => fixed(ORDER.labels, l, { extensions: plainExt }), extensions: nodeExt });
   const endpoint = (x) => fixed(ORDER.endpoint, x);
-  const rel = (r) => fixed(ORDER.relationship, r, { ...element, from: endpoint, to: endpoint });
-  return fixed(ORDER.root, doc, { nodes: (m) => map(m, node), relationships: (m) => map(m, rel), extensions });
+  const rel = (r) => fixed(ORDER.relationship, r, { ...element, from: endpoint, to: endpoint, extensions: relExt });
+  return fixed(ORDER.root, doc, { nodes: (m) => map(m, node), relationships: (m) => map(m, rel), extensions: docExt });
 }
 
 /** The document as a plain object with the schema's field order (what toYaml writes). @param {any} doc */

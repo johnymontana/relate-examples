@@ -12,16 +12,18 @@ Shipped in `dist/` (what the GitHub Pages site serves for this example):
 | `assets/gliner-rs-4fa741e/`: `gliner_rs.js`, `gliner_rs_bg.wasm`, `LICENSE.txt`, `THIRD_PARTY-crates.txt` | gliner-rs v0.3.1, with the Rust crates it links (listed in `THIRD_PARTY-crates.txt`) | Apache-2.0; the crates MIT and/or Apache-2.0 for most, a few Unicode-3.0, Zlib, BSL-1.0, BSD-2-Clause or Unlicense (below) |
 | `assets/nvl-2.0.0/`: `nvl.js`, `HierarchicalLayout.worker.js`, their `.LEGAL.txt`, `NVL-LICENSE.txt`, the files the `.LEGAL.txt` refer to (`base.mjs.LICENSE.txt`, `dagre.esm.js.LEGAL.txt`), `THIRD_PARTY-npm.txt` and one `LICENSE-<package>-<version>.txt` per bundled npm package | NVL 2.0.0, with its bundled dependencies (only packages that put bytes into the bundle: NVL's `@segment/*` analytics packages are tree-shaken out and are neither shipped nor listed) | proprietary, used with Neo4j's permission (confirmed by the repository owner on 2026-10-08); the dependencies MIT, ISC, Unlicense |
 | `assets/js-yaml-4.3.2/`: `js-yaml.js`, `LICENSE.txt` | js-yaml 4.3.2 | MIT |
+| `assets/ontology-graph-spec-0.12.2/`: `ontology-graph-spec.js`, `LICENSE.txt`, `THIRD_PARTY.txt` | the Ontology Graph Spec SDK 0.12.2 (npm `@neo4j/ontology-graph-spec`), bundled into one module with the Kotlin libraries compiled into it (listed in `THIRD_PARTY.txt`) | Apache-2.0, the Kotlin libraries Apache-2.0 |
 | `data/LICENSE-edgextract.txt`, `data/SOURCE.md` | edgextract's licence, for the approach and the rules the page's modules port (below) | Apache-2.0 |
-| `data/ontologies/ogs/ccg/*.ontology.yaml`, `data/ontologies/ogs/SOURCE.md`, `data/ontologies/ccg/_base.yaml`, `data/ontologies/ccg/LICENSE-create-context-graph.txt`, `data/ontologies/ccg/SOURCE.md` | create-context-graph's domain ontologies, converted to Ontology Graph Spec v1, and their base, verbatim | Apache-2.0 |
-| `data/ontology-spec/`: `ontology-graph-spec.schema.json`, `LICENSE-graph-spec.txt`, `SOURCE.md` | the Neo4j Ontology Graph Specification v1's JSON Schema, verbatim (also carried in `ogs.js`) | Apache-2.0 |
+| `data/ontologies/ogs/ccg/*.ontology.yaml`, `data/ontologies/ogs/SOURCE.md`, `data/ontologies/ccg/_base.yaml`, `data/ontologies/ccg/LICENSE-create-context-graph.txt`, `data/ontologies/ccg/SOURCE.md` | create-context-graph's domain ontologies, converted to Ontology Graph Spec 1.1, and their base, verbatim | Apache-2.0 |
+| `data/ontology-spec/`: `ontology-graph-spec.schema.json`, `LICENSE-graph-spec.txt`, `SOURCE.md` | the Neo4j Ontology Graph Specification 1.1.0's JSON Schema, verbatim (also carried in `ogs.js`) | Apache-2.0 |
 | `data/samples/ccg/*.md` | 27 synthetic documents written for this example from create-context-graph's document templates; the people, organisations, identifiers, events and sites are fictional, the cities and regions real | this repository's licence |
 | `data/ontologies/index.json`, `data/samples/samples.json` | the picker's lists (`build.mjs`, this repository) | this repository's licence |
-| the page's modules (`app.js`, `worker.js`, …), `assets/lib-<sha8>/` (`lib/replay.mjs`, `lib/relate_wasm.mjs`), `queries/` | this repository; `split.js`, `names.js` and parts of `pipeline.js` port edgextract's rules; `ogs.js` carries the graph-spec schema | this repository's licence; the ports keep edgextract's attribution |
+| the page's modules (`app.js`, `worker.js`, …), `assets/lib-<sha8>/` (`lib/replay.mjs`, `lib/relate_wasm.mjs`, `lib/ogs.mjs`), `queries/` | this repository; `split.js`, `names.js` and parts of `pipeline.js` port edgextract's rules; `ogs.js` carries the spec's schema | this repository's licence; the ports keep edgextract's attribution |
 
 Not shipped:
 - the GLiNER2.5 weights, which the page fetches from the Hugging Face Hub;
-- the harness's fixtures (`harness/fixtures.mjs`), edge cases written for this example after edgextract's golden set;
+- the harness's fixtures (`harness/fixtures.mjs`), edge cases written for this example after edgextract's golden set, and
+  `harness/fixtures/*.draft.ontology.yaml`, two documents as the last draft-format build of this example had them;
 - the create-context-graph samples' gold files and distractors (`data/samples/ccg/*.gold.json`,
   `distractors.json`), which only the Node harness reads;
 - `data/reference/`;
@@ -36,7 +38,7 @@ Not shipped:
   - the gazetteer proposer, the pronoun list and the section planning (`web/pipeline.js`).
 
   Each port names its upstream source file and commit in its header. The gazetteer and
-  symmetric links keep edgextract's names as Ontology Graph Spec v1 extensions
+  symmetric links keep edgextract's names as Ontology Graph Spec custom extensions
   (`edgextract:gazetteer`, `edgextract:symmetric`); no bundled ontology carries them.
 - **Source:** [raphaelmansuy/edgextract](https://github.com/raphaelmansuy/edgextract) at
   commit `3f08b1dca84ebacffd5152cee37639a62df0fb93` (`3f08b1d`). The npm package
@@ -55,7 +57,7 @@ Not shipped:
   WORKS_FOR, LOCATED_AT, PARTICIPATED_IN), copied byte for byte. `web/convert.js` reads the
   format (`domain`, `entity_types`, `relationships`, `inherits: _base`), merges the base as
   create-context-graph's `ontology.py` `_merge_base` does (a reimplementation, not a copy), and
-  converts each file to an Ontology Graph Spec v1 document that carries all of it: properties,
+  converts each file to an Ontology Graph Spec 1.1 document that carries all of it: properties,
   agent tools, document templates, decision traces, demo scenarios, the system prompt and the
   visualization settings. `dist/` ships the 27 converted documents
   (`data/ontologies/ogs/ccg/`, derived works under the same licence) and `_base.yaml` (for a
@@ -182,18 +184,38 @@ Not shipped:
   - `safe-buffer` (MIT, Feross Aboukhadijeh);
   - lodash (MIT).
 
-## The Ontology Graph Specification v1 schema (`data/ontology-spec/`)
+## The Ontology Graph Specification 1.1 schema (`data/ontology-spec/`)
 
-- **What:** the JSON Schema (draft 2020-12) of the Neo4j Ontology Graph Specification v1, the
+- **What:** the JSON Schema (draft 2020-12) of the Neo4j Ontology Graph Specification 1.1.0, the
   format of every ontology here. Copied byte for byte as
-  `data/ontology-spec/ontology-graph-spec.schema.json`; `web/ogs.js` carries the same schema as a
+  `data/ontology-spec/ontology-graph-spec.schema.json`. `web/ogs.js` carries the same schema as a
   JavaScript object (pinned equal to the file in `expected/ontology.txt`) and interprets it.
-- **Source:** [neo4j/graph-spec](https://github.com/neo4j/graph-spec), branch
-  `oskar/ontology-spec-v1-jsonschema`, commit `35e74c06a7c400ba6aff336935a42ff28725631b`
-  (`35e74c0`, 2026-10-02). [`data/ontology-spec/SOURCE.md`](data/ontology-spec/SOURCE.md) has
-  the blob hashes. The spec is a draft.
+- **Source:** [neo4j/ontology-graph-spec](https://github.com/neo4j/ontology-graph-spec), tag
+  `release/v0.12.2`, commit `30e9122cb035e58b8e0c51e090f1dad2c66a26f9` (2026-11-23), the same bytes
+  <https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json> serves.
+  [`data/ontology-spec/SOURCE.md`](data/ontology-spec/SOURCE.md) has the blob hashes.
 - **Licence:** Apache-2.0. The repository's `LICENSE`, copied unchanged, travels with the schema
   as `data/ontology-spec/LICENSE-graph-spec.txt`, in the repo and in `dist/`. No NOTICE file.
+
+## The Ontology Graph Spec SDK 0.12.2
+
+- **What:** the spec's official library. Through `lib/ogs.mjs` it decodes every ontology document
+  and runs its core validation, in the page, the worker and the Node harness.
+- **Source:** npm, `@neo4j/ontology-graph-spec@0.12.2` (pinned in `package.json` and
+  `package-lock.json`), built from [neo4j/ontology-graph-spec](https://github.com/neo4j/ontology-graph-spec)
+  at tag `release/v0.12.2`. The package is Kotlin/JS output spread over 13 modules; `npm run vendor`
+  bundles them with esbuild into `web/vendor/ontology-graph-spec.js`, which `dist/` serves as
+  `assets/ontology-graph-spec-0.12.2/ontology-graph-spec.js`.
+- **Licence:** Apache-2.0. The npm package ships no licence file and its metadata names none: the
+  repository's `LICENSE` (the same text as `data/ontology-spec/LICENSE-graph-spec.txt`) travels as
+  `LICENSE.txt` beside the bundle. The Kotlin libraries compiled into it are Apache-2.0:
+  - the Kotlin standard library 2.3.20;
+  - kotlinx.serialization 1.10.0;
+  - kotlinx.coroutines and kotlinx-atomicfu;
+  - kotlin-wrappers, with seskar;
+  - yamlkt 0.13.0.
+
+  `THIRD_PARTY.txt` beside the bundle lists them.
 
 ## js-yaml 4.3.2
 
@@ -207,11 +229,11 @@ Not shipped:
 
 None of these is shipped:
 
-- esbuild 0.28.2 (MIT): bundles NVL;
+- esbuild 0.28.2 (MIT): bundles NVL and the Ontology Graph Spec SDK;
 - Playwright 1.63.0 (Apache-2.0) and its Chromium: the browser section and the smoke test;
 - `@raphael.mansuy/edgextract` 0.1.0 (Apache-2.0): the parity oracle for the ported splitter and names;
-- ajv 8.20.0 (MIT) and ajv-formats 3.0.1 (MIT): the second JSON Schema validator
-  `harness/ontology.mjs` checks `web/ogs.js` against;
+- ajv 8.20.0 (MIT): the second JSON Schema validator `harness/ontology.mjs` checks `web/ogs.js`
+  against;
 - Python `gliner2` 2.0.0 (Apache-2.0) and torch: only in `harness/reference.py`'s uv side env
   (`./run.sh --reference`);
 - the native Relate 1.2.0 CLI and the `relate-db` 1.2.0 Python binding (Apache-2.0), the
