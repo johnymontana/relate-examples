@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://huggingface.co https://*.hf.co; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark light">
@@ -56,6 +56,7 @@
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4"/></svg>
         </button>
       </form>
+      <div class="embed-status" id="embed-status" data-testid="embed-status" hidden></div>
     </div>
   </section>
 
@@ -102,10 +103,10 @@
 
     <div class="pane scroll" id="pane-hood" hidden>
       <div class="hood">
-        <p class="lede">The agent is scripted. The database is not: every <b>remember</b> and <b>recall</b> on this page is a statement that Relate, compiled to WebAssembly, runs in this tab. Nothing is sent anywhere.</p>
+        <p class="lede">The agent is scripted. The database is not: every <b>remember</b> and <b>recall</b> on this page is a statement that Relate, compiled to WebAssembly, runs in this tab. The vectors are real too: each memory and each question is embedded with all-MiniLM-L6-v2, ahead of time for the scripts and in this tab for what you type. Nothing you type is sent anywhere; the model's files are the only thing fetched from another site.</p>
         <details class="block" id="schema">
           <summary>The shape of a memory, enforced by the engine</summary>
-          <p class="note">A graph type declares what a memory is. The engine refuses a write that does not fit: a memory without its text or its vector, an edge between the wrong kinds of node. This is the graph type as the engine reads it back.</p>
+          <p class="note">A graph type declares what a memory is. The engine refuses a write that does not fit: a memory without its text or its kind, a vector of the wrong length, an edge between the wrong kinds of node. This is the graph type as the engine reads it back.</p>
           <pre id="graphtype" data-testid="graphtype"></pre>
         </details>
         <h2>Statements run <span class="dim" id="calls-sub"></span></h2>

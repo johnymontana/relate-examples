@@ -24,7 +24,7 @@ import relate
 HERE = Path(__file__).resolve().parents[1]
 OUT = HERE / "out"
 
-BAD_MEMORY = "CREATE (:Memory {id: 'oops', text: 'no kind, no vector'})"
+BAD_MEMORY = "CREATE (:Memory {id: 'oops', text: 'no kind'})"
 BAD_EDGE = ("MATCH (a:Entity), (b:Entity) WHERE a <> b WITH a, b ORDER BY a.key, b.key LIMIT 1 "
             "CREATE (a)-[:ABOUT]->(b)")
 
@@ -90,7 +90,7 @@ def main() -> int:
         nodes = list(db.execute("MATCH (n) RETURN labels(n)[0] AS l, count(*) AS n ORDER BY l"))
         rels = list(db.execute("MATCH ()-[r]->() RETURN type(r) AS t, count(*) AS n ORDER BY t"))
         say("the store: " + ", ".join(f"{r['n']} {r['l']}" for r in nodes) + "; " + ", ".join(f"{r['n']} {r['t']}" for r in rels))
-        say(f"a memory without its kind or vector, against the graph type: {refusal(db, BAD_MEMORY)}")
+        say(f"a memory without its kind, against the graph type: {refusal(db, BAD_MEMORY)}")
         say(f"ABOUT between two entities, against the graph type: {refusal(db, BAD_EDGE)}")
         db.close()
     say("")

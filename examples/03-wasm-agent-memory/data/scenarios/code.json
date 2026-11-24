@@ -2,8 +2,8 @@
   "id": "code",
   "title": "A coding agent's notes",
   "agent": "Coding agent",
-  "blurb": "A coding agent is told a repository's house rules once. The next day, with an empty context window, it is asked for a test and recalls where tests go, how to run them, and whose code it is about to touch.",
-  "try": ["How do I run the tests?", "How are Kenji and pnpm connected?", "Kenji is on leave until Friday", "Can I change the auth module today?"],
+  "blurb": "A coding agent is told a repository's house rules once. The next day, with an empty context window, it is asked about invoicing and sign-in, names nobody used. It finds the billing and auth rules by meaning, and the graph adds what goes with them, such as where tests live.",
+  "try": ["How do I run the tests?", "How are Kenji and pnpm connected?", "Kenji is on leave until Friday", "Is the auth owner around this week?"],
   "sessions": [
     {
       "id": "s1",
@@ -80,9 +80,14 @@
           "reply": "Updated: billing is no longer frozen."
         },
         {
-          "user": "Is the billing module still frozen?",
+          "user": "Can I refactor invoicing yet?",
           "recall": true,
-          "reply": "No. It was frozen until the audit, but the audit finished and billing is open for changes again [[billing-open]]."
+          "reply": "Yes. The billing module was frozen until the audit, but the audit finished and it is open for changes again [[billing-open]]."
+        },
+        {
+          "user": "Who looks after sign-in?",
+          "recall": true,
+          "reply": "Kenji. He owns the auth module, and wants to be asked before it changes [[auth-owner]]."
         },
         {
           "user": "We're moving all tests into a top-level tests/ folder, to speed up the build.",

@@ -11,7 +11,7 @@ ALTER CURRENT GRAPH TYPE SET {
                gist :: STRING NOT NULL, slot :: STRING NOT NULL, seq :: INTEGER NOT NULL,
                at :: ZONED DATETIME NOT NULL, current :: BOOLEAN NOT NULL,
                rationale :: STRING, supersededAt :: ZONED DATETIME,
-               embedding :: VECTOR<FLOAT32>(256) NOT NULL}),
+               embedding :: VECTOR<FLOAT32>(384)}),
   (:Message)-[:IN_SESSION]->(:Session),
   (:Message)-[:MENTIONS]->(:Entity),
   (:Memory)-[:FROM]->(:Message),
@@ -28,7 +28,7 @@ CREATE CONSTRAINT entity_key FOR (e:Entity) REQUIRE e.key IS UNIQUE;
 CREATE CONSTRAINT memory_id FOR (m:Memory) REQUIRE m.id IS UNIQUE;
 
 CREATE VECTOR INDEX memory_embedding FOR (m:Memory) ON (m.embedding)
-  OPTIONS {indexConfig: {`vector.dimensions`: 256, `vector.similarity_function`: 'cosine'}};
+  OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: 'cosine'}};
 
 CREATE FULLTEXT INDEX memory_text FOR (m:Memory) ON EACH [m.text];
 
@@ -52,7 +52,8 @@ UNWIND $memories AS mem
 MERGE (m:Memory {id: mem.id})
   ON CREATE SET m.kind = mem.kind, m.text = mem.text, m.gist = mem.gist, m.slot = mem.slot,
                 m.rationale = mem.rationale, m.seq = msg.seq, m.at = msg.at, m.current = true,
-                m.embedding = vector([x IN mem.embedding | toFloat(x)], 256, FLOAT32)
+                m.embedding = CASE WHEN mem.embedding IS NULL THEN null
+                                   ELSE vector([x IN mem.embedding | toFloat(x)], 384, FLOAT32) END
 MERGE (m)-[:FROM]->(msg)
 WITH m, mem
 CALL (m, mem) {
@@ -79,21 +80,21 @@ RETURN count(old) AS superseded;
 CALL () {
   MATCH (m:Memory)
   SEARCH m IN (VECTOR INDEX memory_embedding
-               FOR vector([x IN $vector | toFloat(x)], 256, FLOAT32) LIMIT $k) SCORE AS similarity
+               FOR vector([x IN $vector | toFloat(x)], 384, FLOAT32) LIMIT $k) SCORE AS similarity
   WHERE similarity >= $floor
-  WITH m ORDER BY similarity DESC, m.id
-  WITH collect(m) AS found
+  WITH m, similarity ORDER BY similarity DESC, m.id
+  WITH collect({m: m, similarity: similarity}) AS found
   UNWIND range(0, size(found) - 1) AS i
-  RETURN found[i] AS seed, i + 1 AS rank
+  RETURN found[i].m AS seed, i + 1 AS rank, 'meaning' AS by, found[i].similarity AS similarity
   UNION ALL
   MATCH (m:Memory)
   SEARCH m IN (FULLTEXT INDEX memory_text FOR $terms LIMIT $k) SCORE AS bm25
   WITH m ORDER BY bm25 DESC, m.id
   WITH collect(m) AS found
   UNWIND range(0, size(found) - 1) AS i
-  RETURN found[i] AS seed, i + 1 AS rank
+  RETURN found[i] AS seed, i + 1 AS rank, 'words' AS by, null AS similarity
 }
-WITH seed, sum(1.0 / (60 + rank)) AS rrf
+WITH seed, sum(1.0 / (60 + rank)) AS rrf, collect(by) AS by, max(similarity) AS similarity
 ORDER BY rrf DESC, seed.id LIMIT $k
 MATCH history = (seed)<-[:SUPERSEDES]-*(now:Memory WHERE now.current)
 CALL (now, history) {
@@ -105,12 +106,13 @@ CALL (now, history) {
   RETURN hit, length(link) / 2 AS hops,
          nodes(history) + tail(nodes(link)) AS ns, relationships(history) + relationships(link) AS rs
 }
-WITH hit, hops, ns, rs, seed <> now AS stale, rrf * (0.5 ^ hops) AS score
+WITH hit, hops, ns, rs, seed <> now AS stale, rrf * (0.5 ^ hops) AS score, by, similarity
 ORDER BY score DESC, hops, size(ns), ns[0].id
-WITH hit, collect({score: score, hops: hops, stale: stale, ns: ns, rs: rs})[0] AS best
+WITH hit, collect({score: score, hops: hops, stale: stale, ns: ns, rs: rs, by: by, similarity: similarity})[0] AS best
 ORDER BY best.score DESC, hit.seq DESC, hit.id LIMIT $limit
 RETURN hit.id AS id, hit.kind AS kind, hit.gist AS gist, hit.text AS text, hit.rationale AS rationale,
        CASE WHEN best.hops > 0 THEN 'graph' WHEN best.stale THEN 'update' ELSE 'search' END AS via,
+       best.by AS by, round(2 * best.similarity - 1, 2) AS similarity,
        best.hops AS hops, round(best.score, 4) AS score,
        [n IN best.ns | id(n)] AS nodes, [r IN best.rs | id(r)] AS rels,
        [n IN best.ns | coalesce(n.name, n.gist)] AS trail,
@@ -150,7 +152,8 @@ ORDER BY size(e.key) DESC, key;
 MATCH (n)
 RETURN id(n) AS id, labels(n)[0] AS label,
        n {.id, .key, .name, .kind, .title, .role, .seq, .text, .gist, .slot, .rationale, .current,
-          at: toString(n.at), startedAt: toString(n.startedAt), supersededAt: toString(n.supersededAt)} AS props
+          at: toString(n.at), startedAt: toString(n.startedAt), supersededAt: toString(n.supersededAt),
+          embedded: n.embedding IS NOT NULL} AS props
 ORDER BY id;
 
 // ---- snapshot: what the page draws (relationships) ----

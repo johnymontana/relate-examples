@@ -13,18 +13,23 @@
  *   (:Memory)-[:ABOUT]->(:Entity)             what it is about: a memory links the entities it names
  *   (:Memory)-[:SUPERSEDES]->(:Memory)        a newer memory in the same slot; nothing is deleted
  *
- * A graph type (SCHEMA[0]) makes that shape the engine's contract: a memory without its text or its
- * vector, an edge between the wrong labels, a vector of the wrong length are all refused (M1).
+ * A graph type (SCHEMA[0]) makes that shape the engine's contract: a memory without its text, an
+ * edge between the wrong labels, a vector of the wrong length are all refused (M1).
+ *
+ * Vectors are given to the tools, not made here (embed.js says where they come from): remember
+ * takes each memory's, recall the question's. A memory or a question without one still works,
+ * by its words alone.
  *
  * The tools, each a fixed statement with parameters:
  *   remember   three idempotent writes: the message and its entities, the memories, the supersessions
- *   recall     one read: vector search and full-text search fused by reciprocal rank, each hit
- *              followed to its current version and then out through shared entities
+ *   recall     one read: vector search (by meaning) and full-text search (by words) fused by
+ *              reciprocal rank, each hit followed to its current version and then out through
+ *              shared entities
  *   connect    one read: the shortest chain of current memories between two entities
  *   trace      one read: a memory's source message and session, for each version in its history
  *   snapshot   what the page draws: every node and relationship (vectors left out)
  */
-import { DIMS, embed, terms, words } from './embed.js';
+import { DIMS, terms, words } from './embed.js';
 
 export const RELATE = '1.2.0';
 
@@ -42,7 +47,7 @@ export const SCHEMA = [
                gist :: STRING NOT NULL, slot :: STRING NOT NULL, seq :: INTEGER NOT NULL,
                at :: ZONED DATETIME NOT NULL, current :: BOOLEAN NOT NULL,
                rationale :: STRING, supersededAt :: ZONED DATETIME,
-               embedding :: VECTOR<FLOAT32>(${DIMS}) NOT NULL}),
+               embedding :: VECTOR<FLOAT32>(${DIMS})}),
   (:Message)-[:IN_SESSION]->(:Session),
   (:Message)-[:MENTIONS]->(:Entity),
   (:Memory)-[:FROM]->(:Message),
@@ -72,13 +77,14 @@ MERGE (e:Entity {key: ent.key})
 MERGE (msg)-[:MENTIONS]->(e)
 RETURN count(e) AS entities`;
 
-/** remember, statement 2: each memory, with its vector, linked FROM the message and ABOUT its entities. */
+/** remember, statement 2: each memory, with its vector when it has one, linked FROM the message and ABOUT its entities. */
 export const REMEMBER_MEMORIES = `MATCH (msg:Message {id: $message.id})
 UNWIND $memories AS mem
 MERGE (m:Memory {id: mem.id})
   ON CREATE SET m.kind = mem.kind, m.text = mem.text, m.gist = mem.gist, m.slot = mem.slot,
                 m.rationale = mem.rationale, m.seq = msg.seq, m.at = msg.at, m.current = true,
-                m.embedding = vector([x IN mem.embedding | toFloat(x)], ${DIMS}, FLOAT32)
+                m.embedding = CASE WHEN mem.embedding IS NULL THEN null
+                                   ELSE vector([x IN mem.embedding | toFloat(x)], ${DIMS}, FLOAT32) END
 MERGE (m)-[:FROM]->(msg)
 WITH m, mem
 CALL (m, mem) {
@@ -103,34 +109,36 @@ RETURN count(old) AS superseded`;
 
 /**
  * recall: one statement.
- *   1. Two searches over every memory, current or not: the vector index (similarity at least
- *      $floor) and the full-text index. Each list is ranked, and the two are fused by reciprocal
- *      rank (a memory both searches find comes first).
+ *   1. Two searches over every memory, current or not. The vector index finds the memories whose
+ *      meaning is closest to the question's (kept when the similarity is at least $floor); the
+ *      full-text index finds the ones that share its words. Each list is ranked, and the two are
+ *      fused by reciprocal rank, so a memory both searches find comes first.
  *   2. Each of the best $k follows SUPERSEDES back to the memory that is current now: the search
  *      may find what used to be true, and the graph knows what replaced it.
  *   3. From there, out through shared entities, up to two entities away, over current memories
  *      only. A linked memory scores half its seed's score per entity crossed.
- * Every row carries the path that reached it (node and relationship ids, and a readable trail)
- * and the entities the memory is about: that is what the page highlights.
+ * Every row says how its seed was found (`by`: meaning, words or both; `similarity`: the cosine
+ * when by meaning) and carries the path that reached it (node and relationship ids, and a readable
+ * trail) and the entities the memory is about: that is what the page highlights.
  */
 export const RECALL = `CALL () {
   MATCH (m:Memory)
   SEARCH m IN (VECTOR INDEX memory_embedding
                FOR vector([x IN $vector | toFloat(x)], ${DIMS}, FLOAT32) LIMIT $k) SCORE AS similarity
   WHERE similarity >= $floor
-  WITH m ORDER BY similarity DESC, m.id
-  WITH collect(m) AS found
+  WITH m, similarity ORDER BY similarity DESC, m.id
+  WITH collect({m: m, similarity: similarity}) AS found
   UNWIND range(0, size(found) - 1) AS i
-  RETURN found[i] AS seed, i + 1 AS rank
+  RETURN found[i].m AS seed, i + 1 AS rank, 'meaning' AS by, found[i].similarity AS similarity
   UNION ALL
   MATCH (m:Memory)
   SEARCH m IN (FULLTEXT INDEX memory_text FOR $terms LIMIT $k) SCORE AS bm25
   WITH m ORDER BY bm25 DESC, m.id
   WITH collect(m) AS found
   UNWIND range(0, size(found) - 1) AS i
-  RETURN found[i] AS seed, i + 1 AS rank
+  RETURN found[i] AS seed, i + 1 AS rank, 'words' AS by, null AS similarity
 }
-WITH seed, sum(1.0 / (60 + rank)) AS rrf
+WITH seed, sum(1.0 / (60 + rank)) AS rrf, collect(by) AS by, max(similarity) AS similarity
 ORDER BY rrf DESC, seed.id LIMIT $k
 MATCH history = (seed)<-[:SUPERSEDES]-*(now:Memory WHERE now.current)
 CALL (now, history) {
@@ -142,12 +150,13 @@ CALL (now, history) {
   RETURN hit, length(link) / 2 AS hops,
          nodes(history) + tail(nodes(link)) AS ns, relationships(history) + relationships(link) AS rs
 }
-WITH hit, hops, ns, rs, seed <> now AS stale, rrf * (0.5 ^ hops) AS score
+WITH hit, hops, ns, rs, seed <> now AS stale, rrf * (0.5 ^ hops) AS score, by, similarity
 ORDER BY score DESC, hops, size(ns), ns[0].id
-WITH hit, collect({score: score, hops: hops, stale: stale, ns: ns, rs: rs})[0] AS best
+WITH hit, collect({score: score, hops: hops, stale: stale, ns: ns, rs: rs, by: by, similarity: similarity})[0] AS best
 ORDER BY best.score DESC, hit.seq DESC, hit.id LIMIT $limit
 RETURN hit.id AS id, hit.kind AS kind, hit.gist AS gist, hit.text AS text, hit.rationale AS rationale,
        CASE WHEN best.hops > 0 THEN 'graph' WHEN best.stale THEN 'update' ELSE 'search' END AS via,
+       best.by AS by, round(2 * best.similarity - 1, 2) AS similarity,
        best.hops AS hops, round(best.score, 4) AS score,
        [n IN best.ns | id(n)] AS nodes, [r IN best.rs | id(r)] AS rels,
        [n IN best.ns | coalesce(n.name, n.gist)] AS trail,
@@ -183,24 +192,29 @@ WHERE $text CONTAINS ' ' + e.key + ' '
 RETURN e.key AS key, e.name AS name, e.kind AS kind
 ORDER BY size(e.key) DESC, key`;
 
-/** snapshot: every node, without its vector, and every relationship. */
+/** snapshot: every node, without its vector (only whether it has one), and every relationship. */
 export const SNAPSHOT_NODES = `MATCH (n)
 RETURN id(n) AS id, labels(n)[0] AS label,
        n {.id, .key, .name, .kind, .title, .role, .seq, .text, .gist, .slot, .rationale, .current,
-          at: toString(n.at), startedAt: toString(n.startedAt), supersededAt: toString(n.supersededAt)} AS props
+          at: toString(n.at), startedAt: toString(n.startedAt), supersededAt: toString(n.supersededAt),
+          embedded: n.embedding IS NOT NULL} AS props
 ORDER BY id`;
 export const SNAPSHOT_RELS = `MATCH (a)-[r]->(b)
 RETURN id(r) AS id, type(r) AS type, id(a) AS source, id(b) AS target
 ORDER BY id`;
 
-/** Defaults for recall: seeds per search, rows returned, and the similarity a vector hit needs (cosine, mapped to 0..1). */
-export const RECALL_DEFAULTS = Object.freeze({ k: 4, limit: 8, floor: 0.56 });
+/**
+ * Defaults for recall: seeds per search, rows returned, and the similarity a vector hit needs. The
+ * engine's score is (1 + cosine) / 2 (M3): 0.6 is a cosine of 0.2, above what all-MiniLM-L6-v2 gives
+ * two unrelated sentences and below what it gives a question and the memory that answers it (D3).
+ */
+export const RECALL_DEFAULTS = Object.freeze({ k: 4, limit: 8, floor: 0.6 });
 
 /** Parameters as the page and the reports show them: a vector becomes a one-line summary. @param {any} v @returns {any} */
 export function displayParams(v) {
   if (Array.isArray(v)) {
     if (v.length === DIMS && v.every((x) => typeof x === 'number')) {
-      return `<${DIMS} numbers, ${v.filter((x) => x !== 0).length} non-zero>`;
+      return v.some((x) => x !== 0) ? `<a vector of ${DIMS} numbers>` : `<no vector: ${DIMS} zeros>`;
     }
     return v.map(displayParams);
   }
@@ -213,7 +227,7 @@ const compact = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v 
 
 /**
  * @typedef {{name: string, kind: string}} EntityIn
- * @typedef {{id: string, kind: string, text: string, gist: string, slot?: string, about: string[], rationale?: string}} MemoryIn
+ * @typedef {{id: string, kind: string, text: string, gist: string, slot?: string, about: string[], rationale?: string, embedding?: number[]|null}} MemoryIn
  * @typedef {{tool: string, write: boolean, statement: string, params: Record<string, any>, stats: Record<string, number>, rows: any[], error: string|null}} Call
  */
 
@@ -246,8 +260,9 @@ export function createMemory(db, exec, { onCall } = {}) {
     },
 
     /**
-     * Store one message and what was extracted from it. Idempotent: every write is a MERGE, and a
-     * supersession that already happened matches nothing (ADR-0006).
+     * Store one message and what was extracted from it, each memory with its vector when the
+     * caller has one. Idempotent: every write is a MERGE, and a supersession that already happened
+     * matches nothing (ADR-0006).
      * @param {{session: {id: string, title: string, startedAt: string},
      *          message: {id: string, seq: number, text: string, at: string},
      *          entities: EntityIn[], memories: MemoryIn[]}} input
@@ -256,7 +271,7 @@ export function createMemory(db, exec, { onCall } = {}) {
       const ents = entities.map((e) => ({ key: entityKey(e.name), name: e.name, kind: e.kind }));
       const mems = memories.map((m) => ({
         id: m.id, kind: m.kind, text: m.text, gist: m.gist, slot: m.slot ?? '', rationale: m.rationale ?? null,
-        about: m.about.map(entityKey), embedding: embed(m.text),
+        about: m.about.map(entityKey), embedding: m.embedding ?? null,
       }));
       const a = run('remember', true, REMEMBER_MESSAGE, { session, message, entities: ents });
       const b = mems.length ? run('remember', true, REMEMBER_MEMORIES, { message: { id: message.id }, memories: mems }) : null;
@@ -270,13 +285,17 @@ export function createMemory(db, exec, { onCall } = {}) {
     },
 
     /**
-     * What the memory holds on a question: [] when the question has no content words.
-     * @param {{question: string, k?: number, limit?: number, floor?: number}} input
+     * What the memory holds on a question: [] when the question has neither a vector nor a
+     * content word. Without a vector the vector search finds nothing (a zero vector: M3) and the
+     * full-text search carries on.
+     * @param {{question: string, vector?: number[]|null, k?: number, limit?: number, floor?: number}} input
      */
-    recall({ question, k = RECALL_DEFAULTS.k, limit = RECALL_DEFAULTS.limit, floor = RECALL_DEFAULTS.floor }) {
+    recall({ question, vector = null, k = RECALL_DEFAULTS.k, limit = RECALL_DEFAULTS.limit, floor = RECALL_DEFAULTS.floor }) {
       const t = terms(question);
-      if (!t) return [];
-      return run('recall', false, RECALL, { vector: embed(question), terms: t, k, limit, floor: floor }).rows;
+      if (!t && !vector) return [];
+      const rows = run('recall', false, RECALL, { vector: vector ?? new Array(DIMS).fill(0), terms: t, k, limit, floor }).rows;
+      for (const r of rows) r.by = [...r.by].sort();   // collect() keeps no order worth relying on
+      return rows;
     },
 
     /** The shortest chain of current memories between two entities, or null. @param {{from: string, to: string}} input */

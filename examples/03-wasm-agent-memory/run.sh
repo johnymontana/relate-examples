@@ -121,9 +121,9 @@ diffed=()
 
 # ---- Node: the statements, every scripted conversation, typed turns, the probes ----------------------------
 # harness/run.mjs on Relate's WASM build in memory, through the page's own modules (web/memory.js, web/agent.js,
-# web/embed.js): the statements behind each tool; every turn of every conversation, with what each tool
-# returned and the reply's citations checked against it; turns nobody scripted; the Relate behaviours the
-# example depends on (NOTES.md M1-M7). A citation the engine did not return, or a probe that stops
+# web/embed.js), with the vectors in data/embeddings.json (no model is loaded): the statements behind each tool;
+# every turn of every conversation, with what each tool returned and the reply's citations checked against it;
+# turns nobody scripted; the Relate behaviours the example depends on (NOTES.md M1-M7). A citation the engine did not return, or a probe that stops
 # reproducing, prints `PIN: ...` on stderr and fails the run. It also writes out/replay.json for the browser
 # and native sections.
 if ! node harness/run.mjs --out out 2> out/run.err; then

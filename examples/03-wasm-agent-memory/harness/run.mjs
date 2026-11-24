@@ -18,7 +18,8 @@
  *   typed.txt          turns nobody scripted (web/agent.js freeTurn): which tool the rules pick,
  *                      and the reply assembled from what it returned
  *   probes.txt         M1...: the Relate 1.2.0 behaviours the example depends on, each a minimal
- *                      repro (NOTES.md has one row per probe); and the stand-in embedder's numbers
+ *                      repro (NOTES.md has one row per probe); and what the embedding model's
+ *                      vectors (data/embeddings.json) say about a few pairs of texts
  *
  * It also writes out/replay.json (not diffed): the schema and every statement the scenarios ran,
  * with its parameters and rows, for harness/native.py (the same statements on native Relate), and
@@ -34,8 +35,9 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import * as rw from '../../../lib/relate_wasm.mjs';
 import { freeTurn, mergePaths, plan, scriptedTurn } from '../web/agent.js';
-import { DIMS, contentWords, embed, terms } from '../web/embed.js';
+import { DIMS, MODEL, contentWords, createEmbedder, precomputed, terms } from '../web/embed.js';
 import * as M from '../web/memory.js';
+import { TYPED, TYPED_WITHOUT_VECTOR } from './typed.mjs';
 
 const EX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELATE = M.RELATE;
@@ -49,6 +51,9 @@ const pin = (what) => {
   process.stderr.write(`PIN: ${what} changed\n`);
 };
 const readJson = (/** @type {string} */ rel) => JSON.parse(fs.readFileSync(path.join(EX, rel), 'utf8'));
+/** The scripts' vectors (harness/embed.mjs wrote them): the run embeds nothing itself. */
+const KNOWN = precomputed(readJson('data/embeddings.json'));
+const embedder = createEmbedder({ known: KNOWN });
 /** Canonical JSON: object keys sorted. @param {any} v @returns {string} */
 function canon(v) {
   if (Array.isArray(v)) return `[${v.map(canon).join(',')}]`;
@@ -84,9 +89,10 @@ function stepLines(step, res) {
     return c ? `[${c.n}]` : '   ';
   };
   if (step.tool === 'recall') {
-    out.push(`  recall ${JSON.stringify(step.question)}: ${step.rows.length} row${step.rows.length === 1 ? '' : 's'}`);
+    out.push(`  recall ${JSON.stringify(step.question)}${step.embedded ? '' : ' (no vector)'}: ${step.rows.length} row${step.rows.length === 1 ? '' : 's'}`);
     for (const r of step.rows) {
-      out.push(`    ${cited(r.id)} ${r.score.toFixed(4)} ${r.via.padEnd(6)} ${r.id}: ${r.text}`);
+      const how = r.via === 'graph' ? '' : ` (by ${r.by.join(' and ')}${r.similarity === null ? '' : `, cosine ${r.similarity.toFixed(2)}`})`;
+      out.push(`    ${cited(r.id)} ${r.score.toFixed(4)} ${r.via.padEnd(6)} ${r.id}: ${r.text}${how}`);
       out.push(`          path: ${r.trail.join(' > ')}${r.about.length ? `   about: ${r.about.map((/** @type {any} */ a) => a.name).join(', ')}` : ''}`);
       if (r.replaced.length) out.push(`          replaced: ${r.replaced.join(' | ')}`);
     }
@@ -157,8 +163,9 @@ async function scenariosSection(mod, replay) {
   const say = [`# Example 03: the scripted conversations on Relate ${RELATE} WASM (harness/run.mjs), as the page runs them`, ''];
   say.push('Each turn: what the user said, what each memory tool returned, and the reply. In a recall row,');
   say.push('[n] marks a memory the reply cites, then its score, how it was reached (search: a search hit;');
-  say.push('update: the current version of a hit that had been replaced; graph: linked through shared entities)');
-  say.push('and the path that reached it.');
+  say.push('update: the current version of a hit that had been replaced; graph: linked through shared entities),');
+  say.push('how a hit was found (by meaning: the vector search, with the cosine similarity; by words: the');
+  say.push(`full-text search) and the path that reached it. Vectors: ${MODEL.id} (data/embeddings.json).`);
   for (const id of SCENARIOS) {
     const sc = readJson(`data/scenarios/${id}.json`);
     /** @type {any[]} */ const log = [];
@@ -169,7 +176,7 @@ async function scenariosSection(mod, replay) {
     replay.turns[id] = [];
     for (const step of plan(sc)) {
       if (step.firstOfSession) say.push('', `### ${step.session.title}`);
-      const res = await scriptedTurn(/** @type {any} */ ({ ...memory, remember: (/** @type {any} */ a) => { remembered.push(a); return memory.remember(a); } }), step);
+      const res = await scriptedTurn(/** @type {any} */ ({ ...memory, embed: embedder.embed, remember: (/** @type {any} */ a) => { remembered.push(a); return memory.remember(a); } }), step);
       say.push('', `[${step.seq}] user: ${step.user}`);
       for (const s of res.steps) say.push(...stepLines(s, res));
       say.push(`  reply: ${replyText(res.reply)}`);
@@ -179,7 +186,7 @@ async function scenariosSection(mod, replay) {
       replay.turns[id].push({
         seq: step.seq,
         reply: replyText(res.reply),
-        tools: res.steps.map((/** @type {any} */ s) => ({ tool: s.tool, ids: s.rows ? s.rows.map((/** @type {any} */ r) => `${r.id}/${r.via ?? ''}`) : s.row ? s.row.trail : [] })),
+        tools: res.steps.map((/** @type {any} */ s) => ({ tool: s.tool, ids: s.rows ? s.rows.map((/** @type {any} */ r) => `${r.id}/${r.via ?? ''}${r.by ? `/${r.by.join('+')}/${r.similarity}` : ''}`) : s.row ? s.row.trail : [] })),
         lit: [lit.strong.nodes.length, lit.strong.rels.length, lit.soft.nodes.length, lit.soft.rels.length],
       });
     }
@@ -198,34 +205,26 @@ async function scenariosSection(mod, replay) {
 
 // ---- typed turns -------------------------------------------------------------------------------
 
-const TYPED = [
-  'Who owns the payments service?',
-  'How are Priya and Dana connected?',
-  'How are Priya and Postgres connected?',
-  'Dana is on holiday in August',
-  'What is Dana doing in August?',
-  'How do you know Dana is on holiday?',
-  'tomas now works on the payments service too',
-  'What is Tomás working on?',
-  'What about Kubernetes?',
-  'And what do you know?',
-  'The office moves in spring',
-];
 
 /** @param {any} mod */
 async function typedSection(mod) {
   const sc = readJson('data/scenarios/team.json');
   const { db, memory } = openStore(mod);
   const steps = plan(sc);
-  for (const step of steps) await scriptedTurn(/** @type {any} */ (memory), step);
+  const tools = /** @type {any} */ ({ ...memory, embed: embedder.embed });
+  for (const step of steps) await scriptedTurn(tools, step);
   const say = [`# Example 03: turns nobody scripted (web/agent.js freeTurn), after the "${sc.title}" conversation`, ''];
-  say.push('No model: a question goes to recall (or to connect, when it asks how two known entities are linked, or');
-  say.push('on to trace, when it asks for a source); anything else is stored word for word as a note, linked to the');
-  say.push('entities it names. The reply is assembled from what the tool returned.');
+  say.push('No language model: a question goes to recall (or to connect, when it asks how two known entities are');
+  say.push('linked, or on to trace, when it asks for a source); anything else is stored word for word as a note,');
+  say.push('linked to the entities it names. The reply is assembled from what the tool returned. In the page a typed');
+  say.push('text gets its vector from the model in the tab; here each has one in data/embeddings.json, but the last');
+  say.push('two, which have none on purpose: the note is stored and found by its words alone, as it is in a tab');
+  say.push('that could not load the model.');
   let seq = steps.length;
-  for (const text of TYPED) {
+  for (const text of [...TYPED, ...TYPED_WITHOUT_VECTOR]) {
     seq++;
-    const res = await freeTurn(/** @type {any} */ (memory), text, {
+    if (TYPED.includes(text) !== (embedder.source(text) === 'ahead')) pin(`data/embeddings.json and harness/typed.mjs (${text})`);
+    const res = await freeTurn(tools, text, {
       session: { id: 'team-you', title: 'Your turn', startedAt: '2026-01-01T00:00:00Z' },
       seq, at: '2026-01-01T00:00:00Z', messageId: `team-${seq}`, noteId: `note-${seq}`,
     });
@@ -254,32 +253,34 @@ function probesSection(mod) {
   const attempt = (db, q, p) => {
     try { return { rows: rw.exec(db, q, p ?? null, { allowNull: true }).rows, error: null }; } catch (e) { return { rows: [], error: firstLine(e) }; }
   };
-  const vec = (/** @type {string} */ t) => embed(t);
+  /** Vectors made for the probes, so every similarity is known exactly: unit vectors along one axis, or between two. */
+  const axis = (/** @type {number} */ i) => Array.from({ length: DIMS }, (_, k) => (k === i ? 1 : 0));
+  const between = (/** @type {number} */ i, /** @type {number} */ j, /** @type {number} */ cos) => Array.from({ length: DIMS }, (_, k) => (k === i ? cos : k === j ? Math.sqrt(1 - cos * cos) : 0));
   const fresh = () => openStore(mod);
   const session = { id: 's', title: 'S', startedAt: '2026-01-01T00:00:00Z' };
-  /** A store with four memories about tests and a repo. */
+  /** A store with four memories about tests and a repo: a along axis 0, b at a cosine of 0.4 to it, c and d each on an axis of its own. */
   const seeded = () => {
     const s = fresh();
     s.memory.remember({
       session, message: { id: 'p1', seq: 1, text: 'first', at: '2026-01-01T00:00:00Z' },
       entities: [{ name: 'tests', kind: 'topic' }, { name: 'pnpm', kind: 'tool' }, { name: 'repo', kind: 'repository' }, { name: 'Kenji', kind: 'person' }],
       memories: [
-        { id: 'a', kind: 'fact', text: 'Run the tests with pnpm test', gist: 'run with', about: ['tests', 'pnpm'] },
-        { id: 'b', kind: 'decision', text: 'Use pnpm in the repo', gist: 'uses', slot: 'repo/pm', about: ['repo', 'pnpm'] },
-        { id: 'c', kind: 'fact', text: 'Kenji reviews every change to the repo', gist: 'reviews', about: ['Kenji', 'repo'] },
+        { id: 'a', kind: 'fact', text: 'Run the tests with pnpm test', gist: 'run with', about: ['tests', 'pnpm'], embedding: axis(0) },
+        { id: 'b', kind: 'decision', text: 'Use pnpm in the repo', gist: 'uses', slot: 'repo/pm', about: ['repo', 'pnpm'], embedding: between(0, 1, 0.4) },
+        { id: 'c', kind: 'fact', text: 'Kenji reviews every change to the repo', gist: 'reviews', about: ['Kenji', 'repo'], embedding: axis(2) },
       ],
     });
     s.memory.remember({
       session, message: { id: 'p2', seq: 2, text: 'second', at: '2026-01-01T00:03:00Z' },
       entities: [{ name: 'repo', kind: 'repository' }, { name: 'bun', kind: 'tool' }],
-      memories: [{ id: 'd', kind: 'decision', text: 'Use bun in the repo', gist: 'uses', slot: 'repo/pm', about: ['repo', 'bun'] }],
+      memories: [{ id: 'd', kind: 'decision', text: 'Use bun in the repo', gist: 'uses', slot: 'repo/pm', about: ['repo', 'bun'], embedding: axis(3) }],
     });
     return s;
   };
 
   {
     const { db } = fresh();
-    const v = { v: vec('a memory') };
+    const v = { v: axis(0) };
     const noText = attempt(db, `CREATE (:Memory {id: 'x', kind: 'fact', gist: 'g', slot: '', seq: 1, at: datetime('2026-01-01T00:00:00Z'), current: true, embedding: vector([x IN $v | toFloat(x)], ${DIMS}, FLOAT32)})`, v);
     const shortVector = attempt(db, "CREATE (:Memory {id: 'x', kind: 'fact', text: 't', gist: 'g', slot: '', seq: 1, at: datetime('2026-01-01T00:00:00Z'), current: true, embedding: vector([0.5, 0.5], 2, FLOAT32)})");
     const wrongType = attempt(db, `CREATE (:Memory {id: 'x', kind: 'fact', text: 't', gist: 'g', slot: '', seq: 'one', at: datetime('2026-01-01T00:00:00Z'), current: true, embedding: vector([x IN $v | toFloat(x)], ${DIMS}, FLOAT32)})`, v);
@@ -287,6 +288,7 @@ function probesSection(mod) {
     const wrongEnds = attempt(db, "MATCH (a:Entity {key: 'a'}), (b:Entity {key: 'b'}) CREATE (a)-[:ABOUT]->(b)");
     const extra = attempt(db, "MATCH (a:Entity {key: 'a'}) SET a.note = 'undeclared properties are allowed' RETURN a.note AS note");
     const left = rw.exec(db, 'MATCH (m:Memory) RETURN count(m) AS n').rows[0].n;
+    const noVector = attempt(db, "CREATE (m:Memory {id: 'y', kind: 'note', text: 't', gist: 'g', slot: '', seq: 1, at: datetime('2026-01-01T00:00:00Z'), current: true}) RETURN m.embedding IS NULL AS none");
     probe('M1', 'the graph type refuses a malformed memory, on every write', [
       `a memory without its text: ${noText.error}`,
       `a vector of the wrong length: ${shortVector.error}`,
@@ -294,7 +296,8 @@ function probesSection(mod) {
       `ABOUT between two entities: ${wrongEnds.error}`,
       `a property the type does not declare: ${extra.error ?? `accepted (${extra.rows[0].note})`}`,
       `memories stored by the refused writes: ${left}`,
-    ], !!noText.error && !!shortVector.error && !!wrongType.error && !!wrongEnds.error && !extra.error && left === 0);
+      `a memory without a vector (the property is typed, not required): ${noVector.error ?? `accepted (embedding IS NULL: ${noVector.rows[0].none})`}`,
+    ], !!noText.error && !!shortVector.error && !!wrongType.error && !!wrongEnds.error && !extra.error && left === 0 && !noVector.error && noVector.rows[0].none === true);
     db.free();
   }
   {
@@ -309,17 +312,20 @@ function probesSection(mod) {
   }
   {
     const { db } = seeded();
-    const q = (/** @type {string} */ text) => attempt(db, `MATCH (m:Memory) SEARCH m IN (VECTOR INDEX memory_embedding FOR vector([x IN $v | toFloat(x)], ${DIMS}, FLOAT32) LIMIT 4) SCORE AS s RETURN m.id AS id, round(s, 3) AS s ORDER BY s DESC, id`, { v: vec(text) });
-    const same = q('Run the tests with pnpm test');
-    const none = q('what do you know');
-    const raw = attempt(db, 'MATCH (m:Memory) SEARCH m IN (VECTOR INDEX memory_embedding FOR $v LIMIT 1) SCORE AS s RETURN m.id AS id', { v: vec('pnpm') });
-    const noLimit = attempt(db, 'MATCH (m:Memory) SEARCH m IN (VECTOR INDEX memory_embedding FOR $v) SCORE AS s RETURN m.id AS id', { v: vec('pnpm') });
+    const q = (/** @type {number[]} */ v) => attempt(db, `MATCH (m:Memory) SEARCH m IN (VECTOR INDEX memory_embedding FOR vector([x IN $v | toFloat(x)], ${DIMS}, FLOAT32) LIMIT 4) SCORE AS s RETURN m.id AS id, round(s, 3) AS s ORDER BY s DESC, id`, { v });
+    const same = q(axis(0));
+    const none = q(new Array(DIMS).fill(0));
+    const raw = attempt(db, 'MATCH (m:Memory) SEARCH m IN (VECTOR INDEX memory_embedding FOR $v LIMIT 1) SCORE AS s RETURN m.id AS id', { v: axis(0) });
+    const noLimit = attempt(db, 'MATCH (m:Memory) SEARCH m IN (VECTOR INDEX memory_embedding FOR $v) SCORE AS s RETURN m.id AS id', { v: axis(0) });
+    rw.exec(db, "CREATE (:Memory {id: 'bare', kind: 'note', text: 'no vector', gist: 'bare', slot: '', seq: 9, at: datetime('2026-01-01T00:00:00Z'), current: true})");
+    const bare = attempt(db, 'MATCH (m:Memory) SEARCH m IN (VECTOR INDEX memory_embedding FOR $v LIMIT 8) SCORE AS s RETURN m.id AS id ORDER BY s DESC, id', { v: axis(0) });
     probe('M3', 'SEARCH on a vector index: the k nearest, scored (1 + cosine) / 2, whatever their similarity', [
-      `the text of memory a: ${same.rows.map((r) => `${r.id} ${r.s}`).join(', ')}`,
-      `a question with no content words (a zero vector): ${none.error ?? `${none.rows.length} rows`}`,
+      `memory a's own vector (b is at a cosine of 0.4 to it, c and d at 0): ${same.rows.map((r) => `${r.id} ${r.s}`).join(', ')}`,
+      `a zero vector (a question with no vector): ${none.error ?? `${none.rows.length} rows`}`,
       `a plain list parameter as the query vector: ${raw.error ?? raw.rows.map((r) => r.id).join(', ')}`,
       `without LIMIT inside the search: ${noLimit.error ?? 'accepted'}`,
-    ], same.rows[0]?.id === 'a' && same.rows[0]?.s === 1 && same.rows.length === 4 && same.rows[3].s < 0.56 && none.rows.length === 0 && !none.error && !raw.error && !!noLimit.error);
+      `with a fifth memory that has no vector, LIMIT 8: ${bare.error ?? bare.rows.map((r) => r.id).join(', ')}`,
+    ], same.rows.map((r) => `${r.id} ${r.s}`).join() === 'a 1,b 0.7,c 0.5,d 0.5' && none.rows.length === 0 && !none.error && !raw.error && !!noLimit.error && bare.rows.map((r) => r.id).join() === 'a,b,c,d');
     db.free();
   }
   {
@@ -341,12 +347,13 @@ function probesSection(mod) {
   }
   {
     const { db, memory } = seeded();
-    const rows = memory.recall({ question: 'Which package manager do we use, pnpm?' });
+    // the question's vector sits on memory b (the replaced "Use pnpm"); its words are in a and b
+    const rows = memory.recall({ question: 'Which package manager do we use, pnpm?', vector: between(0, 1, 0.4) });
     const b = rows.find((r) => r.id === 'd');
     const a = rows.find((r) => r.id === 'a');
     const c = rows.find((r) => r.id === 'c');
     probe('M5', 'one statement: two SEARCH lists joined by UNION ALL inside CALL () {}, fused by rank, then two graph steps', [
-      ...rows.map((r) => `${r.score.toFixed(4)} ${r.via.padEnd(6)} ${r.id}: ${r.trail.join(' > ')}`),
+      ...rows.map((r) => `${r.score.toFixed(4)} ${r.via.padEnd(6)} ${r.id}: ${r.trail.join(' > ')}${r.via === 'graph' ? '' : ` (by ${r.by.join(' and ')}${r.similarity === null ? '' : `, cosine ${r.similarity.toFixed(2)}`})`}`),
       `the hit "Use pnpm" was replaced: recall returns its current version by following SUPERSEDES: ${b ? `${b.via} (${b.replaced.join(' | ')})` : 'missing'}`,
       `a memory that shares no word with the question is reached through an entity: ${c ? `${c.via}, through ${c.through.join(', ')}` : 'missing'}`,
     ], b?.via === 'update' && a?.via === 'search' && c?.via === 'graph' && rows.every((r) => r.id !== 'b'));
@@ -358,7 +365,7 @@ function probesSection(mod) {
     memory.remember({
       session, message: { id: 'p3', seq: 3, text: 'third', at: '2026-01-01T00:06:00Z' },
       entities: [{ name: 'Kenji', kind: 'person' }, { name: 'bun', kind: 'tool' }],
-      memories: [{ id: 'e', kind: 'preference', text: 'Kenji likes bun', gist: 'likes', about: ['Kenji', 'bun'] }],
+      memories: [{ id: 'e', kind: 'preference', text: 'Kenji likes bun', gist: 'likes', about: ['Kenji', 'bun'], embedding: axis(4) }],
     });
     const chain = "(a) (()<-[:ABOUT]-(m:Memory WHERE m.current)-[:ABOUT]->()){1,6} (b)";
     const zero = attempt(db, "MATCH (m:Memory {id: 'd'}) MATCH p = (m)<-[:SUPERSEDES]-*(now:Memory WHERE now.current) RETURN now.id AS id, length(p) AS len");
@@ -394,20 +401,30 @@ function probesSection(mod) {
     db.free();
   }
 
-  say.push('', '## The stand-in embedder (web/embed.js): feature hashing, no model');
-  const cos = (/** @type {number[]} */ a, /** @type {number[]} */ b) => a.reduce((s, x, i) => s + x * b[i], 0);
-  const pairs = [
-    ['Use Postgres for the checkout rewrite', 'Use Postgres for the checkout rewrite'],
-    ['Did we pick Postgres for checkout?', 'Use Postgres for the checkout rewrite'],
-    ['Did we decide on a database?', 'We decided to use Postgres'],
-    ['I am booking dinner in Lisbon', 'Maya is vegetarian'],
-    ['Tomás', 'tomas'],
-  ];
-  say.push(`${DIMS} dimensions; content words of "What do you remember about the checkout rewrite?": ${contentWords('What do you remember about the checkout rewrite?').join(', ')}`);
-  say.push(`full-text query for it: ${JSON.stringify(terms('What do you remember about the checkout rewrite?'))}`);
-  for (const [a, b] of pairs) say.push(`cosine ${cos(embed(a), embed(b)).toFixed(3)}  ${JSON.stringify(a)} / ${JSON.stringify(b)}`);
-  say.push('Shared words and word parts score; shared meaning does not ("dinner" and "vegetarian"): that pair is found through the graph (scenarios.txt, the travel planner, turn 4).');
-  if (cos(embed(pairs[0][0]), embed(pairs[0][1])) < 0.999 || Math.abs(cos(embed(pairs[3][0]), embed(pairs[3][1]))) > 0.2 || cos(embed(pairs[4][0]), embed(pairs[4][1])) < 0.999) pin('the embedder');
+  say.push('', `## The embedding model's vectors (data/embeddings.json): ${MODEL.id} at ${MODEL.revision.slice(0, 7)}, ${MODEL.dtype}`);
+  const cos = (/** @type {string} */ a, /** @type {string} */ b) => /** @type {number[]} */ (KNOWN.get(a)).reduce((sum, x, i) => sum + x * /** @type {number[]} */ (KNOWN.get(b))[i], 0);
+  const norms = [...KNOWN.values()].map((v) => Math.sqrt(v.reduce((sum, x) => sum + x * x, 0)));
+  say.push(`${KNOWN.size} vectors of ${DIMS} numbers, each of length 1 (${Math.min(...norms).toFixed(3)} to ${Math.max(...norms).toFixed(3)})`);
+  say.push(`content words of "What do you remember about the checkout rewrite?": ${contentWords('What do you remember about the checkout rewrite?').join(', ')}; the full-text query for it: ${JSON.stringify(terms('What do you remember about the checkout rewrite?'))}`);
+  const pairs = /** @type {Array<[string, string, string]>} */ ([
+    ['Is anyone unavailable in the coming days?', 'Tomás is away next week at a conference in Lisbon', 'meaning'],
+    ['Who should I page about a billing outage?', 'Dana owns the payments service', 'meaning'],
+    ['Can I refactor invoicing yet?', 'Do not change the billing module: it is frozen until the audit is done', 'meaning'],
+    ['Who looks after sign-in?', 'Kenji owns the auth module: ask him before changing it', 'meaning'],
+    ["I'm booking dinner for our first evening. Any dietary needs I should mention?", 'Maya is vegetarian', 'meaning'],
+    ['Did we pick Postgres for checkout?', 'Use Postgres for the checkout rewrite', 'both'],
+    ['Is anyone unavailable in the coming days?', 'Use Postgres for the checkout rewrite', 'neither'],
+    ['Can I refactor invoicing yet?', 'Run the tests with pnpm test', 'neither'],
+  ]);
+  const floor = 2 * M.RECALL_DEFAULTS.floor - 1;
+  for (const [a, b, kind] of pairs) {
+    const c = cos(a, b);
+    const shared = contentWords(a).filter((w) => contentWords(b).includes(w));
+    say.push(`cosine ${c.toFixed(2)}  ${JSON.stringify(a)} / ${JSON.stringify(b)}: ${shared.length ? `shares ${shared.join(', ')}` : 'no shared word'}`);
+    if ((kind === 'neither') !== (c < floor) || (kind === 'meaning' && shared.length)) pin(`the embedding model's vectors (${a} / ${b})`);
+  }
+  say.push(`A vector hit needs a cosine of at least ${floor.toFixed(2)} (the engine's score ${M.RECALL_DEFAULTS.floor}: M3). The first five pairs share no word and clear it:`);
+  say.push('the full-text search cannot find them, the vector search does.');
   return `${say.join('\n')}\n`;
 }
 

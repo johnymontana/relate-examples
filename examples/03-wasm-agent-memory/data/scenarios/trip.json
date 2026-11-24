@@ -2,8 +2,8 @@
   "id": "trip",
   "title": "A travel planner",
   "agent": "Travel planner",
-  "blurb": "A planner hears a few preferences on a Sunday. Two weeks later it is asked about dinner, a word none of its memories contain, and finds what matters by following who is coming on the trip.",
-  "try": ["What do you know about Maya?", "How are Maya and Alfama connected?", "Maya wants to see the tile museum", "What does Maya want to see?"],
+  "blurb": "A planner hears a few preferences on a Sunday. Two weeks later it is asked about dietary needs and about spending on accommodation, words none of its memories use. It finds them by meaning, and the graph adds who they apply to.",
+  "try": ["What do you know about Maya?", "How are Maya and Alfama connected?", "Maya wants to see the tile museum", "Any sightseeing plans?"],
   "sessions": [
     {
       "id": "s1",
@@ -63,9 +63,9 @@
       "startedAt": "2026-04-19T10:00:00Z",
       "turns": [
         {
-          "user": "I'm booking dinner for the first night in Lisbon. What should I keep in mind?",
+          "user": "I'm booking dinner for our first evening. Any dietary needs I should mention?",
           "recall": true,
-          "reply": "Three things from memory. Maya is coming [[maya-trip]], and she is vegetarian [[maya-diet]]. You can't eat shellfish [[you-shellfish]]. And you are staying in Alfama [[area]], so somewhere you can walk to from there."
+          "reply": "Two. You can't eat shellfish [[you-shellfish]]. And Maya, who is coming with you [[maya-trip]], is vegetarian [[maya-diet]]."
         },
         {
           "user": "Small update: Maya eats fish now, so she's pescatarian.",
@@ -97,7 +97,7 @@
           "reply": "She was until today. Now she is pescatarian: fish is fine, meat is not [[maya-pescatarian]]."
         },
         {
-          "user": "What's our budget, and why did it change?",
+          "user": "How much can we spend on accommodation now?",
           "recall": true,
           "reply": "200 euros a night [[budget-200]]. It was 150 until you found cheaper flights."
         },

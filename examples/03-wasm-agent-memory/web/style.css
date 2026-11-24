@@ -265,6 +265,7 @@ footer a:hover { color: var(--ink); }
 .tool-rows li { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: baseline; padding: 3px 10px; cursor: default; border-radius: 4px; }
 .tool-rows li.hoverable:hover { background: var(--surface-2); }
 .tool-rows .how { font: 10.5px var(--mono); color: var(--muted); border: 1px solid var(--line-strong); border-radius: 4px; padding: 0 4px; white-space: nowrap; }
+.tool-rows .how.meaning { color: var(--second); border-color: color-mix(in srgb, var(--second) 45%, transparent); }
 .tool-rows .how.graph { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 45%, transparent); }
 .tool-rows .how.update { color: var(--second); border-color: color-mix(in srgb, var(--second) 45%, transparent); }
 .tool-rows .how.k-decision { color: var(--brand); }
@@ -303,6 +304,7 @@ pre { margin: 0; font: 12px/1.5 var(--mono); white-space: pre-wrap; overflow-wra
 .chips button { font-size: 12.5px; padding: 4px 10px; border-radius: 14px; color: var(--muted); }
 .chips button:hover:not(:disabled) { color: var(--ink); }
 #free { display: flex; gap: 6px; }
+.embed-status { font-size: 12px; color: var(--muted); }
 #input { flex: 1; min-width: 0; padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface); }
 #input::placeholder { color: var(--faint); }
 #send { display: grid; place-items: center; padding: 0 12px; }

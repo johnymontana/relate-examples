@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * agent.js: the agent, without a model (NOTES.md D1, ADR-0014).
+ * agent.js: the agent, without a language model (NOTES.md D1, ADR-0017).
  *
  * A real agent would ask a language model twice per turn: once to extract entities and memories from
  * what the user said (structured output), and once to answer from what `recall` returned. Here both
@@ -15,10 +15,15 @@
  * lists what came back; anything else is stored word for word as a note, linked to the entities it
  * names.
  *
+ * Vectors come through `tools.embed` (web/embed.js): the scripts' texts have theirs ahead of time,
+ * and a scripted turn without one is a problem; a typed text gets one from the model in the tab,
+ * or goes without.
+ *
  * The page calls these with tools that message the engine worker; harness/run.mjs calls them with
  * tools that call memory.js directly. Both get the same TurnResult.
  *
- * @typedef {{recall: (a: {question: string}) => Promise<any[]>|any[],
+ * @typedef {{embed: (texts: string[]) => Promise<Array<number[]|null>>,
+ *            recall: (a: {question: string, vector: number[]|null}) => Promise<any[]>|any[],
  *            connect: (a: {from: string, to: string}) => Promise<any>|any,
  *            trace: (a: {id: string}) => Promise<any[]>|any[],
  *            remember: (a: any) => Promise<any>|any,
@@ -150,7 +155,9 @@ export async function scriptedTurn(tools, step) {
   /** @type {string[]} */ const problems = [];
   if (step.recall) {
     const question = typeof step.recall === 'object' && step.recall.question ? step.recall.question : step.user;
-    steps.push({ tool: 'recall', question, rows: await tools.recall({ question }) });
+    const [vector] = await tools.embed([question]);
+    if (!vector) problems.push(`no vector for the question ${JSON.stringify(question)}: run node harness/embed.mjs`);
+    steps.push({ tool: 'recall', question, embedded: !!vector, rows: await tools.recall({ question, vector }) });
   }
   if (step.connect) {
     const row = await tools.connect(step.connect);
@@ -164,7 +171,9 @@ export async function scriptedTurn(tools, step) {
   }
   if (step.remember) {
     const entities = step.remember.entities ?? [];
-    const memories = step.remember.memories ?? [];
+    const vectors = await tools.embed((step.remember.memories ?? []).map((/** @type {any} */ m) => m.text));
+    const memories = (step.remember.memories ?? []).map((/** @type {any} */ m, /** @type {number} */ i) => ({ ...m, embedding: vectors[i] }));
+    for (const m of memories) if (!m.embedding) problems.push(`no vector for the memory ${m.id}: run node harness/embed.mjs`);
     const counts = await tools.remember({
       session: step.session,
       message: { id: step.messageId, seq: step.seq, text: step.user, at: step.at },
@@ -222,8 +231,9 @@ export async function freeTurn(tools, text, ctx) {
         ? `${a.name} and ${b.name} are ${row.hops} ${row.hops === 1 ? 'memory' : 'memories'} apart: ${row.memories.map((/** @type {any} */ m) => `${m.text} [[${m.id}]]`).join(' → ')}`
         : `No chain of current memories links ${a.name} and ${b.name}.`;
     } else {
-      const rows = await tools.recall({ question: text });
-      steps.push({ tool: 'recall', question: text, rows });
+      const [vector] = await tools.embed([text]);
+      const rows = await tools.recall({ question: text, vector });
+      steps.push({ tool: 'recall', question: text, embedded: !!vector, rows });
       if (rows.length && SOURCE.test(text)) {
         // "how do you know…": the best match, traced to the message it came from
         const versions = await tools.trace({ id: rows[0].id });
@@ -243,7 +253,8 @@ export async function freeTurn(tools, text, ctx) {
     }
   } else {
     const named = await tools.entitiesNamed(text);
-    const memories = [{ id: ctx.noteId, kind: 'note', text: text.trim(), gist: gistOf(text), slot: '', about: named.map((/** @type {any} */ e) => e.name) }];
+    const [embedding] = await tools.embed([text.trim()]);
+    const memories = [{ id: ctx.noteId, kind: 'note', text: text.trim(), gist: gistOf(text), slot: '', about: named.map((/** @type {any} */ e) => e.name), embedding }];
     const counts = await tools.remember({
       session: ctx.session,
       message: { id: ctx.messageId, seq: ctx.seq, text: text.trim(), at: ctx.at },
@@ -251,9 +262,10 @@ export async function freeTurn(tools, text, ctx) {
       memories,
     });
     steps.push({ tool: 'remember', entities: [], memories, counts });
-    replyText = named.length
-      ? `Stored as a note, linked to ${list(named.map((/** @type {any} */ e) => e.name))}. There is no model on this page, so I kept your words as they are; an agent with a model would extract the entities and facts from them.`
-      : 'Stored as a note. It names nothing I already know, so it is linked to no entity yet: search will still find it by its words.';
+    const how = embedding ? '' : ' It has no vector (the embedding model is not loaded), so only its words will find it.';
+    replyText = (named.length
+      ? `Stored as a note, linked to ${list(named.map((/** @type {any} */ e) => e.name))}. No language model reads your words on this page, so I kept them as they are; an agent with one would extract the entities and facts from them.`
+      : 'Stored as a note. It names nothing I already know, so it is linked to no entity yet: search will still find it.') + how;
   }
   const { reply, highlight } = settle(replyText, steps, problems, 3);
   return { user: text.trim(), session: ctx.session, seq: ctx.seq, steps, reply, highlight, problems };
