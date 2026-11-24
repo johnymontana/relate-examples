@@ -242,5 +242,6 @@ above the memory.
 | `data/` | `scenarios/` (the three conversations), `brand/` (the brand kit's files the page uses), `SOURCE.md` (formats and provenance), `LICENSE-relate.txt` |
 | `harness/` | `run.mjs` (the Node sections), `drive.mjs` (Chromium; `--smoke` against a deployed URL), `native.py` |
 | `build.mjs`, `site.json`, `run.sh` | the static site, its entry in the Pages site, the regression run |
+| `screenshot.png` | the picture on this example's card on the Pages index: turn 7 of the first conversation, dark theme. Retake it with `node harness/drive.mjs --smoke --screenshot screenshot.png` after `npm run build` |
 | `expected/` | what `run.sh` diffs against |
 | [`../../lib/relate_wasm.mjs`](../../lib/relate_wasm.mjs), [`../../lib/serve.mjs`](../../lib/serve.mjs) | shared with the other examples: the Relate WASM helpers, the Pages emulator |

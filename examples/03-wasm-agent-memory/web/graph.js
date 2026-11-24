@@ -285,8 +285,9 @@ export function createGraph(host, { animate = true, onSelect } = {}) {
     return { scale: Math.min(fitScale, 1.6), x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
   }
 
-  /** Put the camera on the graph at once. */
+  /** Put the camera on the graph at once (unless the visitor has taken it). */
   function fitNow() {
+    if (handsOff) return;
     const f = frame();
     if (f) nvl.setZoomAndPan(f.scale, f.x, f.y);
   }
@@ -294,9 +295,9 @@ export function createGraph(host, { animate = true, onSelect } = {}) {
   /** Keep the camera on the graph for a while: the layout is moving, or nodes are growing. @param {number} ms */
   function follow(ms) {
     if (!animate) {
-      // no easing: fit now, and again as the layout comes to rest
+      // no easing: fit now, and again as the layout comes to rest (it can take a few seconds)
       for (const t of fitTimers) clearTimeout(t);
-      fitTimers = [0, 60, 400, 1000].map((d) => window.setTimeout(fitNow, d));
+      fitTimers = [0, 60, 400, 1000, 2200, 4000].map((d) => window.setTimeout(fitNow, d));
       return;
     }
     followUntil = Math.max(followUntil, performance.now() + ms);
@@ -391,10 +392,11 @@ export function createGraph(host, { animate = true, onSelect } = {}) {
           sync();
         }, 160 + s * STEP_MS));
       }
-      timers.push(window.setTimeout(() => { shownStep = Infinity; held = false; sync(); }, 700 + steps[steps.length - 1] * STEP_MS));
+      timers.push(window.setTimeout(() => { shownStep = Infinity; held = false; sync(); follow(1500); }, 700 + steps[steps.length - 1] * STEP_MS));
     } else {
       shownStep = Infinity;
       sync();
+      follow(1500);   // any update sets the layout moving again (N3): stay on the graph
     }
     const all = [...marks.values()];
     return { strong: all.filter((m) => m.strong).length, soft: all.filter((m) => !m.strong).length };
@@ -407,6 +409,7 @@ export function createGraph(host, { animate = true, onSelect } = {}) {
     marks = new Map();
     revealed = new Set();
     sync();
+    follow(1500);
   }
 
   // ---- interaction ----------------------------------------------------------------------------

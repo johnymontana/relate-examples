@@ -1,23 +1,45 @@
-/* The site index (site/index.template.html). No external fonts or images: the CSP allows 'self' only. */
+/* The site index (site/index.template.html): one card per example. Relate's brand colours (navy,
+   cyan, lime, blue, forest, white: site/README.md), light and dark by the system's setting. No
+   external fonts or images: the CSP allows 'self' only, so the text is in Public Sans when the
+   visitor has it and in the system's face otherwise. */
 :root {
   color-scheme: light dark;
-  --bg: #fbfbfa;
-  --fg: #1d1d1f;
-  --muted: #5b5b61;
-  --card: #ffffff;
-  --border: #dcdce0;
-  --link: #0b5cad;
-  --code-bg: #f0f0f2;
+  --relate-navy: #002B43;
+  --relate-cyan: #8FE3E8;
+  --relate-lime: #8FCB62;
+  --relate-blue: #0A6190;
+  --relate-forest: #145439;
+  --relate-white: #FFFFFF;
+
+  --bg: #F4F8FA;
+  --fg: var(--relate-navy);
+  --muted: #4A6979;
+  --card: var(--relate-white);
+  --border: #D9E5EA;
+  --border-strong: #B5C9D3;
+  --link: var(--relate-blue);
+  --accent: var(--relate-blue);
+  --on-accent: var(--relate-white);
+  --code-bg: #E6EFF3;
+  --shadow: 0 1px 2px #002B430f, 0 8px 24px #002B4314;
+  --logo-light: block;
+  --logo-dark: none;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #151517;
-    --fg: #ececee;
-    --muted: #a3a3ab;
-    --card: #1f1f22;
-    --border: #36363b;
-    --link: #7db7ff;
-    --code-bg: #2a2a2e;
+    --bg: var(--relate-navy);
+    --fg: var(--relate-white);
+    --muted: #A9C6D3;
+    --card: #053450;
+    --border: #17506C;
+    --border-strong: #2F6682;
+    --link: var(--relate-cyan);
+    --accent: var(--relate-cyan);
+    --on-accent: var(--relate-navy);
+    --code-bg: #0E435F;
+    --shadow: 0 1px 2px #0006, 0 8px 24px #00000047;
+    --logo-light: none;
+    --logo-dark: block;
   }
 }
 * { box-sizing: border-box; }
@@ -25,21 +47,71 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 16px/1.55 "Public Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-main { max-width: 52rem; margin: 0 auto; padding: 2.5rem 1rem 4rem; }
-h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 0.75rem; }
-h2 { font-size: 1.2rem; margin: 0 0 0.5rem; }
+main { max-width: 76rem; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
+header { max-width: 46rem; }
+/* the logo: at least 120px wide, with clear space around it */
+.logo { display: inline-block; padding: 0.4rem 0; margin-bottom: 1.25rem; }
+.logo img { height: 30px; width: auto; }
+.on-light { display: var(--logo-light); }
+.on-dark { display: var(--logo-dark); }
+h1 { font-size: 1.9rem; font-weight: 600; line-height: 1.2; margin: 0 0 0.75rem; letter-spacing: -0.01em; }
+h2 { font-size: 1.15rem; font-weight: 600; line-height: 1.3; margin: 0 0 0.5rem; }
+h3 { font-size: 0.9rem; font-weight: 600; margin: 0.9rem 0 0.3rem; }
 header p, .browser p, .browser li { color: var(--muted); }
-a { color: var(--link); }
-a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
-code { background: var(--code-bg); padding: 0.05rem 0.3rem; border-radius: 4px; font-size: 0.9em; overflow-wrap: anywhere; }
-.examples { list-style: none; padding: 0; margin: 2rem 0; display: grid; gap: 1rem; }
-.example { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1.1rem 1.25rem; }
-.example p { margin: 0.4rem 0; }
-.example .needs { color: var(--muted); font-size: 0.93rem; }
-.credits { margin-top: 0.6rem; font-size: 0.9rem; color: var(--muted); }
-.credits summary { cursor: pointer; }
-.credits ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
-.browser { border-top: 1px solid var(--border); padding-top: 1.5rem; }
+a { color: var(--link); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; border-radius: 4px; }
+code { background: var(--code-bg); padding: 0.05rem 0.3rem; border-radius: 4px; font: 0.88em "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+
+.cards {
+  list-style: none;
+  padding: 0;
+  margin: 2.25rem 0 3rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1.5rem;
+  align-items: start;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.card:hover { border-color: var(--border-strong); box-shadow: var(--shadow); transform: translateY(-2px); }
+.shot { display: block; border-bottom: 1px solid var(--border); background: var(--code-bg); }
+.shot img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; object-position: top left; }
+.body { padding: 1.1rem 1.25rem 1.2rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.number { font: 600 0.78rem "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.06em; color: var(--muted); }
+.card h2 { margin: 0; }
+.card h2 a { color: var(--fg); text-decoration: none; }
+.card h2 a:hover { text-decoration: underline; }
+.card p { margin: 0; }
+.summary { color: var(--muted); }
+.open { margin-top: 0.35rem !important; }
+.open a {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+.open a:hover { filter: brightness(1.08); }
+.more { margin-top: 0.35rem; font-size: 0.9rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 0.7rem; }
+.more summary { cursor: pointer; color: var(--fg); font-size: 0.9rem; }
+.more p { margin: 0.6rem 0 0; }
+.more ul { margin: 0; padding-left: 1.2rem; }
+.more li { margin: 0.25rem 0; }
+.browser { border-top: 1px solid var(--border); padding-top: 1.5rem; max-width: 46rem; }
 .browser ul { padding-left: 1.2rem; }
+@media (prefers-reduced-motion: reduce) {
+  .card { transition: none; }
+  .card:hover { transform: none; }
+}

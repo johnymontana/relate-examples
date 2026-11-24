@@ -104,6 +104,10 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   `NOTES.md`). Extraction and score numbers should not move without a reason you can name.
 - Never run two `run.sh` in one example directory at once (each deletes `out/` and `work/`). Check
   for leftover servers and Chromium processes after a browser run.
+- Each browser example's `screenshot.png` is the picture on its card on the Pages index
+  (`site.json` `screenshot`; `summary` is the card's text). It is committed, never diffed, and
+  retaken by hand after a visible change: `node harness/drive.mjs --smoke --screenshot screenshot.png`
+  (01 also needs `--base-url` of a local `./run.sh --site`).
 - `EXAMPLES_REQUIRE` (comma list): a missing optional dependency prints `SKIP:` and exits 0 unless
   its key is named, then it fails. 01's keys: `wasm` (Node 20+, the pinned bundle, npm pins, NVL
   vendor bundle, gliner-rs build), `gliner` (small-v1 weights), `browser` (Playwright's Chromium;

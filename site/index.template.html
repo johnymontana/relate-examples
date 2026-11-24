@@ -1,13 +1,15 @@
 <!doctype html>
-<!-- The site's index page. site/build.mjs replaces the EXAMPLES placeholder below with one
-     <li> per examples/*/site.json, sorted by path; everything else is copied as is. Keep
-     every URL relative: the site may be served from a sub-path. -->
+<!-- The site's index page. site/build.mjs replaces the EXAMPLES placeholder below with one card
+     (<li>) per examples/*/site.json, sorted by path; everything else is copied as is. Keep
+     every URL relative: the site may be served from a sub-path. The logo and favicon are from the
+     Relate brand kit (site/README.md): use the artwork as it is, never retype or recolour it. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'self'; object-src 'none'; form-action 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="color-scheme" content="light dark">
   <title>Relate browser examples</title>
   <meta name="description" content="Runnable Relate examples that run entirely in your browser: an embedded openCypher graph database compiled to WebAssembly.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -16,7 +18,11 @@
 <body>
   <main>
     <header>
-      <h1>Relate browser examples</h1>
+      <a class="logo" href="https://relatedb.ai/">
+        <img class="on-light" src="relate-logo-navy.svg" alt="Relate" width="142" height="30">
+        <img class="on-dark" src="relate-logo-white.svg" alt="Relate" width="142" height="30">
+      </a>
+      <h1>Browser examples</h1>
       <p>
         Relate is an embedded openCypher graph database. On these pages it runs as WebAssembly
         inside your browser tab: no server holds your data, and nothing you type is sent anywhere
@@ -24,7 +30,7 @@
       </p>
     </header>
 
-    <ul class="examples">
+    <ul class="cards">
 {{EXAMPLES}}
     </ul>
 

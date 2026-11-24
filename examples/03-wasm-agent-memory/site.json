@@ -1,6 +1,8 @@
 {
   "title": "The Relate playground: an agent's memory, in your browser",
   "description": "A chat on one side, the agent's memory on the other. As the conversation goes on, the agent writes what it learns into Relate 1.2.0, compiled to WebAssembly, and the memory grows as a graph in front of you, drawn with NVL. When it is asked something in a later session, one statement combines vector search, full-text search and graph hops, and the page highlights the paths that statement returned. The agent's words are scripted; every read and write of its memory is a real statement, run in the tab under a graph type that refuses a malformed memory. Three conversations to play, then ask your own questions.",
+  "summary": "Watch an agent build its memory as a graph while it chats, then recall it in a later session. One statement combines vector search, full-text search and graph hops, and the paths it returned light up.",
+  "screenshot": "screenshot.png",
   "path": "03-wasm-agent-memory",
   "build": "npm run build",
   "dist": "dist",

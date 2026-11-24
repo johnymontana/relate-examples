@@ -7,6 +7,8 @@
  *
  *   node harness/drive.mjs [--out out/browser.txt]          (after npm run build)
  *   node harness/drive.mjs --smoke --base-url <deployed URL> (a deployed site: boots, remembers, recalls, no CSP errors)
+ *   node harness/drive.mjs --smoke --screenshot screenshot.png   (after npm run build: also retake the picture
+ *                                                                 the site's index page shows, 1280x800, dark theme)
  *
  * What it checks, printed deterministically (no timings, ports, paths or engine ids):
  *   - the page boots: Relate's version, the three conversations, an empty memory;
@@ -38,6 +40,7 @@ const opt = (/** @type {string} */ k, /** @type {string|null} */ d) => (args.inc
 const smoke = args.includes('--smoke');
 const outFile = opt('--out', path.join(EX, 'out', 'browser.txt'));
 const baseUrl = opt('--base-url', null);
+const shot = opt('--screenshot', null);
 const SCENARIOS = ['team', 'trip', 'code'];
 
 const lines = [];
@@ -84,7 +87,8 @@ const writeReport = () => {
 const base = baseUrl ?? /** @type {any} */ (server).base;
 const browser = await chromium.launch();
 try {
-  const ctx = await browser.newContext({ viewport: { width: 1360, height: 860 } });
+  // the index page's picture is taken in the dark theme, the brand's navy; every check runs in the default (light)
+  const ctx = await browser.newContext(shot ? { viewport: { width: 1280, height: 800 }, colorScheme: 'dark' } : { viewport: { width: 1360, height: 860 } });
   const page = await ctx.newPage();
   /** @type {string[]} */ const problems = [];
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console error: ${m.text()}`); });
@@ -96,8 +100,9 @@ try {
   const idle = () => page.waitForFunction(() => document.body.dataset.busy === '0', null, { timeout: 30000 });
   const state = () => page.evaluate(() => /** @type {any} */ (window).ex03.state());
 
-  await page.goto(`${base}?scenario=team&test=1`);
-  say('# Example 03 in headless Chromium (harness/drive.mjs): dist/ as GitHub Pages serves it, ?test=1');
+  // the picture is taken of the page as a visitor sees it: animated, each turn at its own pace
+  await page.goto(`${base}?scenario=team${shot ? '' : '&test=1'}`);
+  say(`# Example 03 in headless Chromium (harness/drive.mjs): dist/ as GitHub Pages serves it${shot ? '' : ', ?test=1'}`);
   say('');
   say(`boots: ${check((await ready(page)) === '1', 'the page boots')}; Relate ${await page.evaluate(() => document.body.dataset.relate)}`);
   say(`header: ${await page.textContent('[data-testid="engine"]')}`);
@@ -124,6 +129,13 @@ try {
     const s = await state();
     const rows = s.last.steps.find((/** @type {any} */ x) => x.tool === 'recall')?.rows.length ?? 0;
     say(`after four turns: ${s.drawn.entities} entities and ${s.drawn.memories} memories drawn; the fourth turn recalled ${rows} memories: ${check(s.drawn.memories === 6 && rows > 0, 'the deployed page remembers and recalls')}`);
+    if (shot) {
+      // on to the seventh turn, where recall reaches people nobody linked to the question
+      for (let i = 0; i < 3; i++) await page.evaluate(TURN);
+      await page.waitForTimeout(4000);   // the path has finished lighting and the layout is at rest
+      await page.screenshot({ path: path.resolve(shot) });
+      say(`screenshot: ${shot}`);
+    }
   } else {
     const node = JSON.parse(fs.readFileSync(path.join(EX, 'out', 'replay.json'), 'utf8'));
     say('', '## every scripted turn, as the page runs it');
