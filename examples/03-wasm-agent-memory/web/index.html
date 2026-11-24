@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; base-uri 'self'; object-src 'none'">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#002B43">
+  <title>Relate playground · an agent's memory</title>
+  <link rel="icon" href="assets/relate-brand-1.0/favicon.ico" sizes="48x48">
+  <link rel="icon" href="assets/relate-brand-1.0/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/relate-brand-1.0/apple-touch-icon.png">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body data-ready="0" data-busy="0">
+<header class="top">
+  <a class="brand" href="../" title="All examples">
+    <img class="logo on-dark" src="assets/relate-brand-1.0/relate-logo-white.svg" alt="Relate" width="123" height="26">
+    <img class="logo on-light" src="assets/relate-brand-1.0/relate-logo-navy.svg" alt="Relate" width="123" height="26">
+    <span class="brand-sub">playground</span>
+  </a>
+  <nav class="scenarios" id="scenarios" aria-label="Conversations" data-testid="scenarios"></nav>
+  <div class="top-right">
+    <span class="engine" id="engine" data-testid="engine">starting…</span>
+    <button class="icon" id="theme" type="button" title="Switch between light and dark" aria-label="Switch between light and dark">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9c0-.5 0-1-.1-1.4A7 7 0 0 1 12 3z"/></svg>
+    </button>
+  </div>
+</header>
+<div id="banner" class="banner" hidden data-testid="banner"></div>
+<main>
+  <section class="chat" aria-label="Conversation">
+    <div class="chat-head">
+      <h1 id="title" data-testid="title">An agent's memory</h1>
+      <div class="controls">
+        <button id="play" type="button" class="primary" data-testid="play" disabled>
+          <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path class="i-play" d="M4 2.5v11l9-5.5z"/><path class="i-pause" d="M4 2.5h3v11H4zM9 2.5h3v11H9z"/></svg>
+          <span>Play</span>
+        </button>
+        <button id="restart" type="button" data-testid="restart" disabled>Restart</button>
+      </div>
+      <p id="blurb"></p>
+    </div>
+    <div class="transcript" id="transcript" data-testid="transcript" aria-live="polite"></div>
+    <div class="composer">
+      <button id="next" type="button" class="next" data-testid="next" disabled>
+        <span class="next-label">Send the next message</span>
+        <span class="next-text" id="next-text"></span>
+      </button>
+      <div class="chips" id="chips" data-testid="chips" hidden></div>
+      <form id="free" autocomplete="off">
+        <input id="input" data-testid="input" placeholder="Or type your own: ask the memory something, or tell it something new" aria-label="Your own message" disabled>
+        <button id="send" type="submit" data-testid="send" disabled aria-label="Send">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4"/></svg>
+        </button>
+      </form>
+    </div>
+  </section>
+
+  <section class="memory" aria-label="Memory">
+    <div class="memory-head">
+      <div class="tabs" role="tablist" id="tabs">
+        <button role="tab" class="tab active" data-pane="graph" data-testid="tab-graph" aria-selected="true">Memory</button>
+        <button role="tab" class="tab" data-pane="ledger" data-testid="tab-ledger" aria-selected="false">What it knows</button>
+        <button role="tab" class="tab" data-pane="hood" data-testid="tab-hood" aria-selected="false">Under the hood <span class="pill-count" id="calls-count">0</span></button>
+      </div>
+      <div class="counts" id="counts" data-testid="counts"></div>
+    </div>
+
+    <div class="pane" id="pane-graph">
+      <div class="graph-host" id="graph" data-testid="graph"></div>
+      <div class="empty" id="empty">
+        <img class="archie on-dark" src="assets/relate-brand-1.0/archie-mascot-flair.svg" alt="" width="112" height="85">
+        <img class="archie on-light" src="assets/relate-brand-1.0/archie-mascot.svg" alt="" width="112" height="90">
+        <p class="empty-title">Nothing remembered yet</p>
+        <p>The agent's memory is an empty database in this tab. Send the first message and watch it fill.</p>
+      </div>
+      <div class="caption" id="caption" data-testid="caption" hidden>
+        <span id="caption-text"></span>
+        <button type="button" id="caption-clear" title="Clear the highlight">clear</button>
+      </div>
+      <div class="legend" id="legend">
+        <div class="legend-row">
+          <span class="key"><i class="sw e-person"></i>person</span>
+          <span class="key"><i class="sw e-place"></i>place</span>
+          <span class="key"><i class="sw e-thing"></i>project, service</span>
+          <span class="key"><i class="sw e-tech"></i>technology</span>
+          <span class="key"><i class="sw e-topic"></i>topic</span>
+        </div>
+        <div class="legend-row">
+          <span class="key"><i class="sw small m-current"></i>a memory, between what it is about</span>
+          <span class="key"><i class="sw small m-old"></i>replaced</span>
+          <label class="key toggle"><input type="checkbox" id="provenance" data-testid="provenance"> messages and sessions</label>
+        </div>
+      </div>
+      <aside class="inspector" id="inspector" data-testid="inspector" hidden></aside>
+    </div>
+
+    <div class="pane scroll" id="pane-ledger" data-testid="ledger" hidden></div>
+
+    <div class="pane scroll" id="pane-hood" hidden>
+      <div class="hood">
+        <p class="lede">The agent is scripted. The database is not: every <b>remember</b> and <b>recall</b> on this page is a statement that Relate, compiled to WebAssembly, runs in this tab. Nothing is sent anywhere.</p>
+        <details class="block" id="schema">
+          <summary>The shape of a memory, enforced by the engine</summary>
+          <p class="note">A graph type declares what a memory is. The engine refuses a write that does not fit: a memory without its text or its vector, an edge between the wrong kinds of node. This is the graph type as the engine reads it back.</p>
+          <pre id="graphtype" data-testid="graphtype"></pre>
+        </details>
+        <h2>Statements run <span class="dim" id="calls-sub"></span></h2>
+        <ol class="calls" id="calls" data-testid="calls"></ol>
+        <h2>Run your own</h2>
+        <p class="note">The same store the agent uses. Writes are allowed, and the graph type still applies. Nodes and paths in a result are highlighted in the Memory tab.</p>
+        <div class="samples" id="samples"></div>
+        <textarea id="cypher" data-testid="cypher" rows="5" spellcheck="false" aria-label="A Cypher statement"></textarea>
+        <div class="row">
+          <button id="run" type="button" class="primary" data-testid="run" disabled>Run</button>
+          <span class="dim" id="run-note"></span>
+        </div>
+        <div id="result" data-testid="result"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<footer>
+  <span>A scripted agent, a real database: <a href="https://relatedb.ai/">Relate</a> 1.2.0 running in this tab. Drawn with NVL.</span>
+  <span class="links"><a href="../">all examples</a> · <a href="https://github.com/johnymontana/relate-examples/tree/main/examples/03-wasm-agent-memory">source</a> · <a href="THIRD_PARTY.md">licences</a></span>
+</footer>
+</body>
+</html>

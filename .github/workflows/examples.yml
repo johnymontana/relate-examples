@@ -26,7 +26,7 @@ jobs:
     timeout-minutes: 60
     env:
       # In this job a missing optional dependency FAILS instead of printing SKIP and passing.
-      EXAMPLES_REQUIRE: wasm,gliner,browser   # 01's keys; 02's (wasm, browser) are among them
+      EXAMPLES_REQUIRE: wasm,gliner,browser   # 01's keys; 02's and 03's (wasm, browser) are among them
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -149,6 +149,13 @@ jobs:
       # above serves both). The models never run in CI: the browser section drives the page in canned mode.
       - name: Example 02's npm packages
         run: npm ci --omit=peer --prefix examples/02-wasm-text2cypher
+
+      # ---- Example 03 (keys wasm, browser) ------------------------------------------------------------
+      # 03's own package-lock.json: @relate/relate-wasm, NVL 2.0.0, the Public Sans and IBM Plex Mono font
+      # packages, esbuild and playwright 1.63.0 (the same Playwright again, so the Chromium installed above
+      # serves it too); --omit=peer skips NVL's unused neo4j-driver peer. No model.
+      - name: Example 03's npm packages
+        run: npm ci --omit=peer --prefix examples/03-wasm-agent-memory
 
       # No .env in CI: offline runs.
       - run: uv run pytest -q

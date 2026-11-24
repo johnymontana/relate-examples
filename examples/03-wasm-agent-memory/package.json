@@ -1,0 +1,25 @@
+{
+  "name": "relate-example-03-wasm-agent-memory",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Example 03: the Relate playground as an agent's memory. A scripted chat writes memories into Relate 1.2.0 WASM and recalls them with hybrid search and graph hops, drawn with NVL with the recalled paths highlighted. Install with `npm ci --omit=peer`; `npm run build` writes dist/.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node ../../lib/serve.mjs --example 03-wasm-agent-memory"
+  },
+  "dependencies": {
+    "@fontsource-variable/public-sans": "5.3.0",
+    "@fontsource/ibm-plex-mono": "5.3.0",
+    "@neo4j-nvl/base": "2.0.0",
+    "@neo4j-nvl/interaction-handlers": "2.0.0",
+    "@relate/relate-wasm": "1.2.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0"
+  }
+}

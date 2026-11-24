@@ -8,7 +8,8 @@ own output against committed `expected/` files.
 
 Browser examples are also published as a static site on GitHub Pages:
 <https://johnymontana.github.io/relate-examples/>. `pages.yml` deploys it after every push to `main`
-that passes CI. Example 01 is live. Example 02 goes live with the first push that contains it.
+that passes CI. Example 01 is live. Examples 02 and 03 go live with the first push that contains
+them.
 
 ## Examples
 
@@ -16,6 +17,7 @@ that passes CI. Example 01 is live. Example 02 goes live with the first push tha
 |---|---|---|
 | 01 | [`examples/01-wasm-extract/`](examples/01-wasm-extract/): markdown to a knowledge graph entirely in a browser tab. An ontology (one of create-context-graph's 27 domains, or your own Ontology Graph Spec 1.1 document, read with the official SDK) decides what is legal, GLiNER2.5 (gliner-rs compiled to WebAssembly) scores every candidate, cutoffs you own sort them into keep, review or drop, and Relate's WASM build holds everything in the browser's OPFS. A read-only Cypher console, NVL graphs, and a download that native Relate opens. | <https://johnymontana.github.io/relate-examples/01-wasm-extract/> |
 | 02 | [`examples/02-wasm-text2cypher/`](examples/02-wasm-text2cypher/): ontology-grounded Text2Cypher entirely in a browser tab. A language model on your own GPU (WebLLM, Qwen3.5 2B or 4B) writes two queries per question, one from a bare schema and one from an Ontology Graph Spec document's descriptions, vocabularies and cookbook. The ontology's static checks and Relate's planner vet them, and Relate's WASM build runs them on a graph held under a graph type derived from the same ontology; the page says what the ontology changed. Without WebGPU it uses reference queries. | <https://johnymontana.github.io/relate-examples/02-wasm-text2cypher/> |
+| 03 | [`examples/03-wasm-agent-memory/`](examples/03-wasm-agent-memory/): the Relate playground as an agent's memory, in Relate's own brand. A scripted chat on one side, and on the other the memory it fills, drawn as a graph with NVL: the agent stores what it learns in Relate's WASM build, under a graph type that refuses a malformed memory, and recalls it in a later session with one statement that combines vector search, full-text search and graph hops. The page highlights the paths that statement returned. No model, nothing to download but the page; then type your own questions. | <https://johnymontana.github.io/relate-examples/03-wasm-agent-memory/> |
 
 ## Setup
 
@@ -30,6 +32,7 @@ scripts/build-gliner-wasm.sh                        # example 01: gliner-rs v0.3
 scripts/fetch-gliner.sh small                       # example 01: GLiNER2.5-small-v1 weights into .cache/gliner/ (304 MB)
 (cd examples/01-wasm-extract && npm ci --omit=peer && npm run vendor && npx playwright install chromium)
 (cd examples/02-wasm-text2cypher && npm ci --omit=peer)  # example 02: Relate WASM, WebLLM, the Ontology Graph Spec SDK, NVL
+(cd examples/03-wasm-agent-memory && npm ci --omit=peer) # example 03: Relate WASM, NVL, the brand's two typefaces
 ```
 
 An optional `.env` at the root is loaded by every `run.sh` (shell variables win over it); offline
@@ -53,7 +56,7 @@ unless the comma list `EXAMPLES_REQUIRE` names that dependency's key (`wasm`, `g
 ## CI and Pages
 
 - [`.github/workflows/examples.yml`](.github/workflows/examples.yml), on every push and pull
-  request: installs the pinned CLI and binding, builds or restores examples 01's and 02's dependencies, runs
+  request: installs the pinned CLI and binding, builds or restores each example's dependencies, runs
   `uv run pytest -q` and every `examples/*/run.sh` with `EXAMPLES_REQUIRE=wasm,gliner,browser`.
 - [`.github/workflows/pages.yml`](.github/workflows/pages.yml), once `examples.yml` has passed on a push to `main` (or on demand):
   builds `site/dist` and deploys it to GitHub Pages.

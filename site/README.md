@@ -2,16 +2,18 @@
 
 One static GitHub Pages project site serves this repository's browser examples: an index page at
 <https://johnymontana.github.io/relate-examples/> and each example under its own path (example 01
-at `/relate-examples/01-wasm-extract/`, example 02 at `/relate-examples/02-wasm-text2cypher/`).
+at `/relate-examples/01-wasm-extract/`, example 02 at `/relate-examples/02-wasm-text2cypher/`,
+example 03 at `/relate-examples/03-wasm-agent-memory/`).
 There is no server code: pages, WASM and data run in the visitor's browser (ADR-0002). Pages is set
 to "GitHub Actions" as its source (Settings > Pages), and `pages.yml` deploys after every push to
-`main` that passes CI. Example 01 is live. Example 02 goes live with the first push that contains it.
+`main` that passes CI. Example 01 is live. Examples 02 and 03 go live with the first push that
+contains them.
 
 | File | Role |
 |---|---|
 | `site/build.mjs` | Collects every `examples/*/site.json` example into `site/dist/` and writes the index page and an empty `.nojekyll`. It runs each example's `build` first (`--no-build` or `SITE_PREBUILT=1` only collects existing `dist/` directories) and fails, writing no site, on any problem listed below. |
 | `site/index.template.html`, `site.css`, `favicon.svg` | The index page, with its own CSP `<meta>`. `{{EXAMPLES}}` becomes one entry per example, sorted by `path`. |
-| `.github/workflows/pages.yml` | Builds `site/dist`: the gliner-rs WASM build, then example 01's `npm ci --omit=peer` and NVL vendor bundle, then example 02's `npm ci --omit=peer` (its build bundles its own vendors), then `node site/build.mjs`. It then deploys the site with `actions/upload-pages-artifact` and `actions/deploy-pages` once `examples.yml` has passed on a push to `main` (`workflow_run`, building that run's commit), or on demand. |
+| `.github/workflows/pages.yml` | Builds `site/dist`: the gliner-rs WASM build, then example 01's `npm ci --omit=peer` and NVL vendor bundle, then example 02's `npm ci --omit=peer` (its build bundles its own vendors) and example 03's `npm ci --omit=peer` (the same), then `node site/build.mjs`. It then deploys the site with `actions/upload-pages-artifact` and `actions/deploy-pages` once `examples.yml` has passed on a push to `main` (`workflow_run`, building that run's commit), or on demand. |
 | `lib/tests/test_site_build.py` | Tests `build.mjs` on fake example trees. |
 
 ```bash
@@ -45,6 +47,8 @@ An example joins the site by adding `examples/<name>/site.json`; no site code ch
     fetches the weights itself.
   - Example 02 needs `wasm` (its npm packages), not a GPU, since the page fetches its models
     itself.
+  - Example 03 needs `wasm` (its npm packages). Its `connect` list is empty: the page fetches
+    nothing from another origin.
 - **`build`** runs through the shell in the example's directory and must write `dist`
   deterministically.
 - **`dist`** holds `index.html` at its root, regular files only, and must work from any sub-path:
@@ -58,7 +62,7 @@ An example joins the site by adding `examples/<name>/site.json`; no site code ch
   every `connect` origin.
 - **Every per-origin storage name is prefixed** (ADR-0003) with the example's own prefix, because all examples
   share the `johnymontana.github.io` origin (OPFS, Cache Storage, `localStorage`, IndexedDB,
-  `BroadcastChannel`); example 01 uses `ex01`, example 02 `ex02`. One exception: a library that
+  `BroadcastChannel`); example 01 uses `ex01`, example 02 `ex02`, example 03 `ex03`. One exception: a library that
   names its own storage and offers no way to rename it. WebLLM (example 02) caches models under
   `webllm/model`, `webllm/config` and `webllm/wasm` (its NOTES.md W1). Such names are content-keyed
   caches shared by design, and the example's NOTES.md must record them.
@@ -79,8 +83,9 @@ An example joins the site by adding `examples/<name>/site.json`; no site code ch
 - `.nojekyll` turns off the Jekyll pass, so files whose names start with `_` are published.
 
 Locally, `lib/serve.mjs` serves an example's `dist/` the same way, under `/relate-examples/`
-(`node lib/serve.mjs --example 02-wasm-text2cypher`, or an example's `./run.sh --site`; example 01's
+(`node lib/serve.mjs --example 03-wasm-agent-memory`, or an example's `./run.sh --site`; example 01's
 `harness/serve.mjs --site` is the same server), and each browser test runs against it. Each
 deployed example has a smoke test:
 - `node examples/01-wasm-extract/harness/drive.mjs --smoke --base-url https://johnymontana.github.io/relate-examples/01-wasm-extract/`
 - `node examples/02-wasm-text2cypher/harness/drive.mjs --smoke --base-url https://johnymontana.github.io/relate-examples/02-wasm-text2cypher/`
+- `node examples/03-wasm-agent-memory/harness/drive.mjs --smoke --base-url https://johnymontana.github.io/relate-examples/03-wasm-agent-memory/`

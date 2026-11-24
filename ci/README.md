@@ -2,8 +2,8 @@
 
 Two workflows, both on `ubuntu-24.04`, with every action pinned by commit SHA (its version in a
 comment). Both have run on GitHub since the first push (2026-11-23). `examples.yml` passed in 24–27
-minutes, and `pages.yml` deployed example 01. Example 02's steps run for the first time on the push
-that adds it. The regression test they run is ADR-0004, and the pins are ADR-0005.
+minutes, and `pages.yml` deployed example 01. Examples 02's and 03's steps run for the first time on
+the push that adds them. The regression test they run is ADR-0004, and the pins are ADR-0005.
 
 ## `examples.yml`: tests and every example
 
@@ -29,17 +29,21 @@ the run. No `.env` and no network beyond the downloads below.
 6. **Example 01's npm packages** (`npm ci --omit=peer`, which installs `@relate/relate-wasm`
    pinned with its integrity in `package-lock.json`) and the NVL vendor bundle (`npm run vendor`).
 7. **Playwright's Chromium**, the download cached, its system libraries installed on every run.
-   Examples 01 and 02 pin the same Playwright (1.63.0), so one Chromium serves both.
+   All three examples pin the same Playwright (1.63.0), so one Chromium serves them all.
 8. **Example 02's npm packages** (`npm ci --omit=peer`: `@relate/relate-wasm`, `@mlc-ai/web-llm`,
    `@neo4j/ontology-graph-spec`, NVL, js-yaml, esbuild and Playwright, each pinned with its integrity
    in its own `package-lock.json`). Its build bundles them itself. Its models never run in CI: no GPU,
    and its browser section drives the page in canned mode.
-9. `uv run pytest -q`, `node examples/01-wasm-extract/harness/convert.mjs --check`, then every
+9. **Example 03's npm packages** (`npm ci --omit=peer`: `@relate/relate-wasm`, NVL, the Public
+   Sans and IBM Plex Mono font packages, esbuild and Playwright, each pinned with its integrity in
+   its own `package-lock.json`). Its build bundles them itself. It has no model.
+10. `uv run pytest -q`, `node examples/01-wasm-extract/harness/convert.mjs --check`, then every
    `examples/*/run.sh`, with a per-example result table in the job summary; the job fails if any
    example fails.
 
 The job has a 60-minute timeout. A cold cache adds the gliner-rs build, 304 MB of weights and
-Chromium before example 01's own run, which takes about 10 minutes. Example 02 adds about a minute.
+Chromium before example 01's own run, which takes about 10 minutes. Example 02 adds about a minute
+and example 03 a few seconds.
 The first two runs took 27 and 24 minutes. The linux CLI runs on ubuntu-24.04's glibc.
 
 ## `pages.yml`: the site
@@ -49,11 +53,11 @@ triggered by `workflow_run` when `examples.yml` completes, and its build job run
 conclusion is `success`, whose event is `push` and whose branch is `main`; it checks out that run's
 commit (`workflow_run.head_sha`), never a newer one. `workflow_dispatch` runs it by hand on the commit
 it is started on. It builds gliner-rs (the same cache keys as `examples.yml`, so either workflow's build
-serves the other), runs example 01's `npm ci --omit=peer` and `npm run vendor` and example 02's
-`npm ci --omit=peer`, then
+serves the other), runs example 01's `npm ci --omit=peer` and `npm run vendor`, example 02's
+`npm ci --omit=peer` and example 03's `npm ci --omit=peer`, then
 `node site/build.mjs`, and uploads `site/dist` with `actions/upload-pages-artifact`
 (`include-hidden-files`, so `.nojekyll` survives) for `actions/deploy-pages`. It needs no weights:
-each page fetches its models from the Hugging Face Hub. Repository setting: Settings > Pages > Source:
+examples 01 and 02 fetch their models from the Hugging Face Hub, and example 03 has none. Repository setting: Settings > Pages > Source:
 GitHub Actions. See [site/README.md](../site/README.md).
 
 ## The pins in this directory
