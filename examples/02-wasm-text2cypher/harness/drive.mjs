@@ -7,6 +7,8 @@
  *
  *   node harness/drive.mjs [--out out/browser.txt]          (after npm run build)
  *   node harness/drive.mjs --smoke --base-url <deployed URL> (a deployed site: boots, asks, no CSP errors)
+ *   node harness/drive.mjs --smoke --screenshot screenshot.png   (after npm run build: also retake the picture
+ *                                                                 the site's index page shows, 1280x800)
  *
  * What it checks, printed deterministically (no timings, ports or paths):
  *   - the page boots: Relate's version, the ontology through the SDK (its checks tab), the graph
@@ -33,6 +35,7 @@ const opt = (/** @type {string} */ k, /** @type {string|null} */ d) => (args.inc
 const smoke = args.includes('--smoke');
 const outFile = opt('--out', path.join(EX, 'out', 'browser.txt'));
 const baseUrl = opt('--base-url', null);
+const shot = opt('--screenshot', null);
 
 const lines = [];
 /** Lines for the report; no argument is an empty line. @param {...string} ss */
@@ -59,7 +62,7 @@ const writeReport = () => {
 const base = baseUrl ?? /** @type {any} */ (server).base;
 const browser = await chromium.launch();
 try {
-  const ctx = await browser.newContext();
+  const ctx = await browser.newContext(shot ? { viewport: { width: 1280, height: 800 } } : {});
   const page = await ctx.newPage();
   /** @type {string[]} */ const problems = [];
   page.on('console', (m) => { if (m.type() === 'error') problems.push(`console error: ${m.text()}`); });
@@ -87,6 +90,15 @@ try {
   });
   say(`the store: ${counts[0]} nodes, ${counts[1]} relationships`);
 
+  if (smoke && shot) {
+    // one question asked, its two queries and what the ontology changed in view
+    await page.click('#chips .chip >> nth=3');
+    await page.waitForFunction(() => document.body.dataset.busy === '0' && !(/** @type {HTMLElement} */ (document.querySelector('#compare'))).hidden, null, { timeout: 30000 });
+    await page.evaluate(() => document.querySelector('#ask')?.scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(1200);
+    await page.screenshot({ path: path.resolve(shot) });
+    say(`screenshot: ${shot}`);
+  }
   if (!smoke) {
     say('');
     say('## every suggested question, as the Ask button answers it (canned answers; rows sorted by canonical JSON)');

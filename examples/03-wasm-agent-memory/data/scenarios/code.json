@@ -1,0 +1,113 @@
+{
+  "id": "code",
+  "title": "A coding agent's notes",
+  "agent": "Coding agent",
+  "blurb": "A coding agent is told a repository's house rules once. The next day, with an empty context window, it is asked for a test and recalls where tests go, how to run them, and whose code it is about to touch.",
+  "try": ["How do I run the tests?", "How are Kenji and pnpm connected?", "Kenji is on leave until Friday", "Can I change the auth module today?"],
+  "sessions": [
+    {
+      "id": "s1",
+      "title": "Day one · learning the repo",
+      "startedAt": "2026-05-04T10:00:00Z",
+      "turns": [
+        {
+          "user": "A few house rules for this repo. We use pnpm, never npm. Tests live next to the code, as *.spec.ts files.",
+          "remember": {
+            "entities": [
+              {"name": "this repo", "kind": "repository"},
+              {"name": "pnpm", "kind": "tool"},
+              {"name": "tests", "kind": "topic"}
+            ],
+            "memories": [
+              {"id": "use-pnpm", "kind": "decision", "text": "Use pnpm in this repo, never npm", "gist": "package manager", "slot": "this repo/package manager", "about": ["this repo", "pnpm"]},
+              {"id": "tests-beside", "kind": "decision", "text": "Tests live next to the code, as *.spec.ts files", "gist": "live next to the code", "slot": "tests/location", "about": ["tests", "this repo"]}
+            ]
+          },
+          "reply": "Understood: pnpm only, and tests sit next to the code as *.spec.ts files."
+        },
+        {
+          "user": "Run the tests with pnpm test. The auth module is Kenji's, so ask him before changing it.",
+          "remember": {
+            "entities": [
+              {"name": "tests", "kind": "topic"},
+              {"name": "pnpm", "kind": "tool"},
+              {"name": "auth module", "kind": "module"},
+              {"name": "Kenji", "kind": "person"}
+            ],
+            "memories": [
+              {"id": "run-tests", "kind": "fact", "text": "Run the tests with pnpm test", "gist": "run with", "slot": "tests/command", "about": ["tests", "pnpm"]},
+              {"id": "auth-owner", "kind": "fact", "text": "Kenji owns the auth module: ask him before changing it", "gist": "owns", "slot": "auth module/owner", "about": ["Kenji", "auth module"]}
+            ]
+          },
+          "reply": "Got it. pnpm test runs the tests, and I ask Kenji before touching auth."
+        },
+        {
+          "user": "And don't touch the billing module. It's frozen until the audit is done.",
+          "remember": {
+            "entities": [
+              {"name": "billing module", "kind": "module"},
+              {"name": "audit", "kind": "event"}
+            ],
+            "memories": [
+              {"id": "billing-frozen", "kind": "decision", "text": "Do not change the billing module: it is frozen until the audit is done", "gist": "frozen", "slot": "billing module/status", "rationale": "the audit is not done", "about": ["billing module", "audit"]}
+            ]
+          },
+          "reply": "Billing is off limits until the audit is done."
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "title": "Day two · an empty context window",
+      "startedAt": "2026-05-05T09:30:00Z",
+      "turns": [
+        {
+          "user": "Add a test for the login flow in the auth module.",
+          "recall": true,
+          "reply": "Before I write it, from my notes. The auth module is Kenji's, so I'll check with him first [[auth-owner]]. The test goes next to the code, as a *.spec.ts file [[tests-beside]]. I'll run it with pnpm test [[run-tests]], because this repo uses pnpm, never npm [[use-pnpm]]."
+        },
+        {
+          "user": "Good news: the audit finished yesterday, so billing is open for changes again.",
+          "remember": {
+            "entities": [
+              {"name": "billing module", "kind": "module"},
+              {"name": "audit", "kind": "event"}
+            ],
+            "memories": [
+              {"id": "billing-open", "kind": "decision", "text": "The billing module is open for changes again", "gist": "open again", "slot": "billing module/status", "rationale": "the audit finished", "about": ["billing module", "audit"]}
+            ]
+          },
+          "reply": "Updated: billing is no longer frozen."
+        },
+        {
+          "user": "Is the billing module still frozen?",
+          "recall": true,
+          "reply": "No. It was frozen until the audit, but the audit finished and billing is open for changes again [[billing-open]]."
+        },
+        {
+          "user": "We're moving all tests into a top-level tests/ folder, to speed up the build.",
+          "remember": {
+            "entities": [
+              {"name": "tests", "kind": "topic"},
+              {"name": "this repo", "kind": "repository"}
+            ],
+            "memories": [
+              {"id": "tests-folder", "kind": "decision", "text": "Tests live in a top-level tests/ folder", "gist": "live in tests/", "slot": "tests/location", "rationale": "to speed up the build", "about": ["tests", "this repo"]}
+            ]
+          },
+          "reply": "Noted. New tests go in tests/ from now on."
+        },
+        {
+          "user": "Where do tests live in this repo?",
+          "recall": true,
+          "reply": "In a top-level tests/ folder, to speed up the build [[tests-folder]]. Until today they sat next to the code, so older tests may still be there."
+        },
+        {
+          "user": "Why did you just run pnpm and not npm?",
+          "trace": "use-pnpm",
+          "reply": "Because of a house rule from day one: \"We use pnpm, never npm.\" [[use-pnpm]]"
+        }
+      ]
+    }
+  ]
+}

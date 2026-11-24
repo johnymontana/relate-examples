@@ -1,0 +1,56 @@
+# Example 03: the Relate 1.2.0 behaviours it depends on (harness/run.mjs; NOTES.md has one row per probe)
+
+M1 the graph type refuses a malformed memory, on every write
+  a memory without its text: semantic error: ConstraintValidationFailed: `constraint_<generated>` requires properties
+  a vector of the wrong length: semantic error: ConstraintValidationFailed: `constraint_<generated>` property type
+  a string where an INTEGER is declared: semantic error: ConstraintValidationFailed: `constraint_<generated>` property type
+  ABOUT between two entities: ConstraintValidationFailed: endpoint label presence verification failed: expected Memory
+  a property the type does not declare: accepted (undeclared properties are allowed)
+  memories stored by the refused writes: 0
+
+M2 under the graph type, MERGE ... ON CREATE SET may fill the required properties: the check runs when the statement ends
+  MERGE with ON CREATE SET for title and startedAt: created (T)
+  MERGE on the key alone: semantic error: ConstraintValidationFailed: `constraint_<generated>` requires properties
+
+M3 SEARCH on a vector index: the k nearest, scored (1 + cosine) / 2, whatever their similarity
+  the text of memory a: a 1, b 0.702, c 0.5, d 0.5
+  a question with no content words (a zero vector): 0 rows
+  a plain list parameter as the query vector: a
+  without LIMIT inside the search: syntax error: parse error: expected LIMIT, got ")" (RightParen)
+
+M4 SEARCH on a full-text index: terms are ORed and matched whole, with no stemming; punctuation is harmless; an empty query finds nothing
+  "tests": a
+  "test": a (the same memory holds both words; "tests" alone would not match "test")
+  "kenji bun": d, c
+  a query full of punctuation: a, b, c, d
+  an empty query: 0 rows
+
+M5 one statement: two SEARCH lists joined by UNION ALL inside CALL () {}, fused by rank, then two graph steps
+  0.0328 update d: uses > uses
+  0.0320 search a: run with
+  0.0164 graph  c: uses > uses > repo > reviews
+  the hit "Use pnpm" was replaced: recall returns its current version by following SUPERSEDES: update (Use pnpm in the repo)
+  a memory that shares no word with the question is reached through an entity: graph, through repo
+
+M6 quantified path patterns: a zero-length match, a predicate inside the repeated part, and ANY SHORTEST keeping one path per pair of ends
+  -[:SUPERSEDES]-* from the current memory: d, length 0
+  -[:SUPERSEDES]-* from the one it replaced: d, length 1
+  Kenji to bun over current memories, every path: 2 paths, lengths 2 to 4
+  the same with ANY SHORTEST: 1 path: Kenji > likes > bun
+  repo to pnpm, whose only link is the replaced memory b (current: false): 0 paths
+
+M7 a path arrives as a flat list (node, relationship, node), each node whole, vector included; id() gives the same integers
+  the path's elements: node, relationship, node
+  the relationship's start_node and end_node are its neighbours' ids: yes
+  id(n) and id(r) over nodes(p) and relationships(p) equal the elements' ids: yes
+  a node's vector in the envelope: {dim, type, values}, 256 values
+
+## The stand-in embedder (web/embed.js): feature hashing, no model
+256 dimensions; content words of "What do you remember about the checkout rewrite?": checkout, rewrite
+full-text query for it: "checkout rewrite"
+cosine 1.000  "Use Postgres for the checkout rewrite" / "Use Postgres for the checkout rewrite"
+cosine 0.648  "Did we pick Postgres for checkout?" / "Use Postgres for the checkout rewrite"
+cosine 0.277  "Did we decide on a database?" / "We decided to use Postgres"
+cosine 0.000  "I am booking dinner in Lisbon" / "Maya is vegetarian"
+cosine 1.000  "Tomás" / "tomas"
+Shared words and word parts score; shared meaning does not ("dinner" and "vegetarian"): that pair is found through the graph (scenarios.txt, the travel planner, turn 4).

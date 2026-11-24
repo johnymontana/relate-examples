@@ -1,0 +1,107 @@
+{
+  "id": "team",
+  "title": "A teammate that remembers",
+  "agent": "Team assistant",
+  "blurb": "An assistant sits in on a team's planning. Three days later, in a new conversation, it still knows who owns what, which decision changed, and who is affected when something breaks.",
+  "try": ["Who owns the payments service?", "How are Priya and Dana connected?", "Dana is on holiday in August", "What is Dana doing in August?"],
+  "sessions": [
+    {
+      "id": "s1",
+      "title": "Monday · kickoff",
+      "startedAt": "2026-03-09T09:00:00Z",
+      "turns": [
+        {
+          "user": "We're starting the checkout rewrite. Priya leads it, and Tomás is on it too.",
+          "remember": {
+            "entities": [
+              {"name": "checkout rewrite", "kind": "project"},
+              {"name": "Priya", "kind": "person"},
+              {"name": "Tomás", "kind": "person"}
+            ],
+            "memories": [
+              {"id": "lead", "kind": "fact", "text": "Priya leads the checkout rewrite", "gist": "leads", "slot": "checkout rewrite/lead", "about": ["Priya", "checkout rewrite"]},
+              {"id": "tomas-on", "kind": "fact", "text": "Tomás works on the checkout rewrite", "gist": "works on", "about": ["Tomás", "checkout rewrite"]}
+            ]
+          },
+          "reply": "Noted. Priya leads the checkout rewrite, and Tomás is on it."
+        },
+        {
+          "user": "It depends on the payments service, which Dana owns. We decided on Postgres for checkout, since the team knows it well.",
+          "remember": {
+            "entities": [
+              {"name": "checkout rewrite", "kind": "project"},
+              {"name": "payments service", "kind": "service"},
+              {"name": "Dana", "kind": "person"},
+              {"name": "Postgres", "kind": "technology"}
+            ],
+            "memories": [
+              {"id": "depends", "kind": "fact", "text": "The checkout rewrite depends on the payments service", "gist": "depends on", "about": ["checkout rewrite", "payments service"]},
+              {"id": "owner-dana", "kind": "fact", "text": "Dana owns the payments service", "gist": "owns", "slot": "payments service/owner", "about": ["Dana", "payments service"]},
+              {"id": "db-postgres", "kind": "decision", "text": "Use Postgres for the checkout rewrite", "gist": "database: Postgres", "slot": "checkout rewrite/database", "rationale": "the team knows it well", "about": ["checkout rewrite", "Postgres"]}
+            ]
+          },
+          "reply": "Got it. Checkout depends on Dana's payments service, and the database decision is Postgres."
+        },
+        {
+          "user": "One more thing: Tomás is out next week, at a conference in Lisbon.",
+          "remember": {
+            "entities": [
+              {"name": "Tomás", "kind": "person"},
+              {"name": "Lisbon", "kind": "place"}
+            ],
+            "memories": [
+              {"id": "tomas-away", "kind": "fact", "text": "Tomás is away next week at a conference in Lisbon", "gist": "away next week", "about": ["Tomás", "Lisbon"]}
+            ]
+          },
+          "reply": "I'll keep that in mind: Tomás is away next week."
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "title": "Thursday · a new conversation",
+      "startedAt": "2026-03-12T14:00:00Z",
+      "turns": [
+        {
+          "user": "Catch me up on the checkout rewrite.",
+          "recall": true,
+          "reply": "Priya leads it [[lead]], with Tomás on the team [[tomas-on]]. It depends on the payments service [[depends]], and the database decision is Postgres, because the team knows it well [[db-postgres]]."
+        },
+        {
+          "user": "Change of plan. Postgres failover was too slow in the load test, so checkout is moving to CockroachDB.",
+          "remember": {
+            "entities": [
+              {"name": "checkout rewrite", "kind": "project"},
+              {"name": "Postgres", "kind": "technology"},
+              {"name": "CockroachDB", "kind": "technology"}
+            ],
+            "memories": [
+              {"id": "db-cockroach", "kind": "decision", "text": "Use CockroachDB for the checkout rewrite", "gist": "database: CockroachDB", "slot": "checkout rewrite/database", "rationale": "Postgres failover was too slow in the load test", "about": ["checkout rewrite", "CockroachDB"]}
+            ]
+          },
+          "reply": "Updated. CockroachDB replaces Postgres as the checkout database. The old decision stays in memory as history."
+        },
+        {
+          "user": "Did we pick Postgres for checkout?",
+          "recall": true,
+          "reply": "You did on Monday, but not any more. The current decision is CockroachDB, because Postgres failover was too slow in the load test [[db-cockroach]]."
+        },
+        {
+          "user": "Payments is timing out in staging. Who needs to know?",
+          "recall": true,
+          "reply": "Dana first: she owns the payments service [[owner-dana]]. Then Priya, because the checkout rewrite she leads depends on it [[depends]] [[lead]]. Tomás is on that team too [[tomas-on]], but he is away next week [[tomas-away]]."
+        },
+        {
+          "user": "How do you know Dana owns payments?",
+          "trace": "owner-dana",
+          "reply": "You told me on Monday: \"It depends on the payments service, which Dana owns.\" [[owner-dana]]"
+        },
+        {
+          "user": "Odd question: is there any link between Dana and Lisbon?",
+          "connect": {"from": "Dana", "to": "Lisbon"},
+          "reply": "A thin one, four memories long. Dana owns the payments service [[owner-dana]], which the checkout rewrite depends on [[depends]]. Tomás works on that rewrite [[tomas-on]], and he is at a conference in Lisbon next week [[tomas-away]]."
+        }
+      ]
+    }
+  ]
+}

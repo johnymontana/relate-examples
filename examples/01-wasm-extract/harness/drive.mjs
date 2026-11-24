@@ -18,7 +18,9 @@
  *   node harness/drive.mjs --smoke --base-url <url ending in /01-wasm-extract/>
  *       A smoke test of a deployed site (e.g. https://<owner>.github.io/relate-examples/01-wasm-extract/):
  *       no browser.txt, one ok/FAIL line per check on stdout, exit 1 on any failure. The weights come
- *       from GLINER_SMALL_DIR (default .cache/gliner) through page.route().
+ *       from GLINER_SMALL_DIR (default .cache/gliner) through page.route(). With --screenshot FILE it
+ *       also saves the extracted graph, 1280x800: the picture the site's index page shows (against a
+ *       local ./run.sh --site, that retakes screenshot.png).
  *   node harness/drive.mjs node-dump <out.json> [main|generic]
  *       harness/native.py's inputs, built in Node with web/pipeline.js and web/store.js on the real
  *       model, as lib/replay.mjs canon text. `main` (the default): the store the browser section
@@ -1709,6 +1711,13 @@ async function smoke(argv) {
     const gc = await page.evaluate(() => /** @type {any} */ (window).ex01.graphView.counts());
     const shown = await page.$eval(tid('graph-counts'), (e) => ({ n: Number(e.dataset.nodes), r: Number(e.dataset.rels) }));
     ok(gc.rels > 0 && gc.nodes === shown.n && gc.rels === shown.r, `NVL draws the graph: ${gc.nodes} nodes, ${gc.rels} relationships`);
+    if (argv.screenshot) {
+      // the picture the site's index page shows: the extracted graph, 1280x800
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.waitForTimeout(2500);
+      await page.screenshot({ path: path.resolve(argv.screenshot) });
+      console.log(`screenshot: ${argv.screenshot}`);
+    }
     const qc = await consoleUi(page, "CREATE (:Probe {name: 'x'}) RETURN 1 AS one");
     ok(qc.category === 'readonly' && /WriteOnReadOnlyAccessDatabase/.test(qc.text), `a console CREATE is refused: ${firstLine(qc.text)}`);
     await page.click(tid('tab-store'));
@@ -1739,6 +1748,7 @@ function parseArgs(args) {
     if (x === '--smoke') a.smoke = true;
     else if (x === '--base-url') a.baseUrl = args[++i];
     else if (x === '--out') a.out = args[++i];
+    else if (x === '--screenshot') a.screenshot = args[++i];
     else if (x === '--port') a.port = args[++i];
     else if (x === '--no-build') a.noBuild = true;
     else if (x === '-h' || x === '--help') a.help = true;
@@ -1751,7 +1761,7 @@ function parseArgs(args) {
 }
 
 const USAGE = `usage: node harness/drive.mjs [--out FILE] [--port N] [--no-build]
-       node harness/drive.mjs --smoke --base-url <url>/relate-examples/01-wasm-extract/
+       node harness/drive.mjs --smoke --base-url <url>/relate-examples/01-wasm-extract/ [--screenshot FILE]
        node harness/drive.mjs node-dump <out.json> [main|generic]
        node harness/drive.mjs wasm-queries <dump.json> <out.json>`;
 

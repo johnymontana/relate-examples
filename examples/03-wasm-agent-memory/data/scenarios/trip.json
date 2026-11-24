@@ -1,0 +1,112 @@
+{
+  "id": "trip",
+  "title": "A travel planner",
+  "agent": "Travel planner",
+  "blurb": "A planner hears a few preferences on a Sunday. Two weeks later it is asked about dinner, a word none of its memories contain, and finds what matters by following who is coming on the trip.",
+  "try": ["What do you know about Maya?", "How are Maya and Alfama connected?", "Maya wants to see the tile museum", "What does Maya want to see?"],
+  "sessions": [
+    {
+      "id": "s1",
+      "title": "Sunday · planning",
+      "startedAt": "2026-04-05T19:00:00Z",
+      "turns": [
+        {
+          "user": "I'm planning a trip to Lisbon in May with my sister Maya.",
+          "remember": {
+            "entities": [
+              {"name": "You", "kind": "person"},
+              {"name": "Lisbon trip", "kind": "trip"},
+              {"name": "Lisbon", "kind": "place"},
+              {"name": "Maya", "kind": "person"}
+            ],
+            "memories": [
+              {"id": "trip", "kind": "fact", "text": "You are planning a trip to Lisbon in May", "gist": "in May", "about": ["You", "Lisbon trip", "Lisbon"]},
+              {"id": "sister", "kind": "fact", "text": "Maya is your sister", "gist": "sister", "about": ["Maya", "You"]},
+              {"id": "maya-trip", "kind": "fact", "text": "Maya is coming on the Lisbon trip", "gist": "coming along", "about": ["Maya", "Lisbon trip"]}
+            ]
+          },
+          "reply": "Lovely. Lisbon in May, with your sister Maya."
+        },
+        {
+          "user": "Maya is vegetarian, and I can't eat shellfish.",
+          "remember": {
+            "entities": [
+              {"name": "Maya", "kind": "person"},
+              {"name": "You", "kind": "person"}
+            ],
+            "memories": [
+              {"id": "maya-diet", "kind": "preference", "text": "Maya is vegetarian", "gist": "vegetarian", "slot": "maya/diet", "about": ["Maya"]},
+              {"id": "you-shellfish", "kind": "preference", "text": "You can't eat shellfish", "gist": "no shellfish", "slot": "you/shellfish", "about": ["You"]}
+            ]
+          },
+          "reply": "Noted: vegetarian for Maya, no shellfish for you."
+        },
+        {
+          "user": "We want to stay in Alfama, and keep it under 150 euros a night.",
+          "remember": {
+            "entities": [
+              {"name": "Lisbon trip", "kind": "trip"},
+              {"name": "Alfama", "kind": "place"}
+            ],
+            "memories": [
+              {"id": "area", "kind": "decision", "text": "Stay in Alfama on the Lisbon trip", "gist": "stay in", "slot": "lisbon trip/area", "about": ["Lisbon trip", "Alfama"]},
+              {"id": "budget-150", "kind": "preference", "text": "The budget for the Lisbon trip is 150 euros a night", "gist": "budget: €150", "slot": "lisbon trip/budget", "about": ["Lisbon trip"]}
+            ]
+          },
+          "reply": "Alfama, under 150 euros a night. Got it."
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "title": "Two weeks later · a new conversation",
+      "startedAt": "2026-04-19T10:00:00Z",
+      "turns": [
+        {
+          "user": "I'm booking dinner for the first night in Lisbon. What should I keep in mind?",
+          "recall": true,
+          "reply": "Three things from memory. Maya is coming [[maya-trip]], and she is vegetarian [[maya-diet]]. You can't eat shellfish [[you-shellfish]]. And you are staying in Alfama [[area]], so somewhere you can walk to from there."
+        },
+        {
+          "user": "Small update: Maya eats fish now, so she's pescatarian.",
+          "remember": {
+            "entities": [
+              {"name": "Maya", "kind": "person"}
+            ],
+            "memories": [
+              {"id": "maya-pescatarian", "kind": "preference", "text": "Maya is pescatarian: she eats fish, but not meat", "gist": "pescatarian", "slot": "maya/diet", "about": ["Maya"]}
+            ]
+          },
+          "reply": "Updated: Maya is pescatarian now. The vegetarian note stays in memory as history."
+        },
+        {
+          "user": "And we found cheaper flights, so the budget can go up to 200 euros a night.",
+          "remember": {
+            "entities": [
+              {"name": "Lisbon trip", "kind": "trip"}
+            ],
+            "memories": [
+              {"id": "budget-200", "kind": "preference", "text": "The budget for the Lisbon trip is 200 euros a night", "gist": "budget: €200", "slot": "lisbon trip/budget", "rationale": "you found cheaper flights", "about": ["Lisbon trip"]}
+            ]
+          },
+          "reply": "Budget raised to 200 euros a night."
+        },
+        {
+          "user": "Remind me, is Maya vegetarian?",
+          "recall": true,
+          "reply": "She was until today. Now she is pescatarian: fish is fine, meat is not [[maya-pescatarian]]."
+        },
+        {
+          "user": "What's our budget, and why did it change?",
+          "recall": true,
+          "reply": "200 euros a night [[budget-200]]. It was 150 until you found cheaper flights."
+        },
+        {
+          "user": "When did I tell you about the shellfish?",
+          "trace": "you-shellfish",
+          "reply": "In our first conversation, on Sunday: \"Maya is vegetarian, and I can't eat shellfish.\" [[you-shellfish]]"
+        }
+      ]
+    }
+  ]
+}

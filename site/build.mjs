@@ -10,9 +10,11 @@
  *
  * The contract a browser example signs up to (site/README.md): an `examples/<name>/site.json`
  *   {title, description, path, build, dist, connect: [origins], requires: [EXAMPLES_REQUIRE keys]}
- * plus two optional fields, `browser` (what a visitor's browser needs, one sentence) and
- * `credits` (third-party software the page ships, one line each), and a `dist` that runs from
- * a sub-path with relative URLs only. GitHub Pages serves a project site from
+ * plus four optional fields, `summary` (a sentence or two for the example's card on the index
+ * page; without it the card shows `description`), `screenshot` (a PNG in the example's directory,
+ * shown on the card), `browser` (what a visitor's browser needs, one sentence) and `credits`
+ * (third-party software the page ships, one line each), and a `dist` that runs from a sub-path
+ * with relative URLs only. GitHub Pages serves a project site from
  * https://<owner>.github.io/<repo>/, so the whole site, and each example under it, runs from a
  * sub-path; and Pages sets no custom response headers, so every page carries its own
  * Content-Security-Policy in a <meta http-equiv> element.
@@ -28,8 +30,11 @@
  *      of the example's `connect` origins; and scan its HTML, JS and CSS for root-absolute ("/x")
  *      or protocol-relative ("//x") references outside comments: imports, workers, fetch(),
  *      new URL(..., location), src/href/srcset, import maps, CSS url() and @import;
- *   4. write <out>/index.html from site/index.template.html, plus site.css, favicon.svg and an
- *      empty .nojekyll (so Pages publishes the files as they are, with no Jekyll pass).
+ *   4. copy each example's `screenshot` to <out>/shots/<path>-<sha256, 12 hex>.png (a new picture
+ *      is a new URL, so Pages' ten-minute cache never shows a stale one);
+ *   5. write <out>/index.html from site/index.template.html (one card per example), plus site.css,
+ *      the favicon and logo, and an empty .nojekyll (so Pages publishes the files as they are, with
+ *      no Jekyll pass).
  * The output depends only on the inputs: examples are sorted by path, files are copied in
  * sorted order, and nothing time- or host-dependent is written.
  *
@@ -37,6 +42,7 @@
  * parseOrigin, validateSiteJson, scanText, scanTree, buildSite.
  */
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -46,12 +52,15 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const SITE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.dirname(SITE_DIR);
 const TEMPLATE = path.join(SITE_DIR, 'index.template.html');
-const STATIC_FILES = ['site.css', 'favicon.svg']; // copied from site/ next to index.html
+const STATIC_FILES = ['site.css', 'favicon.svg', 'relate-logo-navy.svg', 'relate-logo-white.svg']; // copied from site/ next to index.html
+/** A card's picture: a PNG of at most this many bytes. */
+const SHOT_MAX_BYTES = 600_000;
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 /** Directives a policy delivered in a <meta> element ignores (CSP3 section 3.3). */
 const META_IGNORED = ['frame-ancestors', 'report-uri', 'report-to', 'sandbox'];
 
 const SITE_KEYS = ['title', 'description', 'path', 'build', 'dist', 'connect', 'requires'];
-const OPTIONAL_KEYS = ['browser', 'credits'];
+const OPTIONAL_KEYS = ['summary', 'screenshot', 'browser', 'credits'];
 const PATH_RE = /^[a-z0-9](?:[a-z0-9-]{0,62})$/;
 const REQUIRE_RE = /^[a-z][a-z0-9]{0,31}$/;
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
@@ -196,6 +205,13 @@ export function validateSiteJson(j) {
   text('description', 800);
   text('build', 500);
   if ('browser' in j) text('browser', 400);
+  if ('summary' in j) text('summary', 240);
+  if ('screenshot' in j) {
+    const f = j.screenshot;
+    if (typeof f !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._/-]*\.png$/.test(f) || f.split('/').some((x) => x === '..' || x === '' || x === '.')) {
+      p.push(`"screenshot" must be a relative path to a .png inside the example, without "..", "." or empty segments (got ${JSON.stringify(f)})`);
+    }
+  }
   if ('path' in j) {
     if (typeof j.path !== 'string' || !PATH_RE.test(j.path)) {
       p.push(`"path" must be one URL segment of 1-63 characters from [a-z0-9-], not starting with "-" (got ${JSON.stringify(j.path)})`);
@@ -546,30 +562,54 @@ function esc(s) {
 }
 
 /**
+ * A PNG's size, read from its header; throws when the bytes are not a PNG.
+ * @param {Buffer} bytes
+ * @returns {{width: number, height: number}}
+ */
+function pngSize(bytes) {
+  if (bytes.length < 24 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE) || bytes.toString('latin1', 12, 16) !== 'IHDR') throw new Error('not a PNG');
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+/**
+ * One card per example: its picture, its number (a `path` that starts with digits), its title, a
+ * short text (`summary`, else `description`), a link, and the rest behind a disclosure.
  * @param {string} template
- * @param {{site: any}[]} examples  sorted
+ * @param {{site: any, shot?: {url: string, width: number, height: number} | null}[]} examples  sorted
  */
 function renderIndex(template, examples) {
   const marker = '{{EXAMPLES}}';
   const count = template.split(marker).length - 1;
   if (count !== 1) throw new SiteError(`${TEMPLATE}: must contain ${marker} exactly once (found ${count})`);
-  const items = examples.map(({ site }) => {
+  const items = examples.map(({ site, shot }) => {
     const hosts = site.connect.map((o) => o.replace(/^https:\/\//, ''));
     const net = hosts.length
       ? `Besides this site, the page connects only to ${hosts.map((h) => `<code>${esc(h)}</code>`).join(', ')}.`
       : 'The page connects to this site only.';
-    const lines = [
-      '      <li class="example">',
-      `        <h2><a href="${esc(site.path)}/">${esc(site.title)}</a></h2>`,
-      `        <p>${esc(site.description)}</p>`,
-      `        <p class="needs">${site.browser ? `${esc(site.browser)} ` : ''}${net}</p>`,
-    ];
-    if (site.credits) {
-      lines.push('        <details class="credits">', '          <summary>Third-party software and models</summary>', '          <ul>');
-      for (const c of site.credits) lines.push(`            <li>${esc(c)}</li>`);
-      lines.push('          </ul>', '        </details>');
+    const href = `${esc(site.path)}/`;
+    const number = /^(\d+)-/.exec(site.path)?.[1];
+    const lines = ['      <li class="card">'];
+    if (shot) {
+      // the picture links to the example too; the title's link is the one a screen reader announces
+      lines.push(`        <a class="shot" href="${href}" tabindex="-1" aria-hidden="true"><img src="${esc(shot.url)}" width="${shot.width}" height="${shot.height}" alt="" loading="lazy"></a>`);
     }
-    lines.push('      </li>');
+    lines.push('        <div class="body">');
+    if (number) lines.push(`          <span class="number">${esc(number)}</span>`);
+    lines.push(
+      `          <h2><a href="${href}">${esc(site.title)}</a></h2>`,
+      `          <p class="summary">${esc(site.summary ?? site.description)}</p>`,
+      `          <p class="open"><a href="${href}">Open the example</a></p>`,
+      '          <details class="more">',
+      '            <summary>What it does, and what it needs</summary>',
+    );
+    if (site.summary) lines.push(`            <p>${esc(site.description)}</p>`);
+    lines.push(`            <p class="needs">${site.browser ? `${esc(site.browser)} ` : ''}${net}</p>`);
+    if (site.credits) {
+      lines.push('            <h3>Third-party software and models</h3>', '            <ul>');
+      for (const c of site.credits) lines.push(`              <li>${esc(c)}</li>`);
+      lines.push('            </ul>');
+    }
+    lines.push('          </details>', '        </div>', '      </li>');
     return lines.join('\n');
   });
   const html = template.replace(marker, items.join('\n'));
@@ -676,8 +716,24 @@ function build(root, out, doBuild, log) {
     log(`collected ${relSrc} -> ${show(path.join(out, ex.site.path))}/ `
       + `(${files.length} file${files.length === 1 ? '' : 's'}, ${(bytes / 1e6).toFixed(1)} MB; requires ${ex.site.requires.join(',') || 'nothing'})`);
   }
+  // each example's picture for its card, under a name that changes with its bytes
+  const cards = examples.map((ex) => {
+    if (!ex.site.screenshot) return { site: ex.site, shot: null };
+    const rel = `examples/${ex.name}/${ex.site.screenshot}`;
+    const file = path.join(ex.dir, ...ex.site.screenshot.split('/'));
+    const st = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!st?.isFile()) { problems.push(`${rel} does not exist (or is not a regular file): site.json names it as "screenshot"`); return { site: ex.site, shot: null }; }
+    const bytes = fs.readFileSync(file);
+    let size;
+    try { size = pngSize(bytes); } catch { problems.push(`${rel} is not a PNG`); return { site: ex.site, shot: null }; }
+    if (bytes.length > SHOT_MAX_BYTES) problems.push(`${rel} is ${bytes.length} bytes; a card's picture may be at most ${SHOT_MAX_BYTES}`);
+    const name = `shots/${ex.site.path}-${createHash('sha256').update(bytes).digest('hex').slice(0, 12)}.png`;
+    fs.mkdirSync(path.join(out, 'shots'), { recursive: true });
+    fs.writeFileSync(path.join(out, name), bytes);
+    return { site: ex.site, shot: { url: name, ...size } };
+  });
   if (problems.length) throw new SiteError(problems.join('\n'));
-  fs.writeFileSync(path.join(out, 'index.html'), renderIndex(template, examples));
+  fs.writeFileSync(path.join(out, 'index.html'), renderIndex(template, cards));
   for (const f of STATIC_FILES) fs.copyFileSync(path.join(SITE_DIR, f), path.join(out, f));
   fs.writeFileSync(path.join(out, '.nojekyll'), ''); // Pages: publish the files as they are, no Jekyll
   log(`wrote ${show(out)}/ (${examples.length} example${examples.length === 1 ? '' : 's'})`);

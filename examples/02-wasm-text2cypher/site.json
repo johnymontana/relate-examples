@@ -1,6 +1,8 @@
 {
   "title": "Ontology-grounded Text2Cypher, in your browser",
   "description": "Ask a question in English and watch two queries get written for it: one from a bare schema, one from an Ontology Graph Spec document's descriptions, vocabularies and query cookbook. A language model running on your own GPU (WebLLM, Qwen3.5) writes them; the ontology's static checks and Relate 1.2.0's planner vet them; Relate, compiled to WebAssembly, runs them on an in-tab knowledge graph held under a graph type derived from the same ontology, and the page says what the ontology changed. The ontology is read with the official Ontology Graph Spec SDK. Without WebGPU, the page answers with reference queries and everything else runs the same.",
+  "summary": "Ask a question in English and compare two generated Cypher queries: one written from a bare schema, one grounded in an ontology. A model on your own GPU writes them, and Relate checks and runs both.",
+  "screenshot": "screenshot.png",
   "path": "02-wasm-text2cypher",
   "build": "npm run build",
   "dist": "dist",

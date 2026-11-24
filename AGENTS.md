@@ -12,7 +12,7 @@ on `PATH` (`relate --version`'s first line is `Relate v1.2.0`), the `relate-db==
 (pinned in each browser example's `package.json` and `package-lock.json`). Browser examples are
 published as a static GitHub Pages project site, `https://johnymontana.github.io/relate-examples/`.
 
-There are two examples, each with a `README.md` that describes it as built and a `NOTES.md` that
+There are three examples, each with a `README.md` that describes it as built and a `NOTES.md` that
 lists every behaviour it depends on or pins (each row with a minimal repro) plus the design ids the
 code cites. Read both before changing an example.
 - `examples/01-wasm-extract/`: markdown to a knowledge graph in a browser tab. GLiNER2.5 through
@@ -21,8 +21,13 @@ code cites. Read both before changing an example.
 - `examples/02-wasm-text2cypher/`: ontology-grounded Text2Cypher in a browser tab. WebLLM (Qwen3.5)
   on WebGPU, or canned reference queries; Relate's WASM build in memory under a graph type derived
   from the ontology. Rows `P1`…`P9`; ids Y, W, D.
+- `examples/03-wasm-agent-memory/`: the Relate playground as an agent's memory. A scripted chat
+  (no model on the page) writes memories into Relate's WASM build, in memory under a graph type, and
+  recalls them with one statement (vector and full-text search, then graph hops); NVL draws the
+  store and selects the returned paths, and the page follows the Relate brand kit (`data/brand/`).
+  Rows `M1`…`M7` and `N1`…`N6`; ids D.
 
-Both read Ontology Graph Spec 1.1 documents through the official SDK (npm
+Examples 01 and 02 read Ontology Graph Spec 1.1 documents through the official SDK (npm
 `@neo4j/ontology-graph-spec` 0.12.2) via `lib/ogs.mjs`.
 
 The decisions the repository is built on are ADRs in `docs/adr/` (see "Decisions" below). The
@@ -59,6 +64,7 @@ scripts/build-gliner-wasm.sh [--check|--force]      # gliner-rs v0.3.1 (4fa741e)
 scripts/fetch-gliner.sh small|base [--check|--pin]  # GLiNER2.5 weights → .cache/gliner/, checked against ci/gliner2.5-*.sha256
 (cd examples/01-wasm-extract && npm ci --omit=peer && npm run vendor && npx playwright install chromium)
 (cd examples/02-wasm-text2cypher && npm ci --omit=peer)
+(cd examples/03-wasm-agent-memory && npm ci --omit=peer)
 
 uv run pytest -q                                    # lib/tests; testpaths = examples + lib/tests, so run from the root
 examples/01-wasm-extract/run.sh                     # offline, ~8-10 min, diffed against expected/ (caffeinate -i on a laptop)
@@ -69,6 +75,8 @@ node examples/01-wasm-extract/harness/convert.mjs [--check]   # regenerate (or c
 examples/02-wasm-text2cypher/run.sh                 # offline, ~1 min: Node, Chromium (canned mode), native
 examples/02-wasm-text2cypher/run.sh --site          # dist/ served as Pages serves it, on EX02_PORT (default 8702)
 examples/02-wasm-text2cypher/run.sh --llm-eval      # local only: both models in the system Chrome (WebGPU), never diffed
+examples/03-wasm-agent-memory/run.sh                # offline, a few seconds: Node, Chromium, native
+examples/03-wasm-agent-memory/run.sh --site         # dist/ served as Pages serves it, on EX03_PORT (default 8703)
 node site/build.mjs [--no-build]                    # the Pages site into site/dist/
 python3 -I lib/opfsfmt.py check|to-dir|to-tar ...   # strict guard for a store exported from OPFS
 ```
@@ -76,7 +84,9 @@ python3 -I lib/opfsfmt.py check|to-dir|to-tar ...   # strict guard for a store e
 While iterating on 01, run one section's harness directly from the example's directory, after
 `source ../../scripts/env.sh` (`node harness/probes.mjs 1.2.0 > out/probes.txt`,
 `node harness/run.mjs 1.2.0 --out out`, `node harness/drive.mjs --out out/browser.txt`,
-`uv run --project ../.. python -I harness/native.py`) instead of the whole `run.sh`.
+`uv run --project ../.. python -I harness/native.py`) instead of the whole `run.sh`. Example 03's
+run is quick enough to run whole; one Node section alone is `node harness/run.mjs --only scenarios`
+(or `statements`, `typed`, `probes`).
 
 ## The `run.sh` contract (ADR-0004)
 
@@ -94,13 +104,18 @@ While iterating on 01, run one section's harness directly from the example's dir
   `NOTES.md`). Extraction and score numbers should not move without a reason you can name.
 - Never run two `run.sh` in one example directory at once (each deletes `out/` and `work/`). Check
   for leftover servers and Chromium processes after a browser run.
+- Each browser example's `screenshot.png` is the picture on its card on the Pages index
+  (`site.json` `screenshot`; `summary` is the card's text). It is committed, never diffed, and
+  retaken by hand after a visible change: `node harness/drive.mjs --smoke --screenshot screenshot.png`
+  (01 also needs `--base-url` of a local `./run.sh --site`).
 - `EXAMPLES_REQUIRE` (comma list): a missing optional dependency prints `SKIP:` and exits 0 unless
   its key is named, then it fails. 01's keys: `wasm` (Node 20+, the pinned bundle, npm pins, NVL
   vendor bundle, gliner-rs build), `gliner` (small-v1 weights), `browser` (Playwright's Chromium;
-  only that section skips). 02's keys: `wasm` (Node 20+, the pinned bundle, npm pins) and `browser`.
-  01's native section needs `relate` 1.2.0 on `PATH` and the matching binding, 02's the binding; a
-  different version fails at once. 02's model never runs in `run.sh` (no GPU in CI; its output is not
-  byte-stable): its browser section uses `?llm=canned`.
+  only that section skips). 02's and 03's keys: `wasm` (Node 20+, the pinned bundle, npm pins) and
+  `browser`. 01's native section needs `relate` 1.2.0 on `PATH` and the matching binding, 02's and
+  03's the binding; a different version fails at once. 02's model never runs in `run.sh` (no GPU in
+  CI; its output is not byte-stable): its browser section uses `?llm=canned`. 03 has no model: its
+  browser section uses `?test=1`, which only turns off animation and pacing.
 
 ## Shared code (ADR-0008)
 
@@ -146,19 +161,22 @@ While iterating on 01, run one section's harness directly from the example's dir
   versioned `assets/<name>-<version>/`, and `.nojekyll`. `site/build.mjs` enforces this.
   `lib/serve.mjs` emulates Pages (base `/relate-examples/`, no custom headers, `max-age=600`, 301
   to the trailing slash, 404 otherwise); keep it faithful.
-- **Per-origin names** (ADR-0003) carry the example's prefix (`ex01-…`/`ex02-…` stores and caches, `ex01.*`
-  `localStorage` keys, `EX01_*`/`EX02_*` env vars): every example shares one origin. The one exception
-  is a library's own fixed names, recorded in that example's NOTES.md (02's W1: WebLLM's `webllm/*`
-  caches).
+- **Per-origin names** (ADR-0003) carry the example's prefix (`ex01-…`/`ex02-…` stores and caches,
+  `ex01.*` and `ex03.*` `localStorage` keys, `EX01_*`/`EX02_*`/`EX03_*` env vars): every example
+  shares one origin. The one exception is a library's own fixed names, recorded in that example's
+  NOTES.md (02's W1: WebLLM's `webllm/*` caches).
 - **Engine pins move together** (ADR-0005, ADR-0007). A Relate upgrade bumps `@relate/relate-wasm` (package.json and
   lockfile), `relate-db` (pyproject and `uv.lock`), `ci/relate-<ver>.sha256`, `RELATE_VERSION` in
-  `examples.yml`, `ver` in each `run.sh`, `VERIFIED` in `lib/opfsfmt.py`, then every `NOTES.md` row
-  is re-checked. The Ontology Graph Spec SDK is pinned in each example's package.json; 01's
+  `examples.yml`, `ver` in each `run.sh`, `RELATE` in each `build.mjs` and worker (03's is in
+  `web/memory.js`), `VERIFIED` in `lib/opfsfmt.py`, then every `NOTES.md` row is re-checked. The Ontology Graph Spec SDK is pinned in each example's package.json; 01's
   `web/ogs.js` `SDK_VERSION` and `build.mjs` `OGS_SDK_VERSION` move with it, and so does 01's vendored
   schema (`data/ontology-spec/`, from the SDK's release tag).
 - **Third-party code** (ADR-0009): ship only what may be redistributed, with its licence under
   `assets/<name>-<version>/`. Fetch everything else at run time, at a pinned revision. Every new
-  component goes into the example's `THIRD_PARTY.md` and its `site.json` `credits`.
+  component goes into the example's `THIRD_PARTY.md` and its `site.json` `credits`. Example 03
+  also ships Relate's logo, favicon and mascot (ADR-0015, its NOTES D9): they are trademarks, used
+  as `data/brand/README.txt` says (never retype or recolour the logo), not under this repository's
+  licence.
 - Every change must pass offline. Don't commit or push unless asked.
 
 ## Relate 1.2.0 rules for code here (details and repros in 01's NOTES.md)
@@ -184,6 +202,11 @@ While iterating on 01, run one section's harness directly from the example's dir
   by existing data with `ConstraintCreationFailed`.
 - **No `system_ontologies`**; `db.ontology.*` is preview-gated and unreachable from WASM (R17).
 - After an aggregating `RETURN`, `ORDER BY` may use only projected expressions (R20).
+- **Search** (03's M3, M4): `SEARCH n IN (VECTOR INDEX … FOR $v LIMIT k) SCORE AS s` needs the
+  `LIMIT`, scores `(1 + cosine) / 2` and returns k rows however poor the match, so filter on the
+  score; a full-text `SEARCH` ORs whole words with no stemming and takes no `WHERE`.
+- **Paths** (03's M7): a returned path carries every node whole, vectors included. Return
+  `[n IN nodes(p) | id(n)]` when ids are all the caller needs.
 - **Snapshots** (R22): a directory with only `graph.json` + `manifest.json` is adopted by a plain
   writable open (`mkdir db && tar -xf <store>.relate.tar -C db && relate -d db 'Q'`); a read-only
   open or `relate clone` refuses it until then; a directory with `wal/` but no markers is refused.

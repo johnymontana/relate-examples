@@ -4,6 +4,8 @@ Each test builds a fake repo in tmp_path (examples/<name>/site.json + a dist/) a
 `node site/build.mjs --root <tmp> --out <dir>`:
 - two examples are collected into <out>/<path>/ byte for byte, and the index lists both,
   sorted by path, with escaped text, beside an empty .nojekyll;
+- a card shows `summary` and the example's `screenshot`, published under a name that carries
+  its content; without them it shows `description` and no picture;
 - an example's `build` runs in its directory unless --no-build or SITE_PREBUILT=1;
 - every bad site.json, unsafe path, root-absolute or protocol-relative URL, missing or misplaced
   Content-Security-Policy <meta>, a directive a meta policy ignores, an uncovered connect origin,
@@ -15,6 +17,7 @@ Each test builds a fake repo in tmp_path (examples/<name>/site.json + a dist/) a
 Needs node on PATH (skips otherwise); no network.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -87,6 +90,16 @@ GOOD_DIST = {
 }
 
 
+#: what site/build.mjs copies from site/ next to index.html
+SITE_STATIC = ["site.css", "favicon.svg", "relate-logo-navy.svg", "relate-logo-white.svg"]
+
+
+def png(width, height, extra=b""):
+    """The start of a PNG, enough for its size to be read: the signature and an IHDR chunk."""
+    return (b"\x89PNG\r\n\x1a\n" + (13).to_bytes(4, "big") + b"IHDR"
+            + width.to_bytes(4, "big") + height.to_bytes(4, "big") + b"\x08\x06\x00\x00\x00" + b"\x00" * 4 + extra)
+
+
 def run(root, out, *args, env=None):
     e = dict(os.environ)
     e.pop("SITE_PREBUILT", None)
@@ -118,7 +131,7 @@ def test_two_examples_collected_and_listed(tmp_path):
     r = run(root, out, "--no-build")
     assert r.returncode == 0, r.stderr
     got = snapshot(out)
-    assert sorted(got) == sorted(["index.html", "site.css", "favicon.svg", ".nojekyll", "a-first/index.html"]
+    assert sorted(got) == sorted(["index.html", *SITE_STATIC, ".nojekyll", "a-first/index.html"]
                                  + [f"b-second/{k}" for k in GOOD_DIST])
     assert got[".nojekyll"] == b""
     for k, v in GOOD_DIST.items():
@@ -180,6 +193,11 @@ def test_output_is_deterministic(tmp_path):
     (site_json("x", "X", connect=["https://huggingface.co/path"]), GOOD_DIST, "is not an origin"),
     (site_json("x", "X", connect=["http://huggingface.co"]), GOOD_DIST, "is not an origin"),
     (site_json("x", "X", requires=["Wasm"]), GOOD_DIST, "is not an EXAMPLES_REQUIRE key"),
+    (site_json("x", "X", summary=""), GOOD_DIST, '"summary" must be a non-empty string'),
+    (site_json("x", "X", summary="s" * 241), GOOD_DIST, '"summary" is longer than 240 characters'),
+    (site_json("x", "X", screenshot="../shot.png"), GOOD_DIST, '"screenshot" must be a relative path to a .png inside the example'),
+    (site_json("x", "X", screenshot="shot.jpg"), GOOD_DIST, '"screenshot" must be a relative path to a .png inside the example'),
+    (site_json("x", "X", screenshot="missing.png"), GOOD_DIST, "examples/50-x/missing.png does not exist"),
     (site_json("x", "X", credits=[]), GOOD_DIST, '"credits" must be a non-empty array'),
     (site_json("x", "X", connect=["https://evil.example"]), GOOD_DIST,
      "connect origin https://evil.example is not allowed by the connect-src of examples/50-x/dist/index.html"),
@@ -222,6 +240,43 @@ def test_problems_fail_clearly(tmp_path, site, files, message):
     assert message in r.stderr, r.stderr
     assert "FAILED; no site was written" in r.stderr
     assert not out.exists()  # the stale build is gone too: nothing deployable is left behind
+
+
+def test_cards_show_a_summary_and_a_screenshot(tmp_path):
+    root = tree(tmp_path)
+    shot = png(1280, 800, b"pixels")
+    ex = write_example(root, "07-shot", site_json("07-shot", "With a picture", connect=[], summary="Short & <sweet>.",
+                                                  screenshot="pics/card.png", credits=["A library"]),
+                       {"index.html": page("<p>x</p>")})
+    (ex / "pics").mkdir()
+    (ex / "pics" / "card.png").write_bytes(shot)
+    write_example(root, "08-plain", site_json("plain", "Without one", connect=[]), {"index.html": page("<p>y</p>")})
+    out = tmp_path / "out"
+    r = run(root, out, "--no-build")
+    assert r.returncode == 0, r.stderr
+    got = snapshot(out)
+    # the picture is published under a name that carries its content, so a new one is a new URL
+    name = f"shots/07-shot-{hashlib.sha256(shot).hexdigest()[:12]}.png"
+    assert got[name] == shot and [k for k in got if k.startswith("shots/")] == [name]
+    index = got["index.html"].decode()
+    first, second = index.split('<li class="card">')[1:]
+    assert f'<img src="{name}" width="1280" height="800" alt="" loading="lazy">' in first
+    assert '<span class="number">07</span>' in first and ">With a picture</a>" in first
+    # the summary is the card's text; the description moves behind the disclosure
+    assert '<p class="summary">Short &amp; &lt;sweet&gt;.</p>' in first
+    assert first.index("Short &amp;") < first.index("<details") < first.index("an example &lt;b&gt;page&lt;/b&gt;") < first.index("A library")
+    # without either field: no picture, no number (the path has none), the description as the card's text
+    assert "<img" not in second and 'class="number"' not in second
+    assert '<p class="summary">Without one: an example &lt;b&gt;page&lt;/b&gt; &amp; more</p>' in second
+    assert second.count("an example &lt;b&gt;page") == 1
+
+    # a picture that is not a PNG, or is too large, fails the build
+    (ex / "pics" / "card.png").write_bytes(b"GIF89a not a png at all, padded to be long enough")
+    r = run(root, out, "--no-build")
+    assert r.returncode == 1 and "examples/07-shot/pics/card.png is not a PNG" in r.stderr and not out.exists()
+    (ex / "pics" / "card.png").write_bytes(png(10, 10, b"\x00" * 600_001))
+    r = run(root, out, "--no-build")
+    assert r.returncode == 1 and "a card's picture may be at most 600000" in r.stderr
 
 
 def test_more_failures(tmp_path):

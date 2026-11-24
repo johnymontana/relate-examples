@@ -93,8 +93,11 @@ or you typed it. The engine worker and the Node harness call the same function.
 ## The ontology and the store
 
 The page needs the SDK's `decode` and `core` clean. It shows the other validation sets for
-information: `consistentSchema` asks for an explicit database `name` on every property (65 issues
-here), and `mappable` checks the import mappings (9).
+information:
+- `consistentSchema` reports 66 issues. In 65 of them a property lacks an explicit database `name`.
+  The other is the existence constraint on `Company.name`, which the SDK reports as conflicting with
+  a composite constraint on `Company`.
+- `mappable` checks the import mappings, and reports 9 issues.
 
 `web/ddl.js` turns the ontology into the store's schema, applied in this order (`ddl.cypher`):
 
@@ -303,7 +306,7 @@ on some GPUs), Safari 26, or Firefox on Windows or macOS. It also needs about 1.
 |---|---|
 | `web/` | the page: `index.html`, `style.css`, `app.js`. The workers: `engine.worker.js` (Relate) and `llm.worker.js` (WebLLM). The modules: `ontology.js`, `briefing.js`, `validate.js`, `ddl.js`, `load.js`, `run.js`, `canned.js`, `compare.js`, `llm.js` and `py.js` (Python's semantics the ports need). `vendor-entry.mjs` is NVL's bundle entry. |
 | `data/` | the ontology, the demo graph, the canned answers, `reference/` (the Python's outputs) and `SOURCE.md` |
-| `harness/` | `run.mjs` (the Node sections), `drive.mjs` (Chromium; `--smoke`), `native.py`, `llm-eval.mjs` (local, WebGPU), `capture_reference.py` (by hand, against the source) |
+| `harness/` | `run.mjs` (the Node sections), `drive.mjs` (Chromium; `--smoke`, and `--smoke --screenshot screenshot.png` retakes the picture on the Pages index), `native.py`, `llm-eval.mjs` (local, WebGPU), `capture_reference.py` (by hand, against the source) |
 | `build.mjs`, `site.json`, `run.sh` | the static site, its entry in the Pages site, the regression run |
 | `expected/` | what `run.sh` diffs against |
 | [`../../lib/ogs.mjs`](../../lib/ogs.mjs), [`../../lib/serve.mjs`](../../lib/serve.mjs), [`../../lib/relate_wasm.mjs`](../../lib/relate_wasm.mjs) | shared with example 01: the Ontology Graph Spec through the SDK, the Pages emulator, the Relate WASM helpers |

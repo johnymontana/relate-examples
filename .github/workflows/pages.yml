@@ -1,7 +1,7 @@
 # Builds the browser-examples site (site/build.mjs: each examples/*/site.json example's dist/, plus
 # the index page) and publishes it on GitHub Pages as this repository's project site:
 # https://<owner>.github.io/relate-examples/ (example 01 at /relate-examples/01-wasm-extract/, 02 at
-# /relate-examples/02-wasm-text2cypher/).
+# /relate-examples/02-wasm-text2cypher/, 03 at /relate-examples/03-wasm-agent-memory/).
 # Pages serves the files as they are, with no custom headers: each page carries its own
 # Content-Security-Policy <meta>, and site/build.mjs refuses a page without one. site/README.md
 # is the contract; lib/serve.mjs emulates what Pages serves.
@@ -87,7 +87,11 @@ jobs:
       # integrity; its build bundles them itself. The site never ships the models: the page fetches them.
       - name: Example 02's npm packages
         run: npm ci --omit=peer --prefix examples/02-wasm-text2cypher
-      # Runs each example's own build (01 and 02: npm run build), checks every page's CSP <meta> and
+      # 03's npm packages: @relate/relate-wasm, NVL and the brand's typefaces (each pinned with its integrity);
+      # its build bundles them itself.
+      - name: Example 03's npm packages
+        run: npm ci --omit=peer --prefix examples/03-wasm-agent-memory
+      # Runs each example's own build (01, 02 and 03: npm run build), checks every page's CSP <meta> and
       # relative URLs, and writes site/dist/ with the index page and .nojekyll.
       - name: Build site/dist
         run: node site/build.mjs
