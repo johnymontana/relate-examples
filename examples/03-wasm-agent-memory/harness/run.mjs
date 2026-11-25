@@ -15,7 +15,7 @@
  *                      call's rows (how each memory was reached, its score and its trail), what was
  *                      stored, the reply and its citations; then the same writes replayed, which
  *                      must change nothing
- *   typed.txt          turns nobody scripted (web/agent.js freeTurn): which tool the rules pick,
+ *   typed.txt          turns nobody scripted (web/agent.js freeTurn): the chosen action and tool,
  *                      and the reply assembled from what it returned
  *   probes.txt         M1...: the Relate 1.2.0 behaviours the example depends on, each a minimal
  *                      repro (NOTES.md has one row per probe); and what the embedding model's
@@ -38,6 +38,7 @@ import { freeTurn, mergePaths, plan, scriptedTurn } from '../web/agent.js';
 import { DIMS, MODEL, contentWords, createEmbedder, precomputed, terms } from '../web/embed.js';
 import * as M from '../web/memory.js';
 import { TYPED, TYPED_WITHOUT_VECTOR } from './typed.mjs';
+import { checkCorrections } from './corrections.mjs';
 
 const EX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELATE = M.RELATE;
@@ -146,6 +147,8 @@ function statementsSection() {
     ['remember (1 of 3): the session, the message, the entities it mentions', M.REMEMBER_MESSAGE],
     ['remember (2 of 3): the memories, each with its vector, its source and what it is about', M.REMEMBER_MEMORIES],
     ['remember (3 of 3): a new memory replaces the current one in its slot', M.REMEMBER_SUPERSEDE],
+    ['correct: replace the selected current memory and retain its source', M.CORRECT],
+    ['correct: look up the receipt when replaying a completed correction', M.CORRECTION_RECEIPT],
     ['recall: hybrid search, then the graph', M.RECALL],
     ['connect: the shortest chain of current memories between two entities', M.CONNECT],
     ['trace: where a memory, and each version it replaced, came from', M.TRACE],
@@ -200,6 +203,16 @@ async function scenariosSection(mod, replay) {
     if (!same) pin(`${id}: remember is no longer idempotent`);
     db.free();
   }
+  // The native harness replays a correction (including stale and retried writes) in a separate store.
+  /** @type {any[]} */ const correctionLog = [];
+  const corrections = openStore(mod, correctionLog);
+  correctionLog.length = 0;
+  try {
+    checkCorrections(corrections.memory);
+    for (const c of correctionLog) replay.queries.push({ scenario: 'corrections', tool: c.tool, write: c.write, statement: c.statement, params: c.params, rows: c.rows });
+  } finally {
+    corrections.db.free();
+  }
   return `${say.join('\n')}\n`;
 }
 
@@ -214,21 +227,21 @@ async function typedSection(mod) {
   const tools = /** @type {any} */ ({ ...memory, embed: embedder.embed });
   for (const step of steps) await scriptedTurn(tools, step);
   const say = [`# Example 03: turns nobody scripted (web/agent.js freeTurn), after the "${sc.title}" conversation`, ''];
-  say.push('No language model: a question goes to recall (or to connect, when it asks how two known entities are');
-  say.push('linked, or on to trace, when it asks for a source); anything else is stored word for word as a note,');
-  say.push('linked to the entities it names. The reply is assembled from what the tool returned. In the page a typed');
-  say.push('text gets its vector from the model in the tab; here each has one in data/embeddings.json, but the last');
+  say.push('Ask reads the store. Save note writes the exact text, linked to the entities it names.');
+  say.push('Answers use the memories each tool returned, with additional matches available as related context.');
+  say.push('The model runs in the tab for new text. Each turn here has a vector in data/embeddings.json, but the last');
   say.push('two, which have none on purpose: the note is stored and found by its words alone, as it is in a tab');
   say.push('that could not load the model.');
   let seq = steps.length;
-  for (const text of [...TYPED, ...TYPED_WITHOUT_VECTOR]) {
+  for (const input of [...TYPED, ...TYPED_WITHOUT_VECTOR]) {
     seq++;
-    if (TYPED.includes(text) !== (embedder.source(text) === 'ahead')) pin(`data/embeddings.json and harness/typed.mjs (${text})`);
+    const { text, intent } = input;
+    if (TYPED.includes(input) !== (embedder.source(text) === 'ahead')) pin(`data/embeddings.json and harness/typed.mjs (${text})`);
     const res = await freeTurn(tools, text, {
-      session: { id: 'team-you', title: 'Your turn', startedAt: '2026-01-01T00:00:00Z' },
+      intent, hasMemories: true, session: { id: 'team-you', title: 'Your turn', startedAt: '2026-01-01T00:00:00Z' },
       seq, at: '2026-01-01T00:00:00Z', messageId: `team-${seq}`, noteId: `note-${seq}`,
     });
-    say.push('', `[${seq}] user: ${text}`);
+    say.push('', `[${seq}] ${intent === 'ask' ? 'Ask' : 'Save note'}: ${text}`);
     for (const s of res.steps) say.push(...stepLines(s, res));
     say.push(...replyText(res.reply).split('\n').map((l, i) => (i ? `         ${l}` : `  reply: ${l}`)));
     for (const p of res.problems) { say.push(`  PROBLEM: ${p}`); pin(`typed turn ${JSON.stringify(text)}: ${p}`); }
@@ -236,7 +249,136 @@ async function typedSection(mod) {
   const c = census(db);
   say.push('', `the store: ${c.nodes}; ${c.rels}`);
   db.free();
+  say.push('', '## Visitor experiments', ...await visitorExperiments(mod));
   return `${say.join('\n')}\n`;
+}
+
+/**
+ * Exercise actions in independent stores so that a saved note cannot affect the baseline ranking
+ * of the next case. New prose in the literal-text and diet cases intentionally takes the word-only
+ * write path. The guided questions use the real vectors shipped with the examples.
+ * @param {any} mod
+ */
+async function visitorExperiments(mod) {
+  /** @type {string[]} */ const checks = [];
+  const check = (/** @type {string} */ label, /** @type {boolean} */ ok) => {
+    checks.push(`${label}: ${ok ? 'yes' : 'NO'}`);
+    if (!ok) pin(label);
+  };
+  /** @param {string} id @param {number} [count] */
+  async function visit(id, count = Infinity) {
+    const { db, memory } = openStore(mod);
+    const tools = { ...memory, embed: embedder.embed };
+    const steps = plan(readJson(`data/scenarios/${id}.json`));
+    for (const step of steps.slice(0, count)) await scriptedTurn(tools, step);
+    let seq = Math.min(steps.length, count);
+    /** @param {string} text @param {'ask'|'save'} [intent] @param {string} [suggestedMemoryId] */
+    function send(text, intent = 'ask', suggestedMemoryId) {
+      seq++;
+      const at = '2026-01-01T00:00:00Z';
+      return freeTurn(tools, text, {
+        session: { id: `${id}-you`, title: 'Your turn', startedAt: at },
+        seq, at, messageId: `${id}-${seq}`, noteId: `note-${seq}`, intent, suggestedMemoryId,
+        hasMemories: memory.snapshot().nodes.some((n) => n.label === 'Memory'),
+      });
+    }
+    return { db, memory, tools, steps, send };
+  }
+
+  {
+    const { db, memory, send } = await visit('team');
+    const initial = canon(memory.snapshot());
+    const question = 'How do you know Dana is on holiday?';
+    const before = await send(question);
+    const source = before.steps.find((s) => s.tool === 'trace');
+    const first = replyText(before.reply);
+    check('An unsupported holiday question identifies the payments fact and its original message',
+      source?.id === 'owner-dana' && first.includes('Dana owns the payments service') &&
+      first.includes(source.rows[0].said) && !/you told me|on (holiday|leave)/i.test(first) && !before.problems.length);
+
+    const ownership = await send('Who owns the payments service?');
+    const found = ownership.steps[0].rows;
+    check('Dana is cited first and all five other retrieved memories remain in related context',
+      found.length === 6 && ownership.reply.cites.length === 1 && ownership.reply.cites[0].id === 'owner-dana' &&
+      canon(ownership.reply.related?.map((r) => r.id)) === canon(found.slice(1).map((r) => r.id)));
+    const text = 'Catch me up on the checkout rewrite.';
+    const read = await send(text);
+    check('Asking the guided checkout prompt leaves the complete store unchanged',
+      read.steps[0].tool === 'recall' && canon(memory.snapshot()) === initial);
+    const stored = await send(text, 'save');
+    check('Saving the identical checkout prompt records exactly one note',
+      stored.steps[0].counts.memories === 1 && stored.steps[0].memories[0].text === text);
+    const holiday = await send('Dana is on holiday in August', 'save');
+    const after = await send(question);
+    check('After an explicit save the holiday question quotes the visitor’s exact note',
+      after.steps.find((s) => s.tool === 'trace')?.id === holiday.steps[0].memories[0].id &&
+      replyText(after.reply).includes('Dana is on holiday in August') && !after.problems.length);
+    db.free();
+  }
+  {
+    const { db, memory, send } = await visit('code');
+    const initial = canon(memory.snapshot());
+    const prompt = 'Add a test for the login flow in the auth module.';
+    const read = await send(prompt);
+    check('Asking the guided coding prompt leaves the complete store unchanged',
+      read.steps[0].tool === 'recall' && canon(memory.snapshot()) === initial);
+    const saved = await send(prompt, 'save');
+    check('Saving the identical coding prompt records one note', saved.steps[0].counts.memories === 1);
+    // Include a real fixture id: accidental parsing would produce a plausible but spurious citation.
+    const literal = 'Kenji uses [[Mural]] for planning. His notes say [[auth-owner]].';
+    const note = await send(literal, 'save');
+    const id = note.steps[0].memories[0].id;
+    const answer = await send('What does Kenji use for planning?');
+    check('Literal double brackets in a recalled note produce only the note’s own citation',
+      replyText(answer.reply).includes(literal) && answer.reply.cites.length === 1 &&
+      answer.reply.cites[0].id === id && !answer.problems.length && memory.trace({ id })[0].said === literal);
+    db.free();
+  }
+  {
+    const { db, memory, send } = await visit('trip');
+    const sightseeing = 'Any sightseeing plans?';
+    const before = await send(sightseeing);
+    check('Before the museum note the sightseeing suggestion is a labeled approximate match',
+      before.steps[0].rows.length > 0 && replyText(before.reply).includes('Closest matching memory') &&
+      !replyText(before.reply).includes('tile museum'));
+    const text = 'Maya wants to see the tile museum';
+    const saved = await send(text, 'save');
+    const id = saved.steps[0].memories[0].id;
+    const after = await send(sightseeing, 'ask', id);
+    check('After saving the museum suggestion the answer cites the original visitor note',
+      after.reply.cites.some((c) => c.id === id) && replyText(after.reply).includes(text) && memory.trace({ id })[0].said === text);
+    db.free();
+  }
+  {
+    const { db, memory, tools, steps, send } = await visit('trip', 3);
+    const text = 'Maya is vegan now and no longer eats any animal products.';
+    const note = await send(text, 'save');
+    const id = note.steps[0].memories[0].id;
+    const dinner = await scriptedTurn(tools, steps[3], { edited: true, visitorMemoryIds: new Set([id]), hasMemories: true });
+    check('The guided dinner reply includes the visitor note reached through Maya',
+      dinner.steps[0].rows.some((r) => r.id === id && r.via === 'graph') &&
+      replyText(dinner.reply).includes(text) && dinner.reply.cites.some((c) => c.id === id) &&
+      !dinner.problems.length && memory.trace({ id })[0].said === text);
+    db.free();
+  }
+  {
+    const { db, memory, tools, steps } = await visit('team', 3);
+    const text = 'Dana leads the checkout rewrite';
+    memory.query("MATCH (m:Memory {id:'lead'}) SET m.text = 'Dana leads the checkout rewrite'");
+    const edited = await scriptedTurn(tools, steps[3], { edited: true });
+    const reply = replyText(edited.reply);
+    check('A guided citation binds to the value changed by a console edit',
+      reply.includes(text) && !reply.includes('Priya leads') && edited.reply.cites.some((c) => c.id === 'lead' && c.text === text));
+    memory.query("MATCH (m:Memory {id:'lead'}) DETACH DELETE m");
+    const removed = await scriptedTurn(tools, steps[3], { edited: true });
+    check('A guided answer omits a memory deleted by a console edit',
+      !removed.reply.cites.some((c) => c.id === 'lead') && !removed.problems.length);
+    const invalid = await scriptedTurn(tools, { ...steps[3], reply: 'A fixture error [[absent-id]].' });
+    check('Untouched-mode fixture validation still rejects missing citations',
+      invalid.problems.some((p) => p.includes('absent-id')));
+    db.free();
+  }
+  return checks;
 }
 
 // ---- probes ------------------------------------------------------------------------------------

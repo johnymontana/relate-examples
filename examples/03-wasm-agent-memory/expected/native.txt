@@ -25,4 +25,12 @@ the store: 7 Entity, 7 Memory, 5 Message, 2 Session; 14 ABOUT, 7 FROM, 5 IN_SESS
 a memory without its kind, against the graph type: refused (semantic error: ConstraintValidationFailed: `constraint_<generated>` requires properties)
 ABOUT between two entities, against the graph type: refused (ConstraintValidationFailed: endpoint label presence verification failed: expected Memory)
 
-=> the same rows natively and in WASM: 55 of 55 statements
+## corrections: 7 schema statements, then 22 statements in the order the page ran them
+correct: 14 of 14 statements return the same rows as WASM
+remember: 6 of 6 statements return the same rows as WASM
+trace: 2 of 2 statements return the same rows as WASM
+the store: 2 Entity, 7 Memory, 4 Message, 2 Session; 4 ABOUT, 7 FROM, 4 IN_SESSION, 4 MENTIONS, 3 SUPERSEDES
+a memory without its kind, against the graph type: refused (semantic error: ConstraintValidationFailed: `constraint_<generated>` requires properties)
+ABOUT between two entities, against the graph type: refused (ConstraintValidationFailed: endpoint label presence verification failed: expected Memory)
+
+=> the same rows natively and in WASM: 77 of 77 statements

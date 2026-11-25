@@ -10,7 +10,7 @@
  *
  * URL parameters: ?scenario=team|trip|code, ?autoplay=1, ?test=1 (no animation, no pacing and no
  * model in the tab: what harness/drive.mjs uses), ?embed=off|live (the model in the tab, whatever
- * ?test says). window.ex03 is the same page for scripts: next(), playAll(), send(text),
+ * ?test says). window.ex03 is the same page for scripts: next(), playAll(), send(text, intent),
  * query(cypher), state().
  */
 import { freeTurn, mergePaths, plan, scriptedTurn } from './agent.js';
@@ -24,7 +24,7 @@ const ANIMATE = !TEST && !matchMedia('(prefers-reduced-motion: reduce)').matches
 const THEME_KEY = 'ex03.theme';
 
 const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.getElementById(id));
-/** @param {string} tag @param {string} [cls] @param {string} [text] */
+/** @template {keyof HTMLElementTagNameMap} K @param {K} tag @param {string} [cls] @param {string} [text] */
 const h = (tag, cls, text) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -43,6 +43,8 @@ const state = {
   playing: false,
   busy: false,
   unscripted: false,
+  edited: false,
+  /** @type {Map<string,string>} */ savedSuggestions: new Map(),
   /** @type {{nodes: any[], rels: any[]}} */ snapshot: { nodes: [], rels: [] },
   /** @type {any[]} */ paths: [],
   calls: 0,
@@ -89,6 +91,7 @@ function rpc(op, payload = {}) {
  */
 const live = {
   /** @type {Worker|null} */ worker: null,
+  /** @type {Promise<void>|null} */ loading: null,
   /** @type {'idle'|'loading'|'ready'|'failed'|'off'} */ status: 'idle',
   id: 0,
   /** @type {Map<number, {resolve: (v: any) => void, reject: (e: any) => void}>} */ waiting: new Map(),
@@ -99,53 +102,77 @@ function embedStatus(text) {
   const el = $('embed-status');
   el.textContent = text;
   el.hidden = !text;
+  $('retry-model').hidden = live.status !== 'failed';
   document.body.dataset.embed = live.status;
+}
+
+/** Reject every request to this instance before allowing a fresh embedding worker. @param {Error} error */
+function modelFailed(error) {
+  live.worker?.terminate();
+  live.worker = null;
+  for (const request of live.waiting.values()) request.reject(error);
+  live.waiting.clear();
+  live.status = 'failed';
+  embedStatus(`Model unavailable (${error.message}). New notes and questions use word search. Notes saved without a vector stay searchable by their words.`);
 }
 
 /** @param {string} op @param {Record<string, any>} [payload] @returns {Promise<any>} */
 function embedRpc(op, payload = {}) {
-  if (!live.worker) {
-    live.worker = new Worker(new URL('./embed.worker.js', import.meta.url), { type: 'module' });
-    live.worker.onmessage = (e) => {
-      if (e.data.progress) {
-        embedStatus(`Fetching the embedding model, once: ${Math.round((100 * e.data.progress.loaded) / e.data.progress.total)}% of 23 MB`);
-        return;
-      }
-      const p = live.waiting.get(e.data.id);
-      if (!p) return;
-      live.waiting.delete(e.data.id);
-      if (e.data.ok) p.resolve(e.data.result); else p.reject(new Error(e.data.error));
-    };
-    live.worker.onerror = (e) => {
-      for (const p of live.waiting.values()) p.reject(new Error(e.message || 'the embedding worker failed to load'));
-      live.waiting.clear();
-    };
-  }
   return new Promise((resolve, reject) => {
     const id = ++live.id;
     live.waiting.set(id, { resolve, reject });
-    /** @type {Worker} */ (live.worker).postMessage({ id, op, ...payload });
+    try {
+      if (!live.worker) {
+        const instance = new Worker(new URL('./embed.worker.js', import.meta.url), { type: 'module' });
+        live.worker = instance;
+        instance.onmessage = ({ data }) => {
+          if (instance !== live.worker) return;
+          if (data.progress) {
+            embedStatus(`Downloading the embedding model: ${Math.round(100 * data.progress.loaded / data.progress.total)}% of 23 MB.`);
+          } else if (data.phase === 'initializing') {
+            embedStatus('Model files ready. Initializing the embedding model…');
+          } else {
+            const request = live.waiting.get(data.id);
+            if (!request) return;
+            if (!data.ok) { modelFailed(new Error(data.error)); return; }
+            live.waiting.delete(data.id);
+            request.resolve(data.result);
+          }
+        };
+        instance.onerror = (event) => {
+          if (instance === live.worker) modelFailed(new Error(event.message || 'Embedding worker failed to load.'));
+        };
+        instance.onmessageerror = () => {
+          if (instance === live.worker) modelFailed(new Error('Could not read the embedding worker response.'));
+        };
+      }
+      live.worker.postMessage({ id, op, ...payload });
+    } catch (error) {
+      modelFailed(error instanceof Error ? error : new Error(String(error)));
+    }
   });
 }
 
-/** Vectors for texts the page has none for, from the model in the tab. Throws when there is no model to be had. @param {string[]} texts */
-async function liveEmbed(texts) {
-  if (live.status === 'failed') throw new Error('no model');
-  try {
-    if (live.status !== 'ready') {
-      live.status = 'loading';
-      embedStatus('Starting the embedding model…');
-      await embedRpc('load');
-    }
-    const vectors = await embedRpc('embed', { texts });
-    live.status = 'ready';
-    embedStatus(`Embedded in this tab with ${MODEL.id.split('/')[1]}: your text is compared by meaning, not only by its words.`);
-    return vectors;
-  } catch (err) {
-    live.status = 'failed';
-    embedStatus(`The embedding model could not be loaded (${/** @type {any} */ (err)?.message ?? err}). Your text is searched by its words only.`);
-    throw err;
+function loadModel() {
+  if (live.status === 'ready') return Promise.resolve();
+  if (!live.loading) {
+    live.status = 'loading';
+    embedStatus('Checking the model cache. First download is 23 MB.');
+    live.loading = embedRpc('load').then(() => {
+      live.status = 'ready';
+      embedStatus('Model ready. New text can be searched by meaning.');
+    }).finally(() => { live.loading = null; });
   }
+  return live.loading;
+}
+
+/** @param {string[]} texts */
+async function liveEmbed(texts) {
+  if (live.status === 'failed') throw new Error('Embedding model unavailable');
+  await loadModel();
+  const vectors = await embedRpc('embed', { texts });
+  embedStatus(`Embedded in this tab with ${MODEL.id.split('/')[1]}.`);
+  return vectors;
 }
 
 // ---- what every engine answer updates --------------------------------------------------------------
@@ -159,7 +186,11 @@ function applyOp(res) {
   state.ledgerDirty = true;
   if (!$('pane-ledger').hidden) renderLedger();
   renderCounts();
-  $('empty').classList.toggle('gone', res.snapshot.nodes.some((/** @type {any} */ n) => n.label === 'Entity' || n.label === 'Memory'));
+  if (!$('inspector').hidden && res.calls?.some((c) => c.write && !c.error)) {
+    if (detail) renderSelectedMemory();
+    else inspect(res.snapshot.nodes.find((n) => String(n.id) === $('inspector').dataset.node) ?? null);
+  }
+  $('empty').hidden = res.snapshot.nodes.some((/** @type {any} */ n) => n.label === 'Entity' || n.label === 'Memory');
 }
 
 function renderCounts() {
@@ -167,6 +198,9 @@ function renderCounts() {
   const mem = by('Memory');
   const old = mem.filter((m) => m.props.current === false).length;
   const el = $('counts');
+  const summary = `${by('Entity').length} entities · ${mem.length} memories${old ? ` (${old} replaced)` : ''}`;
+  el.title = `In the store: ${state.snapshot.nodes.length} nodes (${by('Message').length} of them messages, ${by('Session').length} sessions) and ${state.snapshot.rels.length} relationships`;
+  if (el.textContent === summary) return;
   el.replaceChildren();
   const part = (/** @type {number} */ n, /** @type {string} */ label) => {
     const b = h('b', '', String(n));
@@ -174,7 +208,6 @@ function renderCounts() {
   };
   part(by('Entity').length, 'entities · ');
   part(mem.length, `memories${old ? ` (${old} replaced)` : ''}`);
-  el.title = `In the store: ${state.snapshot.nodes.length} nodes (${by('Message').length} of them messages, ${by('Session').length} sessions) and ${state.snapshot.rels.length} relationships`;
 }
 
 // ---- Cypher, lightly coloured --------------------------------------------------------------------
@@ -243,7 +276,7 @@ function divider(title, note) {
 }
 
 /** A tool card's frame: name, one-line summary, rows, and the statements behind it. */
-function card(/** @type {string} */ name, /** @type {boolean} */ write, /** @type {Node[]} */ summary, /** @type {any[]} */ calls) {
+function card(/** @type {string} */ name, /** @type {boolean} */ write, /** @type {Array<Node|string>} */ summary, /** @type {any[]} */ calls) {
   const c = h('div', `tool${write ? ' write' : ''}`);
   c.dataset.tool = name;
   const head = h('div', 'tool-head');
@@ -274,7 +307,7 @@ function hoverPath(/** @type {HTMLElement} */ li, /** @type {{nodes: number[], r
   li.classList.add('hoverable');
   const hit = row.nodes[row.nodes.length - 1];
   const paths = [{ nodes: row.nodes, rels: row.rels, strong: true }, ...(row.about ?? []).map((a) => ({ nodes: [hit, a.node], rels: [a.rel], strong: true, after: 2 * (row.nodes.length - 1) }))];
-  li.addEventListener('pointerenter', () => graph.highlight(paths));
+  li.addEventListener('pointerenter', () => { if (paths.every(pathExists)) graph.highlight(paths); });
   li.addEventListener('pointerleave', () => graph.highlight(state.paths));
 }
 
@@ -320,6 +353,7 @@ function recallCard(question, rows, calls, embedded) {
 /** @param {any[]} entities @param {any[]} memories @param {any} counts @param {any[]} calls */
 function rememberCard(entities, memories, counts, calls) {
   const about = [...new Set(memories.flatMap((m) => m.about))];
+  /** @type {Array<Node|string>} */
   const summary = [b(plural(memories.length, 'memory', 'memories'))];
   if (about.length) summary.push(` about ${about.join(', ')}`);
   if (counts.superseded) summary.push(` · replaces ${plural(counts.superseded, 'older memory', 'older memories')}`);
@@ -422,47 +456,131 @@ function captionFor(res, scripted) {
   return node;
 }
 
-/** @param {any[]} paths @param {Node|null} caption */
-function showHighlight(paths, caption) {
-  state.paths = paths;
-  if (!paths.length || !caption) {
-    state.paths = [];
-    $('caption').hidden = true;
-    graph.clearHighlight();
-    return;
+/** The persistent highlight and its activation point survive transient pointer previews. */
+let highlightOwner = '';
+/** @type {{memoryId: string, origin: HTMLElement|null, paths: any[]}|null} */
+let detail = null;
+
+/** @param {any[]} paths @param {Node|null} caption @param {string} [owner] */
+function showHighlight(paths, caption, owner = 'turn') {
+  if (owner !== 'detail') {
+    detail = null;
+    inspect(null);
+    graph.select(null);
   }
-  $('caption-text').replaceChildren(caption);
-  $('caption').hidden = false;
-  graph.highlight(paths);
+  highlightOwner = caption ? owner : '';
+  state.paths = paths;
+  $('caption').hidden = !caption;
+  $('caption-text').replaceChildren(...(caption ? [caption] : []));
+  if (paths.length) graph.highlight(paths);
+  else graph.clearHighlight();
 }
 
-/** A stored memory and the entities it is about, as paths to light. @param {string} memoryId */
-function memoryPaths(memoryId) {
-  const m = state.snapshot.nodes.find((n) => n.label === 'Memory' && n.props.id === memoryId);
-  if (!m) return [];
-  const about = state.snapshot.rels.filter((r) => r.source === m.id && r.type === 'ABOUT');
-  return about.length ? about.map((r) => ({ nodes: [m.id, r.target], rels: [r.id], strong: true })) : [{ nodes: [m.id], rels: [], strong: true }];
+/** @param {string} owner */
+function clearOwnedHighlight(owner) {
+  if (owner === highlightOwner) showHighlight([], null);
+}
+
+/** A stored memory and its subjects, as paths to light. @param {any} memory */
+function memoryPaths(memory) {
+  const about = state.snapshot.rels.filter((r) => r.source === memory.id && r.type === 'ABOUT');
+  return about.length ? about.map((r) => ({ nodes: [memory.id, r.target], rels: [r.id], strong: true })) : [{ nodes: [memory.id], rels: [], strong: true }];
+}
+
+/** A previous turn's path may have been changed by the console. @param {any} path */
+function pathExists(path) {
+  const { nodes, rels } = state.snapshot;
+  return path.nodes.every((/** @type {number} */ id) => nodes.some((n) => n.id === id))
+    && path.rels.every((/** @type {number} */ id, /** @type {number} */ i) => {
+      const r = rels.find((r) => r.id === id);
+      return r && ((r.source === path.nodes[i] && r.target === path.nodes[i + 1])
+        || (r.target === path.nodes[i] && r.source === path.nodes[i + 1]));
+    });
+}
+
+/** @param {string} id @param {HTMLElement|null} origin @param {any[]} [paths] */
+function selectMemory(id, origin, paths = []) {
+  detail = { memoryId: id, origin, paths };
+  showTab('graph');
+  renderSelectedMemory();
+  const box = $('inspector');
+  box.focus({ preventScroll: true });
+  box.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+}
+
+/** Re-read the selected fact from the store, including source links edited in the console. */
+function renderSelectedMemory() {
+  if (!detail?.memoryId) return;
+  const memory = state.snapshot.nodes.find((n) => n.label === 'Memory' && n.props.id === detail.memoryId);
+  graph.select(memory?.id ?? null);
+  if (!memory) {
+    showHighlight([], document.createTextNode('This memory is no longer in the store.'), 'detail');
+    inspect(null);
+    const box = $('inspector');
+    box.hidden = false;
+    box.append(h('h3', '', 'Memory unavailable'), h('p', '', 'The source for this citation is no longer in the current store.'), returnButton());
+    return;
+  }
+  const valid = detail.paths.length && detail.paths.every(pathExists);
+  const paths = valid ? detail.paths.map((p) => ({ ...p, strong: true })) : memoryPaths(memory);
+  showHighlight(paths, document.createTextNode(memory.props.text), 'detail');
+  inspect(memory);
+}
+
+/** Keep a row's group as well as its fact ID: one fact may appear under several entities. */
+function closeDetail() {
+  const origin = detail?.origin;
+  showHighlight([], null);
+  if (origin?.classList.contains('mem')) {
+    showTab('ledger');
+    const rows = /** @type {NodeListOf<HTMLButtonElement>} */ ($('pane-ledger').querySelectorAll('button.mem'));
+    const row = Array.from(rows).find((r) => r.dataset.memory === origin.dataset.memory && r.dataset.entity === origin.dataset.entity);
+    (row ?? $('tab-ledger')).focus();
+  } else if (origin?.isConnected) {
+    origin.focus();
+    origin.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+  } else $('tab-graph').focus();
+}
+
+function returnButton() {
+  const from = detail?.origin;
+  const label = from?.classList.contains('mem') ? 'Return to fact' : from ? 'Return to reply' : 'Close details';
+  const button = h('button', '', label);
+  button.addEventListener('click', closeDetail);
+  return button;
 }
 
 /** @param {any} res  a TurnResult */
 function replyBubble(res) {
   const m = h('div', 'msg agent');
   m.append(h('span', 'from', state.scenario.agent));
+  const pathsFor = (/** @type {string} */ id) => res.highlight.paths.filter((/** @type {any} */ path) => path.id === id);
   for (const p of res.reply.parts) {
     if (p.text !== undefined) { m.append(p.text); continue; }
     const cite = res.reply.cites.find((/** @type {any} */ c) => c.id === p.cite);
     const btn = h('button', `cite${cite?.text ? '' : ' missing'}`, String(p.n));
     btn.title = cite?.text ?? 'not returned by any tool';
+    btn.disabled = !cite?.text;
     btn.dataset.memory = p.cite;
-    btn.addEventListener('click', () => {
-      // the path that reached this memory, when recall returned one; else the memory and what it is about
-      const own = res.highlight.paths.filter((/** @type {any} */ x) => x.id === p.cite);
-      const paths = own.length ? own.map((/** @type {any} */ x) => ({ ...x, strong: true })) : memoryPaths(p.cite);
-      if (!paths.length) return;
-      showTab('graph');
-      graph.highlight(paths);
-    });
+    btn.setAttribute('aria-label', `Source ${p.n}: ${btn.title}`);
+    btn.addEventListener('click', () => selectMemory(p.cite, btn, pathsFor(p.cite)));
     m.append(btn);
+  }
+  if (res.reply.related?.length) {
+    const more = h('details', 'related');
+    const rows = h('ul');
+    for (const r of res.reply.related) {
+      const li = h('li');
+      const button = h('button', '', r.text);
+      button.addEventListener('click', () => selectMemory(r.id, button, pathsFor(r.id)));
+      let found = foundBy(r);
+      if (r.via === 'graph') found = `Graph path through ${r.through.join(' → ')}`;
+      if (r.via === 'update') found = `Current replacement · ${found}`;
+      li.append(button, h('small', '', [found, r.session].filter(Boolean).join(' · ')));
+      rows.append(li);
+    }
+    more.append(h('summary', '', `Related context (${res.reply.related.length})`), rows);
+    m.append(more);
   }
   return m;
 }
@@ -519,7 +637,12 @@ async function next() {
       await wait(500);
     }
     const seq = ++state.clock;
-    const res = await turn(step.user, (tools) => scriptedTurn(tools, { ...step, seq, messageId: `${state.scenario.id}-${seq}` }), true);
+    const context = state.edited ? {
+      edited: true,
+      visitorMemoryIds: visitorMemories(),
+      hasMemories: state.snapshot.nodes.some((n) => n.label === 'Memory'),
+    } : undefined;
+    const res = await turn(step.user, (tools) => scriptedTurn(tools, { ...step, seq, messageId: `${state.scenario.id}-${seq}` }, context), true);
     document.body.dataset.cursor = String(state.cursor);
     return res;
   } finally {
@@ -527,41 +650,102 @@ async function next() {
   }
 }
 
-/** A turn the visitor typed. @param {string} text */
-async function send(text) {
+/** Stable domain IDs of memories sourced from this scenario's visitor session. */
+function visitorMemories() {
+  const { nodes, rels } = state.snapshot;
+  const session = nodes.find((n) => n.label === 'Session' && n.props.id === `${state.scenario.id}-you`);
+  if (!session) return new Set();
+  const messages = new Set(rels.filter((r) => r.type === 'IN_SESSION' && r.target === session.id).map((r) => r.source));
+  const memories = new Set(rels.filter((r) => r.type === 'FROM' && messages.has(r.target)).map((r) => r.source));
+  return new Set(nodes.filter((n) => memories.has(n.id)).map((n) => n.props.id));
+}
+
+function visitorTurn() {
+  if (!state.unscripted) {
+    state.unscripted = true;
+    divider('Your turn', 'Ask reads the stored memories. Save note keeps your words and links the people or subjects it recognizes.');
+  }
+  const seq = ++state.clock;
+  const at = TEST ? '2026-01-01T00:00:00Z' : new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+  return {
+    session: { id: `${state.scenario.id}-you`, title: 'Your turn', startedAt: at },
+    seq, at, messageId: `${state.scenario.id}-${seq}`, noteId: `note-${seq}`,
+  };
+}
+
+/** @param {string} text @param {'ask'|'save'} intent */
+async function send(text, intent = 'ask') {
   const t = text.trim();
-  if (!t || state.busy) return null;
+  if (!t || state.busy || document.body.dataset.ready !== '1') return null;
   setBusy(true);
+  pause();
   try {
-    pause();
-    if (!state.unscripted) {
-      state.unscripted = true;
-      divider('Your turn · no script', 'From here rules pick the tool, and the reply is assembled from what it returns.');
+    const ctx = visitorTurn();
+    const hasMemories = state.snapshot.nodes.some((n) => n.label === 'Memory');
+    const suggestion = state.scenario.try.find((item) => item.text === t && item.intent === intent);
+    const suggestedMemoryId = suggestion?.requires && state.savedSuggestions.get(suggestion.requires);
+    const res = await turn(t, (tools) => freeTurn(tools, t, { ...ctx, intent, hasMemories, suggestedMemoryId }), false);
+    const written = res.steps.find((step) => step.tool === 'remember');
+    if (written?.counts.memories) {
+      state.edited = true;
+      if (suggestion) state.savedSuggestions.set(suggestion.id, written.memories[0].id);
     }
-    const seq = ++state.clock;
-    const now = TEST ? '2026-01-01T00:00:00Z' : new Date().toISOString().replace(/\.\d+Z$/, 'Z');
-    return await turn(t, (tools) => freeTurn(tools, t, {
-      session: { id: `${state.scenario.id}-you`, title: 'Your turn', startedAt: now },
-      seq, at: now, messageId: `${state.scenario.id}-${seq}`, noteId: `note-${seq}`,
-    }), false);
+    return res;
   } finally {
     setBusy(false);
   }
 }
 
+/** @param {string} targetId @param {string} text */
+async function replaceMemory(targetId, text) {
+  const body = text.trim();
+  if (!body || state.busy || document.body.dataset.ready !== '1') return false;
+  setBusy(true);
+  pause();
+  try {
+    const ctx = visitorTurn();
+    const [embedding] = await embedder.embed([body]);
+    const res = await rpc('tool', { tool: 'correct', args: {
+      targetId, session: ctx.session, message: { id: ctx.messageId, seq: ctx.seq, text: body, at: ctx.at },
+      memory: { id: ctx.noteId, gist: body.split(/\s+/).slice(0, 4).join(' '), embedding },
+    } });
+    applyOp(res);
+    if (res.result.status === 'stale') {
+      say(h('p', 'tool', 'That memory changed before the replacement could be saved. Select its current version to try again.'));
+      return false;
+    }
+    state.edited = true;
+    say(h('div', 'msg user', body));
+    const detail = card('correct', true, [b('Replaced the selected memory'), ' and kept its source history.'], res.calls);
+    say(detail.el);
+    return true;
+  } finally {
+    setBusy(false);
+  }
+}
+
+let playbackGeneration = 0;
 async function playAll() {
+  if (state.playing || state.busy || state.cursor >= state.steps.length) return;
+  const generation = ++playbackGeneration;
   state.playing = true;
   refreshControls();
-  while (state.playing && state.cursor < state.steps.length) {
-    const res = await next();
-    if (!res) break;
-    const words = res.reply.parts.reduce((/** @type {number} */ n, /** @type {any} */ p) => n + (p.text ? p.text.split(/\s+/).length : 0), 0);
-    await wait(Math.min(5200, 1500 + words * 110));
+  try {
+    while (generation === playbackGeneration && state.cursor < state.steps.length) {
+      const res = await next();
+      if (!res || generation !== playbackGeneration) break;
+      const words = res.reply.parts.reduce((/** @type {number} */ n, /** @type {any} */ p) => n + (p.text ? p.text.split(/\s+/).length : 0), 0);
+      await wait(Math.min(5200, 1500 + words * 110));
+    }
+  } finally {
+    if (generation === playbackGeneration) {
+      state.playing = false;
+      refreshControls();
+    }
   }
-  state.playing = false;
-  refreshControls();
 }
 function pause() {
+  playbackGeneration++;
   state.playing = false;
   refreshControls();
 }
@@ -570,17 +754,24 @@ function refreshControls() {
   const ready = document.body.dataset.ready === '1';
   const left = state.steps.length - state.cursor;
   const play = /** @type {HTMLButtonElement} */ ($('play'));
-  play.disabled = !ready || left === 0;
+  play.disabled = !ready || left === 0 || (state.busy && !state.playing);
   play.hidden = left === 0 && state.steps.length > 0;
   play.classList.toggle('playing', state.playing);
   /** @type {HTMLElement} */ (play.querySelector('span')).textContent = state.playing ? 'Pause' : state.cursor ? 'Continue' : 'Play';
-  /** @type {HTMLButtonElement} */ ($('restart')).disabled = !ready || state.busy || state.clock === 0;
+  /** @type {HTMLButtonElement} */ ($('restart')).disabled = !ready || state.busy || (state.clock === 0 && !state.edited);
   const nextBtn = /** @type {HTMLButtonElement} */ ($('next'));
   nextBtn.hidden = left === 0;
   nextBtn.disabled = !ready || state.busy || state.playing;
   if (left) $('next-text').textContent = state.steps[state.cursor].user;
   $('chips').hidden = left !== 0;
-  for (const el of $('chips').querySelectorAll('button')) /** @type {HTMLButtonElement} */ (el).disabled = !ready || state.busy;
+  for (const chip of $('chips').querySelectorAll('button')) {
+    const requirement = chip.dataset.requires;
+    const memoryId = requirement && state.savedSuggestions.get(requirement);
+    const missing = requirement && !state.snapshot.nodes.some((n) => n.label === 'Memory' && n.props.id === memoryId && n.props.current);
+    chip.disabled = !ready || state.busy || !!missing;
+  }
+  refreshConsoleSamples();
+  /** @type {HTMLButtonElement} */ ($('save-note')).disabled = !ready || state.busy;
   /** @type {HTMLInputElement} */ ($('input')).disabled = !ready;
   /** @type {HTMLButtonElement} */ ($('send')).disabled = !ready || state.busy;
   /** @type {HTMLButtonElement} */ ($('run')).disabled = !ready || state.busy;
@@ -599,7 +790,7 @@ function renderLedger() {
     pane.append(h('p', 'ledger-note', 'Nothing yet. This tab lists what the agent currently believes, entity by entity, and what each belief replaced.'));
     return;
   }
-  pane.append(h('p', 'ledger-note', 'The same store as the graph, read as a list: what the agent believes now about each entity, and what that replaced. Click a memory to see it in the graph.'));
+  pane.append(h('p', 'ledger-note', 'The same store as the graph, read as a list: what the agent believes now about each entity, and what that replaced. Select a memory to inspect its source.'));
   const out = (/** @type {number} */ id, /** @type {string} */ type) => rels.filter((r) => r.source === id && r.type === type).map((r) => r.target);
   const replacedBy = new Map(rels.filter((r) => r.type === 'SUPERSEDES').map((r) => [r.target, byId.get(r.source)]));
   const sessionOf = (/** @type {any} */ m) => {
@@ -607,10 +798,13 @@ function renderLedger() {
     const s = msg === undefined ? undefined : out(msg, 'IN_SESSION')[0];
     return s === undefined ? '' : byId.get(s)?.props.title ?? '';
   };
-  /** @param {any} m */
-  const row = (m) => {
-    const li = h('li', `mem${m.props.current === false ? ' old' : ''}`);
-    li.dataset.memory = m.props.id;
+  /** @param {any} m @param {string} entity */
+  const row = (m, entity) => {
+    const li = h('li');
+    const button = h('button', `mem${m.props.current === false ? ' old' : ''}`);
+    button.dataset.memory = m.props.id;
+    button.dataset.entity = entity;
+
     const kind = h('span', 'mem-kind', m.props.kind);
     kind.style.setProperty('--c', `var(--${{ decision: 'brand', preference: 'second', note: 'ink' }[/** @type {string} */ (m.props.kind)] ?? 'muted'})`);
     const text = h('span');
@@ -620,13 +814,9 @@ function renderLedger() {
     if (m.props.current === false) sub.push(`replaced by “${replacedBy.get(m.id)?.props.text ?? '?'}”`);
     sub.push(sessionOf(m));
     text.append(h('span', 'mem-sub', sub.filter(Boolean).join(' · ')));
-    li.append(kind, text);
-    li.addEventListener('click', () => {
-      showTab('graph');
-      const cap = document.createDocumentFragment();
-      cap.append('“', b(m.props.text), '” and the entities it is about.');
-      showHighlight(memoryPaths(m.props.id), cap);
-    });
+    button.append(kind, text);
+    button.addEventListener('click', () => selectMemory(m.props.id, button));
+    li.append(button);
     return li;
   };
   const order = (/** @type {any} */ a, /** @type {any} */ c) => Number(c.props.current) - Number(a.props.current) || c.props.seq - a.props.seq || (a.props.id < c.props.id ? -1 : 1);
@@ -640,7 +830,7 @@ function renderLedger() {
     const left = h('div');
     left.append(name, h('span', 'ent-kind', e.props.kind));
     const ul = h('ul');
-    ul.append(...mems.map(row));
+    ul.append(...mems.map((m) => row(m, e.props.key)));
     sec.append(left, ul);
     pane.append(sec);
   }
@@ -650,7 +840,7 @@ function renderLedger() {
     const left = h('div');
     left.append(h('div', 'ent-name', 'Not linked'), h('span', 'ent-kind', 'names no known entity'));
     const ul = h('ul');
-    ul.append(...loose.map(row));
+    ul.append(...loose.map((m) => row(m, '')));
     sec.append(left, ul);
     pane.append(sec);
   }
@@ -663,16 +853,18 @@ function inspect(n) {
   const box = $('inspector');
   box.replaceChildren();
   box.hidden = !n;
-  if (!n) return;
+  if (!n) { delete box.dataset.node; return; }
+  box.dataset.node = String(n.id);
   const { nodes, rels } = state.snapshot;
   const byId = new Map(nodes.map((x) => [x.id, x]));
   const close = h('button', 'close', '×');
-  close.title = 'Close';
-  close.addEventListener('click', () => graph.select(null));
+  close.title = 'Close details';
+  close.setAttribute('aria-label', 'Close details');
+  close.addEventListener('click', closeDetail);
   const dl = h('dl');
   const add = (/** @type {string} */ k, /** @type {string|undefined|null} */ v) => { if (v !== undefined && v !== null && v !== '') dl.append(h('dt', '', k), h('dd', '', String(v))); };
   const p = n.props;
-  box.append(close, h('div', 'insp-kind', n.label === 'Entity' ? p.kind : n.label === 'Memory' ? `${p.kind}${p.current === false ? ' · replaced' : ''}` : n.label.toLowerCase()));
+  box.append(close, h('div', 'insp-kind', n.label === 'Entity' ? p.kind : n.label === 'Memory' ? `${p.kind} · ${p.current === false ? 'replaced' : 'current'}` : n.label.toLowerCase()));
   if (n.label === 'Entity') {
     box.append(h('h3', '', p.name));
     const mems = rels.filter((r) => r.type === 'ABOUT' && r.target === n.id).map((r) => byId.get(r.source)).filter((m) => m && m.props.current !== false);
@@ -686,13 +878,26 @@ function inspect(n) {
     add('because', p.rationale);
     add('slot', p.slot);
     const msg = byId.get(rels.find((r) => r.type === 'FROM' && r.source === n.id)?.target);
-    add('from', msg ? `“${msg.props.text}”` : null);
+    add('Original message', msg ? `“${msg.props.text}”` : 'The source message is no longer in the store.');
     const s = msg ? byId.get(rels.find((r) => r.type === 'IN_SESSION' && r.source === msg.id)?.target) : null;
-    add('session', s?.props.title);
-    add('replaced', byId.get(rels.find((r) => r.type === 'SUPERSEDES' && r.source === n.id)?.target)?.props.text);
-    add('replaced by', byId.get(rels.find((r) => r.type === 'SUPERSEDES' && r.target === n.id)?.source)?.props.text);
+    add('Session', s?.props.title ?? (msg ? 'Source session unavailable' : null));
+    add('Recorded', msg?.props.at);
+    for (const edge of rels.filter((r) => r.type === 'SUPERSEDES' && (r.source === n.id || r.target === n.id))) {
+      const earlier = edge.source === n.id;
+      const version = byId.get(earlier ? edge.target : edge.source);
+      if (!version) continue;
+      const field = h('dd');
+      const button = h('button', 'version-link', version.props.text);
+      button.addEventListener('click', () => selectMemory(version.props.id, detail?.origin ?? null));
+      field.append(button);
+      dl.append(h('dt', '', earlier ? 'Earlier version' : 'Replaced by'), field);
+    }
     add('vector', p.embedded ? `${MODEL.dims} numbers from ${MODEL.id.split('/')[1]}, in the vector index` : 'none: only its words will find it');
     box.append(dl);
+    const actions = h('div', 'detail-actions');
+    if (p.current) addCorrectionForm(box, actions, p.id);
+    if (detail?.origin) actions.append(returnButton());
+    box.append(actions);
   } else if (n.label === 'Message') {
     box.append(h('h3', '', `“${p.text}”`));
     add('at', p.at);
@@ -704,8 +909,51 @@ function inspect(n) {
   }
 }
 
+/** @param {HTMLElement} box @param {HTMLElement} actions @param {string} id */
+function addCorrectionForm(box, actions, id) {
+  const edit = h('button', '', 'Replace this memory');
+  edit.type = 'button';
+  edit.addEventListener('click', () => {
+    if (state.busy) return;
+    edit.hidden = true;
+    const form = h('form');
+    const label = h('label', '', 'Replacement text');
+    label.htmlFor = 'replacement-text';
+    const text = h('textarea');
+    text.id = label.htmlFor;
+    text.required = true;
+    const save = h('button', 'primary', 'Save replacement');
+    save.type = 'submit';
+    const cancel = h('button', '', 'Cancel');
+    cancel.type = 'button';
+    function cancelEdit() {
+      form.remove();
+      edit.hidden = false;
+      edit.focus();
+    }
+    cancel.addEventListener('click', cancelEdit);
+    form.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); cancelEdit(); }
+    });
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (!text.value.trim() || state.busy || save.disabled) return;
+      save.disabled = true;
+      cancel.disabled = true;
+      guard(replaceMemory(id, text.value.trim()).then((saved) => {
+        if (saved && !box.hidden) box.focus();
+      }).finally(() => { save.disabled = false; cancel.disabled = false; }));
+    });
+    form.append(label, text, save, cancel);
+    box.insertBefore(form, actions);
+    text.focus();
+  });
+  actions.append(edit);
+}
+
 // ---- under the hood: the console -----------------------------------------------------------------
 
+/** @type {Array<[string, string, number?]>} */
 const SAMPLES = [
   ['What is current, by entity', `MATCH (e:Entity)<-[:ABOUT]-(m:Memory)
 WHERE m.current
@@ -718,8 +966,20 @@ RETURN p LIMIT 8`],
   ['A malformed memory (refused)', `CREATE (:Memory {id: 'oops', text: 'no kind'})`],
   ['An edge the shape forbids (refused)', `MATCH (a:Entity), (b:Entity) WHERE a <> b
 WITH a, b LIMIT 1
-CREATE (a)-[:ABOUT]->(b)`],
+CREATE (a)-[:ABOUT]->(b)`, 2],
 ];
+
+/** The forbidden-edge example must actually match an entity pair to reach validation. */
+function refreshConsoleSamples() {
+  const entityCount = state.snapshot.nodes.filter((n) => n.label === 'Entity').length;
+  let missing = false;
+  for (const button of $('samples').querySelectorAll('button[data-min-entities]')) {
+    const sample = /** @type {HTMLButtonElement} */ (button);
+    sample.disabled = entityCount < Number(sample.dataset.minEntities);
+    missing ||= sample.disabled;
+  }
+  $('sample-hint').hidden = !missing;
+}
 
 /** A value as a table cell shows it: vectors and long lists summarised. @param {any} v @returns {string} */
 function cell(v) {
@@ -752,47 +1012,83 @@ function pathsIn(rows) {
   return paths;
 }
 
+/** Paginate the retained result. Paging never sends a query back to the database.
+ * @param {HTMLElement} out @param {string[]} columns @param {any[]} rows */
+function resultTable(out, columns, rows) {
+  const size = 100;
+  let offset = 0;
+  const wrap = h('div', 'table-wrap');
+  const table = document.createElement('table');
+  table.className = 'rows';
+  const head = table.createTHead().insertRow();
+  for (const col of columns) head.append(h('th', '', col));
+  const body = table.createTBody();
+  const previous = document.createElement('button');
+  previous.textContent = 'Previous page';
+  const next = document.createElement('button');
+  next.textContent = 'Next page';
+  const range = h('span');
+  range.setAttribute('role', 'status');
+  const draw = () => {
+    const end = Math.min(offset + size, rows.length);
+    body.replaceChildren();
+    for (const row of rows.slice(offset, end)) {
+      const tr = body.insertRow();
+      for (const col of columns) tr.insertCell().textContent = cell(row[col]);
+    }
+    range.textContent = `Showing ${offset + 1}–${end} of ${rows.length} rows`;
+    previous.disabled = !offset;
+    next.disabled = end === rows.length;
+  };
+  if (rows.length > size) {
+    const pager = h('div', 'row');
+    pager.append(previous, range, next);
+    previous.addEventListener('click', () => { offset -= size; draw(); });
+    next.addEventListener('click', () => { offset += size; draw(); });
+    out.append(pager);
+  }
+  wrap.append(table);
+  out.append(wrap);
+  draw();
+}
+
 /** Run a statement from the console. @param {string} text */
 async function query(text) {
-  const out = $('result');
-  const res = await rpc('query', { cypher: text });
-  applyOp(res);
-  out.replaceChildren();
-  if (res.error) {
-    const box = h('div', 'result-error');
-    box.append(h('pre', '', res.error));
-    out.append(box);
-    out.dataset.state = 'error';
-    return res;
-  }
-  out.dataset.state = 'ok';
-  const changed = Object.entries(res.stats ?? {}).filter(([, n]) => /** @type {number} */ (n) > 0).map(([k, n]) => `${k.replace(/_/g, ' ')} ${n}`);
-  const meta = h('div', 'result-meta', `${plural(res.rows.length, 'row', 'rows')}${changed.length ? ` · ${changed.join(', ')}` : ''}`);
-  const paths = pathsIn(res.rows);
-  if (paths.length) {
-    const btn = h('button', '', 'shown in the Memory tab');
-    btn.addEventListener('click', () => showTab('graph'));
-    meta.append(' · ', btn);
-    const cap = document.createDocumentFragment();
-    cap.append('What your statement returned.');
-    showHighlight(paths, cap);
-  }
-  out.append(meta);
-  if (res.columns.length && res.rows.length) {
-    const wrap = h('div', 'table-wrap');
-    const table = h('table', 'rows');
-    const head = h('tr');
-    for (const c of res.columns) head.append(h('th', '', c));
-    table.append(head);
-    for (const r of res.rows.slice(0, 100)) {
-      const tr = h('tr');
-      for (const c of res.columns) tr.append(h('td', '', cell(r[c])));
-      table.append(tr);
+  if (state.busy) return null;
+  pause();
+  setBusy(true);
+  try {
+    const out = $('result');
+    const res = await rpc('query', { cypher: text });
+    applyOp(res);
+    clearOwnedHighlight('console');
+    out.replaceChildren();
+    if (res.error) {
+      const box = h('div', 'result-error');
+      box.append(h('pre', '', res.error));
+      out.append(box);
+      out.dataset.state = 'error';
+      return res;
     }
-    wrap.append(table);
-    out.append(wrap);
+    out.dataset.state = 'ok';
+    const changed = Object.entries(res.stats ?? {}).filter(([, n]) => /** @type {number} */ (n) > 0).map(([k, n]) => `${k.replace(/_/g, ' ')} ${n}`);
+    if (changed.length) state.edited = true;
+    const meta = h('div', 'result-meta', `${plural(res.rows.length, 'row', 'rows')}${changed.length ? ` · ${changed.join(', ')}` : ''}`);
+    const paths = pathsIn(res.rows);
+    if (paths.length) {
+      const btn = h('button', '', 'shown in the Memory tab');
+      btn.addEventListener('click', () => showTab('graph'));
+      meta.append(' · ', btn);
+      const cap = document.createDocumentFragment();
+      cap.append('Graph elements returned by your statement (all rows).');
+      showHighlight(paths, cap, 'console');
+    }
+    out.append(meta);
+    if (res.columns.length && res.rows.length) resultTable(out, res.columns, res.rows);
+    return res;
+  } finally {
+    setBusy(false);
   }
-  return res;
 }
 
 // ---- tabs, theme, scenarios ----------------------------------------------------------------------
@@ -803,6 +1099,7 @@ function showTab(name) {
     const on = /** @type {HTMLElement} */ (t).dataset.pane === name;
     t.classList.toggle('active', on);
     t.setAttribute('aria-selected', String(on));
+    /** @type {HTMLElement} */ (t).tabIndex = on ? 0 : -1;
   }
   for (const p of ['graph', 'ledger', 'hood']) $(`pane-${p}`).hidden = p !== name;
   if (name === 'ledger' && state.ledgerDirty) renderLedger();
@@ -811,33 +1108,61 @@ function showTab(name) {
 function intro() {
   const box = h('div', 'intro');
   const p = h('p');
-  p.append(b('A scripted agent, a real database.'), ' The agent’s words are written ahead of time. What it does with its memory is not: each ',
-    b('remember'), ' and ', b('recall'), ' is a statement that Relate runs in this tab.');
+  p.append(b('A scripted agent, a real database.'), ' Follow the conversation or try your own question. Every ',
+    b('remember'), ' and ', b('recall'), ' runs against the Relate database in this tab.');
   const ol = h('ol');
-  for (const t of ['Send the messages one at a time, or press Play.', 'Watch the memory fill on the right, and light up when it is read.', 'Then type your own question.']) ol.append(h('li', '', t));
+  for (const t of ['Send the messages one at a time, or press Play.', 'Open a cited fact to see the message it came from.', 'Use Ask to read memory or Save note to add your own words.']) ol.append(h('li', '', t));
   box.append(p, ol);
   return box;
 }
 
 /** Start a conversation from an empty store. @param {string} id */
-async function openScenario(id) {
+async function openScenario(id, restart = false) {
+  if (state.busy || (!restart && state.scenario?.id === id)) return;
+  if (state.edited) {
+    pause();
+    setBusy(true);
+    const dialog = /** @type {HTMLDialogElement} */ ($('discard-dialog'));
+    dialog.returnValue = 'keep';
+    $('discard-description').textContent = `Your edits in “${state.scenario.title}” will be cleared.`;
+    $('discard-changes').textContent = restart ? 'Discard changes and restart' : 'Discard changes and switch';
+    try {
+      const closed = new Promise((resolve) => dialog.addEventListener('close', resolve, { once: true }));
+      dialog.showModal();
+      await closed;
+    } finally {
+      setBusy(false);
+    }
+    if (dialog.returnValue !== 'discard') return;
+  }
   pause();
   const sc = state.scenarios[id];
-  Object.assign(state, { scenario: sc, steps: plan(sc), cursor: 0, clock: 0, unscripted: false, paths: [], calls: 0, last: null });
+  Object.assign(state, { scenario: sc, steps: plan(sc), cursor: 0, clock: 0, unscripted: false, edited: false, paths: [], calls: 0, last: null });
+  state.savedSuggestions.clear();
+  /** @type {HTMLInputElement} */ ($('input')).value = '';
   $('title').textContent = sc.title;
   $('blurb').textContent = sc.blurb;
-  for (const el of $('scenarios').querySelectorAll('button')) el.classList.toggle('active', /** @type {HTMLElement} */ (el).dataset.id === id);
+  for (const el of $('scenarios').querySelectorAll('button')) {
+    const active = el.dataset.id === id;
+    el.classList.toggle('active', active);
+    el.setAttribute('aria-pressed', String(active));
+  }
   transcript().replaceChildren(intro());
   $('calls').replaceChildren();
   $('result').replaceChildren();
-  $('chips').replaceChildren(...(sc.try ?? []).map((/** @type {string} */ t) => {
-    const c = h('button', '', t);
-    c.addEventListener('click', () => send(t));
-    return c;
+  $('chips').replaceChildren(...sc.try.map((item) => {
+    const paired = sc.try.some((other) => other.requires === item.id);
+    const prefix = item.requires ? '2. Ask' : paired ? '1. Save note' : 'Ask';
+    const chip = h('button', '', `${prefix} · ${item.text}`);
+    chip.dataset.suggestion = item.id;
+    if (item.requires) {
+      chip.dataset.requires = item.requires;
+      chip.title = 'Save the suggested note first.';
+    }
+    chip.addEventListener('click', () => guard(send(item.text, item.intent)));
+    return chip;
   }));
-  inspect(null);
-  $('caption').hidden = true;
-  graph.clearHighlight();
+  showHighlight([], null);
   setBusy(true);   // no turn may start on the old store while the new one opens
   try {
     const res = await rpc('open');
@@ -893,7 +1218,12 @@ async function boot() {
   const legendHeight = () => $('pane-graph').style.setProperty('--legend-h', `${$('legend').offsetHeight + 18}px`);
   legendHeight();
   new ResizeObserver(legendHeight).observe($('legend'));
-  graph = createGraph($('graph'), { animate: ANIMATE, onSelect: inspect });
+  graph = createGraph($('graph'), { animate: ANIMATE, onSelect: (n) => {
+    if (n?.label === 'Memory') { selectMemory(n.props.id, null); return; }
+    clearOwnedHighlight('detail');
+    graph.select(n?.id ?? null);
+    inspect(n);
+  } });
   // the panel changed size (the window, the legend wrapping): put the camera back on the graph
   new ResizeObserver(() => graph.refit()).observe($('graph'));
   startWorker();
@@ -907,7 +1237,10 @@ async function boot() {
   const liveOn = params.get('embed') === 'live' || (!TEST && params.get('embed') !== 'off');
   if (!liveOn) live.status = 'off';
   embedder = createEmbedder({ known: precomputed(await vectors.json()), live: liveOn ? liveEmbed : null });
-  document.body.dataset.embed = live.status;
+  embedStatus(liveOn ? 'The first new text downloads a 23 MB embedding model. Your words stay in this tab.' : '');
+  $('retry-model').addEventListener('click', () => {
+    if (live.status === 'failed') void loadModel().catch(() => {}); // modelFailed already reports the fallback
+  });
   for (const id of SCENARIOS) {
     const r = await fetch(new URL(`data/scenarios/${id}.json`, location.href));
     if (!r.ok) throw new Error(`data/scenarios/${id}.json: HTTP ${r.status}`);
@@ -917,8 +1250,12 @@ async function boot() {
     btn.addEventListener('click', () => { if (!state.busy) guard(openScenario(id)); });
     $('scenarios').append(btn);
   }
-  $('samples').replaceChildren(...SAMPLES.map(([label, text]) => {
+  $('samples').replaceChildren(...SAMPLES.map(([label, text, minimum]) => {
     const s = h('button', '', label);
+    if (minimum) {
+      s.dataset.minEntities = String(minimum);
+      s.setAttribute('aria-describedby', 'sample-hint');
+    }
     s.addEventListener('click', () => { /** @type {HTMLTextAreaElement} */ ($('cypher')).value = text; });
     return s;
   }));
@@ -926,14 +1263,14 @@ async function boot() {
 
   $('next').addEventListener('click', () => guard(next()));
   $('play').addEventListener('click', () => (state.playing ? pause() : guard(playAll())));
-  $('restart').addEventListener('click', () => { if (!state.busy) guard(openScenario(state.scenario.id)); });
+  $('restart').addEventListener('click', () => { if (!state.busy) guard(openScenario(state.scenario.id, true)); });
   $('free').addEventListener('submit', (e) => {
     e.preventDefault();
     const input = /** @type {HTMLInputElement} */ ($('input'));
     const text = input.value;
-    if (!text.trim() || state.busy) return;
+    if (!text.trim() || state.busy || document.body.dataset.ready !== '1') return;
     input.value = '';
-    guard(send(text));
+    guard(send(text, e.submitter?.id === 'save-note' ? 'save' : 'ask'));
   });
   $('run').addEventListener('click', () => { if (!state.busy) guard(query(/** @type {HTMLTextAreaElement} */ ($('cypher')).value)); });
   $('cypher').addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') $('run').click(); });
@@ -941,7 +1278,28 @@ async function boot() {
     const t = /** @type {HTMLElement} */ (e.target).closest('.tab');
     if (t) showTab(/** @type {HTMLElement} */ (t).dataset.pane ?? 'graph');
   });
-  $('caption-clear').addEventListener('click', () => showHighlight([], null));
+  $('tabs').addEventListener('keydown', (e) => {
+    const tabs = Array.from(/** @type {NodeListOf<HTMLButtonElement>} */ ($('tabs').querySelectorAll('.tab')));
+    const i = tabs.indexOf(/** @type {HTMLButtonElement} */ (e.target));
+    if (i < 0) return;
+    let target;
+    switch (e.key) {
+      case 'ArrowLeft': target = tabs[(i + tabs.length - 1) % tabs.length]; break;
+      case 'ArrowRight': target = tabs[(i + 1) % tabs.length]; break;
+      case 'Home': target = tabs[0]; break;
+      case 'End': target = tabs[tabs.length - 1]; break;
+      default: return;
+    }
+    e.preventDefault();
+    showTab(target.dataset.pane ?? 'graph');
+    target.focus();
+  });
+  $('caption-clear').addEventListener('click', () => {
+    if (detail) closeDetail(); else showHighlight([], null);
+  });
+  $('inspector').addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); closeDetail(); }
+  });
   $('provenance').addEventListener('change', (e) => graph.setProvenance(/** @type {HTMLInputElement} */ (e.target).checked));
 
   const wanted = params.get('scenario');

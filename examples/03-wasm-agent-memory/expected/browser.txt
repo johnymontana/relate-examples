@@ -37,24 +37,24 @@ the next-message button sends "We're starting the checkout rewrite. Priya leads 
   the card: remember: 2 memories about Priya, checkout rewrite, Tomás
   the reply: Noted. Priya leads the checkout rewrite, and Tomás is on it.
 Play runs the rest: yes; the caption: The shortest chain of current memories from Dana to Lisbon.
-then the page offers: Who owns the payments service? | How are Priya and Dana connected? | Dana is on holiday in August | Who is on leave this summer?
+then the page offers: Ask · Who owns the payments service? | Ask · How are Priya and Dana connected? | 1. Save note · Dana is on holiday in August | 2. Ask · Who is on leave this summer?
 clicking a citation selects that memory alone: yes (owner-dana)
 
 ## typed turns (no script: web/agent.js freeTurn)
 "Who owns the payments service?"
   recall: 6 memories: 2 by meaning, 4 through the graph
   each row's badge: meaning 0.73 + words | meaning 0.59 + words | graph | graph | graph | graph
-  reply: From memory: / Dana owns the payments service [1] / The checkout rewrite depends on the payments service [2] / Use CockroachDB for the checkout rewrite (linked through checkout rewrite) [3] / Priya leads the checkout rewrite (linked through checkout rewrite) [4] / Tomás works on the checkout rewrite (linked through checkout rewrite) [5]
-  selected in NVL: 11 nodes, 10 relationships
+  reply: Closest matching memory: Dana owns the payments service [1]
+  selected in NVL: 3 nodes, 2 relationships
 "Dana is on holiday in August"
   remember: 1 memory about Dana
-  reply: Stored as a note, linked to Dana. No language model reads your words on this page, so I kept them as they are; an agent with one would extract the entities and facts from them.
+  reply: Stored as a note, linked to Dana.
   selected in NVL: 0 nodes, 0 relationships
 "Who is on leave this summer?"
   recall: 7 memories: 2 by meaning, 5 through the graph
   each row's badge: meaning 0.34 | meaning 0.32 | graph | graph | graph | graph | graph
-  reply: From memory: / Dana is on holiday in August [1] / Tomás is away next week at a conference in Lisbon [2] / Dana owns the payments service (linked through Dana) [3] / Tomás works on the checkout rewrite (linked through Tomás) [4] / The checkout rewrite depends on the payments service (linked through Dana and payments service) [5]
-  selected in NVL: 10 nodes, 9 relationships
+  reply: Your saved note: Dana is on holiday in August [1]
+  selected in NVL: 2 nodes, 1 relationships
   a question that shares no word with the note finds it by meaning: yes
 "How are Priya and Dana connected?"
   connect: Priya to Dana: 3 memories apart
@@ -65,12 +65,12 @@ the note is in the store and drawn: yes (8 memories)
 ## typed turns without a vector (the model in the tab is off)
 "The office moves in spring"
   remember: 1 memory
-  reply: Stored as a note. It names nothing I already know, so it is linked to no entity yet: search will still find it. It has no vector (the embedding model is not loaded), so only its words will find it.
+  reply: Stored as a note. It has no links to known entities. It has no vector (the embedding model is not loaded), so only its words will find it.
   selected in NVL: 0 nodes, 0 relationships
 "When does the office move?"
   recall: 1 memory: 1 by their words (the question has no vector: words only)
   each row's badge: words
-  reply: From memory: / The office moves in spring [1]
+  reply: Closest matching memory: The office moves in spring [1]
   selected in NVL: 1 nodes, 0 relationships
 the note is stored without a vector and found by its words: yes (9 memories; the model in the tab: off)
 
@@ -98,7 +98,7 @@ a result with paths: MATCH p = (:Entity {key: 'dana'})<-[:ABOUT]-(:Memory)-[:ABO
   1 row · shown in the Memory tab
     (Dana)-[:ABOUT]-(owns)-[:ABOUT]-(payments service)
 the refused writes left the store as it was: yes (26 nodes, 44 relationships)
-the paths in the last result are selected in the graph: yes (3 nodes; "What your statement returned.")
+the paths in the last result are selected in the graph: yes (3 nodes; "Graph elements returned by your statement (all rows).")
 
 ## toggles
 "messages and sessions" draws the provenance: yes (6 messages, 3 sessions, where there were 0)

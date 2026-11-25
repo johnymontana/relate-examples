@@ -47,10 +47,10 @@ const hubUrl = (/** @type {string} */ name) => `https://huggingface.co/${MODEL.i
 
 /** Every text that needs a vector, each once, sorted. */
 function texts() {
-  const out = new Set(TYPED.map((t) => t.trim()));
+  const out = new Set(TYPED.map((turn) => turn.text.trim()));
   for (const f of fs.readdirSync(path.join(EX, 'data', 'scenarios')).sort()) {
     const sc = JSON.parse(fs.readFileSync(path.join(EX, 'data', 'scenarios', f), 'utf8'));
-    for (const t of sc.try ?? []) out.add(t.trim());
+    for (const suggestion of sc.try ?? []) out.add(suggestion.text.trim());
     for (const session of sc.sessions) {
       for (const turn of session.turns) {
         for (const m of turn.remember?.memories ?? []) out.add(m.text);

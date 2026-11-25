@@ -23,6 +23,7 @@ there (P1, P2), so the graph type is applied first. The rows below are this exam
 | M5 | One statement can hold two `SEARCH`es joined by `UNION ALL` inside `CALL () { … }` (a branch may return `null` for a column the other fills), aggregates over the union (the reciprocal-rank sum, `collect` of which search found each memory, `max` of the similarity), a quantified path, and a second `CALL (now, history) { … UNION ALL … }` whose branches return lists built from two paths. | `web/memory.js` `RECALL` | recall is that one statement: an agent logs, replays and evaluates one string, and the page shows one. | probes.txt, scenarios.txt, native.txt (the same rows natively) |
 | M6 | Quantified path patterns: `(seed)<-[:SUPERSEDES]-*(now)` matches the seed itself at length 0; a predicate inside the repeated part (`(m:Memory WHERE m.current)`) keeps a path off replaced memories; `ANY SHORTEST` keeps one path per pair of ends. | Kenji to bun: 2 paths, `ANY SHORTEST` 1; repo to pnpm, linked only by a replaced memory: 0 | `RECALL` follows a hit to its current version and walks out over current memories only; `CONNECT` returns one chain. | probes.txt |
 | M7 | A path arrives as a flat list (node, relationship, node, …), every node whole, its vector included (`{dim, type, values}`, 384 numbers). `id(n)` and `id(r)` are the elements' integer ids, and native Relate assigns the same ids to the same writes. | `MATCH p = (m:Memory)-[:SUPERSEDES]->(o) RETURN p` | The tools return `[n IN nodes(p) \| id(n)]` and the relationship ids instead of the path: a few integers per row, which is all the page needs to light it. The console still shows whole paths, and summarises a vector as `<vector of 384>`. | probes.txt, native.txt |
+| M8 | A correlated write subquery ending in an ungrouped `count` returns a row even when its inner match is empty. The outer write continues for a memory with zero subject links. | For a subjectless note `n`, run `MATCH (n:Memory {id: $id}) CALL (n) { MATCH (n)-[:ABOUT]->(e:Entity) RETURN count(e) AS subjects } RETURN n.id AS id, subjects`. The result contains its ID and zero. | `CORRECT` copies the subject links in a subquery and then records the exact predecessor. A guard before the writes prevents a stale target from creating a message or a replacement. | `harness/corrections.mjs` (slotless note, stale and duplicate writes), native.txt (correction replay) |
 
 ## Library behaviours (NVL 2.0.0)
 
@@ -59,12 +60,16 @@ The ids that carry a larger decision point to its ADR in [`docs/adr/`](../../doc
 - **D1** (ADR-0017) The agent is scripted. A scenario file (`data/scenarios/*.json`, described in
   `data/SOURCE.md`) carries, per turn, what a model would have produced: the extraction for the
   user's message and the reply. `web/agent.js` runs the tools in between. A reply cites memories as
-  `[[id]]`, and may cite only what its tool returned: `harness/run.mjs` fails on any other citation.
+  `[[id]]`, and may cite only what its tool returned. The harness rejects an unknown citation. After
+  visitor edits, guided reads compose the answer from live results and include retrieved visitor
+  notes. Only authored fixture strings use the bracket notation.
 - **D2** (ADR-0016) The memory model follows Relate's cookbook recipes on agent memory, with these
   differences: one `:Memory` label with a `kind` (fact, decision, preference, note) instead of
   `:Fact` and `:Decision`, so that a graph type can declare every endpoint (01's R16); a `current`
   flag beside `supersededAt`; a `gist` of two or three words, which is what the graph draws; an
   explicit `id`; and a vector on each memory, typed by the graph type but not required (M1).
+  An explicit correction targets one current ID, preserves its kind, slot and subjects, and writes its
+  source and supersession in one statement. A replay verifies the existing target and source (M8).
 - **D3** (ADR-0017) The vectors are real: all-MiniLM-L6-v2, 8-bit quantised, 384 dimensions,
   mean-pooled and normalised (`web/embed.js` `MODEL` pins the revision and each file's sha256). The
   vector of every text the scripts use is in `data/embeddings.json`, made by `harness/embed.mjs`:
@@ -74,13 +79,16 @@ The ids that carry a larger decision point to its ADR in [`docs/adr/`](../../doc
   T1 to T5), which is fetched the first time it is needed: 23 MB from the Hugging Face Hub and the
   15 MB runtime from the site, a few seconds on a fast connection, then cached. `?test=1` keeps
   the model off, and `?embed=off` or `?embed=live` overrides either way. Without a vector a text
-  is stored and searched by its words, and the page says so. A vector hit needs a cosine of at
+  is stored and searched by its words. Retry model restarts just the embedding worker and reuses verified
+  files. Subsequent submissions can obtain new vectors in the same store. A vector hit needs a cosine of at
   least 0.2 (`RECALL_DEFAULTS.floor`, 0.6 on the engine's scale: M3): the model gives about 0 to
   unrelated sentences and 0.2 to 0.9 to a question and the memory that answers it. `probes.txt`
   prints pairs on both sides of that line.
 - **D4** (ADR-0016) The store is in memory and rebuilt whenever a conversation starts or restarts.
   A new session is a divider in one conversation on one store. Typed turns go into a third session,
-  "Your turn". Only messages that taught something are stored: a question leaves no `:Message`.
+  "Your turn". Ask leaves the database unchanged. Choosing the already active scenario is a no-op.
+  A successful visitor write flags the store as edited, including a console write with positive
+  mutation counters. A switch or restart offers to keep those edits before rebuilding the store.
 - **D5** (ADR-0015) The graph is drawn with NVL 2.0.0 (`web/graph.js`). An entity is a large node
   carrying its name, coloured by kind, and it grows with each current memory about it (up to
   five), so what the conversation keeps returning to stands out. A memory is a smaller node between
@@ -94,7 +102,10 @@ The ids that carry a larger decision point to its ADR in [`docs/adr/`](../../doc
 - **D6** (ADR-0017) The page draws only what the engine returns. The graph is `snapshot()` after
   each tool call. The highlight is the paths the tool's rows carry: a row the reply cites is
   selected, with the entities its memory is about; what the other rows touch is left as it is; the
-  rest is disabled. The list ("What it knows") is read from the same snapshot.
+  rest is disabled. A citation, ledger button or graph memory opens the same fact detail, keyed by
+  `Memory.id`. Its source wording comes from `FROM` and `IN_SESSION` in the active snapshot,
+  alongside the current stored wording. The caption follows the selected path. The ledger supplies
+  the keyboard route to the same details.
 - **D7** recall's ranking. Each search keeps 4; a memory's score is the sum of `1 / (60 + rank)`
   over the lists that found it; the best 4 are followed to their current versions; a memory reached
   through the graph scores half its seed's score per entity crossed, up to two entities away; the
@@ -102,12 +113,13 @@ The ids that carry a larger decision point to its ADR in [`docs/adr/`](../../doc
   `update` (the current version of a hit that had been replaced) or `graph`. `by` says which
   search found the row's seed (`meaning`, `words` or both) and `similarity` is the seed's cosine
   with the question: the page's badge on each row ("meaning 0.40", "words", "graph").
-- **D8** Typed turns have rules, not a model (`web/agent.js` `freeTurn`). Text that ends in a
-  question mark or opens with a question word is a question: it goes to `connect` when it names two
-  known entities and asks how they are linked, to `recall` otherwise, and on to `trace` when it
-  asks for a source ("how do you know…"). Anything else is stored as a `note`, linked to the
-  entities whose names it contains. The question or the note gets its vector as D3 says.
-  `expected/typed.txt` has one of each, and a note and a question without a vector.
+- **D8** The visitor chooses the operation. Ask (including Enter) reads the store. Save note writes
+  the visitor’s text and links known entities mentioned in it. For Ask, rules call `connect` for a
+  relationship question naming two known entities, or `recall` otherwise. A free-text source request
+  traces the match by ID and displays the matched fact alongside its original message. Related hits
+  remain available with their retrieval paths. Typed text is kept literal throughout, and citation
+  numbers are attached separately to the returned memory IDs. A paired suggestion’s follow-up
+  requires its successful save step and a current memory from that step.
 - **D9** (ADR-0015) The page follows the Relate brand kit v1.0 (`data/brand/README.txt`, supplied
   by the repository owner). Colours: navy, cyan, lime, blue, forest and white, declared in
   `web/style.css` as the kit's `relate-colors.json` gives them (`build.mjs` checks); dark is white

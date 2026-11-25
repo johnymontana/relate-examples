@@ -37,6 +37,8 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { start } from '../../../lib/serve.mjs';
+import { checkPlaygroundInteractions } from './interactions.mjs';
+import { checkModelRecovery } from './model-recovery.mjs';
 
 const EX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -138,6 +140,7 @@ try {
     say(`after four turns: ${s.drawn.entities} entities and ${s.drawn.memories} memories drawn; the fourth turn recalled ${rows} memories: ${check(s.drawn.memories === 6 && rows > 0, 'the deployed page remembers and recalls')}`);
     say(`requests to other origins so far: ${check(elsewhere.size === 0, 'the scripted turns fetch nothing from elsewhere') === 'yes' ? 'none' : [...elsewhere].join(', ')}`);
     if (liveModel) {
+      await checkModelRecovery(ctx, base, { live: true });
       // a text the page has no vector for starts the model in the tab: fetched, verified, cached, then used
       const text = 'Is anybody travelling abroad soon?';
       const res = await page.evaluate((t) => /** @type {any} */ (window).ex03.send(t), text);
@@ -261,9 +264,9 @@ try {
 
     say('', '## typed turns (no script: web/agent.js freeTurn)');
     /** Type a message and send it; the last tool card, as the page shows it. @param {string} text */
-    const type = async (text) => {
+    const type = async (text, intent = 'ask') => {
       await page.fill('[data-testid="input"]', text);
-      await page.click('[data-testid="send"]');
+      await page.click(intent === 'save' ? '#save-note' : '#send');
       await page.waitForFunction((t) => document.body.dataset.busy === '0' && [...document.querySelectorAll('#transcript .msg.user')].at(-1)?.textContent === t, text);
       const got = await page.evaluate(() => {
         const card = [...document.querySelectorAll('#transcript .tool')].at(-1);
@@ -281,7 +284,7 @@ try {
     };
     // these four have their vectors in data/embeddings.json (they are the suggestions the page offers)
     await type('Who owns the payments service?');
-    await type('Dana is on holiday in August');
+    await type('Dana is on holiday in August', 'save');
     const leave = await type('Who is on leave this summer?');
     say(`  a question that shares no word with the note finds it by meaning: ${check(leave.how.slice(0, 2).every((h) => /^meaning 0\.\d\d$/.test(h ?? '')), 'a typed question finds the note by meaning')}`);
     await type('How are Priya and Dana connected?');
@@ -289,7 +292,7 @@ try {
     say(`the note is in the store and drawn: ${check(typed.drawn.memories === 8, 'a typed note is stored and drawn')} (${typed.drawn.memories} memories)`);
     // and two the page has no vector for: with the model in the tab off (?test=1), words are all there is
     say('', '## typed turns without a vector (the model in the tab is off)');
-    await type('The office moves in spring');
+    await type('The office moves in spring', 'save');
     const words = await type('When does the office move?');
     const off = await state();
     say(`the note is stored without a vector and found by its words: ${check(off.embed === 'off' && off.drawn.memories === 9 && words.how.join() === 'words' && /no vector/.test(words.sum ?? ''), 'a note without a vector is found by its words')} (${off.drawn.memories} memories; the model in the tab: ${off.embed})`);
@@ -341,9 +344,12 @@ try {
     const rethemed = await state();
     say(`NVL redraws in the new theme and keeps the graph: ${check(rethemed.drawn.memories === prov.drawn.memories && rethemed.drawn.messages === prov.drawn.messages, 'the graph survives a theme change')} (${rethemed.drawn.entities} entities, ${rethemed.drawn.memories} memories, ${rethemed.drawn.messages} messages)`);
     await page.click('[data-testid="restart"]');
+    await page.click('#discard-changes');
     await page.waitForFunction(() => document.body.dataset.cursor === '0' && /** @type {any} */ (window).ex03.state().store.nodes === 0);
     const restarted = await page.evaluate(() => ({ intro: !!document.querySelector('#transcript .intro'), nodes: /** @type {any} */ (window).ex03.state().drawn.entities + /** @type {any} */ (window).ex03.state().drawn.memories, next: document.querySelector('#next-text')?.textContent }));
     say(`Restart empties the memory and the conversation: ${check(restarted.intro && restarted.nodes === 0, 'Restart')}; the next message is again ${JSON.stringify(restarted.next)}`);
+    await checkPlaygroundInteractions(page, base);
+    await checkModelRecovery(ctx, base);
   }
   if (!liveModel) say('', `requests to other origins: ${check(elsewhere.size === 0, 'the page fetches nothing from elsewhere') === 'yes' ? 'none' : [...elsewhere].join(', ')}`);
   const csp = problems.filter((p) => /Content Security Policy|Refused to/.test(p));

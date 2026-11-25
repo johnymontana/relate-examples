@@ -3,7 +3,12 @@
   "title": "A travel planner",
   "agent": "Travel planner",
   "blurb": "A planner hears a few preferences on a Sunday. Two weeks later it is asked about dietary needs and about spending on accommodation, words none of its memories use. It finds them by meaning, and the graph adds who they apply to.",
-  "try": ["What do you know about Maya?", "How are Maya and Alfama connected?", "Maya wants to see the tile museum", "Any sightseeing plans?"],
+  "try": [
+    {"id": "ask", "intent": "ask", "text": "What do you know about Maya?"},
+    {"id": "connect", "intent": "ask", "text": "How are Maya and Alfama connected?"},
+    {"id": "sightseeing", "intent": "save", "text": "Maya wants to see the tile museum"},
+    {"id": "sightseeing-question", "intent": "ask", "requires": "sightseeing", "text": "Any sightseeing plans?"}
+  ],
   "sessions": [
     {
       "id": "s1",

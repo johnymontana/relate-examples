@@ -1,73 +1,62 @@
 # Example 03: turns nobody scripted (web/agent.js freeTurn), after the "A teammate that remembers" conversation
 
-No language model: a question goes to recall (or to connect, when it asks how two known entities are
-linked, or on to trace, when it asks for a source); anything else is stored word for word as a note,
-linked to the entities it names. The reply is assembled from what the tool returned. In the page a typed
-text gets its vector from the model in the tab; here each has one in data/embeddings.json, but the last
+Ask reads the store. Save note writes the exact text, linked to the entities it names.
+Answers use the memories each tool returned, with additional matches available as related context.
+The model runs in the tab for new text. Each turn here has a vector in data/embeddings.json, but the last
 two, which have none on purpose: the note is stored and found by its words alone, as it is in a tab
 that could not load the model.
 
-[11] user: Who owns the payments service?
+[11] Ask: Who owns the payments service?
   recall "Who owns the payments service?": 6 rows
     [1] 0.0328 search owner-dana: Dana owns the payments service (by meaning and words, cosine 0.73)
           path: owns   about: Dana, payments service
-    [2] 0.0323 search depends: The checkout rewrite depends on the payments service (by meaning and words, cosine 0.59)
+        0.0323 search depends: The checkout rewrite depends on the payments service (by meaning and words, cosine 0.59)
           path: depends on   about: checkout rewrite, payments service
-    [3] 0.0161 graph  db-cockroach: Use CockroachDB for the checkout rewrite
+        0.0161 graph  db-cockroach: Use CockroachDB for the checkout rewrite
           path: depends on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
           replaced: Use Postgres for the checkout rewrite
-    [4] 0.0161 graph  lead: Priya leads the checkout rewrite
+        0.0161 graph  lead: Priya leads the checkout rewrite
           path: depends on > checkout rewrite > leads   about: Priya, checkout rewrite
-    [5] 0.0161 graph  tomas-on: Tomás works on the checkout rewrite
+        0.0161 graph  tomas-on: Tomás works on the checkout rewrite
           path: depends on > checkout rewrite > works on   about: Tomás, checkout rewrite
         0.0081 graph  tomas-away: Tomás is away next week at a conference in Lisbon
           path: depends on > checkout rewrite > works on > Tomás > away next week   about: Lisbon, Tomás
-  reply: From memory:
-         Dana owns the payments service [1]
-         The checkout rewrite depends on the payments service [2]
-         Use CockroachDB for the checkout rewrite (linked through checkout rewrite) [3]
-         Priya leads the checkout rewrite (linked through checkout rewrite) [4]
-         Tomás works on the checkout rewrite (linked through checkout rewrite) [5]
+  reply: Closest matching memory: Dana owns the payments service [1]
 
-[12] user: How are Priya and Dana connected?
+[12] Ask: How are Priya and Dana connected?
   connect Priya -> Dana: 3 memories apart
           path: Priya > leads > checkout rewrite > depends on > payments service > owns > Dana
   reply: Priya and Dana are 3 memories apart: Priya leads the checkout rewrite [1] → The checkout rewrite depends on the payments service [2] → Dana owns the payments service [3]
 
-[13] user: How are Priya and Postgres connected?
+[13] Ask: How are Priya and Postgres connected?
   connect Priya -> Postgres: no chain
   reply: No chain of current memories links Priya and Postgres.
 
-[14] user: Dana is on holiday in August
+[14] Save note: Dana is on holiday in August
   remember: 1 entity mentioned, 1 memory, 1 about-links, 0 superseded
     + note note-14: Dana is on holiday in August
-  reply: Stored as a note, linked to Dana. No language model reads your words on this page, so I kept them as they are; an agent with one would extract the entities and facts from them.
+  reply: Stored as a note, linked to Dana.
 
-[15] user: Who is on leave this summer?
+[15] Ask: Who is on leave this summer?
   recall "Who is on leave this summer?": 7 rows
     [1] 0.0164 search note-14: Dana is on holiday in August (by meaning, cosine 0.34)
           path: Dana is on holiday…   about: Dana
-    [2] 0.0161 search tomas-away: Tomás is away next week at a conference in Lisbon (by meaning, cosine 0.32)
+        0.0161 search tomas-away: Tomás is away next week at a conference in Lisbon (by meaning, cosine 0.32)
           path: away next week   about: Lisbon, Tomás
-    [3] 0.0082 graph  owner-dana: Dana owns the payments service
+        0.0082 graph  owner-dana: Dana owns the payments service
           path: Dana is on holiday… > Dana > owns   about: Dana, payments service
-    [4] 0.0081 graph  tomas-on: Tomás works on the checkout rewrite
+        0.0081 graph  tomas-on: Tomás works on the checkout rewrite
           path: away next week > Tomás > works on   about: Tomás, checkout rewrite
-    [5] 0.0041 graph  depends: The checkout rewrite depends on the payments service
+        0.0041 graph  depends: The checkout rewrite depends on the payments service
           path: Dana is on holiday… > Dana > owns > payments service > depends on   about: checkout rewrite, payments service
         0.0040 graph  db-cockroach: Use CockroachDB for the checkout rewrite
           path: away next week > Tomás > works on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
           replaced: Use Postgres for the checkout rewrite
         0.0040 graph  lead: Priya leads the checkout rewrite
           path: away next week > Tomás > works on > checkout rewrite > leads   about: Priya, checkout rewrite
-  reply: From memory:
-         Dana is on holiday in August [1]
-         Tomás is away next week at a conference in Lisbon [2]
-         Dana owns the payments service (linked through Dana) [3]
-         Tomás works on the checkout rewrite (linked through Tomás) [4]
-         The checkout rewrite depends on the payments service (linked through Dana and payments service) [5]
+  reply: Closest matching memory: Dana is on holiday in August [1]
 
-[16] user: How do you know Dana is on holiday?
+[16] Ask: How do you know Dana is on holiday?
   recall "How do you know Dana is on holiday?": 7 rows
     [1] 0.0328 search note-14: Dana is on holiday in August (by meaning and words, cosine 0.83)
           path: Dana is on holiday…   about: Dana
@@ -88,24 +77,25 @@ that could not load the model.
     current  note-14: Dana is on holiday in August
           said in "Your turn" at 2026-01-01T00:00:00Z: "Dana is on holiday in August"
           path: Dana is on holiday… > message 14 > Your turn
-  reply: You told me in "Your turn": "Dana is on holiday in August" [1]
+  reply: Closest matching memory: Dana is on holiday in August [1]
+         Source message from Your turn: “Dana is on holiday in August”
 
-[17] user: tomas now works on the payments service too
+[17] Save note: tomas now works on the payments service too
   remember: 2 entities mentioned, 1 memory, 2 about-links, 0 superseded
     + note note-17: tomas now works on the payments service too
-  reply: Stored as a note, linked to payments service and Tomás. No language model reads your words on this page, so I kept them as they are; an agent with one would extract the entities and facts from them.
+  reply: Stored as a note, linked to payments service and Tomás.
 
-[18] user: What is Tomás working on?
+[18] Ask: What is Tomás working on?
   recall "What is Tomás working on?": 8 rows
     [1] 0.0325 search note-17: tomas now works on the payments service too (by meaning and words, cosine 0.65)
           path: tomas now works on…   about: Tomás, payments service
-    [2] 0.0164 search tomas-away: Tomás is away next week at a conference in Lisbon (by meaning, cosine 0.66)
+        0.0164 search tomas-away: Tomás is away next week at a conference in Lisbon (by meaning, cosine 0.66)
           path: away next week   about: Lisbon, Tomás
-    [3] 0.0163 graph  depends: The checkout rewrite depends on the payments service
+        0.0163 graph  depends: The checkout rewrite depends on the payments service
           path: tomas now works on… > payments service > depends on   about: checkout rewrite, payments service
-    [4] 0.0163 graph  owner-dana: Dana owns the payments service
+        0.0163 graph  owner-dana: Dana owns the payments service
           path: tomas now works on… > payments service > owns   about: Dana, payments service
-    [5] 0.0163 graph  tomas-on: Tomás works on the checkout rewrite
+        0.0163 graph  tomas-on: Tomás works on the checkout rewrite
           path: tomas now works on… > Tomás > works on   about: Tomás, checkout rewrite
         0.0081 graph  note-14: Dana is on holiday in August
           path: tomas now works on… > payments service > owns > Dana > Dana is on holiday…   about: Dana
@@ -114,31 +104,41 @@ that could not load the model.
           replaced: Use Postgres for the checkout rewrite
         0.0081 graph  lead: Priya leads the checkout rewrite
           path: tomas now works on… > Tomás > works on > checkout rewrite > leads   about: Priya, checkout rewrite
-  reply: From memory:
-         tomas now works on the payments service too [1]
-         Tomás is away next week at a conference in Lisbon [2]
-         The checkout rewrite depends on the payments service (linked through payments service) [3]
-         Dana owns the payments service (linked through payments service) [4]
-         Tomás works on the checkout rewrite (linked through Tomás) [5]
+  reply: Closest matching memory: tomas now works on the payments service too [1]
 
-[19] user: What about Kubernetes?
+[19] Ask: What about Kubernetes?
   recall "What about Kubernetes?": 0 rows
-  reply: Nothing in memory matches that. Play the conversation first, or tell me something and then ask about it.
+  reply: No matching memory. Open What it knows to browse the stored facts.
 
-[20] user: And what do you know?
+[20] Ask: And what do you know?
   recall "And what do you know?": 0 rows
-  reply: Nothing in memory matches that. Play the conversation first, or tell me something and then ask about it.
+  reply: No matching memory. Open What it knows to browse the stored facts.
 
-[21] user: The office moves in spring
+[21] Save note: The office moves in spring
   remember: 0 entities mentioned, 1 memory, 0 about-links, 0 superseded
     + note note-21: The office moves in spring
-  reply: Stored as a note. It names nothing I already know, so it is linked to no entity yet: search will still find it. It has no vector (the embedding model is not loaded), so only its words will find it.
+  reply: Stored as a note. It has no links to known entities. It has no vector (the embedding model is not loaded), so only its words will find it.
 
-[22] user: When does the office move?
+[22] Ask: When does the office move?
   recall "When does the office move?" (no vector): 1 row
     [1] 0.0164 search note-21: The office moves in spring (by words)
           path: The office moves in…
-  reply: From memory:
-         The office moves in spring [1]
+  reply: Closest matching memory: The office moves in spring [1]
 
 the store: 8 Entity, 10 Memory, 7 Message, 3 Session; 17 ABOUT, 10 FROM, 7 IN_SESSION, 15 MENTIONS, 1 SUPERSEDES
+
+## Visitor experiments
+An unsupported holiday question identifies the payments fact and its original message: yes
+Dana is cited first and all five other retrieved memories remain in related context: yes
+Asking the guided checkout prompt leaves the complete store unchanged: yes
+Saving the identical checkout prompt records exactly one note: yes
+After an explicit save the holiday question quotes the visitor’s exact note: yes
+Asking the guided coding prompt leaves the complete store unchanged: yes
+Saving the identical coding prompt records one note: yes
+Literal double brackets in a recalled note produce only the note’s own citation: yes
+Before the museum note the sightseeing suggestion is a labeled approximate match: yes
+After saving the museum suggestion the answer cites the original visitor note: yes
+The guided dinner reply includes the visitor note reached through Maya: yes
+A guided citation binds to the value changed by a console edit: yes
+A guided answer omits a memory deleted by a console edit: yes
+Untouched-mode fixture validation still rejects missing citations: yes
