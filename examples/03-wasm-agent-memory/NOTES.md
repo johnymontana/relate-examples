@@ -4,7 +4,9 @@ Every engine and library behaviour this example depends on or pins, one row each
 the harnesses and `expected/` cite. **Pinned by** names the file whose run fails when the behaviour
 changes (a `PIN:` line on stderr, or a diff against `expected/`). Every row was checked on
 2026-11-24 against Relate 1.2.0 (npm `@relate/relate-wasm@1.2.0` and the `relate-db` 1.2.0 binding),
-NVL 2.0.0 and Transformers.js 4.3.2 (with the onnxruntime-web it pins, 1.31.0-dev.20260914).
+NVL 2.0.0 and Transformers.js 4.3.2 (with the onnxruntime-web it pins, 1.31.0-dev.20260914). M8, N7,
+N8 and S1 to S3 were added and checked on 2026-11-25, the last three against the Ontology Graph
+Spec SDK 0.12.2 (npm `@neo4j/ontology-graph-spec`).
 
 Rows of the other examples hold here too, where this one touches the same engine surface. From
 example 01's `NOTES.md`: no transactions in WASM (R2), the JSON envelope (R4), an integral number
@@ -23,6 +25,7 @@ there (P1, P2), so the graph type is applied first. The rows below are this exam
 | M5 | One statement can hold two `SEARCH`es joined by `UNION ALL` inside `CALL () { … }` (a branch may return `null` for a column the other fills), aggregates over the union (the reciprocal-rank sum, `collect` of which search found each memory, `max` of the similarity), a quantified path, and a second `CALL (now, history) { … UNION ALL … }` whose branches return lists built from two paths. | `web/memory.js` `RECALL` | recall is that one statement: an agent logs, replays and evaluates one string, and the page shows one. | probes.txt, scenarios.txt, native.txt (the same rows natively) |
 | M6 | Quantified path patterns: `(seed)<-[:SUPERSEDES]-*(now)` matches the seed itself at length 0; a predicate inside the repeated part (`(m:Memory WHERE m.current)`) keeps a path off replaced memories; `ANY SHORTEST` keeps one path per pair of ends. | Kenji to bun: 2 paths, `ANY SHORTEST` 1; repo to pnpm, linked only by a replaced memory: 0 | `RECALL` follows a hit to its current version and walks out over current memories only; `CONNECT` returns one chain. | probes.txt |
 | M7 | A path arrives as a flat list (node, relationship, node, …), every node whole, its vector included (`{dim, type, values}`, 384 numbers). `id(n)` and `id(r)` are the elements' integer ids, and native Relate assigns the same ids to the same writes. | `MATCH p = (m:Memory)-[:SUPERSEDES]->(o) RETURN p` | The tools return `[n IN nodes(p) \| id(n)]` and the relationship ids instead of the path: a few integers per row, which is all the page needs to light it. The console still shows whole paths, and summarises a vector as `<vector of 384>`. | probes.txt, native.txt |
+| M8 | `SHOW CURRENT GRAPH TYPE YIELD specification` prints the graph type with labels, relationship types and constraints each in name order, every name in backticks, a vector as `VECTOR<FLOAT32 NOT NULL>(384)`, and the uniqueness constraints created after it. `SHOW CONSTRAINTS` lists what the graph type holds under names the engine makes up (`constraint_<hex>`): one `NODE_PROPERTY_TYPE` per declared property, one `NODE_PROPERTY_EXISTENCE` per `NOT NULL`, a `RELATIONSHIP_SOURCE_LABEL` and a `RELATIONSHIP_TARGET_LABEL` per relationship type; 55 with the four named uniqueness constraints, each of which owns a `RANGE` index of its own name. The graph type says nothing of a property's values or of how many relationships a node has: `MATCH (m:Memory) WHERE NOT m.current SET m.current = true` is accepted. | `SHOW CURRENT GRAPH TYPE YIELD specification RETURN specification AS s` after `web/memory.js` `SCHEMA` | `web/ontology.js` `graphType` spells the graph type the document describes the same way, and the run fails unless the two texts are equal (D10): the document then declares exactly what the engine enforces. The document names only the uniqueness constraints. What the graph type does not say is the document's rules (D11), checked by statements. | ontology.txt, browser.txt (the tab's status line) |
 
 ## Library behaviours (NVL 2.0.0)
 
@@ -38,6 +41,8 @@ headless Chromium, and that its `d3Force` layout is deterministic. These are thi
 | N5 | NVL draws to canvases (two of them) and adds no element per node, so no selector can find a node. Ids must be strings, unique across nodes and relationships. | Elements are `n<id>` and `r<id>` from the engine's integer ids. Hover and click come from NVL's interaction handlers, and the tooltip and inspector are the page's own HTML. | browser.txt |
 
 | N6 | NVL works in device pixels. On a screen with a pixel ratio of 2, a node of size s is drawn with a radius of 2s layout units and the layout leaves twice the gap, so proportions hold; a layout point p lands on the screen at `(p - pan) * scale / ratio + centre`; and `fit` picks about the same `scale` whatever the ratio, which draws everything at half size. | Sizes are plain CSS pixels and never multiplied by the ratio. The camera's arithmetic carries it: a node's radius is `size * ratio` when measuring, and the fitting scale is multiplied by the ratio, so the graph is the same size on any screen. Measured at ratios 1 and 2: the same scale, 1.2 for five nodes and about 0.83 for fifteen. | browser.txt (at ratio 1) |
+| N7 | With `layout: 'free'` NVL moves nothing: a node stays where `setNodePositions` puts it, in layout units (N6), and stays there when it is restyled, selected or disabled. A relationship from a node to itself is drawn as a small loop, and its caption is cut to the loop (`SUPE…`). | The Ontology tab's picture (`web/ontology-tab.js`) uses the free layout: `web/ontology.js` `picture` says where each circle goes, in CSS pixels, and the tab multiplies by the pixel ratio. Nothing moves unless the visitor drags it, so the camera is set once per picture (`web/graph.js` `frameOf`, shared with the Memory tab). The loop's full name is in its tooltip and in the detail under the picture. Seen at ratios 1 and 2: the same picture. | browser.txt (every circle inside the panel after each label is opened, at ratio 1) |
+| N8 | A caption's size is the node's diameter divided by a step that `captionSize` picks (1, 2 or 3), and smaller again for a longer caption. A word too long for its line is broken with a hyphen, and what does not fit is cut with an ellipsis: at size 2 a seven-letter word breaks (`Messag-e`), at size 1 it fits. Two captions on a node are joined with a comma. | In the picture a label is one word at size 1, and a property's name is drawn at size 3, where the long ones break (`super-seded…`): the tooltip and the table under the picture have every name whole. How many nodes the store holds of each label is a line of text under the canvas, not a second caption. | not pinned (what NVL paints) |
 
 ## Library behaviours (Transformers.js 4.3.2, onnxruntime-web 1.31.0-dev)
 
@@ -51,6 +56,18 @@ model, so these are pinned by a check run by hand, online: `node harness/drive.m
 | T3 | Given a `revision`, the pipeline still asks for `config.json` and `tokenizer_config.json` at `main` as well. | `env.remotePathTemplate` names the pinned revision outright, so every request the library makes is for a file the worker has already verified and cached. | `--live` (no request leaves the cache) |
 | T4 | The npm packages `onnxruntime-web` and `onnxruntime-common` say `"license": "MIT"` and carry the notice in their source headers, but ship no licence file. | `data/LICENSE-onnxruntime.txt` is the MIT License with the copyright line of those headers (Microsoft Corporation), shipped next to the runtime; `build.mjs` checks its sha256. | the build |
 | T5 | The model is dynamically quantised (q8), and its output depends on more than the text. In a batch, a text's vector shifts with its neighbours: a batch of 16 against one text at a time differs by up to 0.017 per component (a cosine of 0.994 between the two). And onnxruntime's native kernels (Transformers.js in Node) and its WebAssembly ones (the tab) differ by up to 0.03 per component for the same text. The WebAssembly build, on one thread, gives the same numbers every time. | Both `harness/embed.mjs` and the worker embed one text at a time, and `harness/embed.mjs` makes `data/embeddings.json` with the page's own worker in headless Chromium, not with the library's Node backend. A text then has the same vector in the file and in a visitor's tab. | `--live`: the tab's vectors for all 52 texts of the file differ from it by 0; `harness/embed.mjs --check` |
+
+## Library behaviours (Ontology Graph Spec SDK 0.12.2)
+
+The SDK that examples 01 and 02 read their ontologies with (ADR-0007), here in the harness only:
+`harness/run.mjs` validates `data/agent-memory.ontology.json` through `lib/ogs.mjs` (D10). Example
+01's Y1 (the SDK's YAML decoder) does not arise: the document is JSON.
+
+| id | behaviour | minimal repro | how the example copes | pinned by |
+|---|---|---|---|---|
+| S1 | The decoder ignores a field the specification does not have (example 01's Y2): a misspelt `must_exist` decodes, and every validation set passes. | a property `{"type": "STRING", "requried": true}` | The SDK's own encoding of the document keeps only what it understood. The run compares it with the document as written, field by field, and lists what is missing with the reason (S2). Any other missing field fails the run as one the specification does not have. | ontology.txt |
+| S2 | The encoder writes the long form and leaves out defaults: `label` becomes `labels.identifier`, `must_exist: true` an `EXISTS` constraint named `<property>_<Label>_exists`, and `vector.similarity_function: cosine`, the default, is dropped. | `GraphSpec.Json.encodeToString(GraphSpec.Json.decodeFromString(text))` | `web/ontology.js` reads the document as written and takes either form (`labelOf`, `constraintsOf`). The names the SDK gives the constraints it expands are not the engine's (M8), which is why the document writes `must_exist` short and names nothing but the uniqueness constraints. | ontology.txt (4 `label`, 19 `must_exist`, 1 default) |
+| S3 | The `consistentSchema` validation set reports `missing_property_name` for every property that does not set `name`, though the specification makes `name` optional. | validate a document whose properties have no `name` with `Validations.consistentSchema` | Every property names itself (`"name": "kind"`), so the document passes all six sets. | ontology.txt |
 
 ## Design ids
 
@@ -119,3 +136,39 @@ The ids that carry a larger decision point to its ADR in [`docs/adr/`](../../doc
   120), with the kit's clear space. The favicon is the kit's. Archie, the mascot, appears once, in
   the empty memory, in the flair version on navy and the plain one on white. The "by Neo4j" lockup
   is not used.
+- **D10** The memory model is also written down as a document of the Neo4j Ontology Graph
+  Specification 1.1 (`data/agent-memory.ontology.json`; `data/SOURCE.md` says what it holds). It
+  describes `web/memory.js` `SCHEMA` and adds what a schema cannot say: what each label, property
+  and relationship type means, and the rules the engine does not enforce. `SCHEMA` stays what the
+  engine is given. Example 02 derives its graph type from its ontology (ADR-0013); here the schema
+  statements are themselves something the page shows and `expected/statements.cypher` pins, so
+  they stay as written, and the run fails when the two stop agreeing: the graph type derived from
+  the document (`web/ontology.js` `graphType`) must be the engine's own, byte for byte, and the
+  engine's 55 constraints and two search indexes must be the ones the document lists (M8). The
+  rules the engine does not enforce are held against every store the conversations build, after
+  every turn (`expected/ontology.txt`). The harness validates the document through the
+  specification's SDK and `lib/ogs.mjs`, as ADR-0007 has it (S1 to S3). The page reads the same
+  file as written and does not ship the SDK: the document is fixed and already checked, and the
+  SDK is 0.6 MB as example 02 ships it. What this repository adds to the document sits under
+  `extensions.custom.relate-examples`, as the specification asks of custom data.
+- **D11** The Ontology tab shows that document (`web/ontology-tab.js`), and everything it knows of
+  it comes from `web/ontology.js`, which the harness calls too:
+  - **The picture**, drawn with NVL in its free layout (N7, N8): a circle per label where the
+    document's `display` puts it, a relationship per relationship type, and the properties of the
+    label that is open on an arc on its far side from the others.
+  - **Search** over names, aliases, allowed values and descriptions. Every word typed must be
+    found, whole or as the beginning of a word, and what was found is left lit in the picture.
+  - **One part's detail**: what the document says of it, what the engine enforces of it, and a
+    link that lights the nodes or relationships it describes in the Memory tab. A node's
+    inspector there links back to its label.
+  - **The rules the engine does not enforce**: a property's allowed values and pattern, the
+    number of relationships at each end, the document's five invariants, and that nothing stored
+    is undeclared. Each is a statement that returns its violations, run when the visitor asks:
+    a check is 18 statements, logged under the hood as `check`, which is why it does not run
+    after every turn. A verdict is marked as of another store once the store changes. The
+    console's last sample is a write the graph type accepts and two rules catch.
+  - **The questions the document lists**, each run on the store when clicked (logged as `ask`).
+    A parameter says which property it takes a value of, and the tab starts it on a value the
+    store holds (`bind`): the document's example when the store has it, else the best-connected
+    node.
+  The tab only reads. Its statements go through the worker's `read` op.

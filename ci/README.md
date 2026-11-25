@@ -63,7 +63,8 @@ the run. No `.env` and no network beyond the downloads below.
    in its own `package-lock.json`). Its build bundles them itself. Its models never run in CI: no GPU,
    and its browser section drives the page in canned mode.
 9. **Example 03's npm packages** (`npm ci --omit=peer`: `@relate/relate-wasm`, NVL, Transformers.js,
-   the Public Sans and IBM Plex Mono font packages, esbuild and Playwright, each pinned with its
+   the Public Sans and IBM Plex Mono font packages, `@neo4j/ontology-graph-spec` (its run validates
+   its ontology with it), esbuild and Playwright, each pinned with its
    integrity in its own `package-lock.json`). Its build bundles them itself. Its embedding model
    never runs in CI: the vectors of its scripted texts are committed (`data/embeddings.json`), and
    its browser section keeps the model in the tab off. The step sets `ONNXRUNTIME_NODE_INSTALL=skip`:

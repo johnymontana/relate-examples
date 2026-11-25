@@ -28,6 +28,11 @@
  *   connect    one read: the shortest chain of current memories between two entities
  *   trace      one read: a memory's source message and session, for each version in its history
  *   snapshot   what the page draws: every node and relationship (vectors left out)
+ *   read       a statement the Ontology tab runs: a question of the document's, or a rule's check
+ *
+ * data/agent-memory.ontology.json describes this model as an Ontology Graph Spec document. SCHEMA
+ * is what the engine is given, and harness/run.mjs fails when the two stop saying the same thing
+ * (ontology.txt; NOTES.md D10).
  */
 import { DIMS, terms, words } from './embed.js';
 
@@ -323,6 +328,15 @@ export function createMemory(db, exec, { onCall } = {}) {
     /** Any statement, as the "Under the hood" console runs it. @param {string} cypher */
     query(cypher) {
       return run('console', null, cypher);
+    },
+
+    /**
+     * A read made for the Ontology tab (ontology.js): `ask`, a question the document lists, or
+     * `check`, a statement that finds the violations of one of its rules.
+     * @param {'ask'|'check'} tool @param {string} cypher @param {Record<string, any>} [params]
+     */
+    read(tool, cypher, params = {}) {
+      return run(tool, false, cypher, params);
     },
   };
 }

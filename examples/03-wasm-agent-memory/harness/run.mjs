@@ -3,7 +3,7 @@
 /**
  * harness/run.mjs: example 03's Node sections. From the example's directory:
  *
- *   node harness/run.mjs [--out out] [--only statements,scenarios,typed,probes]
+ *   node harness/run.mjs [--out out] [--only statements,scenarios,typed,probes,ontology]
  *
  * Each section writes one deterministic report into --out (no timestamps, paths, timings or engine
  * ids), which run.sh diffs against expected/:
@@ -20,10 +20,16 @@
  *   probes.txt         M1...: the Relate 1.2.0 behaviours the example depends on, each a minimal
  *                      repro (NOTES.md has one row per probe); and what the embedding model's
  *                      vectors (data/embeddings.json) say about a few pairs of texts
+ *   ontology.txt       the memory model as an Ontology Graph Spec document
+ *                      (data/agent-memory.ontology.json, read by web/ontology.js): what the
+ *                      specification's SDK says of it, that it describes exactly the schema the
+ *                      engine holds, that every store the conversations build keeps the rules the
+ *                      engine does not enforce, what its questions return, and what the Ontology
+ *                      tab searches and draws (NOTES.md D10, D11, S1 to S3)
  *
  * It also writes out/replay.json (not diffed): the schema and every statement the scenarios ran,
  * with its parameters and rows, for harness/native.py (the same statements on native Relate), and
- * each turn's outcome, for harness/drive.mjs (the same turns in the page).
+ * each turn's outcome and what the ontology section found, for harness/drive.mjs (the same in the page).
  *
  * A reply that cites a memory its tool did not return, or a probe that stops reproducing, prints
  * `PIN: <what> changed` on stderr and the run exits 1 (after writing every report, so the diff shows
@@ -33,15 +39,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import * as sdk from '@neo4j/ontology-graph-spec';
+import { VALIDATION_SETS, createOgs } from '../../../lib/ogs.mjs';
 import * as rw from '../../../lib/relate_wasm.mjs';
 import { freeTurn, mergePaths, plan, scriptedTurn } from '../web/agent.js';
 import { DIMS, MODEL, contentWords, createEmbedder, precomputed, terms } from '../web/embed.js';
 import * as M from '../web/memory.js';
+import * as O from '../web/ontology.js';
 import { TYPED, TYPED_WITHOUT_VECTOR } from './typed.mjs';
 
 const EX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RELATE = M.RELATE;
-const SECTIONS = ['statements', 'scenarios', 'typed', 'probes'];
+const SECTIONS = ['statements', 'scenarios', 'typed', 'probes', 'ontology'];
 const SCENARIOS = ['team', 'trip', 'code'];
 
 let failed = false;
@@ -428,19 +437,264 @@ function probesSection(mod) {
   return `${say.join('\n')}\n`;
 }
 
+// ---- the ontology ------------------------------------------------------------------------------
+
+/** Writes the store keeps to the graph type and the document forbids: what the tab's check is for. */
+const BREAKS = [
+  ['a replaced memory made current again', 'MATCH (m:Memory) WHERE NOT m.current SET m.current = true'],
+  ['a property the document does not declare', "MATCH (e:Entity {key: 'dana'}) SET e.note = 'on holiday'"],
+];
+/** What the report and the browser section search the document for. */
+const SEARCHES = ['decision', 'replaces', 'vector', 'source', 'conversation', 'memory kind', 'required date', 'slot', 'kubernetes'];
+
+/** @param {any} mod @param {{ontology?: any}} replay */
+async function ontologySection(mod, replay) {
+  const file = 'data/agent-memory.ontology.json';
+  const doc = readJson(file);
+  const mine = O.own(doc);
+  const nodes = /** @type {Record<string, any>} */ (doc.nodes);
+  const rels = /** @type {Record<string, any>} */ (doc.relationships);
+  const say = [`# Example 03: the memory model as an Ontology Graph Spec document (${file}, read by web/ontology.js)`, ''];
+  say.push('What the specification\'s SDK says of the document, the document against the schema the engine holds');
+  say.push('(web/memory.js SCHEMA), the rules the engine does not enforce against every store the conversations');
+  say.push('build, what its questions return, and what the Ontology tab searches and draws.');
+  const yes = (/** @type {boolean} */ ok, /** @type {string} */ what) => { if (!ok) pin(`the ontology: ${what}`); return ok ? 'yes' : 'NO'; };
+  const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
+  const plural = (/** @type {number} */ n, /** @type {string} */ one, /** @type {string} */ many) => `${n} ${n === 1 ? one : many}`;
+
+  // ---- the document, and what the SDK makes of it
+  const parts = O.outline(doc);
+  const count = (/** @type {string} */ kind) => parts.filter((p) => p.kind === kind).length;
+  const written = Object.values(nodes).flatMap((n) => Object.values(n.constraints ?? {}).map((c) => /** @type {any} */ (c).type));
+  const tallyOf = (/** @type {string[]} */ xs) => [...new Set(xs)].sort().map((t) => `${xs.filter((x) => x === t).length} ${t}`).join(', ');
+  say.push('', '## The document');
+  say.push(`${doc.id}, version ${doc.version}: ${JSON.stringify(doc.name)} (${doc.schema})`);
+  say.push(`${count('node')} labels, ${count('property')} properties, ${count('relationship')} relationship types, ${count('index')} indexes, ${count('invariant')} invariants, ${count('question')} questions`);
+  say.push(`constraints as written: ${tallyOf(written)}; and must_exist on ${parts.filter((p) => p.kind === 'property' && p.def.must_exist).length} properties`);
+  const sdkVersion = readJson('node_modules/@neo4j/ontology-graph-spec/package.json').version;
+  // the document is JSON, so nothing here parses YAML: the SDK decodes it through lib/ogs.mjs (ADR-0007)
+  const ogs = createOgs({ yaml: null, sdk, sdkVersion });
+  say.push('', `### The specification's SDK (@neo4j/ontology-graph-spec ${sdkVersion}, through lib/ogs.mjs)`);
+  for (const set of VALIDATION_SETS) {
+    const r = ogs.validate(doc, [set]);
+    say.push(`validation set ${set}: ${r.ok ? 'no issues' : r.issues.map((i) => `${i.code} at ${i.path}`).join('; ')}`);
+    if (!r.ok) pin(`the ontology: the SDK's ${set} validation`);
+  }
+  const long = JSON.parse(ogs.encode(doc, 'json'));
+  const decoded = Object.values(long.nodes).flatMap((n) => Object.values(/** @type {any} */ (n).constraints ?? {}).map((c) => /** @type {any} */ (c).type));
+  say.push(`decoded, the shorthand becomes constraints: ${tallyOf(decoded)}`);
+  say.push(`decoding the SDK's own encoding gives the same model again: ${yes(ogs.encode(long, 'json') === ogs.encode(doc, 'json'), 'the SDK round trip')}`);
+  // The SDK's decoder ignores a field the specification does not have (S1), so a misspelt one would
+  // pass every validation set. Its encoding keeps only what it understood: whatever of the written
+  // document is missing from it must be shorthand (S2) or a default the encoder leaves out (S3).
+  /** @type {Record<string, number>} */ const dropped = {};
+  /** @type {string[]} */ const unexplained = [];
+  const walk = (/** @type {any} */ a, /** @type {any} */ b, /** @type {string[]} */ at) => {
+    if (a === null || typeof a !== 'object') { if (!same(a, b)) unexplained.push(`${at.join('/')} is ${JSON.stringify(a)}, the SDK has ${JSON.stringify(b)}`); return; }
+    if (Array.isArray(a)) { if (!Array.isArray(b) || a.length !== b.length) unexplained.push(`${at.join('/')} is not the same list`); else a.forEach((x, i) => walk(x, b[i], [...at, String(i)])); return; }
+    for (const k of Object.keys(a)) {
+      if (b && typeof b === 'object' && k in b) { walk(a[k], b[k], [...at, k]); continue; }
+      const node = at[0] === 'nodes' ? long.nodes[at[1]] : null;
+      const why = k === 'label' && at.length === 2 && node?.labels?.identifier === a[k] ? 'label: shorthand for labels.identifier'
+        : k === 'must_exist' && a[k] === true && at[2] === 'properties' && Object.values(node?.constraints ?? {}).some((c) => c.type === 'EXISTS' && same(c.properties, [at[3]])) ? 'must_exist: shorthand for an EXISTS constraint'
+          : k === 'vector.similarity_function' && a[k] === 'cosine' ? 'vector.similarity_function: cosine is the default, which the encoder leaves out'
+            : null;
+      if (why) dropped[why] = (dropped[why] ?? 0) + 1; else unexplained.push(`${[...at, k].join('/')} is not a field of the specification`);
+    }
+  };
+  walk(doc, long, []);
+  say.push('fields of the document that the SDK\'s encoding of it does not have:');
+  for (const why of Object.keys(dropped).sort()) say.push(`  ${dropped[why]} × ${why}`);
+  say.push(`every other field is one the specification has: ${yes(unexplained.length === 0, `fields the specification does not have (${unexplained.slice(0, 3).join('; ')})`)}`);
+  for (const u of unexplained) say.push(`  ${u}`);
+  const texts = [...parts.filter((p) => ['node', 'property', 'relationship'].includes(p.kind)).map((p) => p.def.description ?? '')];
+  say.push(`every label, property and relationship type has a description: ${yes(texts.every((t) => t.length > 0), 'a part without a description')} (${texts.length}; the longest is ${Math.max(...texts.map((t) => t.length))} characters of the 1024 allowed)`);
+
+  // ---- the document and the engine
+  say.push('', `## The document and the engine (Relate ${RELATE} WASM, after web/memory.js SCHEMA)`);
+  const want = O.engineSchema(doc);
+  {
+    const { db } = openStore(mod);
+    const cons = rw.exec(db, 'SHOW CONSTRAINTS').rows;
+    const idx = rw.exec(db, 'SHOW INDEXES').rows;
+    const of = (/** @type {string} */ t) => cons.filter((c) => c.type === t);
+    const got = {
+      types: of('NODE_PROPERTY_TYPE').map((c) => `${c.labelsOrTypes[0]}.${c.properties[0]} :: ${c.propertyType}`).sort(),
+      exists: of('NODE_PROPERTY_EXISTENCE').map((c) => `${c.labelsOrTypes[0]}.${c.properties[0]}`).sort(),
+      unique: of('NODE_PROPERTY_UNIQUENESS').map((c) => `${c.name} ${c.labelsOrTypes[0]}(${c.properties.join(', ')})`).sort(),
+      sources: of('RELATIONSHIP_SOURCE_LABEL').map((c) => `${c.labelsOrTypes[0]} ${c.enforcedLabel}`).sort(),
+      targets: of('RELATIONSHIP_TARGET_LABEL').map((c) => `${c.labelsOrTypes[0]} ${c.enforcedLabel}`).sort(),
+      indexes: idx.filter((i) => i.type !== 'LOOKUP' && !i.owningConstraint).map((i) => `${i.name} ${i.type} ${i.labelsOrTypes.join(', ')}(${i.properties.join(', ')})`).sort(),
+    };
+    for (const [k, what] of /** @type {Array<[keyof typeof want, string]>} */ ([
+      ['types', 'property types (PROPERTY_TYPE)'], ['exists', 'required properties (must_exist)'], ['unique', 'uniqueness constraints (UNIQUE), with their names'],
+      ['sources', 'source labels (from)'], ['targets', 'target labels (to)'], ['indexes', 'search indexes, with their names'],
+    ])) {
+      say.push(`${what}: ${want[k].length} in the document, ${got[k].length} in the engine, the same: ${yes(same(want[k], got[k]), what)}`);
+      if (k === 'unique' || k === 'indexes') for (const l of want[k]) say.push(`  ${l}`);
+    }
+    const described = Object.values(want).reduce((n, l) => n + l.length, 0) - want.indexes.length;
+    say.push(`constraints the engine holds: ${cons.length}; described by the document: ${described}: ${yes(cons.length === described, 'an engine constraint the document does not describe')}`);
+    const owned = idx.filter((i) => i.owningConstraint).map((i) => `${i.type} ${i.name}`).sort();
+    say.push(`each uniqueness constraint owns a RANGE index of its own name, which the document therefore does not list: ${yes(same(owned, want.unique.map((u) => `RANGE ${u.split(' ')[0]}`)), 'the indexes the constraints own')}`);
+    const vi = nodes.memory.extensions.indexes['memory-embedding'];
+    const ddl = M.SCHEMA.find((s) => s.startsWith('CREATE VECTOR INDEX')) ?? '';
+    say.push(`the vector index: ${vi.options['vector.dimensions']} dimensions, ${vi.options['vector.similarity_function']}, as the statement that creates it says: ${yes(vi.options['vector.dimensions'] === DIMS && nodes.memory.properties.embedding.dimension === DIMS && ddl.includes(`\`vector.dimensions\`: ${DIMS}`) && ddl.includes(`'${vi.options['vector.similarity_function']}'`), 'the vector index options')}`);
+    const spec = rw.exec(db, 'SHOW CURRENT GRAPH TYPE YIELD specification RETURN specification AS s').rows[0].s;
+    const derived = O.graphType(doc);
+    say.push(`the graph type derived from the document (web/ontology.js graphType) is the engine's SHOW CURRENT GRAPH TYPE, byte for byte: ${yes(derived === spec, 'the derived graph type')}`);
+    say.push(...derived.split('\n').map((l) => `  ${l}`));
+    db.free();
+  }
+
+  // ---- the rules, against every store
+  const list = O.rules(doc);
+  const statements = list.reduce((n, r) => n + r.statements.length, 0);
+  say.push('', '## The rules the engine does not enforce (web/ontology.js rules)');
+  say.push(`${list.length} rules, ${statements} statements. Each statement returns the rule's violations, or the rows the rule is judged on:`);
+  for (const r of list) {
+    say.push(`${r.group.padEnd(10)} ${r.id}: ${r.says}`);
+    for (const s of r.statements) say.push(`             ${s.text.replace(/\s+/g, ' ')}`);
+  }
+  /** @type {any} */ const forPage = { searches: {}, audit: [], questions: [], breaks: [] };
+  say.push('', '### Every store the conversations build, after every turn');
+  /** @type {Set<string>} */ const kinds = new Set();
+  /** @type {Set<string>} */ const memoryKinds = new Set();
+  /** @type {Array<{id: string, params: Record<string, any>, rows: any[]}>} */ let answers = [];
+  /** @type {string[]} */ const bindings = [];
+  for (const id of SCENARIOS) {
+    const sc = readJson(`data/scenarios/${id}.json`);
+    const { db, memory } = openStore(mod);
+    const tools = /** @type {any} */ ({ ...memory, embed: embedder.embed });
+    const check = () => O.audit(doc, (text, params) => memory.read('check', text, params).rows);
+    let turns = 0;
+    let held = 0;
+    /** @type {string[]} */ const broken = [];
+    const after = (/** @type {string} */ when) => {
+      turns++;
+      const bad = check().filter((r) => r.violations.length);
+      if (bad.length) broken.push(`${when}: ${bad.map((r) => `${r.id} (${r.violations.join('; ')})`).join(', ')}`); else held++;
+    };
+    const steps = plan(sc);
+    for (const step of steps) { await scriptedTurn(tools, step); after(`turn ${step.seq}`); }
+    const scripted = turns;
+    const snap = memory.snapshot();
+    for (const n of snap.nodes) { if (n.label === 'Entity') kinds.add(n.props.kind); if (n.label === 'Memory') memoryKinds.add(n.props.kind); }
+    // what each question returns here, with the parameters the tab would pick
+    const asked = (mine.questions ?? []).map((/** @type {any} */ q) => {
+      const { values } = O.bind(doc, q, snap);
+      return { id: q.id, params: values, rows: memory.read('ask', q.cypher, values).rows };
+    });
+    bindings.push(`${id}: ${asked.map((a) => `${a.id}${Object.keys(a.params).length ? ` ${canon(a.params)}` : ''} ${plural(a.rows.length, 'row', 'rows')}`).join('; ')}`);
+    if (id === 'team') {
+      answers = asked;
+      forPage.audit = check().map((r) => ({ id: r.id, violations: r.violations }));
+      forPage.questions = asked;
+      forPage.tally = O.tally(doc, snap);
+      // then the writes the graph type allows and the document forbids, each on a store of its own
+      for (const [what, statement] of BREAKS) {
+        const other = openStore(mod);
+        const t2 = /** @type {any} */ ({ ...other.memory, embed: embedder.embed });
+        for (const step of steps) await scriptedTurn(t2, step);
+        const stats = rw.exec(other.db, statement).stats;
+        const bad = O.audit(doc, (text, params) => other.memory.read('check', text, params).rows).filter((r) => r.violations.length);
+        forPage.breaks.push({ what, statement, changed: Object.values(stats ?? {}).some((n) => n > 0), broken: bad.map((r) => ({ id: r.id, violations: r.violations })) });
+        other.db.free();
+      }
+      // and the turns nobody scripted
+      let seq = steps.length;
+      for (const text of [...TYPED, ...TYPED_WITHOUT_VECTOR]) {
+        seq++;
+        await freeTurn(tools, text, { session: { id: 'team-you', title: 'Your turn', startedAt: '2026-01-01T00:00:00Z' }, seq, at: '2026-01-01T00:00:00Z', messageId: `team-${seq}`, noteId: `note-${seq}` });
+        after(`typed turn ${seq}`);
+      }
+      for (const n of memory.snapshot().nodes) if (n.label === 'Memory') memoryKinds.add(n.props.kind);
+    }
+    say.push(`${id}: ${scripted} scripted turns${turns > scripted ? ` and ${turns - scripted} typed` : ''}; every rule holds after each: ${yes(held === turns, `${id}: ${broken[0] ?? ''}`)} (${held} of ${turns})`);
+    for (const b of broken) say.push(`  ${b}`);
+    db.free();
+  }
+  say.push(`memory kinds stored: ${[...memoryKinds].sort().join(', ')}; the document's one_of names these and no other: ${yes(same([...memoryKinds].sort(), [...nodes.memory.properties.kind.one_of].sort()), 'Memory.kind one_of')}`);
+  const listed = O.own(nodes.entity.properties.kind).used_by_the_scripts ?? [];
+  say.push(`entity kinds the scripts use: ${[...kinds].sort().join(', ')}; the document lists the same: ${yes(same([...kinds].sort(), [...listed].sort()), 'the entity kinds the document lists')}`);
+  say.push('', '### Writes the graph type allows and the document forbids (the team store after its scripted turns)');
+  for (const b of forPage.breaks) {
+    say.push(`${b.what}: ${b.statement}`);
+    say.push(`  the engine accepts it: ${yes(b.changed, `the engine no longer accepts: ${b.statement}`)}; rules then broken: ${b.broken.length}`);
+    for (const r of b.broken) say.push(`    ${r.id}: ${r.violations.join('; ')}`);
+    if (!b.broken.length) pin(`the ontology: no rule catches ${b.what}`);
+  }
+
+  // ---- the questions
+  say.push('', '## The questions the document lists (the team store after its scripted turns)');
+  for (const a of answers) {
+    const q = mine.questions.find((/** @type {any} */ x) => x.id === a.id);
+    say.push(`${a.id}: ${q.question}${Object.keys(a.params).length ? ` ${canon(a.params)}` : ''}`);
+    for (const r of a.rows) say.push(`  ${canon(r)}`);
+    if (!a.rows.length) say.push('  no rows');
+  }
+  say.push('', 'The parameters the tab picks on each store (web/ontology.js bind), and how many rows come back:');
+  say.push(...bindings);
+
+  // ---- what the tab searches and draws
+  say.push('', '## Search (web/ontology.js search): the parts that hold every word, best first');
+  for (const text of SEARCHES) {
+    const hits = O.search(doc, text);
+    forPage.searches[text] = hits.map((h) => h.key);
+    say.push(`${JSON.stringify(text)}: ${hits.length ? hits.slice(0, 6).map((h) => `${h.title.length > 44 ? `${h.title.slice(0, 43)}…` : h.title} (${h.kind}, ${h.where})`).join(' | ') : 'nothing'}${hits.length > 6 ? ` | and ${hits.length - 6} more` : ''}`);
+  }
+  say.push('', '## The picture (web/ontology.js picture): where the tab draws each label, and a label\'s properties around it');
+  const apart = (/** @type {ReturnType<typeof O.picture>} */ pic) => pic.nodes.every((a, i) => pic.nodes.every((b, j) => i >= j || Math.hypot(a.x - b.x, a.y - b.y) >= a.r + b.r));
+  const base = O.picture(doc);
+  say.push(`labels: ${base.nodes.map((n) => `${n.caption} (${n.x}, ${n.y})`).join(', ')}; relationship types: ${base.rels.map((r) => r.caption).join(', ')}`);
+  for (const nid of Object.keys(nodes)) {
+    const pic = O.picture(doc, { expanded: nid });
+    const props = pic.nodes.filter((n) => n.kind === 'property');
+    say.push(`${O.labelOf(nodes[nid])} opened: ${props.length} properties (${props.map((p) => `${p.caption}${p.required ? '' : '?'}`).join(', ')}); no two circles overlap: ${yes(apart(pic) && props.length === Object.keys(nodes[nid].properties).length, `the picture of ${nid}`)}`);
+  }
+  forPage.picture = { nodes: base.nodes.length, rels: base.rels.length, opened: Object.fromEntries(Object.keys(nodes).map((nid) => [nid, O.picture(doc, { expanded: nid }).nodes.length])) };
+  forPage.graphType = O.graphType(doc);
+
+  // ---- what the document says about the page and the code
+  say.push('', '## What the document says about the page');
+  const graph = fs.readFileSync(path.join(EX, 'web/graph.js'), 'utf8');
+  const css = fs.readFileSync(path.join(EX, 'web/style.css'), 'utf8');
+  const dark = css.slice(css.indexOf('color-scheme: dark'), css.indexOf('@media (prefers-color-scheme: light)'));
+  const g = (/** @type {string} */ name) => new RegExp(`--g-${name}:\\s*(#[0-9A-Fa-f]{6})`).exec(dark)?.[1];
+  const groups = Object.fromEntries([...graph.slice(graph.indexOf('const GROUPS'), graph.indexOf('export const kindGroup')).matchAll(/(\w+): '(\w+)'/g)].map((m) => [m[1], m[2]]));
+  const kc = O.own(nodes.entity.properties.kind);
+  say.push(`the colour group of each entity kind is web/graph.js GROUPS: ${yes(same(groups, kc.colour_groups) && graph.includes(`?? '${kc.any_other_kind}'`), 'the entity kind colour groups')}`);
+  const d = (/** @type {string} */ nid) => nodes[nid].extensions.display;
+  const od = (/** @type {string} */ nid) => O.own(d(nid));
+  say.push(`each node's colour is the dark theme's in web/style.css: ${yes(d('entity').colour === g('person') && d('memory').colour === g('memory') && od('memory').colour_when_replaced === g('memory-old') && d('message').colour === g('message') && d('session').colour === g('session')
+    && same(od('entity').colour_by_group, Object.fromEntries(['person', 'place', 'tech', 'topic', 'thing'].map((k) => [k, g(k)]))), 'the display colours')} (${Object.keys(nodes).map((nid) => `${O.labelOf(nodes[nid])} ${d(nid).colour}`).join(', ')})`);
+  const drawn = (/const EDGES = new Set\(\[([^\]]+)\]/.exec(graph)?.[1] ?? '').replace(/'/g, '').split(', ').sort();
+  say.push(`the relationship types it says are drawn are web/graph.js EDGES: ${yes(same(drawn, Object.values(rels).filter((r) => !String(O.own(r).drawn).startsWith('never')).map((r) => r.type).sort()), 'the relationship types drawn')} (${drawn.join(', ')})`);
+  const em = O.own(nodes.memory.properties.embedding);
+  const worker = fs.readFileSync(path.join(EX, 'web/embed.worker.js'), 'utf8');
+  say.push(`the embedding model is web/embed.js MODEL, pooled and normalised as the worker asks: ${yes(em.model === MODEL.id && em.quantisation === MODEL.dtype && worker.includes(`pooling: '${em.pooling}', normalize: ${em.normalised}`), 'the embedding model facts')} (${em.model}, ${em.quantisation}, ${em.pooling}, normalised)`);
+  const named = Object.values(/** @type {Record<string, any>} */ (mine.tools)).flatMap((t) => t.statements);
+  say.push(`every statement a tool names is one web/memory.js exports: ${yes(named.every((n) => typeof /** @type {any} */ (M)[n] === 'string'), 'the statements the tools name')} (${named.join(', ')})`);
+  const writtenBy = Object.values(rels).map((r) => [r.type, O.own(r).written_by]);
+  say.push(`each relationship type is MERGEd by the statement the document names: ${yes(writtenBy.every(([t, s]) => new RegExp(`MERGE \\([^)]*\\)-\\[:${t}\\]->`).test(/** @type {any} */ (M)[s] ?? '')), 'written_by')} (${writtenBy.map(([t, s]) => `${t} by ${s}`).join(', ')})`);
+  const ids = /** @type {Record<string, string[]>} */ ({ nodes: Object.keys(nodes), relationships: Object.keys(rels), indexes: Object.keys(nodes.memory.extensions.indexes) });
+  say.push(`the labels, relationship types and indexes the tools say they read and write are the document's own: ${yes(Object.values(/** @type {Record<string, any>} */ (mine.tools)).every((t) => Object.entries({ ...t.reads, ...t.writes }).every(([k, xs]) => /** @type {string[]} */ (xs).every((x) => ids[k].includes(x)))), 'the ids the tools name')}`);
+  replay.ontology = forPage;
+  return `${say.join('\n')}\n`;
+}
+
 // ---- main --------------------------------------------------------------------------------------
 
 const opts = args(process.argv.slice(2));
 fs.mkdirSync(opts.out, { recursive: true });
 const mod = await rw.loadNode(RELATE);
 const write = (/** @type {string} */ name, /** @type {string} */ text) => fs.writeFileSync(path.join(opts.out, name), text);
-/** @type {{relate: string, schema: string[], queries: any[], turns: Record<string, any[]>}} */
+/** @type {{relate: string, schema: string[], queries: any[], turns: Record<string, any[]>, ontology?: any}} */
 const replay = { relate: RELATE, schema: M.SCHEMA, queries: [], turns: {} };
 if (opts.only.includes('statements')) write('statements.cypher', statementsSection());
-if (opts.only.includes('scenarios')) {
-  write('scenarios.txt', await scenariosSection(mod, replay));
-  write('replay.json', `${JSON.stringify(replay)}\n`);
-}
+if (opts.only.includes('scenarios')) write('scenarios.txt', await scenariosSection(mod, replay));
 if (opts.only.includes('typed')) write('typed.txt', await typedSection(mod));
 if (opts.only.includes('probes')) write('probes.txt', probesSection(mod));
+if (opts.only.includes('ontology')) write('ontology.txt', await ontologySection(mod, replay));
+if (opts.only.includes('scenarios')) write('replay.json', `${JSON.stringify(replay)}\n`);
 process.exitCode = failed ? 1 : 0;
