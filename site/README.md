@@ -50,8 +50,8 @@ An example joins the site by adding `examples/<name>/site.json`; no site code ch
     fetches the weights itself.
   - Example 02 needs `wasm` (its npm packages), not a GPU, since the page fetches its models
     itself.
-  - Example 03 needs `wasm` (its npm packages). Its `connect` list is empty: the page fetches
-    nothing from another origin.
+  - Example 03 needs `wasm` (its npm packages). The vectors its scripted conversations use are
+    committed, and the page fetches its embedding model itself, only when a visitor types.
 - **`summary`** (at most 240 characters) is the text on the example's card. Without it the card
   shows `description`; with it, `description` moves behind the card's disclosure.
 - **`screenshot`** is a PNG inside the example's directory (at most 600 kB; 1280x800 fits the

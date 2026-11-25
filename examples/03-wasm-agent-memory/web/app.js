@@ -8,11 +8,13 @@
  * ("Under the hood"). The agent's turns come from agent.js: scripted ones from a scenario file,
  * typed ones from rules.
  *
- * URL parameters: ?scenario=team|trip|code, ?autoplay=1, ?test=1 (no animation and no pacing: what
- * harness/drive.mjs uses). window.ex03 is the same page for scripts: next(), playAll(), send(text),
+ * URL parameters: ?scenario=team|trip|code, ?autoplay=1, ?test=1 (no animation, no pacing and no
+ * model in the tab: what harness/drive.mjs uses), ?embed=off|live (the model in the tab, whatever
+ * ?test says). window.ex03 is the same page for scripts: next(), playAll(), send(text),
  * query(cypher), state().
  */
 import { freeTurn, mergePaths, plan, scriptedTurn } from './agent.js';
+import { MODEL, createEmbedder, precomputed } from './embed.js';
 import { createGraph, kindGroup } from './graph.js';
 
 const SCENARIOS = ['team', 'trip', 'code'];
@@ -48,6 +50,7 @@ const state = {
   /** @type {any} */ last: null,
 };
 /** @type {ReturnType<typeof createGraph>} */ let graph;
+/** @type {ReturnType<typeof createEmbedder>} */ let embedder;
 
 // ---- the engine worker ---------------------------------------------------------------------------
 
@@ -76,6 +79,73 @@ function rpc(op, payload = {}) {
     waiting.set(id, { resolve, reject });
     worker.postMessage({ id, op, ...payload });
   });
+}
+
+// ---- the embedding model, for texts the scripts did not foresee -------------------------------------
+
+/**
+ * The model in the tab (embed.worker.js), started the first time it is needed. `status` is what the
+ * page says under the input: idle, loading, ready or failed.
+ */
+const live = {
+  /** @type {Worker|null} */ worker: null,
+  /** @type {'idle'|'loading'|'ready'|'failed'|'off'} */ status: 'idle',
+  id: 0,
+  /** @type {Map<number, {resolve: (v: any) => void, reject: (e: any) => void}>} */ waiting: new Map(),
+};
+
+/** @param {string} text */
+function embedStatus(text) {
+  const el = $('embed-status');
+  el.textContent = text;
+  el.hidden = !text;
+  document.body.dataset.embed = live.status;
+}
+
+/** @param {string} op @param {Record<string, any>} [payload] @returns {Promise<any>} */
+function embedRpc(op, payload = {}) {
+  if (!live.worker) {
+    live.worker = new Worker(new URL('./embed.worker.js', import.meta.url), { type: 'module' });
+    live.worker.onmessage = (e) => {
+      if (e.data.progress) {
+        embedStatus(`Fetching the embedding model, once: ${Math.round((100 * e.data.progress.loaded) / e.data.progress.total)}% of 23 MB`);
+        return;
+      }
+      const p = live.waiting.get(e.data.id);
+      if (!p) return;
+      live.waiting.delete(e.data.id);
+      if (e.data.ok) p.resolve(e.data.result); else p.reject(new Error(e.data.error));
+    };
+    live.worker.onerror = (e) => {
+      for (const p of live.waiting.values()) p.reject(new Error(e.message || 'the embedding worker failed to load'));
+      live.waiting.clear();
+    };
+  }
+  return new Promise((resolve, reject) => {
+    const id = ++live.id;
+    live.waiting.set(id, { resolve, reject });
+    /** @type {Worker} */ (live.worker).postMessage({ id, op, ...payload });
+  });
+}
+
+/** Vectors for texts the page has none for, from the model in the tab. Throws when there is no model to be had. @param {string[]} texts */
+async function liveEmbed(texts) {
+  if (live.status === 'failed') throw new Error('no model');
+  try {
+    if (live.status !== 'ready') {
+      live.status = 'loading';
+      embedStatus('Starting the embedding model…');
+      await embedRpc('load');
+    }
+    const vectors = await embedRpc('embed', { texts });
+    live.status = 'ready';
+    embedStatus(`Embedded in this tab with ${MODEL.id.split('/')[1]}: your text is compared by meaning, not only by its words.`);
+    return vectors;
+  } catch (err) {
+    live.status = 'failed';
+    embedStatus(`The embedding model could not be loaded (${/** @type {any} */ (err)?.message ?? err}). Your text is searched by its words only.`);
+    throw err;
+  }
 }
 
 // ---- what every engine answer updates --------------------------------------------------------------
@@ -208,13 +278,24 @@ function hoverPath(/** @type {HTMLElement} */ li, /** @type {{nodes: number[], r
   li.addEventListener('pointerleave', () => graph.highlight(state.paths));
 }
 
-/** @param {string} question @param {any[]} rows @param {any[]} calls */
-function recallCard(question, rows, calls) {
-  const n = (/** @type {string} */ via) => rows.filter((r) => r.via === via).length;
-  const parts = [[n('search'), 'by search'], [n('update'), 'by following what replaced a match'], [n('graph'), 'through the graph']].filter(([k]) => k);
+/** How a search hit was found, as its badge says it: "meaning 0.37", "words", or both. @param {any} r */
+function foundBy(r) {
+  const meaning = r.by.includes('meaning');
+  return `${meaning ? `meaning ${Number(r.similarity).toFixed(2)}` : ''}${meaning && r.by.includes('words') ? ' + ' : ''}${r.by.includes('words') ? 'words' : ''}`;
+}
+
+/** @param {string} question @param {any[]} rows @param {any[]} calls @param {boolean} embedded  whether the question had a vector */
+function recallCard(question, rows, calls, embedded) {
+  const found = rows.filter((r) => r.via !== 'graph');
+  const parts = [
+    [found.filter((r) => r.by.includes('meaning')).length, 'by meaning'],
+    [found.filter((r) => !r.by.includes('meaning')).length, 'by their words'],
+    [rows.filter((r) => r.via === 'graph').length, 'through the graph'],
+  ].filter(([k]) => k);
   const summary = rows.length
     ? [b(plural(rows.length, 'memory', 'memories')), `: ${parts.map(([k, t]) => `${k} ${t}`).join(', ')}`]
     : ['nothing in memory matched'];
+  if (!embedded) summary.push(' (the question has no vector: words only)');
   const c = card('recall', false, summary, calls);
   fold(c.rows, rows.map((r) => {
     const li = h('li');
@@ -225,7 +306,11 @@ function recallCard(question, rows, calls) {
       r.through.forEach((/** @type {string} */ name, /** @type {number} */ i) => t.append(i ? ', then ' : '', b(name)));
       what.append(t);
     } else if (r.via === 'update') what.append(h('span', 'trail', `the match was “${r.replaced[0]}”, since replaced`));
-    li.append(h('span', `how ${r.via}`, r.via === 'update' ? 'updated' : r.via), what, h('span', 'cited'));
+    const badge = h('span', `how ${r.via === 'graph' ? 'graph' : r.by.includes('meaning') ? 'meaning' : 'words'}`, r.via === 'graph' ? 'graph' : foundBy(r));
+    badge.title = r.via === 'graph' ? 'reached through shared entities' : r.by.includes('meaning')
+      ? `found by the vector search: cosine similarity ${Number(r.similarity).toFixed(2)} with the question${r.by.includes('words') ? ', and by the full-text search' : ''}`
+      : 'found by the full-text search';
+    li.append(badge, what, h('span', 'cited'));
     hoverPath(li, r);
     return li;
   }), 4);
@@ -289,9 +374,10 @@ function makeTools() {
     return res;
   };
   return {
+    embed: (/** @type {string[]} */ texts) => embedder.embed(texts),
     recall: async (/** @type {any} */ a) => {
       const res = await call('recall', a);
-      say(recallCard(a.question, res.result, res.calls));
+      say(recallCard(a.question, res.result, res.calls, !!a.vector));
       await wait(420);
       return res.result;
     },
@@ -605,7 +691,7 @@ function inspect(n) {
     add('session', s?.props.title);
     add('replaced', byId.get(rels.find((r) => r.type === 'SUPERSEDES' && r.source === n.id)?.target)?.props.text);
     add('replaced by', byId.get(rels.find((r) => r.type === 'SUPERSEDES' && r.target === n.id)?.source)?.props.text);
-    add('vector', '256 numbers, in the vector index');
+    add('vector', p.embedded ? `${MODEL.dims} numbers from ${MODEL.id.split('/')[1]}, in the vector index` : 'none: only its words will find it');
     box.append(dl);
   } else if (n.label === 'Message') {
     box.append(h('h3', '', `“${p.text}”`));
@@ -629,7 +715,7 @@ ORDER BY entity`],
 RETURN was.text AS was, now.text AS now, now.rationale AS because`],
   ['From a session to what it taught', `MATCH p = (s:Session)<-[:IN_SESSION]-(:Message)<-[:FROM]-(m:Memory)-[:ABOUT]->(:Entity)
 RETURN p LIMIT 8`],
-  ['A malformed memory (refused)', `CREATE (:Memory {id: 'oops', text: 'no kind, no vector'})`],
+  ['A malformed memory (refused)', `CREATE (:Memory {id: 'oops', text: 'no kind'})`],
   ['An edge the shape forbids (refused)', `MATCH (a:Entity), (b:Entity) WHERE a <> b
 WITH a, b LIMIT 1
 CREATE (a)-[:ABOUT]->(b)`],
@@ -814,6 +900,14 @@ async function boot() {
   const { version } = await rpc('init');
   document.body.dataset.relate = version;
   $('engine').textContent = `Relate ${version} · running in this tab`;
+  // the scripts' vectors come with the page; the model itself is started only for a text they lack.
+  // ?test=1 keeps it off (the regression run is offline), ?embed=live turns it back on.
+  const vectors = await fetch(new URL('data/embeddings.json', location.href));
+  if (!vectors.ok) throw new Error(`data/embeddings.json: HTTP ${vectors.status}`);
+  const liveOn = params.get('embed') === 'live' || (!TEST && params.get('embed') !== 'off');
+  if (!liveOn) live.status = 'off';
+  embedder = createEmbedder({ known: precomputed(await vectors.json()), live: liveOn ? liveEmbed : null });
+  document.body.dataset.embed = live.status;
   for (const id of SCENARIOS) {
     const r = await fetch(new URL(`data/scenarios/${id}.json`, location.href));
     if (!r.ok) throw new Error(`data/scenarios/${id}.json: HTTP ${r.status}`);
@@ -889,6 +983,7 @@ Object.assign(window, {
       stored: storedCounts(),
       drawn: graph.stats(),
       lit: mergePaths(state.paths),
+      embed: live.status,
       last: state.last,
     }),
   },

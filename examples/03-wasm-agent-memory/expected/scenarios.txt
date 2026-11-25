@@ -2,10 +2,11 @@
 
 Each turn: what the user said, what each memory tool returned, and the reply. In a recall row,
 [n] marks a memory the reply cites, then its score, how it was reached (search: a search hit;
-update: the current version of a hit that had been replaced; graph: linked through shared entities)
-and the path that reached it.
+update: the current version of a hit that had been replaced; graph: linked through shared entities),
+how a hit was found (by meaning: the vector search, with the cosine similarity; by words: the
+full-text search) and the path that reached it. Vectors: Xenova/all-MiniLM-L6-v2 (data/embeddings.json).
 
-## A teammate that remembers (team): 2 sessions, 9 turns
+## A teammate that remembers (team): 2 sessions, 10 turns
 
 ### Monday · kickoff
 
@@ -31,18 +32,18 @@ and the path that reached it.
 
 [4] user: Catch me up on the checkout rewrite.
   recall "Catch me up on the checkout rewrite.": 6 rows
-    [1] 0.0328 search lead: Priya leads the checkout rewrite
-          path: leads   about: Priya, checkout rewrite
-    [4] 0.0320 search db-postgres: Use Postgres for the checkout rewrite
-          path: database: Postgres   about: Postgres, checkout rewrite
-    [2] 0.0320 search tomas-on: Tomás works on the checkout rewrite
-          path: works on   about: Tomás, checkout rewrite
-    [3] 0.0313 search depends: The checkout rewrite depends on the payments service
+    [3] 0.0320 search depends: The checkout rewrite depends on the payments service (by meaning and words, cosine 0.73)
           path: depends on   about: checkout rewrite, payments service
+    [1] 0.0320 search lead: Priya leads the checkout rewrite (by meaning and words, cosine 0.67)
+          path: leads   about: Priya, checkout rewrite
+    [4] 0.0320 search db-postgres: Use Postgres for the checkout rewrite (by meaning and words, cosine 0.68)
+          path: database: Postgres   about: Postgres, checkout rewrite
+    [2] 0.0320 search tomas-on: Tomás works on the checkout rewrite (by meaning and words, cosine 0.73)
+          path: works on   about: Tomás, checkout rewrite
+        0.0160 graph  owner-dana: Dana owns the payments service
+          path: depends on > payments service > owns   about: Dana, payments service
         0.0160 graph  tomas-away: Tomás is away next week at a conference in Lisbon
           path: works on > Tomás > away next week   about: Lisbon, Tomás
-        0.0156 graph  owner-dana: Dana owns the payments service
-          path: depends on > payments service > owns   about: Dana, payments service
   reply: Priya leads it [1], with Tomás on the team [2]. It depends on the payments service [3], and the database decision is Postgres, because the team knows it well [4].
   highlighted: 9 nodes and 8 relationships brightly, 4 and 4 softly
 
@@ -53,41 +54,57 @@ and the path that reached it.
 
 [6] user: Did we pick Postgres for checkout?
   recall "Did we pick Postgres for checkout?": 6 rows
-    [1] 0.0328 update db-cockroach: Use CockroachDB for the checkout rewrite
+    [1] 0.0328 update db-cockroach: Use CockroachDB for the checkout rewrite (by meaning and words, cosine 0.62)
           path: database: Postgres > database: CockroachDB   about: CockroachDB, checkout rewrite
           replaced: Use Postgres for the checkout rewrite
-        0.0320 search lead: Priya leads the checkout rewrite
+        0.0323 search lead: Priya leads the checkout rewrite (by meaning and words, cosine 0.41)
           path: leads   about: Priya, checkout rewrite
+        0.0315 search tomas-on: Tomás works on the checkout rewrite (by meaning and words, cosine 0.33)
+          path: works on   about: Tomás, checkout rewrite
         0.0164 graph  depends: The checkout rewrite depends on the payments service
           path: database: Postgres > database: CockroachDB > checkout rewrite > depends on   about: checkout rewrite, payments service
-        0.0164 graph  tomas-on: Tomás works on the checkout rewrite
-          path: database: Postgres > database: CockroachDB > checkout rewrite > works on   about: Tomás, checkout rewrite
-        0.0082 graph  tomas-away: Tomás is away next week at a conference in Lisbon
-          path: database: Postgres > database: CockroachDB > checkout rewrite > works on > Tomás > away next week   about: Lisbon, Tomás
+        0.0157 graph  tomas-away: Tomás is away next week at a conference in Lisbon
+          path: works on > Tomás > away next week   about: Lisbon, Tomás
         0.0082 graph  owner-dana: Dana owns the payments service
           path: database: Postgres > database: CockroachDB > checkout rewrite > depends on > payments service > owns   about: Dana, payments service
   reply: You did on Monday, but not any more. The current decision is CockroachDB, because Postgres failover was too slow in the load test [1].
   highlighted: 4 nodes and 3 relationships brightly, 10 and 10 softly
 
-[7] user: Payments is timing out in staging. Who needs to know?
-  recall "Payments is timing out in staging. Who needs to know?": 6 rows
-    [1] 0.0328 search owner-dana: Dana owns the payments service
+[7] user: Who should I page about a billing outage?
+  recall "Who should I page about a billing outage?": 6 rows
+    [1] 0.0164 search owner-dana: Dana owns the payments service (by meaning, cosine 0.40)
           path: owns   about: Dana, payments service
-    [2] 0.0323 search depends: The checkout rewrite depends on the payments service
+    [2] 0.0161 search depends: The checkout rewrite depends on the payments service (by meaning, cosine 0.32)
           path: depends on   about: checkout rewrite, payments service
-        0.0161 graph  db-cockroach: Use CockroachDB for the checkout rewrite
+    [3] 0.0159 search lead: Priya leads the checkout rewrite (by meaning, cosine 0.31)
+          path: leads   about: Priya, checkout rewrite
+    [4] 0.0156 search tomas-on: Tomás works on the checkout rewrite (by meaning, cosine 0.20)
+          path: works on   about: Tomás, checkout rewrite
+        0.0081 graph  db-cockroach: Use CockroachDB for the checkout rewrite
           path: depends on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
           replaced: Use Postgres for the checkout rewrite
-    [3] 0.0161 graph  lead: Priya leads the checkout rewrite
-          path: depends on > checkout rewrite > leads   about: Priya, checkout rewrite
-    [4] 0.0161 graph  tomas-on: Tomás works on the checkout rewrite
-          path: depends on > checkout rewrite > works on   about: Tomás, checkout rewrite
-    [5] 0.0081 graph  tomas-away: Tomás is away next week at a conference in Lisbon
-          path: depends on > checkout rewrite > works on > Tomás > away next week   about: Lisbon, Tomás
+    [5] 0.0078 graph  tomas-away: Tomás is away next week at a conference in Lisbon
+          path: works on > Tomás > away next week   about: Lisbon, Tomás
   reply: Dana first: she owns the payments service [1]. Then Priya, because the checkout rewrite she leads depends on it [2] [3]. Tomás is on that team too [4], but he is away next week [5].
   highlighted: 11 nodes and 10 relationships brightly, 2 and 2 softly
 
-[8] user: How do you know Dana owns payments?
+[8] user: Is anyone unavailable in the coming days?
+  recall "Is anyone unavailable in the coming days?": 5 rows
+    [1] 0.0164 search tomas-away: Tomás is away next week at a conference in Lisbon (by meaning, cosine 0.34)
+          path: away next week   about: Lisbon, Tomás
+    [2] 0.0082 graph  tomas-on: Tomás works on the checkout rewrite
+          path: away next week > Tomás > works on   about: Tomás, checkout rewrite
+        0.0041 graph  db-cockroach: Use CockroachDB for the checkout rewrite
+          path: away next week > Tomás > works on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
+          replaced: Use Postgres for the checkout rewrite
+        0.0041 graph  depends: The checkout rewrite depends on the payments service
+          path: away next week > Tomás > works on > checkout rewrite > depends on   about: checkout rewrite, payments service
+    [3] 0.0041 graph  lead: Priya leads the checkout rewrite
+          path: away next week > Tomás > works on > checkout rewrite > leads   about: Priya, checkout rewrite
+  reply: Tomás. He is away next week, at a conference in Lisbon [1]. He works on the checkout rewrite [2], so Priya, who leads it, may want cover [3].
+  highlighted: 7 nodes and 6 relationships brightly, 4 and 4 softly
+
+[9] user: How do you know Dana owns payments?
   trace owner-dana: 1 version
     current  owner-dana: Dana owns the payments service
           said in "Monday · kickoff" at 2026-03-09T09:03:00Z: "It depends on the payments service, which Dana owns. We decided on Postgres for checkout, since the team knows it well."
@@ -95,7 +112,7 @@ and the path that reached it.
   reply: You told me on Monday: "It depends on the payments service, which Dana owns." [1]
   highlighted: 3 nodes and 2 relationships brightly, 0 and 0 softly
 
-[9] user: Odd question: is there any link between Dana and Lisbon?
+[10] user: Odd question: is there any link between Dana and Lisbon?
   connect Dana -> Lisbon: 4 memories apart
           path: Dana > owns > payments service > depends on > checkout rewrite > works on > Tomás > away next week > Lisbon
   reply: A thin one, four memories long. Dana owns the payments service [1], which the checkout rewrite depends on [2]. Tomás works on that rewrite [3], and he is at a conference in Lisbon next week [4].
@@ -129,24 +146,24 @@ every remember run a second time changes nothing: yes
 
 ### Two weeks later · a new conversation
 
-[4] user: I'm booking dinner for the first night in Lisbon. What should I keep in mind?
-  recall "I'm booking dinner for the first night in Lisbon. What should I keep in mind?": 7 rows
-        0.0325 search budget-150: The budget for the Lisbon trip is 150 euros a night
-          path: budget: €150   about: Lisbon trip
-    [1] 0.0323 search maya-trip: Maya is coming on the Lisbon trip
-          path: coming along   about: Lisbon trip, Maya
-    [4] 0.0320 search area: Stay in Alfama on the Lisbon trip
-          path: stay in   about: Alfama, Lisbon trip
-        0.0163 graph  trip: You are planning a trip to Lisbon in May
-          path: budget: €150 > Lisbon trip > in May   about: Lisbon, Lisbon trip, You
-    [2] 0.0161 graph  maya-diet: Maya is vegetarian
-          path: coming along > Maya > vegetarian   about: Maya
-        0.0161 graph  sister: Maya is your sister
-          path: coming along > Maya > sister   about: Maya, You
-    [3] 0.0081 graph  you-shellfish: You can't eat shellfish
-          path: budget: €150 > Lisbon trip > in May > You > no shellfish   about: You
-  reply: Three things from memory. Maya is coming [1], and she is vegetarian [2]. You can't eat shellfish [3]. And you are staying in Alfama [4], so somewhere you can walk to from there.
-  highlighted: 10 nodes and 9 relationships brightly, 2 and 3 softly
+[4] user: I'm booking dinner for our first evening. Any dietary needs I should mention?
+  recall "I'm booking dinner for our first evening. Any dietary needs I should mention?": 7 rows
+    [1] 0.0164 search you-shellfish: You can't eat shellfish (by meaning, cosine 0.27)
+          path: no shellfish   about: You
+    [3] 0.0161 search maya-diet: Maya is vegetarian (by meaning, cosine 0.22)
+          path: vegetarian   about: Maya
+        0.0082 graph  sister: Maya is your sister
+          path: no shellfish > You > sister   about: Maya, You
+        0.0082 graph  trip: You are planning a trip to Lisbon in May
+          path: no shellfish > You > in May   about: Lisbon, Lisbon trip, You
+    [2] 0.0081 graph  maya-trip: Maya is coming on the Lisbon trip
+          path: vegetarian > Maya > coming along   about: Lisbon trip, Maya
+        0.0041 graph  area: Stay in Alfama on the Lisbon trip
+          path: no shellfish > You > in May > Lisbon trip > stay in   about: Alfama, Lisbon trip
+        0.0041 graph  budget-150: The budget for the Lisbon trip is 150 euros a night
+          path: no shellfish > You > in May > Lisbon trip > budget: €150   about: Lisbon trip
+  reply: Two. You can't eat shellfish [1]. And Maya, who is coming with you [2], is vegetarian [3].
+  highlighted: 6 nodes and 4 relationships brightly, 6 and 8 softly
 
 [5] user: Small update: Maya eats fish now, so she's pescatarian.
   remember: 1 entity mentioned, 1 memory, 1 about-links, 1 superseded
@@ -160,16 +177,16 @@ every remember run a second time changes nothing: yes
 
 [7] user: Remind me, is Maya vegetarian?
   recall "Remind me, is Maya vegetarian?": 7 rows
-    [1] 0.0328 update maya-pescatarian: Maya is pescatarian: she eats fish, but not meat
+    [1] 0.0328 update maya-pescatarian: Maya is pescatarian: she eats fish, but not meat (by meaning and words, cosine 0.93)
           path: vegetarian > pescatarian   about: Maya
           replaced: Maya is vegetarian
-        0.0323 search sister: Maya is your sister
+        0.0320 search sister: Maya is your sister (by meaning and words, cosine 0.61)
           path: sister   about: Maya, You
-        0.0315 search maya-trip: Maya is coming on the Lisbon trip
+        0.0315 search maya-trip: Maya is coming on the Lisbon trip (by meaning and words, cosine 0.51)
           path: coming along   about: Lisbon trip, Maya
-        0.0161 graph  you-shellfish: You can't eat shellfish
+        0.0160 graph  you-shellfish: You can't eat shellfish
           path: sister > You > no shellfish   about: You
-        0.0161 graph  trip: You are planning a trip to Lisbon in May
+        0.0160 graph  trip: You are planning a trip to Lisbon in May
           path: sister > You > in May   about: Lisbon, Lisbon trip, You
         0.0157 graph  budget-200: The budget for the Lisbon trip is 200 euros a night
           path: coming along > Lisbon trip > budget: €200   about: Lisbon trip
@@ -179,26 +196,26 @@ every remember run a second time changes nothing: yes
   reply: She was until today. Now she is pescatarian: fish is fine, meat is not [1].
   highlighted: 3 nodes and 2 relationships brightly, 10 and 11 softly
 
-[8] user: What's our budget, and why did it change?
-  recall "What's our budget, and why did it change?": 7 rows
-    [1] 0.0328 update budget-200: The budget for the Lisbon trip is 200 euros a night
-          path: budget: €150 > budget: €200   about: Lisbon trip
+[8] user: How much can we spend on accommodation now?
+  recall "How much can we spend on accommodation now?": 7 rows
+    [1] 0.0164 search budget-200: The budget for the Lisbon trip is 200 euros a night (by meaning, cosine 0.46)
+          path: budget: €200   about: Lisbon trip
           replaced: The budget for the Lisbon trip is 150 euros a night
-        0.0164 graph  area: Stay in Alfama on the Lisbon trip
-          path: budget: €150 > budget: €200 > Lisbon trip > stay in   about: Alfama, Lisbon trip
-        0.0164 graph  maya-trip: Maya is coming on the Lisbon trip
-          path: budget: €150 > budget: €200 > Lisbon trip > coming along   about: Lisbon trip, Maya
-        0.0164 graph  trip: You are planning a trip to Lisbon in May
-          path: budget: €150 > budget: €200 > Lisbon trip > in May   about: Lisbon, Lisbon trip, You
-        0.0082 graph  maya-pescatarian: Maya is pescatarian: she eats fish, but not meat
-          path: budget: €150 > budget: €200 > Lisbon trip > coming along > Maya > pescatarian   about: Maya
+        0.0159 search trip: You are planning a trip to Lisbon in May (by meaning, cosine 0.24)
+          path: in May   about: Lisbon, Lisbon trip, You
+        0.0082 graph  area: Stay in Alfama on the Lisbon trip
+          path: budget: €200 > Lisbon trip > stay in   about: Alfama, Lisbon trip
+        0.0082 graph  maya-trip: Maya is coming on the Lisbon trip
+          path: budget: €200 > Lisbon trip > coming along   about: Lisbon trip, Maya
+        0.0079 graph  you-shellfish: You can't eat shellfish
+          path: in May > You > no shellfish   about: You
+        0.0079 graph  sister: Maya is your sister
+          path: in May > You > sister   about: Maya, You
+        0.0041 graph  maya-pescatarian: Maya is pescatarian: she eats fish, but not meat
+          path: budget: €200 > Lisbon trip > coming along > Maya > pescatarian   about: Maya
           replaced: Maya is vegetarian
-        0.0082 graph  you-shellfish: You can't eat shellfish
-          path: budget: €150 > budget: €200 > Lisbon trip > in May > You > no shellfish   about: You
-        0.0082 graph  sister: Maya is your sister
-          path: budget: €150 > budget: €200 > Lisbon trip > in May > You > sister   about: Maya, You
   reply: 200 euros a night [1]. It was 150 until you found cheaper flights.
-  highlighted: 3 nodes and 2 relationships brightly, 10 and 11 softly
+  highlighted: 2 nodes and 1 relationships brightly, 10 and 11 softly
 
 [9] user: When did I tell you about the shellfish?
   trace you-shellfish: 1 version
@@ -211,7 +228,7 @@ every remember run a second time changes nothing: yes
 the store: 5 Entity, 9 Memory, 5 Message, 2 Session; 14 ABOUT, 9 FROM, 5 IN_SESSION, 10 MENTIONS, 2 SUPERSEDES
 every remember run a second time changes nothing: yes
 
-## A coding agent's notes (code): 2 sessions, 9 turns
+## A coding agent's notes (code): 2 sessions, 10 turns
 
 ### Day one · learning the repo
 
@@ -236,15 +253,15 @@ every remember run a second time changes nothing: yes
 
 [4] user: Add a test for the login flow in the auth module.
   recall "Add a test for the login flow in the auth module.": 5 rows
-    [1] 0.0325 search auth-owner: Kenji owns the auth module: ask him before changing it
+    [1] 0.0328 search auth-owner: Kenji owns the auth module: ask him before changing it (by meaning and words, cosine 0.47)
           path: owns   about: Kenji, auth module
-    [3] 0.0325 search run-tests: Run the tests with pnpm test
+    [3] 0.0323 search run-tests: Run the tests with pnpm test (by meaning and words, cosine 0.28)
           path: run with   about: pnpm, tests
-        0.0317 search billing-frozen: Do not change the billing module: it is frozen until the audit is done
+        0.0317 search billing-frozen: Do not change the billing module: it is frozen until the audit is done (by meaning and words, cosine 0.24)
           path: frozen   about: audit, billing module
-    [2] 0.0163 graph  tests-beside: Tests live next to the code, as *.spec.ts files
+    [2] 0.0161 graph  tests-beside: Tests live next to the code, as *.spec.ts files
           path: run with > tests > live next to the code   about: tests, this repo
-    [4] 0.0163 graph  use-pnpm: Use pnpm in this repo, never npm
+    [4] 0.0161 graph  use-pnpm: Use pnpm in this repo, never npm
           path: run with > pnpm > package manager   about: pnpm, this repo
   reply: Before I write it, from my notes. The auth module is Kenji's, so I'll check with him first [1]. The test goes next to the code, as a *.spec.ts file [2]. I'll run it with pnpm test [3], because this repo uses pnpm, never npm [4].
   highlighted: 9 nodes and 8 relationships brightly, 3 and 2 softly
@@ -254,34 +271,39 @@ every remember run a second time changes nothing: yes
     + decision billing-open (slot billing module/status): The billing module is open for changes again (because the audit finished)
   reply: Updated: billing is no longer frozen.
 
-[6] user: Is the billing module still frozen?
-  recall "Is the billing module still frozen?": 2 rows
-    [1] 0.0328 update billing-open: The billing module is open for changes again
-          path: frozen > open again   about: audit, billing module
+[6] user: Can I refactor invoicing yet?
+  recall "Can I refactor invoicing yet?": 1 row
+    [1] 0.0164 search billing-open: The billing module is open for changes again (by meaning, cosine 0.38)
+          path: open again   about: audit, billing module
           replaced: Do not change the billing module: it is frozen until the audit is done
-        0.0317 search auth-owner: Kenji owns the auth module: ask him before changing it
-          path: owns   about: Kenji, auth module
-  reply: No. It was frozen until the audit, but the audit finished and billing is open for changes again [1].
-  highlighted: 4 nodes and 3 relationships brightly, 3 and 2 softly
+  reply: Yes. The billing module was frozen until the audit, but the audit finished and it is open for changes again [1].
+  highlighted: 3 nodes and 2 relationships brightly, 0 and 0 softly
 
-[7] user: We're moving all tests into a top-level tests/ folder, to speed up the build.
+[7] user: Who looks after sign-in?
+  recall "Who looks after sign-in?": 1 row
+    [1] 0.0164 search auth-owner: Kenji owns the auth module: ask him before changing it (by meaning, cosine 0.31)
+          path: owns   about: Kenji, auth module
+  reply: Kenji. He owns the auth module, and wants to be asked before it changes [1].
+  highlighted: 3 nodes and 2 relationships brightly, 0 and 0 softly
+
+[8] user: We're moving all tests into a top-level tests/ folder, to speed up the build.
   remember: 2 entities mentioned, 1 memory, 2 about-links, 1 superseded
     + decision tests-folder (slot tests/location): Tests live in a top-level tests/ folder (because to speed up the build)
   reply: Noted. New tests go in tests/ from now on.
 
-[8] user: Where do tests live in this repo?
+[9] user: Where do tests live in this repo?
   recall "Where do tests live in this repo?": 3 rows
-    [1] 0.0328 search tests-folder: Tests live in a top-level tests/ folder
+    [1] 0.0328 search tests-folder: Tests live in a top-level tests/ folder (by meaning and words, cosine 0.63)
           path: live in tests/   about: tests, this repo
           replaced: Tests live next to the code, as *.spec.ts files
-        0.0315 search run-tests: Run the tests with pnpm test
+        0.0315 search run-tests: Run the tests with pnpm test (by meaning and words, cosine 0.34)
           path: run with   about: pnpm, tests
-        0.0315 search use-pnpm: Use pnpm in this repo, never npm
+        0.0315 search use-pnpm: Use pnpm in this repo, never npm (by meaning and words, cosine 0.30)
           path: package manager   about: pnpm, this repo
   reply: In a top-level tests/ folder, to speed up the build [1]. Until today they sat next to the code, so older tests may still be there.
   highlighted: 3 nodes and 2 relationships brightly, 3 and 4 softly
 
-[9] user: Why did you just run pnpm and not npm?
+[10] user: Why did you just run pnpm and not npm?
   trace use-pnpm: 1 version
     current  use-pnpm: Use pnpm in this repo, never npm
           said in "Day one · learning the repo" at 2026-05-04T10:00:00Z: "A few house rules for this repo. We use pnpm, never npm. Tests live next to the code, as *.spec.ts files."

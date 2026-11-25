@@ -26,9 +26,10 @@ the code cites goes there too, as a design id.
 | [0011](0011-ex02-a-port-held-to-the-source.md) | Example 02 is a port, held byte for byte to the source app's outputs | example 02 |
 | [0012](0012-ex02-webllm-qwen-canned-fallback.md) | Example 02 writes queries with WebLLM on WebGPU, and uses canned queries without it | example 02 |
 | [0013](0013-ex02-in-memory-store-under-ontology-graph-type.md) | Example 02's store lives in memory, under a graph type derived from the ontology | example 02 |
-| [0014](0014-ex03-scripted-agent-real-memory.md) | Example 03's agent is scripted, and its memory is real | example 03 |
+| [0014](0014-ex03-scripted-agent-real-memory.md) | Example 03's agent is scripted, and its memory is real (superseded by ADR-0017) | example 03 |
 | [0015](0015-ex03-nvl-in-relate-brand.md) | Example 03 draws the memory with NVL, in Relate's brand | example 03 |
 | [0016](0016-ex03-one-typed-memory-label-in-memory.md) | Example 03's memory is one typed label, in a store that lives in memory | example 03 |
+| [0017](0017-ex03-real-embeddings-scripted-agent.md) | Example 03's agent is scripted; its memory and its vectors are real | example 03 |
 
 ## Writing one
 

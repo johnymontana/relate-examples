@@ -10,7 +10,7 @@ the older one in its slot and nothing is deleted. Two things differ here, and bo
 A graph type allows one source label and one target label per relationship type (01's R16), so
 `ABOUT`, `FROM` and `SUPERSEDES` cannot start from both. With one label, a graph type can hold the
 whole model: four labels and five relationship types, every property typed, the vector included
-(`VECTOR<FLOAT32>(256) NOT NULL`). The engine then refuses a malformed memory on every write (M1),
+(`VECTOR<FLOAT32>(256) NOT NULL`; since ADR-0017, `VECTOR<FLOAT32>(384)` and not required). The engine then refuses a malformed memory on every write (M1),
 which matters when the writer is an agent. A `current` flag sits beside `SUPERSEDES`, so recall
 filters on a property instead of a missing edge.
 

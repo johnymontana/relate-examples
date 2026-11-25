@@ -87,9 +87,12 @@ jobs:
       # integrity; its build bundles them itself. The site never ships the models: the page fetches them.
       - name: Example 02's npm packages
         run: npm ci --omit=peer --prefix examples/02-wasm-text2cypher
-      # 03's npm packages: @relate/relate-wasm, NVL and the brand's typefaces (each pinned with its integrity);
-      # its build bundles them itself.
+      # 03's npm packages: @relate/relate-wasm, NVL, Transformers.js and the brand's typefaces (each pinned with
+      # its integrity); its build bundles them itself. onnxruntime-node's install script (CUDA libraries on
+      # linux, for a package nothing here loads) is skipped.
       - name: Example 03's npm packages
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
         run: npm ci --omit=peer --prefix examples/03-wasm-agent-memory
       # Runs each example's own build (01, 02 and 03: npm run build), checks every page's CSP <meta> and
       # relative URLs, and writes site/dist/ with the index page and .nojekyll.

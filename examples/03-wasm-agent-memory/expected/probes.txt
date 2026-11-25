@@ -7,16 +7,18 @@ M1 the graph type refuses a malformed memory, on every write
   ABOUT between two entities: ConstraintValidationFailed: endpoint label presence verification failed: expected Memory
   a property the type does not declare: accepted (undeclared properties are allowed)
   memories stored by the refused writes: 0
+  a memory without a vector (the property is typed, not required): accepted (embedding IS NULL: true)
 
 M2 under the graph type, MERGE ... ON CREATE SET may fill the required properties: the check runs when the statement ends
   MERGE with ON CREATE SET for title and startedAt: created (T)
   MERGE on the key alone: semantic error: ConstraintValidationFailed: `constraint_<generated>` requires properties
 
 M3 SEARCH on a vector index: the k nearest, scored (1 + cosine) / 2, whatever their similarity
-  the text of memory a: a 1, b 0.702, c 0.5, d 0.5
-  a question with no content words (a zero vector): 0 rows
+  memory a's own vector (b is at a cosine of 0.4 to it, c and d at 0): a 1, b 0.7, c 0.5, d 0.5
+  a zero vector (a question with no vector): 0 rows
   a plain list parameter as the query vector: a
   without LIMIT inside the search: syntax error: parse error: expected LIMIT, got ")" (RightParen)
+  with a fifth memory that has no vector, LIMIT 8: a, b, c, d
 
 M4 SEARCH on a full-text index: terms are ORed and matched whole, with no stemming; punctuation is harmless; an empty query finds nothing
   "tests": a
@@ -26,8 +28,8 @@ M4 SEARCH on a full-text index: terms are ORed and matched whole, with no stemmi
   an empty query: 0 rows
 
 M5 one statement: two SEARCH lists joined by UNION ALL inside CALL () {}, fused by rank, then two graph steps
-  0.0328 update d: uses > uses
-  0.0320 search a: run with
+  0.0328 update d: uses > uses (by meaning and words, cosine 1.00)
+  0.0320 search a: run with (by meaning and words, cosine 0.40)
   0.0164 graph  c: uses > uses > repo > reviews
   the hit "Use pnpm" was replaced: recall returns its current version by following SUPERSEDES: update (Use pnpm in the repo)
   a memory that shares no word with the question is reached through an entity: graph, through repo
@@ -43,14 +45,18 @@ M7 a path arrives as a flat list (node, relationship, node), each node whole, ve
   the path's elements: node, relationship, node
   the relationship's start_node and end_node are its neighbours' ids: yes
   id(n) and id(r) over nodes(p) and relationships(p) equal the elements' ids: yes
-  a node's vector in the envelope: {dim, type, values}, 256 values
+  a node's vector in the envelope: {dim, type, values}, 384 values
 
-## The stand-in embedder (web/embed.js): feature hashing, no model
-256 dimensions; content words of "What do you remember about the checkout rewrite?": checkout, rewrite
-full-text query for it: "checkout rewrite"
-cosine 1.000  "Use Postgres for the checkout rewrite" / "Use Postgres for the checkout rewrite"
-cosine 0.648  "Did we pick Postgres for checkout?" / "Use Postgres for the checkout rewrite"
-cosine 0.277  "Did we decide on a database?" / "We decided to use Postgres"
-cosine 0.000  "I am booking dinner in Lisbon" / "Maya is vegetarian"
-cosine 1.000  "Tomás" / "tomas"
-Shared words and word parts score; shared meaning does not ("dinner" and "vegetarian"): that pair is found through the graph (scenarios.txt, the travel planner, turn 4).
+## The embedding model's vectors (data/embeddings.json): Xenova/all-MiniLM-L6-v2 at 751bff3, q8
+52 vectors of 384 numbers, each of length 1 (1.000 to 1.000)
+content words of "What do you remember about the checkout rewrite?": checkout, rewrite; the full-text query for it: "checkout rewrite"
+cosine 0.34  "Is anyone unavailable in the coming days?" / "Tomás is away next week at a conference in Lisbon": no shared word
+cosine 0.40  "Who should I page about a billing outage?" / "Dana owns the payments service": no shared word
+cosine 0.38  "Can I refactor invoicing yet?" / "Do not change the billing module: it is frozen until the audit is done": no shared word
+cosine 0.31  "Who looks after sign-in?" / "Kenji owns the auth module: ask him before changing it": no shared word
+cosine 0.22  "I'm booking dinner for our first evening. Any dietary needs I should mention?" / "Maya is vegetarian": no shared word
+cosine 0.62  "Did we pick Postgres for checkout?" / "Use Postgres for the checkout rewrite": shares postgres, checkout
+cosine -0.06  "Is anyone unavailable in the coming days?" / "Use Postgres for the checkout rewrite": no shared word
+cosine -0.02  "Can I refactor invoicing yet?" / "Run the tests with pnpm test": no shared word
+A vector hit needs a cosine of at least 0.20 (the engine's score 0.6: M3). The first five pairs share no word and clear it:
+the full-text search cannot find them, the vector search does.

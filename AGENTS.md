@@ -22,10 +22,12 @@ code cites. Read both before changing an example.
   on WebGPU, or canned reference queries; Relate's WASM build in memory under a graph type derived
   from the ontology. Rows `P1`…`P9`; ids Y, W, D.
 - `examples/03-wasm-agent-memory/`: the Relate playground as an agent's memory. A scripted chat
-  (no model on the page) writes memories into Relate's WASM build, in memory under a graph type, and
-  recalls them with one statement (vector and full-text search, then graph hops); NVL draws the
-  store and selects the returned paths, and the page follows the Relate brand kit (`data/brand/`).
-  Rows `M1`…`M7` and `N1`…`N6`; ids D.
+  (no language model on the page) writes memories into Relate's WASM build, in memory under a graph
+  type, and recalls them with one statement (vector and full-text search, then graph hops); NVL
+  draws the store and selects the returned paths, and the page follows the Relate brand kit
+  (`data/brand/`). Vectors are real (all-MiniLM-L6-v2): precomputed for the scripts' texts in
+  `data/embeddings.json`, and made in the tab with Transformers.js for typed text.
+  Rows `M1`…`M7`, `N1`…`N6` and `T1`…`T5`; ids D.
 
 Examples 01 and 02 read Ontology Graph Spec 1.1 documents through the official SDK (npm
 `@neo4j/ontology-graph-spec` 0.12.2) via `lib/ogs.mjs`.
@@ -64,7 +66,7 @@ scripts/build-gliner-wasm.sh [--check|--force]      # gliner-rs v0.3.1 (4fa741e)
 scripts/fetch-gliner.sh small|base [--check|--pin]  # GLiNER2.5 weights → .cache/gliner/, checked against ci/gliner2.5-*.sha256
 (cd examples/01-wasm-extract && npm ci --omit=peer && npm run vendor && npx playwright install chromium)
 (cd examples/02-wasm-text2cypher && npm ci --omit=peer)
-(cd examples/03-wasm-agent-memory && npm ci --omit=peer)
+(cd examples/03-wasm-agent-memory && ONNXRUNTIME_NODE_INSTALL=skip npm ci --omit=peer)
 
 uv run pytest -q                                    # lib/tests; testpaths = examples + lib/tests, so run from the root
 examples/01-wasm-extract/run.sh                     # offline, ~8-10 min, diffed against expected/ (caffeinate -i on a laptop)
@@ -77,6 +79,7 @@ examples/02-wasm-text2cypher/run.sh --site          # dist/ served as Pages serv
 examples/02-wasm-text2cypher/run.sh --llm-eval      # local only: both models in the system Chrome (WebGPU), never diffed
 examples/03-wasm-agent-memory/run.sh                # offline, a few seconds: Node, Chromium, native
 examples/03-wasm-agent-memory/run.sh --site         # dist/ served as Pages serves it, on EX03_PORT (default 8703)
+node examples/03-wasm-agent-memory/harness/embed.mjs [--check]   # by hand, after a scripted text changes: data/embeddings.json
 node site/build.mjs [--no-build]                    # the Pages site into site/dist/
 python3 -I lib/opfsfmt.py check|to-dir|to-tar ...   # strict guard for a store exported from OPFS
 ```
@@ -114,8 +117,9 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   only that section skips). 02's and 03's keys: `wasm` (Node 20+, the pinned bundle, npm pins) and
   `browser`. 01's native section needs `relate` 1.2.0 on `PATH` and the matching binding, 02's and
   03's the binding; a different version fails at once. 02's model never runs in `run.sh` (no GPU in
-  CI; its output is not byte-stable): its browser section uses `?llm=canned`. 03 has no model: its
-  browser section uses `?test=1`, which only turns off animation and pacing.
+  CI; its output is not byte-stable): its browser section uses `?llm=canned`. 03's embedding model never
+  runs in `run.sh` either: the scripts' vectors are committed, and its browser section uses
+  `?test=1`, which turns off animation, pacing and the model in the tab.
 
 ## Shared code (ADR-0008)
 
@@ -164,7 +168,7 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
 - **Per-origin names** (ADR-0003) carry the example's prefix (`ex01-…`/`ex02-…` stores and caches,
   `ex01.*` and `ex03.*` `localStorage` keys, `EX01_*`/`EX02_*`/`EX03_*` env vars): every example
   shares one origin. The one exception is a library's own fixed names, recorded in that example's
-  NOTES.md (02's W1: WebLLM's `webllm/*` caches).
+  NOTES.md (02's W1: WebLLM's `webllm/*` caches). 03's model cache is `ex03-models` (its T1).
 - **Engine pins move together** (ADR-0005, ADR-0007). A Relate upgrade bumps `@relate/relate-wasm` (package.json and
   lockfile), `relate-db` (pyproject and `uv.lock`), `ci/relate-<ver>.sha256`, `RELATE_VERSION` in
   `examples.yml`, `ver` in each `run.sh`, `RELATE` in each `build.mjs` and worker (03's is in
@@ -177,6 +181,11 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   also ships Relate's logo, favicon and mascot (ADR-0015, its NOTES D9): they are trademarks, used
   as `data/brand/README.txt` says (never retype or recolour the logo), not under this repository's
   licence.
+- **Example 03's vectors** (ADR-0017, 03's D3, T5): a scripted text (a memory, a recalled question,
+  a `try` chip, a typed turn in `harness/typed.mjs`) needs its vector in `data/embeddings.json`.
+  After changing one, run `node examples/03-wasm-agent-memory/harness/embed.mjs` (Playwright's
+  Chromium; online the first time, for the model), then re-record `expected/`. Never edit the file
+  by hand, and never compute it with the library's Node backend: its vectors differ from the tab's.
 - Every change must pass offline. Don't commit or push unless asked.
 
 ## Relate 1.2.0 rules for code here (details and repros in 01's NOTES.md)

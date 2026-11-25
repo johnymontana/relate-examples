@@ -34,9 +34,13 @@ the run. No `.env` and no network beyond the downloads below.
    `@neo4j/ontology-graph-spec`, NVL, js-yaml, esbuild and Playwright, each pinned with its integrity
    in its own `package-lock.json`). Its build bundles them itself. Its models never run in CI: no GPU,
    and its browser section drives the page in canned mode.
-9. **Example 03's npm packages** (`npm ci --omit=peer`: `@relate/relate-wasm`, NVL, the Public
-   Sans and IBM Plex Mono font packages, esbuild and Playwright, each pinned with its integrity in
-   its own `package-lock.json`). Its build bundles them itself. It has no model.
+9. **Example 03's npm packages** (`npm ci --omit=peer`: `@relate/relate-wasm`, NVL, Transformers.js,
+   the Public Sans and IBM Plex Mono font packages, esbuild and Playwright, each pinned with its
+   integrity in its own `package-lock.json`). Its build bundles them itself. Its embedding model
+   never runs in CI: the vectors of its scripted texts are committed (`data/embeddings.json`), and
+   its browser section keeps the model in the tab off. The step sets `ONNXRUNTIME_NODE_INSTALL=skip`:
+   Transformers.js depends on `onnxruntime-node`, which nothing here loads, and whose install
+   script would otherwise fetch CUDA libraries on linux.
 10. `uv run pytest -q`, `node examples/01-wasm-extract/harness/convert.mjs --check`, then every
    `examples/*/run.sh`, with a per-example result table in the job summary; the job fails if any
    example fails.
@@ -57,7 +61,7 @@ serves the other), runs example 01's `npm ci --omit=peer` and `npm run vendor`, 
 `npm ci --omit=peer` and example 03's `npm ci --omit=peer`, then
 `node site/build.mjs`, and uploads `site/dist` with `actions/upload-pages-artifact`
 (`include-hidden-files`, so `.nojekyll` survives) for `actions/deploy-pages`. It needs no weights:
-examples 01 and 02 fetch their models from the Hugging Face Hub, and example 03 has none. Repository setting: Settings > Pages > Source:
+every example fetches its model from the Hugging Face Hub in the visitor's browser (example 03's only when the visitor types). Repository setting: Settings > Pages > Source:
 GitHub Actions. See [site/README.md](../site/README.md).
 
 ## The pins in this directory

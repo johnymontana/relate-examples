@@ -1,6 +1,6 @@
 # Example 03's agent is scripted, and its memory is real
 
-Status: accepted · Decided: 2026-11-24 (03's D1, D3, D6) · Scope: example 03
+Status: superseded by ADR-0017 · Decided: 2026-11-24 (03's D1, D3, D6) · Scope: example 03
 
 Example 03 is the Relate playground, rebuilt around one idea: Relate as the database an agent keeps
 its memory in. It has to work the moment the page opens, in any browser, and its run has to be

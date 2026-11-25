@@ -153,8 +153,12 @@ jobs:
       # ---- Example 03 (keys wasm, browser) ------------------------------------------------------------
       # 03's own package-lock.json: @relate/relate-wasm, NVL 2.0.0, the Public Sans and IBM Plex Mono font
       # packages, esbuild and playwright 1.63.0 (the same Playwright again, so the Chromium installed above
-      # serves it too); --omit=peer skips NVL's unused neo4j-driver peer. No model.
+      # serves it too) and Transformers.js; --omit=peer skips NVL's unused neo4j-driver peer. No model runs here:
+      # the scripts' vectors are in data/embeddings.json. Transformers.js depends on onnxruntime-node, which
+      # nothing here loads and whose install script would fetch CUDA libraries on linux: skipped.
       - name: Example 03's npm packages
+        env:
+          ONNXRUNTIME_NODE_INSTALL: skip
         run: npm ci --omit=peer --prefix examples/03-wasm-agent-memory
 
       # No .env in CI: offline runs.

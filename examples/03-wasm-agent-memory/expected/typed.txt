@@ -1,14 +1,17 @@
 # Example 03: turns nobody scripted (web/agent.js freeTurn), after the "A teammate that remembers" conversation
 
-No model: a question goes to recall (or to connect, when it asks how two known entities are linked, or
-on to trace, when it asks for a source); anything else is stored word for word as a note, linked to the
-entities it names. The reply is assembled from what the tool returned.
+No language model: a question goes to recall (or to connect, when it asks how two known entities are
+linked, or on to trace, when it asks for a source); anything else is stored word for word as a note,
+linked to the entities it names. The reply is assembled from what the tool returned. In the page a typed
+text gets its vector from the model in the tab; here each has one in data/embeddings.json, but the last
+two, which have none on purpose: the note is stored and found by its words alone, as it is in a tab
+that could not load the model.
 
-[10] user: Who owns the payments service?
+[11] user: Who owns the payments service?
   recall "Who owns the payments service?": 6 rows
-    [1] 0.0328 search owner-dana: Dana owns the payments service
+    [1] 0.0328 search owner-dana: Dana owns the payments service (by meaning and words, cosine 0.73)
           path: owns   about: Dana, payments service
-    [2] 0.0323 search depends: The checkout rewrite depends on the payments service
+    [2] 0.0323 search depends: The checkout rewrite depends on the payments service (by meaning and words, cosine 0.59)
           path: depends on   about: checkout rewrite, payments service
     [3] 0.0161 graph  db-cockroach: Use CockroachDB for the checkout rewrite
           path: depends on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
@@ -26,50 +29,54 @@ entities it names. The reply is assembled from what the tool returned.
          Priya leads the checkout rewrite (linked through checkout rewrite) [4]
          Tomás works on the checkout rewrite (linked through checkout rewrite) [5]
 
-[11] user: How are Priya and Dana connected?
+[12] user: How are Priya and Dana connected?
   connect Priya -> Dana: 3 memories apart
           path: Priya > leads > checkout rewrite > depends on > payments service > owns > Dana
   reply: Priya and Dana are 3 memories apart: Priya leads the checkout rewrite [1] → The checkout rewrite depends on the payments service [2] → Dana owns the payments service [3]
 
-[12] user: How are Priya and Postgres connected?
+[13] user: How are Priya and Postgres connected?
   connect Priya -> Postgres: no chain
   reply: No chain of current memories links Priya and Postgres.
 
-[13] user: Dana is on holiday in August
+[14] user: Dana is on holiday in August
   remember: 1 entity mentioned, 1 memory, 1 about-links, 0 superseded
-    + note note-13: Dana is on holiday in August
-  reply: Stored as a note, linked to Dana. There is no model on this page, so I kept your words as they are; an agent with a model would extract the entities and facts from them.
+    + note note-14: Dana is on holiday in August
+  reply: Stored as a note, linked to Dana. No language model reads your words on this page, so I kept them as they are; an agent with one would extract the entities and facts from them.
 
-[14] user: What is Dana doing in August?
-  recall "What is Dana doing in August?": 6 rows
-    [1] 0.0328 search note-13: Dana is on holiday in August
+[15] user: Who is on leave this summer?
+  recall "Who is on leave this summer?": 7 rows
+    [1] 0.0164 search note-14: Dana is on holiday in August (by meaning, cosine 0.34)
           path: Dana is on holiday…   about: Dana
-    [2] 0.0323 search owner-dana: Dana owns the payments service
-          path: owns   about: Dana, payments service
-    [3] 0.0161 graph  depends: The checkout rewrite depends on the payments service
-          path: owns > payments service > depends on   about: checkout rewrite, payments service
-    [4] 0.0081 graph  db-cockroach: Use CockroachDB for the checkout rewrite
-          path: owns > payments service > depends on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
+    [2] 0.0161 search tomas-away: Tomás is away next week at a conference in Lisbon (by meaning, cosine 0.32)
+          path: away next week   about: Lisbon, Tomás
+    [3] 0.0082 graph  owner-dana: Dana owns the payments service
+          path: Dana is on holiday… > Dana > owns   about: Dana, payments service
+    [4] 0.0081 graph  tomas-on: Tomás works on the checkout rewrite
+          path: away next week > Tomás > works on   about: Tomás, checkout rewrite
+    [5] 0.0041 graph  depends: The checkout rewrite depends on the payments service
+          path: Dana is on holiday… > Dana > owns > payments service > depends on   about: checkout rewrite, payments service
+        0.0040 graph  db-cockroach: Use CockroachDB for the checkout rewrite
+          path: away next week > Tomás > works on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
           replaced: Use Postgres for the checkout rewrite
-    [5] 0.0081 graph  lead: Priya leads the checkout rewrite
-          path: owns > payments service > depends on > checkout rewrite > leads   about: Priya, checkout rewrite
-        0.0081 graph  tomas-on: Tomás works on the checkout rewrite
-          path: owns > payments service > depends on > checkout rewrite > works on   about: Tomás, checkout rewrite
+        0.0040 graph  lead: Priya leads the checkout rewrite
+          path: away next week > Tomás > works on > checkout rewrite > leads   about: Priya, checkout rewrite
   reply: From memory:
          Dana is on holiday in August [1]
-         Dana owns the payments service [2]
-         The checkout rewrite depends on the payments service (linked through payments service) [3]
-         Use CockroachDB for the checkout rewrite (linked through payments service and checkout rewrite) [4]
-         Priya leads the checkout rewrite (linked through payments service and checkout rewrite) [5]
+         Tomás is away next week at a conference in Lisbon [2]
+         Dana owns the payments service (linked through Dana) [3]
+         Tomás works on the checkout rewrite (linked through Tomás) [4]
+         The checkout rewrite depends on the payments service (linked through Dana and payments service) [5]
 
-[15] user: How do you know Dana is on holiday?
-  recall "How do you know Dana is on holiday?": 6 rows
-    [1] 0.0328 search note-13: Dana is on holiday in August
+[16] user: How do you know Dana is on holiday?
+  recall "How do you know Dana is on holiday?": 7 rows
+    [1] 0.0328 search note-14: Dana is on holiday in August (by meaning and words, cosine 0.83)
           path: Dana is on holiday…   about: Dana
-        0.0323 search owner-dana: Dana owns the payments service
+        0.0323 search owner-dana: Dana owns the payments service (by meaning and words, cosine 0.48)
           path: owns   about: Dana, payments service
         0.0161 graph  depends: The checkout rewrite depends on the payments service
           path: owns > payments service > depends on   about: checkout rewrite, payments service
+        0.0159 search tomas-away: Tomás is away next week at a conference in Lisbon (by meaning, cosine 0.24)
+          path: away next week   about: Lisbon, Tomás
         0.0081 graph  db-cockroach: Use CockroachDB for the checkout rewrite
           path: owns > payments service > depends on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
           replaced: Use Postgres for the checkout rewrite
@@ -77,54 +84,61 @@ entities it names. The reply is assembled from what the tool returned.
           path: owns > payments service > depends on > checkout rewrite > leads   about: Priya, checkout rewrite
         0.0081 graph  tomas-on: Tomás works on the checkout rewrite
           path: owns > payments service > depends on > checkout rewrite > works on   about: Tomás, checkout rewrite
-  trace note-13: 1 version
-    current  note-13: Dana is on holiday in August
+  trace note-14: 1 version
+    current  note-14: Dana is on holiday in August
           said in "Your turn" at 2026-01-01T00:00:00Z: "Dana is on holiday in August"
-          path: Dana is on holiday… > message 13 > Your turn
+          path: Dana is on holiday… > message 14 > Your turn
   reply: You told me in "Your turn": "Dana is on holiday in August" [1]
 
-[16] user: tomas now works on the payments service too
+[17] user: tomas now works on the payments service too
   remember: 2 entities mentioned, 1 memory, 2 about-links, 0 superseded
-    + note note-16: tomas now works on the payments service too
-  reply: Stored as a note, linked to payments service and Tomás. There is no model on this page, so I kept your words as they are; an agent with a model would extract the entities and facts from them.
+    + note note-17: tomas now works on the payments service too
+  reply: Stored as a note, linked to payments service and Tomás. No language model reads your words on this page, so I kept them as they are; an agent with one would extract the entities and facts from them.
 
-[17] user: What is Tomás working on?
+[18] user: What is Tomás working on?
   recall "What is Tomás working on?": 8 rows
-    [1] 0.0328 search note-16: tomas now works on the payments service too
+    [1] 0.0325 search note-17: tomas now works on the payments service too (by meaning and words, cosine 0.65)
           path: tomas now works on…   about: Tomás, payments service
-    [2] 0.0164 graph  tomas-away: Tomás is away next week at a conference in Lisbon
-          path: tomas now works on… > Tomás > away next week   about: Lisbon, Tomás
-    [3] 0.0164 graph  depends: The checkout rewrite depends on the payments service
+    [2] 0.0164 search tomas-away: Tomás is away next week at a conference in Lisbon (by meaning, cosine 0.66)
+          path: away next week   about: Lisbon, Tomás
+    [3] 0.0163 graph  depends: The checkout rewrite depends on the payments service
           path: tomas now works on… > payments service > depends on   about: checkout rewrite, payments service
-    [4] 0.0164 graph  owner-dana: Dana owns the payments service
+    [4] 0.0163 graph  owner-dana: Dana owns the payments service
           path: tomas now works on… > payments service > owns   about: Dana, payments service
-    [5] 0.0164 graph  tomas-on: Tomás works on the checkout rewrite
+    [5] 0.0163 graph  tomas-on: Tomás works on the checkout rewrite
           path: tomas now works on… > Tomás > works on   about: Tomás, checkout rewrite
-        0.0082 graph  note-13: Dana is on holiday in August
+        0.0081 graph  note-14: Dana is on holiday in August
           path: tomas now works on… > payments service > owns > Dana > Dana is on holiday…   about: Dana
-        0.0082 graph  db-cockroach: Use CockroachDB for the checkout rewrite
+        0.0081 graph  db-cockroach: Use CockroachDB for the checkout rewrite
           path: tomas now works on… > Tomás > works on > checkout rewrite > database: CockroachDB   about: CockroachDB, checkout rewrite
           replaced: Use Postgres for the checkout rewrite
-        0.0082 graph  lead: Priya leads the checkout rewrite
+        0.0081 graph  lead: Priya leads the checkout rewrite
           path: tomas now works on… > Tomás > works on > checkout rewrite > leads   about: Priya, checkout rewrite
   reply: From memory:
          tomas now works on the payments service too [1]
-         Tomás is away next week at a conference in Lisbon (linked through Tomás) [2]
+         Tomás is away next week at a conference in Lisbon [2]
          The checkout rewrite depends on the payments service (linked through payments service) [3]
          Dana owns the payments service (linked through payments service) [4]
          Tomás works on the checkout rewrite (linked through Tomás) [5]
 
-[18] user: What about Kubernetes?
+[19] user: What about Kubernetes?
   recall "What about Kubernetes?": 0 rows
   reply: Nothing in memory matches that. Play the conversation first, or tell me something and then ask about it.
 
-[19] user: And what do you know?
+[20] user: And what do you know?
   recall "And what do you know?": 0 rows
   reply: Nothing in memory matches that. Play the conversation first, or tell me something and then ask about it.
 
-[20] user: The office moves in spring
+[21] user: The office moves in spring
   remember: 0 entities mentioned, 1 memory, 0 about-links, 0 superseded
-    + note note-20: The office moves in spring
-  reply: Stored as a note. It names nothing I already know, so it is linked to no entity yet: search will still find it by its words.
+    + note note-21: The office moves in spring
+  reply: Stored as a note. It names nothing I already know, so it is linked to no entity yet: search will still find it. It has no vector (the embedding model is not loaded), so only its words will find it.
+
+[22] user: When does the office move?
+  recall "When does the office move?" (no vector): 1 row
+    [1] 0.0164 search note-21: The office moves in spring (by words)
+          path: The office moves in…
+  reply: From memory:
+         The office moves in spring [1]
 
 the store: 8 Entity, 10 Memory, 7 Message, 3 Session; 17 ABOUT, 10 FROM, 7 IN_SESSION, 15 MENTIONS, 1 SUPERSEDES

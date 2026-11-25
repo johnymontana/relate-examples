@@ -1,23 +1,46 @@
 // @ts-check
 /**
- * embed.js: the stand-in for an embedding model (NOTES.md D3, ADR-0014).
+ * embed.js: where a text's vector comes from, and the words a full-text search gets
+ * (NOTES.md D3, ADR-0017).
  *
- * `embed(text)` hashes a text's content words and their character trigrams into DIMS buckets
- * (feature hashing, FNV-1a) and L2-normalises the result. Two texts that share words, or parts of
- * words ("decide", "decided"), get a high cosine similarity; two that share none get about zero. It
- * captures lexical overlap, not meaning. That is enough to run a real vector index and a real
- * similarity search in the tab with no model to download, and it is deterministic, so the same text
- * gives the same vector in Node, in the page and in CI.
+ * Vectors are real: every one comes from all-MiniLM-L6-v2 (384 dimensions, Apache-2.0), a small
+ * sentence-embedding model, so two texts that mean similar things are close whatever their words.
+ * There are two ways to get one, and both give the same vector for the same text:
  *
- * An application calls its embedding model here instead. Nothing else in the example changes: the
- * vector index, the SEARCH clause and the recall statement take whatever vectors they are given.
+ *   ahead of time   data/embeddings.json holds the vector of every text the scripts use (each
+ *                   memory, each scripted question, the suggested messages), computed with the
+ *                   model by harness/embed.mjs. The page and the regression run read them from
+ *                   there, so the scripted conversations need no model, start at once, and give
+ *                   the same result everywhere.
+ *   in the tab      a text the visitor types is embedded by the same model, in a worker
+ *                   (web/embed.worker.js, Transformers.js on WebAssembly), fetched once from the
+ *                   Hugging Face Hub at a pinned revision and kept in the browser's cache.
  *
- * `terms(text)` is the same content words as one string: the query the full-text search gets, so a
- * question's "what", "do" and "you" do not count as search terms.
+ * createEmbedder joins the two: a known text is looked up, an unknown one goes to `live` when
+ * there is one. Without a vector (no network, no model) a text is still stored and searched by
+ * its words: recall's vector search then finds nothing and its full-text search carries on.
+ *
+ * `terms(text)` is a text's content words as one string: the query the full-text search gets, so
+ * a question's "what", "do" and "you" do not count as search terms.
  */
 
+/** The embedding model: what harness/embed.mjs and web/embed.worker.js load, and what data/embeddings.json must name. */
+export const MODEL = Object.freeze({
+  id: 'Xenova/all-MiniLM-L6-v2',
+  revision: '751bff37182d3f1213fa05d7196b954e230abad9',
+  dtype: 'q8',
+  dims: 384,
+  /** The files the model needs, with their size and sha256 at that revision. */
+  files: Object.freeze({
+    'config.json': { bytes: 650, sha256: '7135149f7cffa1a573466c6e4d8423ed73b62fd2332c575bf738a0d033f70df7' },
+    'tokenizer.json': { bytes: 711661, sha256: 'da0e79933b9ed51798a3ae27893d3c5fa4a201126cef75586296df9b4d2c62a0' },
+    'tokenizer_config.json': { bytes: 366, sha256: '9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3' },
+    'onnx/model_quantized.onnx': { bytes: 22972370, sha256: 'afdb6f1a0e45b715d0bb9b11772f032c399babd23bfc31fed1c170afc848bdb1' },
+  }),
+});
+
 /** The vector length: the graph type and the vector index in memory.js declare the same number. */
-export const DIMS = 256;
+export const DIMS = MODEL.dims;
 
 /** Words that carry no content in a question or a note. */
 const STOP = new Set(`a about again all also am an and any are as at be been but by can could did do does
@@ -53,33 +76,41 @@ export function terms(text) {
   return contentWords(text).join(' ');
 }
 
-/** FNV-1a, 32 bits, over a string's UTF-16 code units (the features are ASCII). @param {string} s */
-function fnv1a(s) {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
+/**
+ * Check a precomputed file against the model this build expects; throws with what to run.
+ * @param {any} file  data/embeddings.json, parsed
+ * @returns {Map<string, number[]>} text -> vector
+ */
+export function precomputed(file) {
+  const m = file?.model ?? {};
+  if (m.id !== MODEL.id || m.revision !== MODEL.revision || m.dtype !== MODEL.dtype || m.dims !== MODEL.dims) {
+    throw new Error(`data/embeddings.json was made with ${m.id}@${String(m.revision).slice(0, 7)} (${m.dtype}, ${m.dims}); this build expects ${MODEL.id}@${MODEL.revision.slice(0, 7)} (${MODEL.dtype}, ${MODEL.dims}): run node harness/embed.mjs`);
   }
-  return h >>> 0;
+  const map = new Map(Object.entries(file.vectors ?? {}));
+  for (const [text, v] of map) if (!Array.isArray(v) || v.length !== MODEL.dims) throw new Error(`data/embeddings.json: the vector of ${JSON.stringify(text)} has ${v?.length} numbers, not ${MODEL.dims}`);
+  return map;
 }
 
 /**
- * A text's vector: DIMS numbers, L2-normalised, rounded to six decimals (all zeros when the text has
- * no content words). Whole words weigh 1, character trigrams 0.5.
- * @param {string} text
- * @returns {number[]}
+ * @param {{known: Map<string, number[]>, live?: ((texts: string[]) => Promise<number[][]>) | null}} sources
+ *   known: the precomputed vectors; live: the model in the tab, when the page has one
+ * @returns {{embed: (texts: string[]) => Promise<Array<number[]|null>>, source: (text: string) => 'ahead'|'live'|'none'}}
  */
-export function embed(text) {
-  const v = new Array(DIMS).fill(0);
-  const add = (/** @type {string} */ feature, /** @type {number} */ weight) => {
-    const h = fnv1a(feature);
-    v[h % DIMS] += (h >>> 31 ? 1 : -1) * weight;
+export function createEmbedder({ known, live = null }) {
+  /** Vectors the model produced in this tab, kept so a text is embedded once. @type {Map<string, number[]>} */
+  const made = new Map();
+  return {
+    /** One vector per text, or null where there is none to be had. */
+    async embed(texts) {
+      const missing = [...new Set(texts.filter((t) => !known.has(t) && !made.has(t)))];
+      if (missing.length && live) {
+        try {
+          const vectors = await live(missing);
+          missing.forEach((t, i) => made.set(t, vectors[i]));
+        } catch { /* no model: these texts go without a vector */ }
+      }
+      return texts.map((t) => known.get(t) ?? made.get(t) ?? null);
+    },
+    source: (text) => (known.has(text) ? 'ahead' : made.has(text) ? 'live' : 'none'),
   };
-  for (const w of contentWords(text)) {
-    add(`w:${w}`, 1);
-    for (let i = 0; i + 3 <= w.length; i++) add(`t:${w.slice(i, i + 3)}`, 0.5);
-  }
-  const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
-  if (norm === 0) return v;
-  return v.map((x) => Math.round((x / norm) * 1e6) / 1e6);
 }
