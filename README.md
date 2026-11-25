@@ -45,7 +45,7 @@ uv run pytest -q                                    # lib/tests (run from the ro
 examples/01-wasm-extract/run.sh                     # one example, offline, diffed against its expected/
 examples/01-wasm-extract/run.sh --update            # accept an intended output change
 examples/02-wasm-text2cypher/run.sh --llm-eval      # 02's models on your GPU (local only; never part of a run)
-for r in examples/*/run.sh; do "$r"; done           # every example, as CI runs them
+for r in examples/*/run.sh; do "$r"; done           # every example, as CI runs them on main
 node site/build.mjs                                 # the Pages site into site/dist/
 ```
 
@@ -55,9 +55,11 @@ unless the comma list `EXAMPLES_REQUIRE` names that dependency's key (`wasm`, `g
 
 ## CI and Pages
 
-- [`.github/workflows/examples.yml`](.github/workflows/examples.yml), on every push and pull
-  request: installs the pinned CLI and binding, builds or restores each example's dependencies, runs
-  `uv run pytest -q` and every `examples/*/run.sh` with `EXAMPLES_REQUIRE=wasm,gliner,browser`.
+- [`.github/workflows/examples.yml`](.github/workflows/examples.yml), on every pull request and
+  every push to `main`: installs the pinned CLI and binding, builds or restores each example's
+  dependencies, runs `uv run pytest -q` and `examples/*/run.sh` with
+  `EXAMPLES_REQUIRE=wasm,gliner,browser`. On `main` that is every example; on a pull request, the
+  examples whose inputs it changed ([ci/README.md](ci/README.md), ADR-0018).
 - [`.github/workflows/pages.yml`](.github/workflows/pages.yml), once `examples.yml` has passed on a push to `main` (or on demand):
   builds `site/dist` and deploys it to GitHub Pages.
 

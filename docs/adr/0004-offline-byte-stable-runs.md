@@ -1,6 +1,6 @@
 # Each example's regression test is an offline, byte-stable run diffed against `expected/`
 
-Status: accepted · Decided: b26e6cd · Scope: repository
+Status: accepted · Decided: b26e6cd · Scope: repository · Amended by ADR-0018 (which examples CI runs on a pull request)
 
 These examples are meant to show what Relate 1.2.0 actually does, and to notice when that changes.
 Each example therefore has a `run.sh` that runs offline. It writes plain-text outputs to `out/` and
