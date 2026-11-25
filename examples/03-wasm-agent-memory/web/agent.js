@@ -10,10 +10,8 @@
  * memories the tool actually returned (a citation the engine did not return is reported as a problem,
  * and harness/run.mjs fails on it).
  *
- * Text the visitor types has no script. `freeTurn` handles it with rules, not a model: a question
- * goes to `recall` (or `connect`, when it asks how two known entities are linked) and the reply
- * lists what came back; anything else is stored word for word as a note, linked to the entities it
- * names.
+ * Visitors choose Ask or Save note. Ask reads the store with recall, connect or trace. Save note
+ * stores the literal text and links it to the entities it names (NOTES.md D8).
  *
  * Vectors come through `tools.embed` (web/embed.js): the scripts' texts have theirs ahead of time,
  * and a scripted turn without one is a problem; a typed text gets one from the model in the tab,
@@ -30,8 +28,10 @@
  *            entitiesNamed: (text: string) => Promise<any[]>|any[]}} Tools
  * @typedef {{nodes: number[], rels: number[], strong: boolean, id?: string, after?: number}} Path  rels[i] joins nodes[i] and nodes[i + 1]; `after` delays its lighting by that many steps
  * @typedef {{tool: string, [k: string]: any}} Step
+ * @typedef {{text?: string, cite?: string, n?: number}} Part
+ * @typedef {{parts: Part[], related?: any[]}} Answer
  * @typedef {{user: string, session: {id: string, title: string, startedAt: string}, seq: number,
- *            steps: Step[], reply: {parts: Array<{text?: string, cite?: string, n?: number}>, cites: Array<{id: string, n: number, text: string|null}>},
+ *            steps: Step[], reply: {parts: Part[], related?: any[], cites: Array<{id: string, n: number, text: string|null}>},
  *            highlight: {paths: Path[]}, problems: string[]}} TurnResult
  */
 
@@ -98,12 +98,12 @@ function returned(step) {
 /**
  * The reply's citations resolved against what the tools returned, and the paths to highlight, in
  * the order the tools returned them: a chain or a trace is strong throughout; a recalled row is
- * strong when the reply cites it (or, with no citations, when it is among the first `strongest`),
- * and soft otherwise.
- * @param {string} replyText @param {Step[]} steps @param {string[]} problems @param {number} [strongest]
+ * strong when the reply cites it, and soft otherwise.
+ * @param {Answer} answer @param {Step[]} steps @param {string[]} problems
  */
-function settle(replyText, steps, problems, strongest = 0) {
-  const { parts, ids } = parseReply(replyText);
+function settle(answer, steps, problems) {
+  const ids = [...new Set(answer.parts.flatMap((p) => p.cite !== undefined ? [p.cite] : []))];
+  const parts = answer.parts.map((p) => p.cite !== undefined ? { cite: p.cite, n: ids.indexOf(p.cite) + 1 } : p);
   /** @type {Path[]} */ const paths = [];
   const all = new Map();
   for (const step of steps) {
@@ -112,8 +112,8 @@ function settle(replyText, steps, problems, strongest = 0) {
     if (step.tool === 'connect' && step.row) paths.push({ nodes: step.row.nodes, rels: step.row.rels, strong: true });
     if (step.tool === 'trace') for (const r of step.rows) paths.push({ nodes: r.nodes, rels: r.rels, strong: true });
     if (step.tool === 'recall') {
-      for (const [i, r] of step.rows.entries()) {
-        const strong = ids.includes(r.id) || (ids.length === 0 && i < strongest);
+      for (const r of step.rows) {
+        const strong = ids.includes(r.id);
         paths.push({ nodes: r.nodes, rels: r.rels, strong, id: r.id });
         // then the entities the recalled memory is about, lit after the path that reached it
         const hit = r.nodes[r.nodes.length - 1];
@@ -126,7 +126,7 @@ function settle(replyText, steps, problems, strongest = 0) {
     if (!m) problems.push(`the reply cites ${id}, which no tool returned`);
     return { id, n: i + 1, text: m?.text ?? null };
   });
-  return { reply: { parts, cites }, highlight: { paths } };
+  return { reply: { parts, cites, ...(answer.related?.length ? { related: answer.related } : {}) }, highlight: { paths } };
 }
 
 /**
@@ -148,9 +148,10 @@ export function mergePaths(paths) {
  * (remember), reply.
  * @param {Tools} tools
  * @param {ReturnType<typeof plan>[number]} step
+ * @param {{edited?: boolean, visitorMemoryIds?: Set<string>, hasMemories?: boolean}} [context]
  * @returns {Promise<TurnResult>}
  */
-export async function scriptedTurn(tools, step) {
+export async function scriptedTurn(tools, step, context = {}) {
   /** @type {Step[]} */ const steps = [];
   /** @type {string[]} */ const problems = [];
   if (step.recall) {
@@ -161,12 +162,12 @@ export async function scriptedTurn(tools, step) {
   }
   if (step.connect) {
     const row = await tools.connect(step.connect);
-    if (!row) problems.push(`connect found no chain from ${step.connect.from} to ${step.connect.to}`);
+    if (!row && !context.edited) problems.push(`connect found no chain from ${step.connect.from} to ${step.connect.to}`);
     steps.push({ tool: 'connect', ...step.connect, row });
   }
   if (step.trace) {
     const rows = await tools.trace({ id: step.trace });
-    if (!rows.length) problems.push(`trace found no memory ${step.trace}`);
+    if (!rows.length && !context.edited) problems.push(`trace found no memory ${step.trace}`);
     steps.push({ tool: 'trace', id: step.trace, rows });
   }
   if (step.remember) {
@@ -185,19 +186,22 @@ export async function scriptedTurn(tools, step) {
     if (counts.links !== wanted) problems.push(`remember linked ${counts.links} of ${wanted} entities (an "about" names an entity the turn does not list)`);
     steps.push({ tool: 'remember', entities, memories, counts });
   }
-  const { reply, highlight } = settle(step.reply, steps, problems);
+  let answer;
+  if (context.edited) {
+    const read = steps.find((s) => s.tool !== 'remember');
+    if (read?.tool === 'recall') answer = recallAnswer(read.rows, { ...context, visitorMemoryIds: context.visitorMemoryIds ?? new Set() });
+    else if (read?.tool === 'connect') answer = connectionAnswer(read);
+    else if (read?.tool === 'trace') answer = sourceAnswer(read.rows, read.id);
+    else answer = { parts: [{ text: 'The scripted write ran. Open What it knows to inspect the current memories.' }] };
+  } else {
+    answer = parseReply(step.reply);
+  }
+  const { reply, highlight } = settle(answer, steps, problems);
   return { user: step.user, session: step.session, seq: step.seq, steps, reply, highlight, problems };
 }
 
-const ASKS = /^(who|whom|whose|what|when|where|why|which|how|is|are|was|were|am|do|does|did|can|could|should|would|will|have|has|tell me|remind me|show me|list|find|any)\b/i;
 const SOURCE = /\b(how do you know|who told you|when did (i|we) (tell|say|mention)|where did (that|this|you) .*(come|hear|learn)|what is your source)\b/i;
 const LINKS = /\b(connect(ed|ion|s)?|relat(ed|es|ion|ionship)|link(ed|s)?|between|path|to do with)\b/i;
-
-/** Whether typed text is a question for the memory rather than something to store. @param {string} text */
-export function isQuestion(text) {
-  const t = text.trim();
-  return /\?\s*$/.test(t) || ASKS.test(t);
-}
 
 /** A sentence's first words, as a note's short label. @param {string} text */
 function gistOf(text) {
@@ -207,51 +211,98 @@ function gistOf(text) {
 
 const list = (/** @type {string[]} */ xs) => (xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
+/** A literal reply drawn from current recall rows. In edited playback, include visitor-authored
+ * matches even when the retrieval reached them through another memory.
+ * A paired suggestion can identify the saved memory for its exercise. It must also be in the
+ * result of the current recall.
+ * @param {any[]} rows @param {{hasMemories?: boolean, visitorMemoryIds?: Set<string>, suggestedMemoryId?: string}} context
+ * @returns {Answer} */
+function recallAnswer(rows, { hasMemories, visitorMemoryIds, suggestedMemoryId }) {
+  if (!rows.length) {
+    const text = hasMemories === false
+      ? 'Memory is empty. Play a conversation or save a note, then ask about it.'
+      : 'No matching memory. Open What it knows to browse the stored facts.';
+    return { parts: [{ text }] };
+  }
+  const suggested = rows.find((row) => row.id === suggestedMemoryId);
+  const first = suggested ?? rows.find((row) => row.via !== 'graph') ?? rows[0];
+  const main = visitorMemoryIds
+    ? rows.filter((r) => r.id === first.id || r.via !== 'graph' || visitorMemoryIds.has(r.id))
+    : [first];
+  /** @type {Part[]} */ const parts = [];
+  if (visitorMemoryIds) parts.push({ text: 'From the edited memory:' });
+  for (const row of main) {
+    let prefix = 'Closest matching memory: ';
+    if (visitorMemoryIds) prefix = visitorMemoryIds.has(row.id) ? '\nYour note: ' : '\n';
+    else if (suggested) prefix = row.via === 'graph' ? `Your saved note, linked through ${list(row.through)}: ` : 'Your saved note: ';
+    parts.push({ text: prefix + row.text }, { cite: row.id });
+  }
+  return { parts, related: rows.filter((r) => !main.includes(r)) };
+}
+
+/** Trace an exact memory. When a search chose it, identify the match before quoting its source.
+ * The original message can differ from today's value after a console edit.
+ * @param {any[]} versions @param {string} id @param {any} [match] @returns {Answer} */
+function sourceAnswer(versions, id, match) {
+  const source = versions.find((v) => v.id === id);
+  const fact = match ?? source;
+  if (!fact) return { parts: [{ text: 'This memory has no available source message.' }] };
+  const label = match ? 'Closest matching memory: ' : 'Stored memory: ';
+  /** @type {Part[]} */ const parts = [{ text: label + fact.text }, { cite: id }];
+  parts.push({ text: source
+    ? `\nSource message from ${source.session}: “${source.said}”`
+    : '\nThe original source message is unavailable.' });
+  return { parts };
+}
+
+/** @param {Step} step @returns {Answer} */
+function connectionAnswer({ from, to, row }) {
+  if (!row) return { parts: [{ text: `No chain of current memories links ${from} and ${to}.` }] };
+  /** @type {Part[]} */ const parts = [{ text: `${from} and ${to} are ${row.hops} ${row.hops === 1 ? 'memory' : 'memories'} apart: ` }];
+  for (const [i, memory] of row.memories.entries()) {
+    parts.push({ text: (i ? ' → ' : '') + memory.text }, { cite: memory.id });
+  }
+  return { parts };
+}
+
 /**
  * One turn the visitor typed. No model: rules decide the tool, and the reply is assembled from the
  * tool's rows.
  * @param {Tools} tools
  * @param {string} text
- * @param {{session: {id: string, title: string, startedAt: string}, seq: number, at: string, messageId: string, noteId: string}} ctx
+ * @param {{session: {id: string, title: string, startedAt: string}, seq: number, at: string, messageId: string, noteId: string, intent?: 'ask'|'save', hasMemories?: boolean, suggestedMemoryId?: string}} ctx
  * @returns {Promise<TurnResult>}
  */
 export async function freeTurn(tools, text, ctx) {
   /** @type {Step[]} */ const steps = [];
   /** @type {string[]} */ const problems = [];
-  let replyText;
-  if (isQuestion(text)) {
-    const named = LINKS.test(text) ? await tools.entitiesNamed(text) : [];
+  let answer;
+  const intent = ctx.intent ?? 'ask';
+  if (intent === 'ask') {
+    const wantsSource = SOURCE.test(text);
+    const named = !wantsSource && LINKS.test(text) ? await tools.entitiesNamed(text) : [];
     if (named.length >= 2) {
       // the two entities in the order the question names them
       const folded = ` ${text.toLowerCase()} `;
       const [a, b] = [...named].sort((x, y) => folded.indexOf(x.name.toLowerCase()) - folded.indexOf(y.name.toLowerCase()));
       const row = await tools.connect({ from: a.name, to: b.name });
-      steps.push({ tool: 'connect', from: a.name, to: b.name, row });
-      replyText = row
-        ? `${a.name} and ${b.name} are ${row.hops} ${row.hops === 1 ? 'memory' : 'memories'} apart: ${row.memories.map((/** @type {any} */ m) => `${m.text} [[${m.id}]]`).join(' → ')}`
-        : `No chain of current memories links ${a.name} and ${b.name}.`;
+      const step = { tool: 'connect', from: a.name, to: b.name, row };
+      steps.push(step);
+      answer = connectionAnswer(step);
     } else {
       const [vector] = await tools.embed([text]);
       const rows = await tools.recall({ question: text, vector });
       steps.push({ tool: 'recall', question: text, embedded: !!vector, rows });
-      if (rows.length && SOURCE.test(text)) {
-        // "how do you know…": the best match, traced to the message it came from
-        const versions = await tools.trace({ id: rows[0].id });
-        steps.push({ tool: 'trace', id: rows[0].id, rows: versions });
-        replyText = versions.map((/** @type {any} */ v, /** @type {number} */ i) =>
-          `${i === 0 ? 'You told me' : 'Before that, you told me'} in "${v.session}": "${v.said}"${i === 0 ? ` [[${v.id}]]` : ''}`).join('\n');
-      } else if (!rows.length) {
-        replyText = 'Nothing in memory matches that. Play the conversation first, or tell me something and then ask about it.';
+      const match = rows.find((r) => r.via !== 'graph') ?? rows[0];
+      if (match && wantsSource) {
+        const versions = await tools.trace({ id: match.id });
+        steps.push({ tool: 'trace', id: match.id, rows: versions });
+        answer = sourceAnswer(versions, match.id, match);
       } else {
-        const lines = rows.slice(0, 5).map((/** @type {any} */ r) => {
-          const how = r.via === 'graph' ? ` (linked through ${r.through.join(' and ')})`
-            : r.via === 'update' ? ` (this replaced: ${r.replaced[0]})` : '';
-          return `${r.text}${how} [[${r.id}]]`;
-        });
-        replyText = `From memory:\n${lines.join('\n')}`;
+        answer = recallAnswer(rows, ctx);
       }
     }
-  } else {
+  } else if (intent === 'save') {
     const named = await tools.entitiesNamed(text);
     const [embedding] = await tools.embed([text.trim()]);
     const memories = [{ id: ctx.noteId, kind: 'note', text: text.trim(), gist: gistOf(text), slot: '', about: named.map((/** @type {any} */ e) => e.name), embedding }];
@@ -263,10 +314,13 @@ export async function freeTurn(tools, text, ctx) {
     });
     steps.push({ tool: 'remember', entities: [], memories, counts });
     const how = embedding ? '' : ' It has no vector (the embedding model is not loaded), so only its words will find it.';
-    replyText = (named.length
-      ? `Stored as a note, linked to ${list(named.map((/** @type {any} */ e) => e.name))}. No language model reads your words on this page, so I kept them as they are; an agent with one would extract the entities and facts from them.`
-      : 'Stored as a note. It names nothing I already know, so it is linked to no entity yet: search will still find it.') + how;
+    const message = named.length
+      ? `Stored as a note, linked to ${list(named.map((/** @type {any} */ e) => e.name))}.`
+      : 'Stored as a note. It has no links to known entities.';
+    answer = { parts: [{ text: message + how }] };
+  } else {
+    throw new Error(`Unknown turn action: ${intent}`);
   }
-  const { reply, highlight } = settle(replyText, steps, problems, 3);
+  const { reply, highlight } = settle(answer, steps, problems);
   return { user: text.trim(), session: ctx.session, seq: ctx.seq, steps, reply, highlight, problems };
 }

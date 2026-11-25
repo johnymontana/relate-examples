@@ -1,6 +1,6 @@
 # 03 · The Relate playground as an agent's memory: a chat, Relate WASM, and the graph it fills, drawn with NVL
 
-A conversation on the left, the agent's memory on the right. As the conversation goes on, the agent
+A conversation and a live view of the agent's memory. As the conversation goes on, the agent
 writes what it learns into Relate, and the memory grows as a graph in front of you. In a later
 session the agent is asked something, reads its memory back, and the page lights the paths that
 read returned.
@@ -11,18 +11,18 @@ console of a graph database. This one shows what Relate is for: a database an ag
 its own process and thinks with. The Cypher is still there, one tab away. The page wears Relate's
 own brand: its colours, typefaces, logo and mascot.
 
-- **The agent is scripted.** Its replies, and the entities and memories it extracts from each
-  message, are written ahead of time: the two things a language model would produce. No language
+- **The agent is scripted.** The guided conversations supply the extractions and dialogue. After a visitor changes the store,
+  guided reads assemble their replies from the rows Relate returns. No language
   model runs on the page, so it starts at once in any browser.
 - **Its memory is real.** Every remember and recall is a statement that Relate 1.2.0, compiled to
   WebAssembly (npm `@relate/relate-wasm`), runs in the tab. A graph type makes the shape of a
   memory something the engine enforces. Recall is one statement: a vector search and a full-text
   search, fused, then two steps through the graph.
-- **Its vectors are real too.** Every memory and every question is embedded with all-MiniLM-L6-v2,
+- **Its vectors are real too.** Semantic search uses all-MiniLM-L6-v2,
   a 23 MB sentence-embedding model, so recall matches by meaning: "Who should I page about a
   billing outage?" finds "Dana owns the payments service", which shares no word with it. The
   scripts' vectors are computed ahead of time and come with the page; what you type is embedded
-  by the same model in the tab, fetched the first time you type.
+  by the same model in the tab, fetched when a submission first needs a new vector.
 - **The page draws what the engine returns.** The graph is the store after each call, drawn with
   NVL, the Neo4j Visualization Library. The highlight is the paths the recall statement returned. A scripted reply may cite only memories its tool
   returned, and the run fails on any other citation.
@@ -59,11 +59,18 @@ Pick one of three conversations, each two sessions and nine or ten turns:
 
 | Part of the page | What it does |
 |---|---|
-| The conversation | **Send the next message** plays one turn, **Play** plays the rest. Between the user's message and the reply, a card shows each thing the agent did with its memory: **remember** (what it stored), **recall** (what it found, and how each row was found: by meaning, with its cosine similarity to the question, by its words, or through the graph), **connect** (the chain between two entities) or **trace** (the message a memory came from). Each card opens to the statements Relate ran. A numbered mark in a reply is a citation: click it to see that memory in the graph. |
-| Your own turns | Type a question and it goes to the same recall statement. Type anything else and it is stored as a note, linked to the entities it names. Rules decide which, not a model (D8), and the reply says so. Your text does get a real vector: the first time you type something the scripts did not foresee, the page fetches the embedding model (23 MB from the Hugging Face Hub, then cached) and embeds it in the tab; a line under the box says how it went. If the model cannot be loaded, your text is stored and searched by its words. Nothing you type leaves the tab. |
+| The conversation | **Send the next message** plays one turn, **Play** plays the rest. Between the user's message and the reply, a card shows each thing the agent did with its memory: **remember** (what it stored), **recall** (what it found, and how each row was found: by meaning, with its cosine similarity to the question, by its words, or through the graph), **connect** (the chain between two entities) or **trace** (the message a memory came from). Each card opens to the statements Relate ran. Activate a numbered citation to see the fact, its original message and session, and its path in the graph. |
+| Your own turns | **Ask** (also Enter) reads memory. **Save note** stores the words you entered, including punctuation and double brackets, and links known entities mentioned in the text. In a suggested two-step exercise, save the note to enable its follow-up question. |
+| Search results | An ordinary question shows the closest matching memory first. **Related context** lists the other hits and how they were reached. A free-text source question displays the fact that matched beside its source message. You can also select a particular fact to inspect its exact source. |
+| Embeddings | The first submission that needs a new vector downloads the model (23 MB) and embeds the text in this tab. A failed download leaves word search available. **Retry model** retries in place and keeps the store and transcript. Notes saved without vectors remain searchable by their words. |
 | Memory | The store, drawn with NVL. A large node is an entity, coloured by kind, and it grows as more is learnt about it. A smaller node between entities is a memory, carrying two or three words of it. A paler one has been replaced, and the memory that replaced it points at it. Every relationship shows its type (`ABOUT`, `SUPERSEDES`, and with provenance on, `FROM` and `IN_SESSION`). New nodes grow in, and the view eases to keep the whole graph in the panel. After a recall, the paths it returned are selected hop by hop, each node pulsing as the path reaches it, everything else steps back, and the caption says what you are looking at. Hover a row in a recall card to see that row's path alone. Hover a node for its text, click it for its details, drag it, zoom and pan. **Messages and sessions** adds the provenance. |
-| What it knows | The same store as a list: what the agent believes now about each entity, and what each belief replaced. |
-| Under the hood | Every statement run, in order, with its parameters, counters and time. The graph type as the engine reads it back. A box to run your own Cypher on the same store: two of the samples are writes the graph type refuses. Nodes and paths in a result are highlighted in the graph. |
+| What it knows | Read current and replaced memories grouped by entity, then activate a fact with a pointer or keyboard to inspect its original wording. The tabs support arrow keys. Opening a citation or ledger fact brings its details into view on narrow screens, with a return control for the originating item. |
+| Corrections | Choose **Replace this memory** on a current fact, enter the new wording and save. Its predecessor and both source messages stay in the graph. Saving an ordinary note leaves existing facts current. |
+| Under the hood | Inspect statements and their parameters, counters and times, read the graph type, or run Cypher on the same store. The forbidden-edge sample needs two entities. The console pages a single execution’s rows in groups of 100. Graph highlights cover the full result, including rows on other pages. |
+
+Choosing the active scenario again preserves the conversation. If a note, correction or Cypher write
+changed the store, restarting or switching scenarios offers a choice to keep working or discard
+the edits. Reloading or closing the tab clears the database.
 
 URL parameters: `?scenario=team|trip|code`, `?autoplay=1`, `?test=1` (no animation, no pacing and
 no model in the tab: the browser section's mode), `?embed=off|live` (the model in the tab off or
@@ -74,13 +81,9 @@ on, whatever `?test` says).
 `web/agent.js` runs each turn the same way, whether it comes from a script or from the input box.
 The engine worker and the Node harness call the same code.
 
-1. **Read memory.** A turn that asks something calls one tool: `recall` with the user's words and
-   their vector, `connect` with two entity names, or `trace` with a memory's id.
-2. **Write memory.** A turn that tells something calls `remember` with the message and its
-   extraction: three statements (the message and its entities; the memories, each with its vector;
-   the supersessions).
-3. **Reply.** A scripted reply is text with `[[memory-id]]` citations, resolved against what step 1
-   returned. A typed turn's reply is assembled from the tool's rows.
+1. **Read memory.** An Ask runs recall with the question and its vector, or connects two known entities when the question asks about their relationship. Asking about a source runs a trace on the matching memory ID.
+2. **Write memory.** A scripted write runs the supplied extraction. Save note writes the visitor’s wording. An explicit correction uses a separate guarded statement keyed by the selected memory ID.
+3. **Reply.** On untouched playback, authored `[[memory-id]]` references resolve against the rows for that turn. Typed answers carry literal text and separate citation IDs. A guided read after visitor edits uses current rows and includes recalled visitor notes, even when a graph hop found them.
 
 After every tool call the worker returns the statements that ran and the whole store, and the page
 redraws from that.
@@ -92,7 +95,7 @@ redraws from that.
 (:Message)-[:MENTIONS]->(:Entity)         the people, projects and places a message names
 (:Memory)-[:FROM]->(:Message)             a fact, decision, preference or note, and where it came from
 (:Memory)-[:ABOUT]->(:Entity)             what it is about: a memory links the entities it names
-(:Memory)-[:SUPERSEDES]->(:Memory)        a newer memory in the same slot; nothing is deleted
+(:Memory)-[:SUPERSEDES]->(:Memory)        a version and its predecessor
 ```
 
 The model follows Relate's cookbook recipes on agent memory (`data/SOURCE.md`); D2 lists what is
@@ -110,7 +113,10 @@ uniqueness constraints, a vector index on `Memory.embedding` (cosine) and a full
 **A memory with a slot replaces the current one in that slot.** "Use CockroachDB for the checkout
 rewrite" has the slot `checkout rewrite/database`, as "Use Postgres…" had. The older memory gets
 `current = false` and a `supersededAt`, and the newer one points at it with `SUPERSEDES`. Nothing
-is deleted, so the agent can say what used to be true.
+is deleted, so the agent can say what used to be true. **Replace this memory** can also select
+a belief by its exact ID, including a note with an empty slot. The new version inherits its kind,
+slot and subject links. The write checks the target is current before creating the replacement or
+its source. Retrying the same completed operation returns its original memory ID (M8).
 
 **The store is in memory** and rebuilt when a conversation starts (D4). What the page calls a new
 session is a divider in one conversation on one store: the agent's context is empty by
@@ -150,10 +156,10 @@ how it was found and its path.
 | On this page | In an application |
 |---|---|
 | The extraction for each message is in the scenario file (`remember.entities`, `remember.memories`). | A language model returns it as structured output. |
-| The reply is in the scenario file, with citations checked against the tool's rows. | A language model writes it from the tool's rows. |
+| Untouched guided playback uses the scenario reply, checked against the tool’s rows. After a visitor write, guided reads use the returned values. | A language model writes it from the tool's rows. |
 | Vectors come from all-MiniLM-L6-v2 (D3): from `data/embeddings.json` for the scripts' texts, from the model in the tab for typed ones. | The same call, to whichever embedding model the application uses. The index, the search and the recall statement take whatever vectors they are given; the graph type's dimension changes with the model. |
-| A typed message is routed by rules (D8). | The model chooses the tool. |
-| The schema, the three remember statements, and the recall, connect and trace statements | The same. Over `relate serve --mcp` they are `write_cypher` and `read_cypher` calls. |
+| The visitor chooses Ask or Save note. Within Ask, rules choose recall, connect or a source lookup (D8). | An agent can choose a read tool using its application’s policy and obtain write intent from the user. |
+| The schema and the remember, correct, recall, connect and trace statements | The same. Over `relate serve --mcp` they are `write_cypher` and `read_cypher` calls. |
 
 ## Setup
 
@@ -209,10 +215,10 @@ The native section needs the project env's `relate-db` 1.2.0 (`uv sync`); anothe
 |---|---|---|
 | `statements.cypher` | `harness/run.mjs` | The schema and the statement behind each tool, as the page runs them. |
 | `scenarios.txt` | `harness/run.mjs` | All three conversations through `web/agent.js` and `web/memory.js` on Relate 1.2.0 WASM: every tool call's rows (score, how each memory was reached, its path), what each remember stored, every reply and its citations. Then every remember run a second time, which must change nothing. |
-| `typed.txt` | `harness/run.mjs` | Twelve turns nobody scripted: questions, one that shares no word with the note it finds, one that asks for a source, two entities to connect, notes that name known entities; then a note and a question that have no vector, stored and found by their words. |
+| `typed.txt` | `harness/run.mjs` | Explicit Ask and Save note turns cover provenance, graph connections, literal note text, word-only fallback and recall after visitor edits. |
 | `probes.txt` | `harness/run.mjs` | M1–M7, each a minimal repro on Relate 1.2.0 WASM, with vectors made for the probe so every similarity is known exactly. Then what the model's vectors say about eight pairs of the scripts' texts: five that share no word and are found by meaning, one found both ways, two unrelated. |
-| `browser.txt` | `harness/drive.mjs` | The page in headless Chromium against `dist/` at the Pages sub-path, with its production CSP: boot; the logo and both typefaces loaded; every scripted turn (equal to the Node section's, with what NVL holds equal to the store, what NVL has selected equal to the returned paths, and the rest disabled); the buttons; typed turns, found by meaning with the vectors that come with the page, and two without a vector, found by words; the list; the console, with two refused writes and a result whose paths get highlighted; the toggles, a theme change among them; the whole graph inside the panel once the layout rests (N3); nothing requested from any other origin; no console errors or CSP violations. NVL draws to a canvas, so these read NVL's own state, not pixels (N4, N5). |
-| `native.txt` | `harness/native.py` | Every statement the conversations ran (55), replayed on native Relate 1.2.0 with the same parameters: the same rows, ids, scores and paths included. The graph type refuses the same writes natively. |
+| `browser.txt` | `harness/drive.mjs` | Chromium loads the production Pages build offline, plays all three scripts and compares the stored graph and NVL selections with Node replay. Browser interactions cover explicit writes, source inspection and return focus, responsive layouts, reset protection, result paging, console refusals and recovery from a simulated embedding-worker failure. NVL checks use its actual selection state (N4, N5). The separate `--smoke --live` run exercises download interruption and retry with the real model. |
+| `native.txt` | `harness/native.py` | The guided conversations and the correction cases in `harness/corrections.mjs` replay on native Relate 1.2.0 with their WASM parameters. The rows, IDs, scores and paths must match. Checks cover a repeated correction, a stale target, unrelated slotless notes and a later scripted update in the corrected slot. |
 
 ## The GitHub Pages site
 
@@ -245,8 +251,7 @@ The embedding model's files are kept in the Cache API as `ex03-models`.
 ## Browser support
 
 A current browser with module workers and WebAssembly; the browser section runs it in Chromium.
-Nothing needs WebGPU or OPFS, and the scripted conversations need no download beyond the page. Typing your own text fetches the embedding model once (23 MB, and the 15 MB runtime from this site); it runs on WebAssembly, one thread. The graph needs a canvas. On a narrow screen the conversation sits
-above the memory.
+Nothing needs WebGPU or OPFS, and the scripted conversations need no download beyond the page. Typing your own text fetches the embedding model once (23 MB, and the 15 MB runtime from this site); it runs on WebAssembly, one thread. NVL draws the graph on a canvas. The text ledger provides a keyboard-accessible route to a fact and its source. On a narrow screen the conversation sits above the memory.
 
 ## Credits and licences
 
@@ -268,7 +273,7 @@ above the memory.
 |---|---|
 | `web/` | the page: `index.html`, `style.css`, `app.js` (the page thread), `engine.worker.js` (Relate), `embed.worker.js` (the embedding model, started only for typed text). The modules: `memory.js` (the schema and the tool statements), `agent.js` (scripted and typed turns), `embed.js` (the pinned model, and where a text's vector comes from), `graph.js` (the drawing, with NVL). `vendor-entry.mjs` is NVL's bundle entry. |
 | `data/` | `scenarios/` (the three conversations), `embeddings.json` (the vector of every text the scripts use), `brand/` (the brand kit's files the page uses), `SOURCE.md` (formats and provenance), `LICENSE-relate.txt`, `LICENSE-onnxruntime.txt` |
-| `harness/` | `run.mjs` (the Node sections), `typed.mjs` (the typed turns it plays), `embed.mjs` (writes `data/embeddings.json`, by hand), `drive.mjs` (Chromium; `--smoke` against a deployed URL, `--live` for the model in the tab), `native.py` |
+| `harness/` | `run.mjs` (the Node sections), `typed.mjs` (typed turns), `corrections.mjs` (guarded version updates), `interactions.mjs` (browser interactions), `model-recovery.mjs` (retry and fallback), `embed.mjs` (writes `data/embeddings.json`, by hand), `drive.mjs` (Chromium; `--smoke` against a deployed URL, `--live` for the model in the tab), `native.py` |
 | `build.mjs`, `site.json`, `run.sh` | the static site, its entry in the Pages site, the regression run |
 | `screenshot.png` | the picture on this example's card on the Pages index: turn 7 of the first conversation, dark theme. Retake it with `node harness/drive.mjs --smoke --screenshot screenshot.png` after `npm run build` |
 | `expected/` | what `run.sh` diffs against |

@@ -6,7 +6,7 @@
  * Messages, each {id, op, ...} answered by {id, ok: true, result} or {id, ok: false, error, trap}:
  *   init            load the WASM and check the version: {version}
  *   open            a fresh store with the memory schema: {graphType, calls, snapshot}
- *   tool {tool, args}   a memory tool (memory.js: remember, recall, connect, trace, entitiesNamed):
+ *   tool {tool, args}   a memory tool (memory.js: remember, correct, recall, connect, trace, entitiesNamed):
  *                   {result, calls, snapshot}
  *   query {cypher}  any statement, from the "Under the hood" console: {columns, rows, stats,
  *                   error, calls, snapshot}; an engine error is a result, not a failure

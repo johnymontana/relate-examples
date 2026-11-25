@@ -51,26 +51,27 @@
       </button>
       <div class="chips" id="chips" data-testid="chips" hidden></div>
       <form id="free" autocomplete="off">
-        <input id="input" data-testid="input" placeholder="Or type your own: ask the memory something, or tell it something new" aria-label="Your own message" disabled>
-        <button id="send" type="submit" data-testid="send" disabled aria-label="Send">
-          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4"/></svg>
-        </button>
+        <input id="input" data-testid="input" placeholder="Ask a question or write a note" aria-label="Your own message" aria-describedby="store-lifetime" disabled>
+        <button id="send" class="primary" type="submit" data-testid="send" disabled>Ask</button>
+        <button id="save-note" type="submit" data-testid="save-note" disabled>Save note</button>
       </form>
-      <div class="embed-status" id="embed-status" data-testid="embed-status" hidden></div>
+      <small class="composer-note" id="store-lifetime">Memory lives in this tab. Restarting or reloading clears it.</small>
+      <div class="embed-status" id="embed-status" data-testid="embed-status" role="status" hidden></div>
+      <button id="retry-model" type="button" hidden>Retry model</button>
     </div>
   </section>
 
   <section class="memory" aria-label="Memory">
     <div class="memory-head">
-      <div class="tabs" role="tablist" id="tabs">
-        <button role="tab" class="tab active" data-pane="graph" data-testid="tab-graph" aria-selected="true">Memory</button>
-        <button role="tab" class="tab" data-pane="ledger" data-testid="tab-ledger" aria-selected="false">What it knows</button>
-        <button role="tab" class="tab" data-pane="hood" data-testid="tab-hood" aria-selected="false">Under the hood <span class="pill-count" id="calls-count">0</span></button>
+      <div class="tabs" role="tablist" id="tabs" aria-label="Memory views">
+        <button role="tab" class="tab active" id="tab-graph" aria-controls="pane-graph" tabindex="0" data-pane="graph" data-testid="tab-graph" aria-selected="true">Memory</button>
+        <button role="tab" class="tab" id="tab-ledger" aria-controls="pane-ledger" tabindex="-1" data-pane="ledger" data-testid="tab-ledger" aria-selected="false">What it knows</button>
+        <button role="tab" class="tab" id="tab-hood" aria-controls="pane-hood" tabindex="-1" data-pane="hood" data-testid="tab-hood" aria-selected="false">Under the hood <span class="pill-count" id="calls-count">0</span></button>
       </div>
-      <div class="counts" id="counts" data-testid="counts"></div>
+      <div class="counts" id="counts" role="status" aria-atomic="true" data-testid="counts"></div>
     </div>
 
-    <div class="pane" id="pane-graph">
+    <div class="pane" id="pane-graph" role="tabpanel" aria-labelledby="tab-graph">
       <div class="graph-host" id="graph" data-testid="graph"></div>
       <div class="empty" id="empty">
         <img class="archie on-dark" src="assets/relate-brand-1.0/archie-mascot-flair.svg" alt="" width="112" height="85">
@@ -96,14 +97,14 @@
           <label class="key toggle"><input type="checkbox" id="provenance" data-testid="provenance"> messages and sessions</label>
         </div>
       </div>
-      <aside class="inspector" id="inspector" data-testid="inspector" hidden></aside>
+      <aside class="inspector" id="inspector" aria-label="Memory details" tabindex="-1" data-testid="inspector" hidden></aside>
     </div>
 
-    <div class="pane scroll" id="pane-ledger" data-testid="ledger" hidden></div>
+    <div class="pane scroll" id="pane-ledger" role="tabpanel" aria-labelledby="tab-ledger" data-testid="ledger" hidden></div>
 
-    <div class="pane scroll" id="pane-hood" hidden>
+    <div class="pane scroll" id="pane-hood" role="tabpanel" aria-labelledby="tab-hood" hidden>
       <div class="hood">
-        <p class="lede">The agent is scripted. The database is not: every <b>remember</b> and <b>recall</b> on this page is a statement that Relate, compiled to WebAssembly, runs in this tab. The vectors are real too: each memory and each question is embedded with all-MiniLM-L6-v2, ahead of time for the scripts and in this tab for what you type. Nothing you type is sent anywhere; the model's files are the only thing fetched from another site.</p>
+        <p class="lede">The conversation is scripted. Each <b>remember</b> and <b>recall</b> runs in Relate, compiled to WebAssembly in this tab. The scripts include vectors computed with all-MiniLM-L6-v2. For new text, the tab downloads the model and computes vectors locally. Word search remains available if the download fails. Your messages stay in the tab.</p>
         <details class="block" id="schema">
           <summary>The shape of a memory, enforced by the engine</summary>
           <p class="note">A graph type declares what a memory is. The engine refuses a write that does not fit: a memory without its text or its kind, a vector of the wrong length, an edge between the wrong kinds of node. This is the graph type as the engine reads it back.</p>
@@ -114,6 +115,7 @@
         <h2>Run your own</h2>
         <p class="note">The same store the agent uses. Writes are allowed, and the graph type still applies. Nodes and paths in a result are highlighted in the Memory tab.</p>
         <div class="samples" id="samples"></div>
+        <p class="note" id="sample-hint" hidden>The forbidden-edge example needs two entities. Send the first guided message to add them.</p>
         <textarea id="cypher" data-testid="cypher" rows="5" spellcheck="false" aria-label="A Cypher statement"></textarea>
         <div class="row">
           <button id="run" type="button" class="primary" data-testid="run" disabled>Run</button>
@@ -124,6 +126,14 @@
     </div>
   </section>
 </main>
+<dialog id="discard-dialog" aria-labelledby="discard-title" aria-describedby="discard-description">
+  <h2 id="discard-title">Discard your changes?</h2>
+  <p id="discard-description"></p>
+  <form method="dialog">
+    <button type="submit" value="keep" id="keep-working" autofocus>Keep working</button>
+    <button type="submit" value="discard" id="discard-changes">Discard changes</button>
+  </form>
+</dialog>
 <footer>
   <span>A scripted agent, a real database: <a href="https://relatedb.ai/">Relate</a> 1.2.0 running in this tab. Drawn with NVL.</span>
   <span class="links"><a href="../">all examples</a> · <a href="https://github.com/johnymontana/relate-examples/tree/main/examples/03-wasm-agent-memory">source</a> · <a href="THIRD_PARTY.md">licences</a></span>

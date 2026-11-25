@@ -3,7 +3,12 @@
   "title": "A coding agent's notes",
   "agent": "Coding agent",
   "blurb": "A coding agent is told a repository's house rules once. The next day, with an empty context window, it is asked about invoicing and sign-in, names nobody used. It finds the billing and auth rules by meaning, and the graph adds what goes with them, such as where tests live.",
-  "try": ["How do I run the tests?", "How are Kenji and pnpm connected?", "Kenji is on leave until Friday", "Is the auth owner around this week?"],
+  "try": [
+    {"id": "ask", "intent": "ask", "text": "How do I run the tests?"},
+    {"id": "connect", "intent": "ask", "text": "How are Kenji and pnpm connected?"},
+    {"id": "leave", "intent": "save", "text": "Kenji is on leave until Friday"},
+    {"id": "leave-question", "intent": "ask", "requires": "leave", "text": "Is the auth owner around this week?"}
+  ],
   "sessions": [
     {
       "id": "s1",

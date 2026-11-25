@@ -8,7 +8,7 @@ Each file is one scripted conversation (web/agent.js reads it):
 | Field | What it is |
 |---|---|
 | `id`, `title`, `agent`, `blurb` | the conversation's key in the URL, its name in the page's header, the label on the agent's replies, and a sentence about what it shows |
-| `try` | messages offered as chips once the script has finished. Each has a vector in `embeddings.json`, so the chips need no model |
+| `try` | suggestions shown after playback. Each has a scenario-local `id`, literal `text` and `intent` (ask or save). A follow-up names its prerequisite save by `requires`. Suggestion texts have vectors in `embeddings.json`. |
 | `sessions[]` | `id`, `title`, `startedAt` (a fixed ISO timestamp) and `turns[]`; a turn's time is the session's start plus three minutes per turn |
 | `turns[].user` | what the user says |
 | `turns[].remember` | the extraction a model would return for that message: `entities` (`name`, `kind`) and `memories` (`id`, `kind`: fact, decision or preference, `text`, `gist`: two or three words drawn on the graph, `about`: entity names, optional `slot` and `rationale`). A memory with a `slot` replaces the current memory in that slot. Every name in `about` must be in the same turn's `entities`. |

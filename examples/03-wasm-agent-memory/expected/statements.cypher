@@ -76,6 +76,39 @@ SET old.current = false, old.supersededAt = new.at
 MERGE (new)-[:SUPERSEDES]->(old)
 RETURN count(old) AS superseded;
 
+// ---- correct: replace the selected current memory and retain its source ----
+MATCH (old:Memory {id: $targetId})
+WHERE old.current AND old.seq < $message.seq
+  AND NOT EXISTS { MATCH (:Memory {id: $memory.id}) }
+  AND NOT EXISTS { MATCH (:Message {id: $message.id}) }
+MERGE (s:Session {id: $session.id})
+  ON CREATE SET s.title = $session.title, s.startedAt = datetime($session.startedAt)
+MERGE (msg:Message {id: $message.id})
+  ON CREATE SET msg.seq = $message.seq, msg.role = 'user', msg.text = $message.text, msg.at = datetime($message.at)
+MERGE (msg)-[:IN_SESSION]->(s)
+MERGE (m:Memory {id: $memory.id})
+  ON CREATE SET m.kind = old.kind, m.slot = old.slot, m.current = true, m.text = msg.text,
+                m.gist = $memory.gist, m.at = msg.at, m.seq = msg.seq,
+                m.embedding = CASE WHEN $memory.embedding IS NULL THEN null
+                                   ELSE vector([x IN $memory.embedding | toFloat(x)], 384, FLOAT32) END
+MERGE (m)-[:FROM]->(msg)
+WITH old, m, msg
+CALL (old, m, msg) {
+  MATCH (old)-[:ABOUT]->(e:Entity)
+  MERGE (m)-[:ABOUT]->(e)
+  MERGE (msg)-[:MENTIONS]->(e)
+  RETURN count(e) AS subjects
+}
+SET old.current = false, old.supersededAt = m.at
+MERGE (m)-[:SUPERSEDES]->(old)
+RETURN m.id AS id;
+
+// ---- correct: look up the receipt when replaying a completed correction ----
+MATCH (old:Memory {id: $targetId})<-[:SUPERSEDES]-(m:Memory {id: $memory.id})
+MATCH (m)-[:FROM]->(msg:Message {id: $message.id})-[:IN_SESSION]->(:Session {id: $session.id})
+WHERE msg.text = $message.text AND msg.seq = $message.seq
+RETURN m.id AS id;
+
 // ---- recall: hybrid search, then the graph ----
 CALL () {
   MATCH (m:Memory)

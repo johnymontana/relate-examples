@@ -27,7 +27,7 @@ code cites. Read both before changing an example.
   draws the store and selects the returned paths, and the page follows the Relate brand kit
   (`data/brand/`). Vectors are real (all-MiniLM-L6-v2): precomputed for the scripts' texts in
   `data/embeddings.json`, and made in the tab with Transformers.js for typed text.
-  Rows `M1`…`M7`, `N1`…`N6` and `T1`…`T5`; ids D.
+  Rows `M1`…`M8`, `N1`…`N6` and `T1`…`T5`; ids D.
 
 Examples 01 and 02 read Ontology Graph Spec 1.1 documents through the official SDK (npm
 `@neo4j/ontology-graph-spec` 0.12.2) via `lib/ogs.mjs`.

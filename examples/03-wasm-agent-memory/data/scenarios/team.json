@@ -3,7 +3,12 @@
   "title": "A teammate that remembers",
   "agent": "Team assistant",
   "blurb": "An assistant sits in on a team's planning. Three days later, in a new conversation, it is asked about a billing outage and about who is unavailable, in words it was never told. It finds the memories by meaning, and the people affected by following the graph.",
-  "try": ["Who owns the payments service?", "How are Priya and Dana connected?", "Dana is on holiday in August", "Who is on leave this summer?"],
+  "try": [
+    {"id": "ask", "intent": "ask", "text": "Who owns the payments service?"},
+    {"id": "connect", "intent": "ask", "text": "How are Priya and Dana connected?"},
+    {"id": "holiday", "intent": "save", "text": "Dana is on holiday in August"},
+    {"id": "holiday-question", "intent": "ask", "requires": "holiday", "text": "Who is on leave this summer?"}
+  ],
   "sessions": [
     {
       "id": "s1",

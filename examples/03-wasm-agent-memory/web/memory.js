@@ -22,6 +22,7 @@
  *
  * The tools, each a fixed statement with parameters:
  *   remember   three idempotent writes: the message and its entities, the memories, the supersessions
+ *   correct    replace a selected current memory by exact id and preserve its source history
  *   recall     one read: vector search (by meaning) and full-text search (by words) fused by
  *              reciprocal rank, each hit followed to its current version and then out through
  *              shared entities
@@ -106,6 +107,40 @@ CALL (new) {
 SET old.current = false, old.supersededAt = new.at
 MERGE (new)-[:SUPERSEDES]->(old)
 RETURN count(old) AS superseded`;
+
+/** A visitor replaces one exact belief; an empty slot is valid and selects no neighbours.
+ * The write guard precedes every MERGE, so a stale target or an occupied operation ID writes nothing. */
+export const CORRECT = `MATCH (old:Memory {id: $targetId})
+WHERE old.current AND old.seq < $message.seq
+  AND NOT EXISTS { MATCH (:Memory {id: $memory.id}) }
+  AND NOT EXISTS { MATCH (:Message {id: $message.id}) }
+MERGE (s:Session {id: $session.id})
+  ON CREATE SET s.title = $session.title, s.startedAt = datetime($session.startedAt)
+MERGE (msg:Message {id: $message.id})
+  ON CREATE SET msg.seq = $message.seq, msg.role = 'user', msg.text = $message.text, msg.at = datetime($message.at)
+MERGE (msg)-[:IN_SESSION]->(s)
+MERGE (m:Memory {id: $memory.id})
+  ON CREATE SET m.kind = old.kind, m.slot = old.slot, m.current = true, m.text = msg.text,
+                m.gist = $memory.gist, m.at = msg.at, m.seq = msg.seq,
+                m.embedding = CASE WHEN $memory.embedding IS NULL THEN null
+                                   ELSE vector([x IN $memory.embedding | toFloat(x)], ${DIMS}, FLOAT32) END
+MERGE (m)-[:FROM]->(msg)
+WITH old, m, msg
+CALL (old, m, msg) {
+  MATCH (old)-[:ABOUT]->(e:Entity)
+  MERGE (m)-[:ABOUT]->(e)
+  MERGE (msg)-[:MENTIONS]->(e)
+  RETURN count(e) AS subjects
+}
+SET old.current = false, old.supersededAt = m.at
+MERGE (m)-[:SUPERSEDES]->(old)
+RETURN m.id AS id`;
+
+/** A repeated submit is successful only when its original source and target match the request. */
+export const CORRECTION_RECEIPT = `MATCH (old:Memory {id: $targetId})<-[:SUPERSEDES]-(m:Memory {id: $memory.id})
+MATCH (m)-[:FROM]->(msg:Message {id: $message.id})-[:IN_SESSION]->(:Session {id: $session.id})
+WHERE msg.text = $message.text AND msg.seq = $message.seq
+RETURN m.id AS id`;
 
 /**
  * recall: one statement.
@@ -282,6 +317,20 @@ export function createMemory(db, exec, { onCall } = {}) {
         links: b?.rows[0]?.links ?? 0,
         superseded: c?.rows[0]?.superseded ?? 0,
       };
+    },
+
+    /**
+     * @param {{targetId: string, session: {id: string, title: string, startedAt: string},
+     *          message: {id: string, seq: number, text: string, at: string},
+     *          memory: {id: string, gist: string, embedding?: number[]|null}}} input
+     */
+    correct({ targetId, session, message, memory }) {
+      if (!message.text.trim()) throw new Error('Enter the replacement text.');
+      const params = { targetId, session, message, memory: { ...memory, embedding: memory.embedding ?? null } };
+      const applied = run('correct', true, CORRECT, params).rows[0];
+      if (applied) return { status: 'applied', id: applied.id };
+      const prior = run('correct', false, CORRECTION_RECEIPT, params).rows[0];
+      return prior ? { status: 'replayed', id: prior.id } : { status: 'stale', id: null };
     },
 
     /**

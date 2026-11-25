@@ -125,8 +125,8 @@ export function createGraph(host, { animate = true, onSelect } = {}) {
   const click = new ClickInteraction(nvl, { selectOnClick: false });
   const hover = new HoverInteraction(nvl, { drawShadowOnHover: true });
   const handlers = [new ZoomInteraction(nvl), new PanInteraction(nvl), new DragNodeInteraction(nvl), hover, click];
-  click.updateCallback('onNodeClick', (/** @type {any} */ n) => select(engineId(n.id)));
-  click.updateCallback('onCanvasClick', () => select(null));
+  click.updateCallback('onNodeClick', (/** @type {any} */ n) => pick(engineId(n.id)));
+  click.updateCallback('onCanvasClick', () => pick(null));
   hover.updateCallback('onHover', (/** @type {any} */ el, /** @type {any} */ _hits, /** @type {MouseEvent} */ ev) => {
     const v = el && String(el.id).startsWith('n') ? nodes.get(engineId(el.id)) : null;
     if (v) showTip(v, ev); else tip.hidden = true;
@@ -441,8 +441,15 @@ export function createGraph(host, { animate = true, onSelect } = {}) {
 
   /** @param {number|null} id */
   function select(id) {
-    selected = id !== null && nodes.has(id) && selected !== id ? id : null;
+    const next = id !== null && nodes.has(id) ? id : null;
+    if (next === selected) return;
+    selected = next;
     sync();
+  }
+
+  /** Only a pointer gesture toggles a node and notifies the page. @param {number|null} id */
+  function pick(id) {
+    select(id === selected ? null : id);
     const v = selected === null ? null : nodes.get(selected);
     onSelect?.(v ? { id: v.id, label: v.label, props: v.props } : null);
   }

@@ -72,6 +72,7 @@ const OPS = {
   async load() {
     if (extract) return { cached: true };
     const cached = await fetchModel();
+    self.postMessage({ phase: 'initializing' });
     extract = await pipeline('feature-extraction', MODEL.id, { revision: MODEL.revision, dtype: /** @type {any} */ (MODEL.dtype), device: 'wasm' });
     return { cached };
   },
