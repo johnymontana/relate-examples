@@ -5,11 +5,39 @@ comment). Both have run on GitHub since the first push (2026-11-23). `examples.y
 minutes, and `pages.yml` deployed example 01. Examples 02's and 03's steps run for the first time on
 the push that adds them. The regression test they run is ADR-0004, and the pins are ADR-0005.
 
-## `examples.yml`: tests and every example
+## `examples.yml`: tests and the examples
 
-[`.github/workflows/examples.yml`](../.github/workflows/examples.yml) runs on every push, pull
-request and on demand, with `EXAMPLES_REQUIRE=wasm,gliner,browser`, so a missing dependency fails
-the run instead of printing `SKIP`. It also sets `RELATE_TELEMETRY=off`, `RELATE_MAX_ROWS=0` and
+[`.github/workflows/examples.yml`](../.github/workflows/examples.yml) runs on every pull request,
+on every push to `main` and on demand, with `EXAMPLES_REQUIRE=wasm,gliner,browser`, so a missing
+dependency fails the run instead of printing `SKIP`.
+
+### What runs when (ADR-0018)
+
+| Started by | Examples run | Takes about |
+|---|---|---|
+| a push to `main`, or by hand (`workflow_dispatch`, on any branch) | every example | 19 minutes, 16.5 of them example 01 |
+| a pull request that changes example 01, or anything shared | every example | 19 minutes |
+| a pull request that changes only example 02 or 03 | that example | 3 minutes |
+| a pull request that changes only docs, the site's page or `lib/tests/` | none; `pytest` only | 2 minutes |
+
+The first two times are measured; the last two are estimates from the steps that remain, until
+such a pull request has run.
+
+A pull request's first step, "Which examples to run", gives the paths it changes to
+[`ci/changed-examples.sh`](changed-examples.sh), which prints the examples to run: the example a
+changed file belongs to, every example for a shared input (`lib/`, `scripts/`, the pins here,
+`pyproject.toml`, `uv.lock`, the workflow, `site/build.mjs`) or for a path it does not know, and
+none for a path no `run.sh` reads. The script's header has the full list and
+`lib/tests/test_changed_examples.py` pins it. The steps below that only one example needs are
+skipped with it: the gliner-rs build and the weights (01), each example's npm packages (02, 03),
+and Chromium when no example runs. Example 01's npm packages are always installed, because
+`lib/tests` reads the Relate WASM bundle from them. The job summary lists every example as run or
+not run.
+
+A push to a branch other than `main` starts nothing: a branch is tested through its pull request,
+once per push instead of twice. To run every example on a branch, start the workflow by hand.
+
+The workflow also sets `RELATE_TELEMETRY=off`, `RELATE_MAX_ROWS=0` and
 `RELATE_AGENT_MODE=0` (as `scripts/env.sh` does), so the CLI's output never depends on who started
 the run. No `.env` and no network beyond the downloads below.
 
@@ -41,9 +69,9 @@ the run. No `.env` and no network beyond the downloads below.
    its browser section keeps the model in the tab off. The step sets `ONNXRUNTIME_NODE_INSTALL=skip`:
    Transformers.js depends on `onnxruntime-node`, which nothing here loads, and whose install
    script would otherwise fetch CUDA libraries on linux.
-10. `uv run pytest -q`, `node examples/01-wasm-extract/harness/convert.mjs --check`, then every
-   `examples/*/run.sh`, with a per-example result table in the job summary; the job fails if any
-   example fails.
+10. `uv run pytest -q`, `node examples/01-wasm-extract/harness/convert.mjs --check`, then the
+   `run.sh` of each example this run needs ("What runs when"), with a per-example result table in
+   the job summary; the job fails if any example fails.
 
 The job has a 60-minute timeout. A cold cache adds the gliner-rs build, 304 MB of weights and
 Chromium before example 01's own run, which takes about 10 minutes. Example 02 adds about a minute
@@ -69,6 +97,7 @@ GitHub Actions. See [site/README.md](../site/README.md).
 | File | What it pins |
 |---|---|
 | `relate-1.2.0.sha256` | The v1.2.0 release's own SHA256SUMS, every platform's CLI (CI uses `relate-linux-amd64`). |
+| `changed-examples.sh` | Not a pin: which examples a pull request's changes need run (above). |
 | `gliner2.5-small-v1.sha256`, `gliner2.5-base-v1.sha256` | Every file of the GLiNER2.5 weights at the pinned Hugging Face revisions, read by `scripts/fetch-gliner.sh` and embedded into example 01's page by its build. |
 
 Some pins live elsewhere:

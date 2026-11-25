@@ -186,6 +186,11 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   After changing one, run `node examples/03-wasm-agent-memory/harness/embed.mjs` (Playwright's
   Chromium; online the first time, for the model), then re-record `expected/`. Never edit the file
   by hand, and never compute it with the library's Node backend: its vectors differ from the tab's.
+- **CI** (ADR-0018, `ci/README.md`): a pull request runs only the examples whose inputs it changed
+  (`ci/changed-examples.sh`); a push to `main` runs all of them. A green pull request therefore
+  says nothing about an example it did not touch: run that example's `run.sh` yourself when a
+  change could reach it. A new shared input needs no change (an unknown path runs everything); to
+  exempt a path, add it to the script and to `lib/tests/test_changed_examples.py`.
 - Every change must pass offline. Don't commit or push unless asked.
 
 ## Relate 1.2.0 rules for code here (details and repros in 01's NOTES.md)

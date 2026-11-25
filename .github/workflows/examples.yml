@@ -1,7 +1,13 @@
-# Runs `uv run pytest -q` and every example offline on linux/amd64 against the pinned Relate release.
-# Why each step exists and the cache layout: ci/README.md.
+# Runs `uv run pytest -q` and the examples offline on linux/amd64 against the pinned Relate release.
+# A push to main and a run started by hand run every example; a pull request runs the examples whose
+# inputs it changed (ci/changed-examples.sh, ADR-0018). Why each step exists and the cache layout:
+# ci/README.md.
 name: examples
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    branches: [main]   # a branch is tested through its pull request, once, not once more per push
+  pull_request:
+  workflow_dispatch:   # every example, on any branch
 permissions:
   contents: read
 concurrency:
@@ -31,6 +37,31 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2   # a pull request's checkout is its merge into the base: the base is HEAD^1
+
+      # Which examples this run needs (ADR-0018). For a pull request: those whose inputs it changed,
+      # every one of them if it touched anything shared. Otherwise every example. The outputs are
+      # ex01, ex02, ex03 (true or false, by the directory's number), any, and list.
+      - name: Which examples to run
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" == pull_request ]]; then
+            git diff --name-only --no-renames HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+            ci/changed-examples.sh < "$RUNNER_TEMP/changed.txt" > "$RUNNER_TEMP/examples.txt"
+            echo "This pull request changes $(wc -l < "$RUNNER_TEMP/changed.txt" | tr -d ' ') files." >> "$GITHUB_STEP_SUMMARY"
+          else
+            ci/changed-examples.sh --all > "$RUNNER_TEMP/examples.txt"
+          fi
+          for r in examples/*/run.sh; do
+            name="$(basename "$(dirname "$r")")"
+            if grep -qxF "$name" "$RUNNER_TEMP/examples.txt"; then run=true; else run=false; fi
+            echo "ex${name%%-*}=$run" >> "$GITHUB_OUTPUT"
+          done
+          if [[ -s "$RUNNER_TEMP/examples.txt" ]]; then echo "any=true" >> "$GITHUB_OUTPUT"; else echo "any=false" >> "$GITHUB_OUTPUT"; fi
+          echo "list=$(tr '\n' ' ' < "$RUNNER_TEMP/examples.txt")" >> "$GITHUB_OUTPUT"
+          echo "Examples to run: $(tr '\n' ' ' < "$RUNNER_TEMP/examples.txt")"
 
       # The relate CLI, linux-amd64, from the public release, checked against ci/relate-<ver>.sha256
       # (the release's own SHA256SUMS, committed when the pin was bumped).
@@ -66,32 +97,35 @@ jobs:
       # with cargo install --locked into .cache/wasm-tools (cached separately) and builds.
       # The .wasm differs by build host, so it is not byte-pinned: expected/model.txt pins the
       # behaviour instead (scripts/build-gliner-wasm.sh).
+      # Only when example 01 runs: nothing else needs gliner-rs or the weights.
       - name: Restore the gliner-rs WASM build
         id: gliner-wasm
+        if: steps.plan.outputs.ex01 == 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: .cache/gliner-wasm
           key: gliner-wasm-${{ runner.os }}-4fa741e-${{ hashFiles('scripts/build-gliner-wasm.sh') }}
       - name: Restore wasm-pack and wasm-bindgen
         id: wasm-tools
-        if: steps.gliner-wasm.outputs.cache-hit != 'true'
+        if: steps.plan.outputs.ex01 == 'true' && steps.gliner-wasm.outputs.cache-hit != 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: .cache/wasm-tools
           key: wasm-tools-${{ runner.os }}-4fa741e-${{ hashFiles('scripts/build-gliner-wasm.sh') }}
       # Rust 1.97.1 becomes rustup's default from here on.
-      - if: steps.gliner-wasm.outputs.cache-hit != 'true'
+      - if: steps.plan.outputs.ex01 == 'true' && steps.gliner-wasm.outputs.cache-hit != 'true'
         uses: dtolnay/rust-toolchain@766a42937d994bd78bb4591385445c188ccb3f09  # 1.97.1 branch (toolchain: 1.97.1 in its action.yml)
         with:
           targets: wasm32-unknown-unknown
       - name: Build gliner-rs to WASM
+        if: steps.plan.outputs.ex01 == 'true'
         run: scripts/build-gliner-wasm.sh
-      - if: steps.gliner-wasm.outputs.cache-hit != 'true'
+      - if: steps.plan.outputs.ex01 == 'true' && steps.gliner-wasm.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: .cache/gliner-wasm
           key: ${{ steps.gliner-wasm.outputs.cache-primary-key }}
-      - if: steps.gliner-wasm.outputs.cache-hit != 'true' && steps.wasm-tools.outputs.cache-hit != 'true'
+      - if: steps.plan.outputs.ex01 == 'true' && steps.gliner-wasm.outputs.cache-hit != 'true' && steps.wasm-tools.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: .cache/wasm-tools
@@ -101,13 +135,15 @@ jobs:
       # checked against ci/gliner2.5-small-v1.sha256. Exports GLINER_SMALL_DIR.
       - name: Restore the GLiNER2.5 weights
         id: gliner
+        if: steps.plan.outputs.ex01 == 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: .cache/gliner
           key: gliner-weights-${{ hashFiles('ci/gliner2.5-*.sha256') }}
       - name: Fetch GLiNER2.5-small-v1
+        if: steps.plan.outputs.ex01 == 'true'
         run: scripts/fetch-gliner.sh small
-      - if: steps.gliner.outputs.cache-hit != 'true'
+      - if: steps.plan.outputs.ex01 == 'true' && steps.gliner.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: .cache/gliner
@@ -115,20 +151,23 @@ jobs:
 
       # 01's own package-lock.json: @relate/relate-wasm (the Relate WASM bundle, its sha512
       # integrity pinned there), NVL 2.0.0, js-yaml, esbuild, playwright 1.63.0; --omit=peer
-      # skips NVL's unused neo4j-driver peer. Then esbuild's NVL vendor bundle.
+      # skips NVL's unused neo4j-driver peer. Then esbuild's NVL vendor bundle. Always installed, whichever
+      # examples run: lib/tests reads the Relate WASM bundle from here, and Playwright is run from here.
       - name: Example 01's npm packages and the NVL vendor bundle
         run: |
           npm ci --omit=peer --prefix examples/01-wasm-extract
           npm run --prefix examples/01-wasm-extract vendor
-      # Playwright's Chromium (the browser section). The browser download is cached; its system
-      # libraries are installed on every run.
+      # Playwright's Chromium (every example's browser section). The browser download is cached; its
+      # system libraries are installed on every run that runs an example.
       - name: Restore Playwright's Chromium
         id: playwright
+        if: steps.plan.outputs.any == 'true'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('examples/01-wasm-extract/package-lock.json') }}
       - name: Install Chromium for Playwright
+        if: steps.plan.outputs.any == 'true'
         env:
           HIT: ${{ steps.playwright.outputs.cache-hit }}
         run: |
@@ -137,7 +176,7 @@ jobs:
           else
             npx --prefix examples/01-wasm-extract playwright install --with-deps chromium
           fi
-      - if: steps.playwright.outputs.cache-hit != 'true'
+      - if: steps.plan.outputs.any == 'true' && steps.playwright.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/ms-playwright
@@ -148,6 +187,7 @@ jobs:
       # 2.0.0, js-yaml, esbuild and playwright 1.63.0 (the same Playwright as 01, so the Chromium installed
       # above serves both). The models never run in CI: the browser section drives the page in canned mode.
       - name: Example 02's npm packages
+        if: steps.plan.outputs.ex02 == 'true'
         run: npm ci --omit=peer --prefix examples/02-wasm-text2cypher
 
       # ---- Example 03 (keys wasm, browser) ------------------------------------------------------------
@@ -157,6 +197,7 @@ jobs:
       # the scripts' vectors are in data/embeddings.json. Transformers.js depends on onnxruntime-node, which
       # nothing here loads and whose install script would fetch CUDA libraries on linux: skipped.
       - name: Example 03's npm packages
+        if: steps.plan.outputs.ex03 == 'true'
         env:
           ONNXRUNTIME_NODE_INSTALL: skip
         run: npm ci --omit=peer --prefix examples/03-wasm-agent-memory
@@ -165,13 +206,18 @@ jobs:
       - run: uv run pytest -q
       - name: The bundled ontologies match their originals
         run: node examples/01-wasm-extract/harness/convert.mjs --check
-      - name: Run every example offline
+      - name: Run the examples offline
         run: |
           failed=()
           echo "| example | result | s |" >> "$GITHUB_STEP_SUMMARY"
           echo "|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
           for r in examples/*/run.sh; do
             name="$(basename "$(dirname "$r")")"; log="$RUNNER_TEMP/$name.log"; start=$SECONDS
+            if ! grep -qxF "$name" "$RUNNER_TEMP/examples.txt"; then
+              echo "$name: not run (this pull request changes none of its inputs)"
+              echo "| $name | not run: none of its inputs changed | |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
             echo "::group::$name"
             rc=0; "$r" 2>&1 | tee "$log" || rc=$?
             echo "::endgroup::"
