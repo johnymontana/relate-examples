@@ -28,7 +28,11 @@
  *   - the other two tabs: the list of what the agent knows, and the console (a read, two writes the
  *     graph type refuses, a result with paths, which the graph highlights);
  *   - the provenance toggle, the theme toggle (the one storage key the page writes carries the
- *     example's prefix), no console errors and no CSP violations.
+ *     example's prefix), no console errors and no CSP violations;
+ *   - the Ontology tab, against what the Node section found (out/replay.json `ontology`): the
+ *     picture NVL holds, a label opened, the search, a part's detail, the way from the model to
+ *     the store and back, every rule checked on the store and on two stores a console write broke,
+ *     and every question the document lists, with its parameters and rows.
  * A check that fails prints `drive.mjs: FAIL: …` on stderr and exits 1, after writing the report.
  */
 import fs from 'node:fs';
@@ -136,6 +140,12 @@ try {
     const s = await state();
     const rows = s.last.steps.find((/** @type {any} */ x) => x.tool === 'recall')?.rows.length ?? 0;
     say(`after four turns: ${s.drawn.entities} entities and ${s.drawn.memories} memories drawn; the fourth turn recalled ${rows} memories: ${check(s.drawn.memories === 6 && rows > 0, 'the deployed page remembers and recalls')}`);
+    // the Ontology tab: the model drawn, and the engine holding exactly what its document declares
+    await page.click('[data-testid="tab-ontology"]');
+    await page.waitForFunction(() => /** @type {any} */ (window).ex03.ontology.state().drawn?.labels > 0);
+    const os = await page.evaluate(() => /** @type {any} */ (window).ex03.ontology.state());
+    say(`the Ontology tab draws ${os.drawn.labels} labels and ${os.drawn.types} relationship types; the graph type derived from its document is the engine's: ${check(os.drawn.labels === 4 && os.drawn.types === 5 && os.engineAgrees === true, 'the deployed page shows its ontology')}`);
+    await page.click('[data-testid="tab-graph"]');
     say(`requests to other origins so far: ${check(elsewhere.size === 0, 'the scripted turns fetch nothing from elsewhere') === 'yes' ? 'none' : [...elsewhere].join(', ')}`);
     if (liveModel) {
       // a text the page has no vector for starts the model in the tab: fetched, verified, cached, then used
@@ -344,6 +354,137 @@ try {
     await page.waitForFunction(() => document.body.dataset.cursor === '0' && /** @type {any} */ (window).ex03.state().store.nodes === 0);
     const restarted = await page.evaluate(() => ({ intro: !!document.querySelector('#transcript .intro'), nodes: /** @type {any} */ (window).ex03.state().drawn.entities + /** @type {any} */ (window).ex03.state().drawn.memories, next: document.querySelector('#next-text')?.textContent }));
     say(`Restart empties the memory and the conversation: ${check(restarted.intro && restarted.nodes === 0, 'Restart')}; the next message is again ${JSON.stringify(restarted.next)}`);
+
+    // ---- the Ontology tab: the model as its document says it, against what the Node section found ----
+    say('', '## Ontology');
+    const want = node.ontology;
+    const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
+    const onto = () => page.evaluate(() => /** @type {any} */ (window).ex03.ontology.state());
+    /** The team conversation to the end of its script: the store the Node section held the document against. */
+    const replay = async () => {
+      await page.evaluate(() => /** @type {any} */ (window).ex03.playAll());
+      await page.waitForFunction((n) => document.body.dataset.cursor === String(n) && document.body.dataset.busy === '0', node.turns.team.length, { timeout: 60000 });
+    };
+    await replay();
+    await page.click('[data-testid="tab-ontology"]');
+    await page.waitForFunction(() => /** @type {any} */ (window).ex03.ontology.state().drawn?.labels > 0);
+    let o = await onto();
+    say(`the tab says the engine enforces what the document declares: ${check(o.engineAgrees === true && ((await page.textContent('[data-testid="onto-status"]')) ?? '').startsWith('✓'), 'the derived graph type is the engine\'s')}`);
+    say(`NVL holds the picture: ${o.drawn.labels} labels (${o.drawn.captions.join(', ')}) and ${o.drawn.types} relationship types, on ${o.drawn.canvases} canvases: ${check(o.drawn.labels === want.picture.nodes && o.drawn.types === want.picture.rels && o.drawn.canvases > 0, 'the picture holds the labels and relationship types')}`);
+    const opened = [];
+    let inside = 0;
+    for (const nid of Object.keys(want.picture.opened)) {
+      await page.evaluate((k) => /** @type {any} */ (window).ex03.ontology.select(k), `node:${nid}`);
+      // NVL places the new nodes on its next frame
+      await page.waitForFunction((n) => { const d = /** @type {any} */ (window).ex03.ontology.state().drawn; return d.labels + d.properties === n && d.outside === 0; }, want.picture.opened[nid], { timeout: 5000 }).catch(() => {});
+      const s = (await onto()).drawn;
+      opened.push(`${nid} ${s.properties}`);
+      if (s.labels + s.properties === want.picture.opened[nid] && s.lines === s.properties && s.outside === 0 && same(s.selected, [`node:${nid}`])) inside++;
+    }
+    say(`opening a label draws its properties around it, selects it, and keeps the whole picture in the panel: ${check(inside === opened.length, 'a label opens')} (${opened.join(', ')})`);
+    const tally = Object.entries(want.tally).filter(([k]) => k.startsWith('node:')).map(([, n]) => n);
+    const counts = (await page.textContent('[data-testid="onto-counts"]')) ?? '';
+    say(`${counts} ${check(same((counts.match(/\d+/g) ?? []).map(Number), tally), 'the counts under the picture are the store\'s')}`);
+
+    say('', '### search');
+    for (const text of ['decision', 'replaces', 'required date', 'kubernetes']) {
+      await page.fill('[data-testid="onto-q"]', text);
+      o = await onto();
+      const shown = await page.$$eval('[data-testid="onto-results"] li', (ls) => ls.map((l) => `${l.querySelector('.onto-title')?.textContent} (${l.querySelector('.onto-where')?.textContent})`));
+      say(`${JSON.stringify(text)}: ${(await page.textContent('[data-testid="onto-hits"]'))}, as the Node section found: ${check(same(o.hits, want.searches[text]) && shown.length === o.hits.length, `the search for ${text}`)}; dimmed in the picture: ${o.drawn.disabled} of ${o.drawn.labels + o.drawn.properties}`);
+      if (shown.length) say(`  ${shown.slice(0, 4).join(' | ')}`);
+    }
+    await page.fill('[data-testid="onto-q"]', 'decision');
+    await page.click('[data-testid="onto-results"] li >> nth=1');
+    const detail = await page.$eval('[data-testid="onto-detail"]', (el) => ({
+      key: /** @type {HTMLElement} */ (el).dataset.key,
+      title: el.querySelector('h3')?.textContent,
+      terms: [...el.querySelectorAll('dl > dt')].map((dt) => `${dt.textContent}: ${[...(dt.nextElementSibling?.querySelectorAll('li') ?? [])].map((li) => li.textContent).join(' / ') || dt.nextElementSibling?.textContent}`),
+    }));
+    o = await onto();
+    say(`clicking the second result opens it: ${detail.title}: ${check(detail.key === want.searches.decision[1] && o.selected === detail.key && same(o.drawn.selected, [detail.key]), 'a search result opens its part')}`);
+    for (const t of detail.terms) say(`  ${t.length > 150 ? `${t.slice(0, 150)}…` : t}`);
+    await page.fill('[data-testid="onto-q"]', '');
+    say(`an empty search lights everything again: ${check((await onto()).drawn.disabled === 0, 'clearing the search')}`);
+
+    say('', '### from the model to the store, and back');
+    await page.evaluate(() => /** @type {any} */ (window).ex03.ontology.select('relationship:supersedes'));
+    await page.click('[data-testid="onto-show"]');
+    const lit = await state();
+    say(`"show in Memory" on SUPERSEDES lights its ${want.tally['relationship:supersedes']} stored: ${check(lit.drawn.selected.rels === want.tally['relationship:supersedes'] && lit.drawn.selected.nodes === 2 * want.tally['relationship:supersedes'], 'show in Memory')} (${lit.drawn.selected.nodes} nodes, ${lit.drawn.selected.rels} relationship; "${await page.textContent('#caption-text')}")`);
+    // click a node in the Memory tab's graph: its inspector links to what the model says of its label
+    await page.waitForTimeout(1200);
+    const target = await page.evaluate(() => {
+      const v = /** @type {any} */ (window).ex03.view();
+      const box = /** @type {HTMLElement} */ (document.querySelector('#graph .nvl')).getBoundingClientRect();
+      const n = v.nodes.find((/** @type {any} */ x) => x.client.x > 40 && x.client.y > 40 && x.client.x < v.width - 40 && x.client.y < v.height - 40);
+      return n ? { x: box.left + n.client.x, y: box.top + n.client.y } : null;
+    });
+    if (target) await page.mouse.click(target.x, target.y);
+    const link = page.locator('[data-testid="insp-model"]');
+    const linkText = (await link.count()) ? await link.textContent() : null;
+    if (linkText) await link.click();
+    o = await onto();
+    const label = /^what the model says of a (Session|Message|Entity|Memory)$/.exec(linkText ?? '')?.[1];
+    say(`clicking a node in the Memory tab, its inspector links to what the model says of its label, and the link opens that label here: ${check(!!label && o.selected === `node:${label.toLowerCase()}` && (await page.getAttribute('[data-testid="tab-ontology"]', 'aria-selected')) === 'true', 'the inspector\'s link to the model')}`);
+
+    say('', '### the rules the engine does not enforce');
+    /** Click "Check the store" and wait for a fresh verdict. */
+    const audit = async () => {
+      await page.click('[data-testid="onto-check"]');
+      await page.waitForFunction(() => { const s = /** @type {any} */ (window).ex03.ontology.state(); return s.audit && !s.stale && document.body.dataset.busy === '0'; });
+      return (await onto()).audit;
+    };
+    say(`before a check: ${await page.textContent('[data-testid="onto-check-note"]')}`);
+    const held = await audit();
+    say(`the button runs every rule: ${await page.textContent('[data-testid="onto-check-note"]')}: ${check(same(held, want.audit) && held.every((/** @type {any} */ r) => r.violations.length === 0), 'the page\'s check equals Node\'s')} (${held.length} rules, as the Node section judged them)`);
+    for (const [i, b] of want.breaks.entries()) {
+      if (i > 0) {
+        await page.click('[data-testid="restart"]');
+        await page.waitForFunction(() => document.body.dataset.cursor === '0' && /** @type {any} */ (window).ex03.state().store.nodes === 0);
+        await replay();
+      }
+      await page.evaluate((q) => /** @type {any} */ (window).ex03.query(q), b.statement);
+      const stale = i === 0 ? (await onto()).stale : null;
+      const got = (await audit()).filter((/** @type {any} */ r) => r.violations.length);
+      say(`${b.what}: ${b.statement}`);
+      if (stale !== null) say(`  the earlier verdict is marked as of another store: ${check(stale === true, 'a write makes the verdict stale')}`);
+      say(`  ${await page.textContent('[data-testid="onto-check-note"]')}: ${check(same(got, b.broken), `the page finds what ${b.what} breaks`)}`);
+      for (const r of got) say(`    ${r.id}: ${r.violations.join('; ')}`);
+    }
+    const marks = await page.$$eval('[data-testid="onto-rules"] .onto-rule', (ls) => ({ held: ls.filter((l) => l.classList.contains('held')).length, broken: ls.filter((l) => l.classList.contains('broken')).map((l) => `${/** @type {HTMLElement} */ (l).dataset.rule}: ${[...l.querySelectorAll('.onto-violations li')].map((x) => x.textContent).join('; ')}`) }));
+    say(`the list shows it: ${marks.held} rules held, ${marks.broken.length} broken (${marks.broken.join(' | ')})`);
+
+    say('', '### the questions the document lists');
+    await page.click('[data-testid="restart"]');
+    await page.waitForFunction(() => document.body.dataset.cursor === '0' && /** @type {any} */ (window).ex03.state().store.nodes === 0);
+    await replay();
+    let answered = 0;
+    for (const q of want.questions) {
+      await page.click(`[data-testid="onto-questions"] [data-question="${q.id}"]`);
+      await page.waitForFunction((id) => /** @type {any} */ (window).ex03.ontology.state().answer?.id === id && document.body.dataset.busy === '0', q.id);
+      const a = (await onto()).answer;
+      const rows = await page.$$eval('[data-testid="onto-answer"] table.rows tr', (trs) => Math.max(0, trs.length - 1));
+      if (same(a.params, q.params) && same(a.rows, q.rows) && rows === q.rows.length && !a.error) answered++;
+      else process.stderr.write(`drive.mjs: the question ${q.id} differs from the Node section\n`);
+    }
+    say(`clicking each question runs it with the parameters and rows the Node section got: ${check(answered === want.questions.length, 'the page\'s answers equal Node\'s')} (${answered} of ${want.questions.length})`);
+    await page.click('[data-testid="onto-questions"] [data-question="current-beliefs"]');
+    await page.waitForFunction(() => /** @type {any} */ (window).ex03.ontology.state().answer?.id === 'current-beliefs' && document.body.dataset.busy === '0');
+    await page.selectOption('[data-testid="onto-answer"] select[data-param="entity"]', 'tomas');
+    await page.waitForFunction(() => /** @type {any} */ (window).ex03.ontology.state().answer?.params.entity === 'tomas' && document.body.dataset.busy === '0');
+    const tomas = await page.$$eval('[data-testid="onto-answer"] table.rows tr', (trs) => trs.slice(1).map((tr) => [...tr.children].map((td) => td.textContent).join(' | ')));
+    say(`picking another value asks again: $entity = tomas: ${check(tomas.length === 2, 'a parameter can be changed')}`);
+    for (const r of tomas) say(`  ${r}`);
+    await page.click('[data-testid="tab-hood"]');
+    const logged = await page.$$eval('[data-testid="calls"] li .t', (ts) => ({ ask: ts.filter((t) => t.textContent === 'ask').length, check: ts.filter((t) => t.textContent === 'check').length, write: ts.filter((t) => t.classList.contains('write') && ['ask', 'check'].includes(t.textContent ?? '')).length }));
+    say(`its statements are logged under the hood, as reads: ${check(logged.ask === want.questions.length + 2 && logged.check === 0 && logged.write === 0, 'the tab\'s statements are logged')} (${logged.ask} ask since the restart)`);
+    await page.click('[data-testid="tab-ontology"]');
+    await page.evaluate(() => /** @type {any} */ (window).ex03.ontology.select('node:memory'));
+    await page.click('#theme');
+    await page.waitForFunction(() => { const d = /** @type {any} */ (window).ex03.ontology.state().drawn; return d.properties === 11 && d.outside === 0; }, null, { timeout: 5000 }).catch(() => {});
+    o = await onto();
+    say(`NVL redraws the picture in the other theme and keeps it: ${check(o.drawn.labels === want.picture.nodes && o.drawn.types === want.picture.rels && o.drawn.outside === 0, 'the picture survives a theme change')} (${o.drawn.labels} labels, ${o.drawn.properties} properties, ${o.drawn.types} relationship types)`);
   }
   if (!liveModel) say('', `requests to other origins: ${check(elsewhere.size === 0, 'the page fetches nothing from elsewhere') === 'yes' ? 'none' : [...elsewhere].join(', ')}`);
   const csp = problems.filter((p) => /Content Security Policy|Refused to/.test(p));

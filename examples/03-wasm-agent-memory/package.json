@@ -20,6 +20,7 @@
     "@relate/relate-wasm": "1.2.0"
   },
   "devDependencies": {
+    "@neo4j/ontology-graph-spec": "0.12.2",
     "esbuild": "0.28.2",
     "playwright": "1.63.0"
   }

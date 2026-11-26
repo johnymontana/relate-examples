@@ -26,6 +26,11 @@ own brand: its colours, typefaces, logo and mascot.
 - **The page draws what the engine returns.** The graph is the store after each call, drawn with
   NVL, the Neo4j Visualization Library. The highlight is the paths the recall statement returned. A scripted reply may cite only memories its tool
   returned, and the run fails on any other citation.
+- **The shape of the memory is written down.** An ontology, a document in Neo4j's
+  [Ontology Graph Spec](https://neo4j.com/docs/ontology-graph-spec/), says what each label,
+  property and relationship type means, and which rules the engine enforces and which it leaves
+  to the agent. The page draws it, searches it and checks the store against it, and the run
+  fails when it stops describing the schema the engine holds.
 
 Live: <https://johnymontana.github.io/relate-examples/03-wasm-agent-memory/> (deployed by the first
 push to `main` that contains this example and passes CI).
@@ -37,13 +42,14 @@ example pins, and `D1`… its design decisions. The larger decisions are ADRs in
   - ADR-0017: a scripted agent, a real memory and real vectors (it supersedes ADR-0014);
   - ADR-0015: the graph drawn with NVL, the page in Relate's brand;
   - ADR-0016: one typed `:Memory` label, in a store that lives in memory;
-- the repository's, which it follows: ADR-0002 to ADR-0006, ADR-0008 and ADR-0009.
+- the repository's, which it follows: ADR-0002 to ADR-0009.
 
 ```bash
 ./run.sh              # offline, a few seconds: Node, then Chromium, then native Relate; diffed against expected/
 ./run.sh --site       # build dist/ and serve it at http://127.0.0.1:8703/relate-examples/03-wasm-agent-memory/ as Pages would
 ./run.sh --update     # accept this run's output as expected/
 node harness/embed.mjs                  # after changing a scripted text: recompute data/embeddings.json (--check compares)
+node harness/run.mjs --only ontology    # after changing the schema or the ontology: out/ontology.txt alone (after source ../../scripts/env.sh)
 node harness/drive.mjs --smoke --live   # by hand, online: the embedding model in the tab (fetches 23 MB from the Hugging Face Hub)
 ```
 
@@ -63,7 +69,8 @@ Pick one of three conversations, each two sessions and nine or ten turns:
 | Your own turns | Type a question and it goes to the same recall statement. Type anything else and it is stored as a note, linked to the entities it names. Rules decide which, not a model (D8), and the reply says so. Your text does get a real vector: the first time you type something the scripts did not foresee, the page fetches the embedding model (23 MB from the Hugging Face Hub, then cached) and embeds it in the tab; a line under the box says how it went. If the model cannot be loaded, your text is stored and searched by its words. Nothing you type leaves the tab. |
 | Memory | The store, drawn with NVL. A large node is an entity, coloured by kind, and it grows as more is learnt about it. A smaller node between entities is a memory, carrying two or three words of it. A paler one has been replaced, and the memory that replaced it points at it. Every relationship shows its type (`ABOUT`, `SUPERSEDES`, and with provenance on, `FROM` and `IN_SESSION`). New nodes grow in, and the view eases to keep the whole graph in the panel. After a recall, the paths it returned are selected hop by hop, each node pulsing as the path reaches it, everything else steps back, and the caption says what you are looking at. Hover a row in a recall card to see that row's path alone. Hover a node for its text, click it for its details, drag it, zoom and pan. **Messages and sessions** adds the provenance. |
 | What it knows | The same store as a list: what the agent believes now about each entity, and what each belief replaced. |
-| Under the hood | Every statement run, in order, with its parameters, counters and time. The graph type as the engine reads it back. A box to run your own Cypher on the same store: two of the samples are writes the graph type refuses. Nodes and paths in a result are highlighted in the graph. |
+| Ontology | The model the memory keeps to, as its document says it (D10, D11). A picture, drawn with NVL: a circle per label, an arrow per relationship type, and the properties of the label you click around it. A search over names, aliases, allowed values and descriptions (try `decision`, `replaces`, `vector`), which leaves what it found lit in the picture. Under the picture, what the document says of the part you picked, what the engine enforces of it, and **show in Memory**, which lights every node or relationship it describes in the graph. **Check the store** runs the 17 rules the engine does not enforce, each a statement that returns its violations. The eight questions the model was written to answer run on the store when clicked, each parameter starting on a value the store holds. A node's details in the Memory tab link back to its label here. |
+| Under the hood | Every statement run, in order, with its parameters, counters and time. The graph type as the engine reads it back. A box to run your own Cypher on the same store: two of the samples are writes the graph type refuses, and one is a write it accepts and the model forbids, which the Ontology tab's check then finds. Nodes and paths in a result are highlighted in the graph. |
 
 URL parameters: `?scenario=team|trip|code`, `?autoplay=1`, `?test=1` (no animation, no pacing and
 no model in the tab: the browser section's mode), `?embed=off|live` (the model in the tab off or
@@ -98,6 +105,11 @@ redraws from that.
 The model follows Relate's cookbook recipes on agent memory (`data/SOURCE.md`); D2 lists what is
 different here. `web/memory.js` holds the schema and every statement, and
 [`expected/statements.cypher`](expected/statements.cypher) prints them as the page runs them.
+[`data/agent-memory.ontology.json`](data/agent-memory.ontology.json) describes the same model as a
+Neo4j Ontology Graph Spec 1.1 document: what each label, property and relationship type means,
+the constraints and indexes, and the rules the engine does not enforce (`data/SOURCE.md` says
+what it holds). The Ontology tab reads it, and "The ontology" below says how the two are kept
+saying the same thing.
 
 **A graph type declares all of it**: four labels, five relationship types, every property with its
 type, the vector as `VECTOR<FLOAT32>(384)`. The engine then refuses, on every write, a
@@ -117,6 +129,36 @@ session is a divider in one conversation on one store: the agent's context is em
 construction, since a scripted turn sees nothing but its own tool's rows. In an application, the
 two sessions would be two processes opening one `agent.rl` file. A store that outlives the tab
 (OPFS) was left out of this version (ADR-0016).
+
+## The ontology
+
+A graph type is what the engine can be told. An ontology says the rest: what a `Memory` is and is
+not, that `kind` is one of four words, that a memory comes from exactly one message, that at most
+one memory in a slot is current. The document
+([`data/agent-memory.ontology.json`](data/agent-memory.ontology.json)) follows the Neo4j
+[Ontology Graph Specification](https://neo4j.com/docs/ontology-graph-spec/) 1.1, so other tools
+can read it, and `web/ontology.js` reads it for the page and for the run alike.
+
+**The schema stays where it was** (D10). `web/memory.js` `SCHEMA` is what the engine is given.
+The document describes it, and the run fails when the two disagree: the graph type derived from
+the document must be, byte for byte, the one the engine reads back, and the engine's 55
+constraints and two search indexes must be the ones the document lists (M8). The tab shows the
+same comparison as one line.
+
+**What the engine does not enforce is checked by statements** (D11). Seventeen rules come out of
+the document: the allowed values of `Memory.kind` and `Message.role`, the patterns of
+`Entity.key` and `Memory.slot`, how many relationships a node has at each end, five invariants
+that the document carries as Cypher, and that nothing stored is undeclared. Each is a statement
+that returns its violations. The run holds every store the conversations build against them
+after every turn. In the page, **Check the store** runs them on the store as it is: after
+`MATCH (m:Memory) WHERE NOT m.current SET m.current = true`, which the graph type accepts, two of
+them say what broke.
+
+**The specification's SDK validates the document in the run, not in the page.** `harness/run.mjs`
+decodes it with npm `@neo4j/ontology-graph-spec` through `lib/ogs.mjs` (ADR-0007) and runs all six
+validation sets. The SDK ignores a field it does not know, so the run also compares the SDK's own
+encoding of the document with the document, field by field (S1 to S3). The page reads the same
+file as plain JSON and does not ship the SDK.
 
 ## Recall, in one statement
 
@@ -154,6 +196,7 @@ how it was found and its path.
 | Vectors come from all-MiniLM-L6-v2 (D3): from `data/embeddings.json` for the scripts' texts, from the model in the tab for typed ones. | The same call, to whichever embedding model the application uses. The index, the search and the recall statement take whatever vectors they are given; the graph type's dimension changes with the model. |
 | A typed message is routed by rules (D8). | The model chooses the tool. |
 | The schema, the three remember statements, and the recall, connect and trace statements | The same. Over `relate serve --mcp` they are `write_cypher` and `read_cypher` calls. |
+| The ontology is shown, searched and checked. | The same document is also what an extraction prompt is written from, and its rules can run after every write. |
 
 ## Setup
 
@@ -162,7 +205,7 @@ for the native section). Then:
 
 ```bash
 cd examples/03-wasm-agent-memory
-ONNXRUNTIME_NODE_INSTALL=skip npm ci --omit=peer   # exact pins: @relate/relate-wasm 1.2.0, NVL 2.0.0, Transformers.js 4.3.2, the two typefaces, esbuild 0.28.2, playwright 1.63.0
+ONNXRUNTIME_NODE_INSTALL=skip npm ci --omit=peer   # exact pins: @relate/relate-wasm 1.2.0, NVL 2.0.0, Transformers.js 4.3.2, the two typefaces, @neo4j/ontology-graph-spec 0.12.2, esbuild 0.28.2, playwright 1.63.0
 npx playwright install chromium    # Playwright 1.63.0's Chromium, for the browser section (the same as examples 01 and 02)
 ./run.sh
 ```
@@ -183,6 +226,8 @@ npx playwright install chromium    # Playwright 1.63.0's Chromium, for the brows
 - **A new Relate release** moves with the repository's other pins (ADR-0005; AGENTS.md, "Engine
   pins move together"): here `package.json` and its lockfile, `ver` in `run.sh`, and `RELATE` in
   `web/memory.js` and `build.mjs`. Re-run `./run.sh` and re-check every NOTES.md row.
+- **The Ontology Graph Spec SDK** is a development dependency, pinned at the version examples 01
+  and 02 pin (0.12.2). Only `harness/run.mjs` loads it.
 - **Node** 20 or later.
 
 ## `run.sh`
@@ -209,9 +254,10 @@ The native section needs the project env's `relate-db` 1.2.0 (`uv sync`); anothe
 |---|---|---|
 | `statements.cypher` | `harness/run.mjs` | The schema and the statement behind each tool, as the page runs them. |
 | `scenarios.txt` | `harness/run.mjs` | All three conversations through `web/agent.js` and `web/memory.js` on Relate 1.2.0 WASM: every tool call's rows (score, how each memory was reached, its path), what each remember stored, every reply and its citations. Then every remember run a second time, which must change nothing. |
+| `ontology.txt` | `harness/run.mjs` | The ontology (D10, D11). What the specification's SDK says of the document: all six validation sets, and that it has no field the specification lacks. The document against the engine: the same property types, required properties, uniqueness constraints, relationship ends and search indexes, and a derived graph type that is the engine's own, byte for byte. The 17 rules the engine does not enforce, each with its statement, held against every store after every turn (41 turns), and against two stores that a write the graph type accepts has broken. What each of the document's questions returns, and the parameters the tab picks for it on each store. What the tab's search finds for nine queries, and where its picture puts each circle. What the document says about the page (colours, the kinds' colour groups, the embedding model, which statement writes each relationship) against the code. |
 | `typed.txt` | `harness/run.mjs` | Twelve turns nobody scripted: questions, one that shares no word with the note it finds, one that asks for a source, two entities to connect, notes that name known entities; then a note and a question that have no vector, stored and found by their words. |
 | `probes.txt` | `harness/run.mjs` | M1–M7, each a minimal repro on Relate 1.2.0 WASM, with vectors made for the probe so every similarity is known exactly. Then what the model's vectors say about eight pairs of the scripts' texts: five that share no word and are found by meaning, one found both ways, two unrelated. |
-| `browser.txt` | `harness/drive.mjs` | The page in headless Chromium against `dist/` at the Pages sub-path, with its production CSP: boot; the logo and both typefaces loaded; every scripted turn (equal to the Node section's, with what NVL holds equal to the store, what NVL has selected equal to the returned paths, and the rest disabled); the buttons; typed turns, found by meaning with the vectors that come with the page, and two without a vector, found by words; the list; the console, with two refused writes and a result whose paths get highlighted; the toggles, a theme change among them; the whole graph inside the panel once the layout rests (N3); nothing requested from any other origin; no console errors or CSP violations. NVL draws to a canvas, so these read NVL's own state, not pixels (N4, N5). |
+| `browser.txt` | `harness/drive.mjs` | The page in headless Chromium against `dist/` at the Pages sub-path, with its production CSP: boot; the logo and both typefaces loaded; every scripted turn (equal to the Node section's, with what NVL holds equal to the store, what NVL has selected equal to the returned paths, and the rest disabled); the buttons; typed turns, found by meaning with the vectors that come with the page, and two without a vector, found by words; the list; the console, with two refused writes and a result whose paths get highlighted; the toggles, a theme change among them; the whole graph inside the panel once the layout rests (N3); the Ontology tab, equal to the Node section's findings throughout (the picture NVL holds, with each label opened and every circle inside the panel; the search, typed into its box; a part's detail; the way from the model to the store and back; the rules, on the store and on the two broken ones; every question, with its parameters and rows; a theme change); nothing requested from any other origin; no console errors or CSP violations. NVL draws to a canvas, so these read NVL's own state, not pixels (N4, N5). |
 | `native.txt` | `harness/native.py` | Every statement the conversations ran (55), replayed on native Relate 1.2.0 with the same parameters: the same rows, ids, scores and paths included. The graph type refuses the same writes natively. |
 
 ## The GitHub Pages site
@@ -230,8 +276,9 @@ The native section needs the project env's `relate-db` 1.2.0 (`uv sync`); anothe
   - `public-sans-5.3.0` and `ibm-plex-mono-5.3.0`;
   - `relate-brand-1.0`: the logo, favicons and mascot.
 - `data/embeddings.json`, 169 kB (54 kB compressed): the scripts' vectors.
-- 58 files, 23.9 MB (7.0 MB compressed). Without the embedding runtime, which a visit that only
-  plays the scripts never requests, 9.0 MB (3.1 MB compressed).
+- `data/agent-memory.ontology.json`, 29 kB (8 kB compressed): the ontology, as it is written.
+- 59 files, 24.0 MB (7.0 MB compressed). Without the embedding runtime, which a visit that only
+  plays the scripts never requests, 9.1 MB (3.2 MB compressed).
 
 `build.mjs` bundles the page and its two workers with esbuild and keeps Relate, NVL and
 Transformers.js outside the bundles, so a code change never invalidates the versioned assets. It fails if the stylesheet's
@@ -260,16 +307,18 @@ above the memory.
   supplied by the repository owner and used as the kit's rules say (NOTES.md D9).
 - The memory model and the shape of the recall statement follow Relate's cookbook
   (<https://relatedb.ai/cookbook/>, Apache-2.0); nothing is copied from it (`data/SOURCE.md`).
+- The ontology is written for this example, in the format of the Neo4j Ontology Graph
+  Specification 1.1.0 (Apache-2.0). Its SDK (Apache-2.0) is used by the run and not shipped.
 - The conversations were written for this example. The people and projects are invented.
 
 ## Files
 
 | Path | What |
 |---|---|
-| `web/` | the page: `index.html`, `style.css`, `app.js` (the page thread), `engine.worker.js` (Relate), `embed.worker.js` (the embedding model, started only for typed text). The modules: `memory.js` (the schema and the tool statements), `agent.js` (scripted and typed turns), `embed.js` (the pinned model, and where a text's vector comes from), `graph.js` (the drawing, with NVL). `vendor-entry.mjs` is NVL's bundle entry. |
-| `data/` | `scenarios/` (the three conversations), `embeddings.json` (the vector of every text the scripts use), `brand/` (the brand kit's files the page uses), `SOURCE.md` (formats and provenance), `LICENSE-relate.txt`, `LICENSE-onnxruntime.txt` |
-| `harness/` | `run.mjs` (the Node sections), `typed.mjs` (the typed turns it plays), `embed.mjs` (writes `data/embeddings.json`, by hand), `drive.mjs` (Chromium; `--smoke` against a deployed URL, `--live` for the model in the tab), `native.py` |
+| `web/` | the page: `index.html`, `style.css`, `app.js` (the page thread), `engine.worker.js` (Relate), `embed.worker.js` (the embedding model, started only for typed text). The modules: `memory.js` (the schema and the tool statements), `agent.js` (scripted and typed turns), `embed.js` (the pinned model, and where a text's vector comes from), `graph.js` (the drawing, with NVL), `ontology.js` (the ontology read as written: its graph type, rules, search and picture, for the page and the run alike), `ontology-tab.js` (the Ontology tab). `vendor-entry.mjs` is NVL's bundle entry. |
+| `data/` | `scenarios/` (the three conversations), `embeddings.json` (the vector of every text the scripts use), `agent-memory.ontology.json` (the memory model as an Ontology Graph Spec 1.1 document), `brand/` (the brand kit's files the page uses), `SOURCE.md` (formats and provenance), `LICENSE-relate.txt`, `LICENSE-onnxruntime.txt` |
+| `harness/` | `run.mjs` (the Node sections, the ontology's among them), `typed.mjs` (the typed turns it plays), `embed.mjs` (writes `data/embeddings.json`, by hand), `drive.mjs` (Chromium; `--smoke` against a deployed URL, `--live` for the model in the tab), `native.py` |
 | `build.mjs`, `site.json`, `run.sh` | the static site, its entry in the Pages site, the regression run |
 | `screenshot.png` | the picture on this example's card on the Pages index: turn 7 of the first conversation, dark theme. Retake it with `node harness/drive.mjs --smoke --screenshot screenshot.png` after `npm run build` |
 | `expected/` | what `run.sh` diffs against |
-| [`../../lib/relate_wasm.mjs`](../../lib/relate_wasm.mjs), [`../../lib/serve.mjs`](../../lib/serve.mjs) | shared with the other examples: the Relate WASM helpers, the Pages emulator |
+| [`../../lib/relate_wasm.mjs`](../../lib/relate_wasm.mjs), [`../../lib/serve.mjs`](../../lib/serve.mjs), [`../../lib/ogs.mjs`](../../lib/ogs.mjs) | shared with the other examples: the Relate WASM helpers, the Pages emulator, and the Ontology Graph Spec through its SDK (the run only) |

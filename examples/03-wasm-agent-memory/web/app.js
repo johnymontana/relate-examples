@@ -6,16 +6,18 @@
  * (engine.worker.js, Relate 1.2.0 WASM), and each answer brings back the statements that ran and
  * the whole store, which is what gets drawn (graph.js, with NVL), listed ("What it knows") and logged
  * ("Under the hood"). The agent's turns come from agent.js: scripted ones from a scenario file,
- * typed ones from rules.
+ * typed ones from rules. The Ontology tab (ontology-tab.js) shows the model the store keeps to, as
+ * its document says it (data/agent-memory.ontology.json), and holds the store against it.
  *
  * URL parameters: ?scenario=team|trip|code, ?autoplay=1, ?test=1 (no animation, no pacing and no
  * model in the tab: what harness/drive.mjs uses), ?embed=off|live (the model in the tab, whatever
  * ?test says). window.ex03 is the same page for scripts: next(), playAll(), send(text),
- * query(cypher), state().
+ * query(cypher), state(), and ontology (the Ontology tab: show, find, select, check, ask, state).
  */
 import { freeTurn, mergePaths, plan, scriptedTurn } from './agent.js';
 import { MODEL, createEmbedder, precomputed } from './embed.js';
 import { createGraph, kindGroup } from './graph.js';
+import { createOntologyTab } from './ontology-tab.js';
 
 const SCENARIOS = ['team', 'trip', 'code'];
 const params = new URLSearchParams(location.search);
@@ -51,6 +53,7 @@ const state = {
 };
 /** @type {ReturnType<typeof createGraph>} */ let graph;
 /** @type {ReturnType<typeof createEmbedder>} */ let embedder;
+/** @type {ReturnType<typeof createOntologyTab>} */ let onto;
 
 // ---- the engine worker ---------------------------------------------------------------------------
 
@@ -159,6 +162,7 @@ function applyOp(res) {
   state.ledgerDirty = true;
   if (!$('pane-ledger').hidden) renderLedger();
   renderCounts();
+  onto?.storeChanged();
   $('empty').classList.toggle('gone', res.snapshot.nodes.some((/** @type {any} */ n) => n.label === 'Entity' || n.label === 'Memory'));
 }
 
@@ -584,6 +588,7 @@ function refreshControls() {
   /** @type {HTMLInputElement} */ ($('input')).disabled = !ready;
   /** @type {HTMLButtonElement} */ ($('send')).disabled = !ready || state.busy;
   /** @type {HTMLButtonElement} */ ($('run')).disabled = !ready || state.busy;
+  /** @type {HTMLButtonElement} */ ($('onto-check')).disabled = !ready || state.busy;
 }
 
 // ---- "What it knows": the same store as a list ---------------------------------------------------
@@ -702,6 +707,13 @@ function inspect(n) {
     add('started', p.startedAt);
     box.append(dl);
   }
+  const key = onto?.keyOf(n.label);
+  if (key) {
+    const model = h('button', 'onto-link insp-model', `what the model says of a ${n.label}`);
+    model.dataset.testid = 'insp-model';
+    model.addEventListener('click', () => { showTab('ontology'); onto.select(key); });
+    box.append(model);
+  }
 }
 
 // ---- under the hood: the console -----------------------------------------------------------------
@@ -719,6 +731,8 @@ RETURN p LIMIT 8`],
   ['An edge the shape forbids (refused)', `MATCH (a:Entity), (b:Entity) WHERE a <> b
 WITH a, b LIMIT 1
 CREATE (a)-[:ABOUT]->(b)`],
+  ['A write the engine allows and the model forbids', `MATCH (m:Memory) WHERE NOT m.current
+SET m.current = true`],
 ];
 
 /** A value as a table cell shows it: vectors and long lists summarised. @param {any} v @returns {string} */
@@ -778,21 +792,24 @@ async function query(text) {
     showHighlight(paths, cap);
   }
   out.append(meta);
-  if (res.columns.length && res.rows.length) {
-    const wrap = h('div', 'table-wrap');
-    const table = h('table', 'rows');
-    const head = h('tr');
-    for (const c of res.columns) head.append(h('th', '', c));
-    table.append(head);
-    for (const r of res.rows.slice(0, 100)) {
-      const tr = h('tr');
-      for (const c of res.columns) tr.append(h('td', '', cell(r[c])));
-      table.append(tr);
-    }
-    wrap.append(table);
-    out.append(wrap);
-  }
+  if (res.columns.length && res.rows.length) out.append(resultTable(res.columns, res.rows));
   return res;
+}
+
+/** Rows as a table, the first hundred. @param {string[]} columns @param {any[]} rows */
+function resultTable(columns, rows) {
+  const wrap = h('div', 'table-wrap');
+  const table = h('table', 'rows');
+  const head = h('tr');
+  for (const c of columns) head.append(h('th', '', c));
+  table.append(head);
+  for (const r of rows.slice(0, 100)) {
+    const tr = h('tr');
+    for (const c of columns) tr.append(h('td', '', cell(r[c])));
+    table.append(tr);
+  }
+  wrap.append(table);
+  return wrap;
 }
 
 // ---- tabs, theme, scenarios ----------------------------------------------------------------------
@@ -804,8 +821,9 @@ function showTab(name) {
     t.classList.toggle('active', on);
     t.setAttribute('aria-selected', String(on));
   }
-  for (const p of ['graph', 'ledger', 'hood']) $(`pane-${p}`).hidden = p !== name;
+  for (const p of ['graph', 'ledger', 'ontology', 'hood']) $(`pane-${p}`).hidden = p !== name;
   if (name === 'ledger' && state.ledgerDirty) renderLedger();
+  if (name === 'ontology') onto?.show(); else onto?.hide();
 }
 
 function intro() {
@@ -843,6 +861,7 @@ async function openScenario(id) {
     const res = await rpc('open');
     $('graphtype').textContent = res.graphType;
     applyOp(res);
+    onto.opened(res.graphType);
   } finally {
     setBusy(false);
   }
@@ -864,9 +883,10 @@ function initTheme() {
     document.documentElement.dataset.theme = to;
     try { localStorage.setItem(THEME_KEY, to); } catch { /* storage is off */ }
     graph?.retheme();
+    onto?.retheme();
   });
-  // with no choice made, the page follows the system, and so does the graph
-  matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => graph?.retheme());
+  // with no choice made, the page follows the system, and so do the graphs
+  matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => { graph?.retheme(); onto?.retheme(); });
 }
 
 /** @param {string} message @param {boolean} [restartable] */
@@ -908,6 +928,32 @@ async function boot() {
   if (!liveOn) live.status = 'off';
   embedder = createEmbedder({ known: precomputed(await vectors.json()), live: liveOn ? liveEmbed : null });
   document.body.dataset.embed = live.status;
+  // the model the store keeps to, as its document says it: the Ontology tab reads it as written
+  const model = await fetch(new URL('data/agent-memory.ontology.json', location.href));
+  if (!model.ok) throw new Error(`data/agent-memory.ontology.json: HTTP ${model.status}`);
+  onto = createOntologyTab({
+    doc: await model.json(),
+    ui: { h, cypher, table: resultTable },
+    // reads only: they are logged under the hood, and the engine is not handed a turn meanwhile
+    read: async (tool, statements) => {
+      setBusy(true);
+      try {
+        const res = await rpc('read', { tool, statements });
+        applyOp(res);
+        return res.results;
+      } finally {
+        setBusy(false);
+      }
+    },
+    store: () => state.snapshot,
+    idle: () => document.body.dataset.ready === '1' && !state.busy,
+    showInMemory: (paths, caption) => {
+      showTab('graph');
+      const cap = document.createDocumentFragment();
+      cap.append(caption);
+      showHighlight(paths, cap);
+    },
+  });
   for (const id of SCENARIOS) {
     const r = await fetch(new URL(`data/scenarios/${id}.json`, location.href));
     if (!r.ok) throw new Error(`data/scenarios/${id}.json: HTTP ${r.status}`);
@@ -986,6 +1032,15 @@ Object.assign(window, {
       embed: live.status,
       last: state.last,
     }),
+    /** The Ontology tab: show it, search it, select a part, check the store, ask a question. */
+    ontology: {
+      show: () => showTab('ontology'),
+      find: (/** @type {string} */ text) => onto.find(text).map((x) => x.key),
+      select: (/** @type {string|null} */ key) => onto.select(key),
+      check: () => onto.check(),
+      ask: (/** @type {string} */ id, /** @type {Record<string, any>} */ values) => onto.ask(id, values),
+      state: () => onto.state(),
+    },
   },
 });
 

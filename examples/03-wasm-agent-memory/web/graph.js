@@ -47,16 +47,37 @@ const nodeKey = (/** @type {number} */ id) => `n${id}`;
 const edgeKey = (/** @type {number} */ id) => `r${id}`;
 const engineId = (/** @type {string} */ key) => Number(String(key).slice(1));
 
-/** The --g-* colours of the current theme. */
-function palette() {
+/** The --g-* colours of the current theme (the Ontology tab's picture uses them too). */
+export function palette() {
   const css = getComputedStyle(document.documentElement);
   const v = (/** @type {string} */ name) => css.getPropertyValue(`--g-${name}`).trim();
   return {
     person: v('person'), place: v('place'), thing: v('thing'), tech: v('tech'), topic: v('topic'),
     memory: v('memory'), old: v('memory-old'), message: v('message'), session: v('session'),
+    property: v('property'), optional: v('property-optional'),
     edge: v('edge'), edgeOld: v('edge-old'), hl: v('hl'), gap: v('gap'),
     disabled: v('disabled'), disabledFont: v('disabled-font'),
   };
+}
+
+/**
+ * Where a camera should be to show these nodes whole: their box, radii included, fitted into the
+ * panel with a margin, and never magnified past `most` (a handful of nodes should not fill the
+ * panel). NVL works in device pixels (N6): a node of size s has a radius of s * dpr layout units.
+ * @param {Array<{x: number, y: number, size?: number}>} held  nodes in layout units
+ * @param {{width: number, height: number}} box  the panel, in CSS pixels
+ * @param {number} dpr @param {{margin?: number, most?: number}} [limits]
+ * @returns {{scale: number, x: number, y: number}|null}
+ */
+export function frameOf(held, box, dpr, { margin = 30, most = 1.6 } = {}) {
+  if (!held.length) return null;
+  let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+  for (const n of held) {
+    const r = (n.size ?? 25) * dpr;
+    x0 = Math.min(x0, n.x - r); y0 = Math.min(y0, n.y - r); x1 = Math.max(x1, n.x + r); y1 = Math.max(y1, n.y + r);
+  }
+  const fitScale = dpr * Math.min((box.width - 2 * margin) / Math.max(1, x1 - x0), (box.height - 2 * margin) / Math.max(1, y1 - y0));
+  return { scale: Math.min(fitScale, most), x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
 }
 
 /**
@@ -272,17 +293,7 @@ export function createGraph(host, { animate = true, onSelect } = {}) {
    * fill the panel).
    */
   function frame() {
-    const held = nvl.getNodes();
-    if (!held.length) return null;
-    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
-    for (const n of held) {
-      const r = (n.size ?? 25) * dpr;
-      x0 = Math.min(x0, n.x - r); y0 = Math.min(y0, n.y - r); x1 = Math.max(x1, n.x + r); y1 = Math.max(y1, n.y + r);
-    }
-    const box = stage.getBoundingClientRect();
-    const margin = 30;
-    const fitScale = dpr * Math.min((box.width - 2 * margin) / Math.max(1, x1 - x0), (box.height - 2 * margin) / Math.max(1, y1 - y0));
-    return { scale: Math.min(fitScale, 1.6), x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+    return frameOf(/** @type {any} */ (nvl.getNodes()), stage.getBoundingClientRect(), dpr);
   }
 
   /** Put the camera on the graph at once (unless the visitor has taken it). */

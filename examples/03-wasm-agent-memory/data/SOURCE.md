@@ -32,6 +32,41 @@ numbers, mean-pooled, normalised and rounded to five places, one text per line. 
 never edited: `node harness/embed.mjs` rewrites it with the page's own worker (NOTES.md T5) and
 `--check` compares. A scripted text without a vector in it fails the regression run.
 
+`agent-memory.ontology.json` describes the memory model (`web/memory.js` `SCHEMA`) as a document of
+the Neo4j Ontology Graph Specification 1.1.0 (<https://neo4j.com/docs/ontology-graph-spec/>), in
+JSON. It was written for this example. The page's Ontology tab reads it as written
+(`web/ontology.js`), and the site ships it unchanged, as a document to read. It holds:
+- the four labels and five relationship types, each with a definition, aliases and a reference to
+  a schema.org or PROV-O term;
+- every property with its type, and `must_exist` where the graph type says `NOT NULL`;
+- the constraints the engine holds: the four `UNIQUE` ones under their own names and a
+  `PROPERTY_TYPE` one per property (the graph type's, which the engine names itself);
+- the vector index and the full-text index, with their options;
+- what the engine does not enforce: `one_of` on `Memory.kind` and `Message.role`, `pattern` on
+  `Entity.key` and `Memory.slot`, and how many relationships a node has at each end;
+- where each node is drawn and in which colour (the dark theme's);
+- under `extensions.custom.relate-examples`: what is enforced and by what, five invariants (each a
+  statement that returns its violations), eight questions with the statement that answers each
+  (a question's parameter names the property it takes a value of, as `<node id>.<property id>`,
+  and gives an example), and what each memory tool reads and writes.
+
+Change it together with `SCHEMA`: every run of `run.sh` checks it (`harness/run.mjs`,
+`expected/ontology.txt`; NOTES.md D10) and fails with `PIN: the ontology: …` when it stops
+holding:
+- against every validation set of the specification's SDK (npm `@neo4j/ontology-graph-spec`
+  0.12.2, the version examples 01 and 02 pin), and field by field against the SDK's own encoding
+  of it, so that a field the specification does not have fails the run (NOTES.md S1 to S3);
+- against Relate 1.2.0 WASM: the graph type derived from the document is
+  `SHOW CURRENT GRAPH TYPE` byte for byte, and its constraints and indexes are those of
+  `SHOW CONSTRAINTS` and `SHOW INDEXES`, names included (NOTES.md M8);
+- against the store after every scripted turn of the three conversations and every typed turn of
+  the regression run: every value, count and invariant holds, and nothing stored is undeclared;
+- against the page's code: the colours, the colour group of each entity kind, the embedding model
+  and the statement that writes each relationship type are the ones the document names.
+
+It was also checked once, by hand on 2026-11-25, against the specification's JSON Schema (as
+example 01 vendors it) and against the SDK's next release, 0.12.3.
+
 `LICENSE-relate.txt` is Relate's `LICENSE` at tag v1.2.0 (Apache-2.0), shipped next to the WASM
 bundle; `build.mjs` checks its sha256. `LICENSE-onnxruntime.txt` is the MIT License with
 onnxruntime's copyright line, shipped next to its WebAssembly build (NOTES.md T4).

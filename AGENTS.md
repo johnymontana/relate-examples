@@ -26,11 +26,15 @@ code cites. Read both before changing an example.
   type, and recalls them with one statement (vector and full-text search, then graph hops); NVL
   draws the store and selects the returned paths, and the page follows the Relate brand kit
   (`data/brand/`). Vectors are real (all-MiniLM-L6-v2): precomputed for the scripts' texts in
-  `data/embeddings.json`, and made in the tab with Transformers.js for typed text.
-  Rows `M1`…`M7`, `N1`…`N6` and `T1`…`T5`; ids D.
+  `data/embeddings.json`, and made in the tab with Transformers.js for typed text. The model is
+  also written down as an Ontology Graph Spec document (`data/agent-memory.ontology.json`), which
+  an Ontology tab draws with NVL, searches and checks the store against.
+  Rows `M1`…`M8`, `N1`…`N8`, `T1`…`T5` and `S1`…`S3`; ids D.
 
 Examples 01 and 02 read Ontology Graph Spec 1.1 documents through the official SDK (npm
-`@neo4j/ontology-graph-spec` 0.12.2) via `lib/ogs.mjs`.
+`@neo4j/ontology-graph-spec` 0.12.2) via `lib/ogs.mjs`. Example 03's document describes its own
+schema: its harness validates it through the same SDK, and its page reads it as written
+(`web/ontology.js`) and does not ship the SDK (03's D10).
 
 The decisions the repository is built on are ADRs in `docs/adr/` (see "Decisions" below). The
 browser-site contract is in `site/README.md`, and CI's steps and pins are in `ci/README.md`.
@@ -89,7 +93,7 @@ While iterating on 01, run one section's harness directly from the example's dir
 `node harness/run.mjs 1.2.0 --out out`, `node harness/drive.mjs --out out/browser.txt`,
 `uv run --project ../.. python -I harness/native.py`) instead of the whole `run.sh`. Example 03's
 run is quick enough to run whole; one Node section alone is `node harness/run.mjs --only scenarios`
-(or `statements`, `typed`, `probes`).
+(or `statements`, `typed`, `probes`, `ontology`).
 
 ## The `run.sh` contract (ADR-0004)
 
@@ -186,6 +190,13 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   After changing one, run `node examples/03-wasm-agent-memory/harness/embed.mjs` (Playwright's
   Chromium; online the first time, for the model), then re-record `expected/`. Never edit the file
   by hand, and never compute it with the library's Node backend: its vectors differ from the tab's.
+- **Example 03's ontology** (03's D10, D11, M8): `data/agent-memory.ontology.json` describes
+  `web/memory.js` `SCHEMA`, and `SCHEMA` stays what the engine is given. Change the two together:
+  the run fails with `PIN: the ontology: …` when the graph type derived from the document is no
+  longer the engine's own, when a store breaks one of the document's rules, or when the document
+  has a field the specification lacks. What the repository adds to the document goes under
+  `extensions.custom.relate-examples`. The page's tab and the harness both read the document
+  through `web/ontology.js`: put new logic there, not in either.
 - **CI** (ADR-0018, `ci/README.md`): a pull request runs only the examples whose inputs it changed
   (`ci/changed-examples.sh`); a push to `main` runs all of them. A green pull request therefore
   says nothing about an example it did not touch: run that example's `run.sh` yourself when a

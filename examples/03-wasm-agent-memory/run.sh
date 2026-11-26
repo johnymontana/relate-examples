@@ -119,25 +119,28 @@ native=1; check_native || native=0
 rm -rf out work && mkdir -p out work
 diffed=()
 
-# ---- Node: the statements, every scripted conversation, typed turns, the probes ----------------------------
+# ---- Node: the statements, every scripted conversation, typed turns, the probes, the ontology ----------------
 # harness/run.mjs on Relate's WASM build in memory, through the page's own modules (web/memory.js, web/agent.js,
 # web/embed.js), with the vectors in data/embeddings.json (no model is loaded): the statements behind each tool;
 # every turn of every conversation, with what each tool returned and the reply's citations checked against it;
-# turns nobody scripted; the Relate behaviours the example depends on (NOTES.md M1-M7). A citation the engine did not return, or a probe that stops
-# reproducing, prints `PIN: ...` on stderr and fails the run. It also writes out/replay.json for the browser
-# and native sections.
+# turns nobody scripted; the Relate behaviours the example depends on (NOTES.md M1-M7); and the memory model as
+# an Ontology Graph Spec document (data/agent-memory.ontology.json) against the specification's SDK, the schema
+# the engine holds and every store the conversations build. A citation the engine did not return, a probe that
+# stops reproducing, or a document that no longer describes the schema prints `PIN: ...` on stderr and fails the
+# run. It also writes out/replay.json for the browser and native sections.
 if ! node harness/run.mjs --out out 2> out/run.err; then
   grep -h '^PIN:' out/run.err >&2 || tail -n 20 out/run.err >&2
   echo "FAIL: harness/run.mjs (stderr in out/run.err)" >&2
   exit 1
 fi
-diffed+=(statements.cypher scenarios.txt typed.txt probes.txt)
+diffed+=(statements.cypher scenarios.txt typed.txt probes.txt ontology.txt)
 
 # ---- browser: headless Chromium against dist/ at the Pages sub-path, production CSP -> out/browser.txt ------
 # npm run build, then harness/drive.mjs serves dist/ with lib/serve.mjs and drives the page with ?test=1: boot,
 # the brand's logo and typefaces, every scripted turn (compared with out/replay.json; what NVL holds against
 # what is stored; what NVL has selected against the returned paths), the buttons, typed turns, the list and
-# the console (two refused writes among them), the toggles, and no console errors or CSP violations.
+# the console (two refused writes among them), the toggles, the Ontology tab (its picture, search, rules and
+# questions, against what the Node section found), and no console errors or CSP violations.
 if check_browser; then
   if ! npm run --silent build > out/build.err 2>&1; then
     tail -n 20 out/build.err >&2

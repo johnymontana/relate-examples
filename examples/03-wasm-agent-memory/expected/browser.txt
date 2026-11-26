@@ -106,6 +106,53 @@ the theme button sets the theme (dark) and the page's only storage key: ex03.the
 NVL redraws in the new theme and keeps the graph: yes (8 entities, 9 memories, 6 messages)
 Restart empties the memory and the conversation: yes; the next message is again "We're starting the checkout rewrite. Priya leads it, and Tomás is on it too."
 
+## Ontology
+the tab says the engine enforces what the document declares: yes
+NVL holds the picture: 4 labels (Session, Message, Entity, Memory) and 5 relationship types, on 2 canvases: yes
+opening a label draws its properties around it, selects it, and keeps the whole picture in the panel: yes (session 3, message 5, entity 3, memory 11)
+The store holds 2 Session, 4 Message, 8 Entity and 7 Memory nodes now. yes
+
+### search
+"decision": 4 parts, as the Node section found: yes; dimmed in the picture: 12 of 15
+  Memory (also called Decision) | Memory.kind (the value decision) | Memory.rationale (its description) | What has been decided, about what, and why? (its statement)
+"replaces": 3 parts, as the Node section found: yes; dimmed in the picture: 13 of 15
+  SUPERSEDES (also called REPLACES) | Memory (its description) | Memory.slot (its description)
+"required date": 3 parts, as the Node section found: yes; dimmed in the picture: 11 of 15
+  Session.startedAt (a rule) | Message.at (a rule) | Memory.at (a rule)
+"kubernetes": nothing in the model says that, as the Node section found: yes; dimmed in the picture: 15 of 15
+clicking the second result opens it: Memory.kind: yes
+  type: STRING, which the engine checks on every write
+  presence: required: the engine refuses a node without it
+  one of: fact Something stated as true, e.g. `Dana owns the payments service`. / decision A choice that was made, usually with a `rationale`, e.g. `Use…
+  kept by: the agent, not the engine: see the rules below
+  stored: 7 in the store now · show in Memory
+an empty search lights everything again: yes
+
+### from the model to the store, and back
+"show in Memory" on SUPERSEDES lights its 1 stored: yes (2 nodes, 1 relationship; "Every SUPERSEDES relationship in the store, with its two ends.")
+clicking a node in the Memory tab, its inspector links to what the model says of its label, and the link opens that label here: yes
+
+### the rules the engine does not enforce
+before a check: 17 rules, not checked yet
+the button runs every rule: All 17 rules hold for the 21 nodes and 38 relationships in the store: yes (17 rules, as the Node section judged them)
+a replaced memory made current again: MATCH (m:Memory) WHERE NOT m.current SET m.current = true
+  the earlier verdict is marked as of another store: yes
+  2 of 17 rules broken for the 21 nodes and 38 relationships in the store: yes
+    one-current-memory-per-slot: current 2, slot "checkout rewrite/database"
+    replaced-means-not-current: id "db-postgres"
+a property the document does not declare: MATCH (e:Entity {key: 'dana'}) SET e.note = 'on holiday'
+  1 of 17 rules broken for the 21 nodes and 38 relationships in the store: yes
+    declared: :Entity has the undeclared property note
+the list shows it: 16 rules held, 1 broken (declared: :Entity has the undeclared property note)
+
+### the questions the document lists
+clicking each question runs it with the parameters and rows the Node section got: yes (8 of 8)
+picking another value asks again: $entity = tomas: yes
+  fact | Tomás works on the checkout rewrite | null
+  fact | Tomás is away next week at a conference in Lisbon | null
+its statements are logged under the hood, as reads: yes (10 ask since the restart)
+NVL redraws the picture in the other theme and keeps it: yes (4 labels, 11 properties, 5 relationship types)
+
 requests to other origins: none
 
 console errors: none; CSP violations: none

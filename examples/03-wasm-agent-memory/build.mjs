@@ -32,6 +32,8 @@
  *                                      kit's README.txt
  *   data/scenarios/                    the scripted conversations, and data/SOURCE.md
  *   data/embeddings.json               the vector of every text the scripts use (harness/embed.mjs)
+ *   data/agent-memory.ontology.json    the memory model as an Ontology Graph Spec document, as it is
+ *                                      written: the Ontology tab reads it and links to it
  *   THIRD_PARTY.md
  *
  * Directories under assets/ are versioned: a new version is a new URL, so GitHub Pages' 10-minute
@@ -53,7 +55,7 @@ const MODULES = path.join(EX, 'node_modules');
 const RELATE_LICENSE_SHA256 = 'ac87d12e27d69f09130a7b4178e48e995ab131e4b476aa188e58ffac7ed7fab3';
 /** The page's entries (bundled), the modules they import, and its static files; any other web/ file is an error. */
 const ENTRIES = ['app.js', 'engine.worker.js', 'embed.worker.js'];
-const MODULES_IN = ['agent.js', 'embed.js', 'graph.js', 'memory.js'];
+const MODULES_IN = ['agent.js', 'embed.js', 'graph.js', 'memory.js', 'ontology.js', 'ontology-tab.js'];
 /** The MIT License text with onnxruntime-web's copyright line (its npm package ships no licence file): its sha256. */
 const ORT_LICENSE_SHA256 = '2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c';
 /** onnxruntime-web's WebAssembly build: the files its `wasm` entry point loads. */
@@ -295,6 +297,10 @@ export async function build(out = path.join(EX, 'dist'), { staleVectors = false 
   // (harness/embed.mjs builds with staleVectors: it is about to rewrite that file with this build's worker)
   try { precomputed(emb); } catch (e) { if (!staleVectors) throw new BuildError(e instanceof Error ? e.message : String(e)); }
   copy('data/embeddings.json', path.join(EX, 'data/embeddings.json'));
+  // the ontology, byte for byte: the page links to it as a document to read (harness/run.mjs checks it)
+  const ontology = path.join(EX, 'data/agent-memory.ontology.json');
+  try { JSON.parse(fs.readFileSync(ontology, 'utf8')); } catch (e) { throw new BuildError(`data/agent-memory.ontology.json is not JSON: ${e instanceof Error ? e.message : e}`); }
+  copy('data/agent-memory.ontology.json', ontology);
   copy('THIRD_PARTY.md', path.join(EX, 'THIRD_PARTY.md'));
   fs.writeFileSync(path.join(out, '.nojekyll'), '');
 

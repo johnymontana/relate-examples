@@ -1,0 +1,514 @@
+{
+  "schema": "https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json",
+  "version": "1",
+  "id": "agent-memory-graph",
+  "name": "Agent memory graph",
+  "description": "What a conversational agent keeps between sessions, as a graph. A user's messages are stored in the sessions they were sent in, with the entities they name. From each message the agent draws memories: single facts, decisions, preferences and notes. A memory records the message it came from and the entities it is about, so two memories that share an entity are two steps apart and recall can walk from one to the other. A newer memory in the same slot supersedes the older one and nothing is deleted, so the store holds what is believed now and what used to be believed. Each memory can carry an embedding, searched by meaning through a vector index, and its text is searched by its words through a full-text index. This is the model of example 03 of relate-examples, where Relate 1.2.0 enforces it as a graph type on every write.",
+  "nodes": {
+    "session": {
+      "label": "Session",
+      "description": "One conversation between the user and the agent, with a start time. It groups the messages sent in it and stands for one context window: what the agent learnt in an earlier session reaches a later one only through its memory. A session is stored together with its first message that teaches something, so a session in which the user only asked questions leaves no node.",
+      "aliases": ["Conversation", "Thread"],
+      "reference": "https://schema.org/Conversation",
+      "properties": {
+        "id": {
+          "type": "STRING",
+          "name": "id",
+          "must_exist": true,
+          "description": "Identifier of the session, unique in the store. On the page it is the conversation's key and the session's own, e.g. `team-s1`. The turns a visitor types go into `<conversation>-you`."
+        },
+        "title": {
+          "type": "STRING",
+          "name": "title",
+          "must_exist": true,
+          "description": "Name of the session for people, drawn on its node and returned with a recalled memory to say when it was learnt. e.g. `Monday · kickoff`."
+        },
+        "startedAt": {
+          "type": "ZONED DATETIME",
+          "name": "startedAt",
+          "must_exist": true,
+          "description": "When the session began. e.g. `2026-03-09T09:00:00Z`."
+        }
+      },
+      "constraints": {
+        "session-id-unique": {
+          "type": "UNIQUE",
+          "properties": ["id"],
+          "name": "session_id",
+          "extensions": {"custom": {"relate-examples": {"backed_by": "a RANGE index of the same name, which the constraint owns", "merge_key": true}}}
+        },
+        "session-id-type": {"type": "PROPERTY_TYPE", "properties": ["id"]},
+        "session-title-type": {"type": "PROPERTY_TYPE", "properties": ["title"]},
+        "session-started-at-type": {"type": "PROPERTY_TYPE", "properties": ["startedAt"]}
+      },
+      "extensions": {
+        "display": {
+          "x": -360,
+          "y": -120,
+          "colour": "#A9C6D3",
+          "custom": {"relate-examples": {"caption": "title", "radius": 30, "shown": "as provenance: when asked for, or when a highlighted path runs through it"}}
+        }
+      }
+    },
+    "message": {
+      "label": "Message",
+      "description": "Something the user said that taught the agent something, kept word for word as the source of the memories drawn from it. Only such messages are stored: a question answered from memory leaves no node, and neither do the agent's replies. Not the claim that was learnt (use Memory) and not the thing it names (use Entity).",
+      "aliases": ["Utterance", "User message"],
+      "reference": "https://schema.org/Message",
+      "properties": {
+        "id": {
+          "type": "STRING",
+          "name": "id",
+          "must_exist": true,
+          "description": "Identifier of the message, unique in the store: the conversation's key and the message's `seq`, e.g. `team-5`."
+        },
+        "seq": {
+          "type": "INTEGER",
+          "name": "seq",
+          "must_exist": true,
+          "description": "Position of the turn in its conversation, counted from 1 across sessions. Turns that only ask something are counted and not stored, so the stored numbers have gaps. A memory copies it from its message, and it decides which of two memories in a slot is the newer."
+        },
+        "role": {
+          "type": "STRING",
+          "name": "role",
+          "must_exist": true,
+          "one_of": ["user"],
+          "description": "Who spoke. Always `user` in this model, since the agent's replies are not stored."
+        },
+        "text": {
+          "type": "STRING",
+          "name": "text",
+          "must_exist": true,
+          "description": "The message as it was said, unedited. It is what a memory is traced back to when the agent is asked how it knows something."
+        },
+        "at": {
+          "type": "ZONED DATETIME",
+          "name": "at",
+          "must_exist": true,
+          "description": "When the message was sent. In a scripted conversation, the session's start plus three minutes per turn."
+        }
+      },
+      "constraints": {
+        "message-id-unique": {
+          "type": "UNIQUE",
+          "properties": ["id"],
+          "name": "message_id",
+          "extensions": {"custom": {"relate-examples": {"backed_by": "a RANGE index of the same name, which the constraint owns", "merge_key": true}}}
+        },
+        "message-id-type": {"type": "PROPERTY_TYPE", "properties": ["id"]},
+        "message-seq-type": {"type": "PROPERTY_TYPE", "properties": ["seq"]},
+        "message-role-type": {"type": "PROPERTY_TYPE", "properties": ["role"]},
+        "message-text-type": {"type": "PROPERTY_TYPE", "properties": ["text"]},
+        "message-at-type": {"type": "PROPERTY_TYPE", "properties": ["at"]}
+      },
+      "extensions": {
+        "display": {
+          "x": 0,
+          "y": -120,
+          "colour": "#6D97AB",
+          "custom": {"relate-examples": {"caption": "seq", "radius": 20, "shown": "as provenance: when asked for, or when a highlighted path runs through it"}}
+        }
+      }
+    },
+    "entity": {
+      "label": "Entity",
+      "description": "A person, project, place, tool or other named thing that a message mentions and that memories are about. Entities are what join memories: two memories about the same entity are two steps apart. There is one node per thing however its name is written, since `Tomás` and `tomas` fold to the same key. An entity carries no facts of its own: what is known about it is the memories that point at it.",
+      "aliases": ["Subject", "Named entity", "Thing"],
+      "reference": "https://schema.org/Thing",
+      "properties": {
+        "key": {
+          "type": "STRING",
+          "name": "key",
+          "must_exist": true,
+          "pattern": "^[a-z0-9]+( [a-z0-9]+)*$",
+          "description": "The name folded for matching: lower case, accents removed, runs of letters and digits joined by single spaces. `Tomás` gives `tomas` and `CockroachDB` gives `cockroachdb`. It is the property every write merges an entity on."
+        },
+        "name": {
+          "type": "STRING",
+          "name": "name",
+          "must_exist": true,
+          "description": "The name as the first message to mention the entity wrote it, kept for display. e.g. `Tomás`."
+        },
+        "kind": {
+          "type": "STRING",
+          "name": "kind",
+          "must_exist": true,
+          "description": "What sort of thing the entity is, as one lower-case word chosen by whoever extracts it: an open vocabulary, not a fixed list. The first message to mention an entity decides its kind. e.g. `person`, `project`, `place`.",
+          "extensions": {
+            "custom": {
+              "relate-examples": {
+                "used_by_the_scripts": ["person", "project", "service", "technology", "place", "trip", "repository", "module", "tool", "topic", "event"],
+                "colour_groups": {"person": "person", "team": "person", "place": "place", "technology": "tech", "tool": "tech", "topic": "topic", "event": "topic"},
+                "any_other_kind": "thing"
+              }
+            }
+          }
+        }
+      },
+      "constraints": {
+        "entity-key-unique": {
+          "type": "UNIQUE",
+          "properties": ["key"],
+          "name": "entity_key",
+          "extensions": {"custom": {"relate-examples": {"backed_by": "a RANGE index of the same name, which the constraint owns", "merge_key": true}}}
+        },
+        "entity-key-type": {"type": "PROPERTY_TYPE", "properties": ["key"]},
+        "entity-name-type": {"type": "PROPERTY_TYPE", "properties": ["name"]},
+        "entity-kind-type": {"type": "PROPERTY_TYPE", "properties": ["kind"]}
+      },
+      "extensions": {
+        "display": {
+          "x": 360,
+          "y": 10,
+          "colour": "#8FE3E8",
+          "custom": {
+            "relate-examples": {
+              "caption": "name",
+              "radius": "34, plus 3 for each current memory about it, up to 49",
+              "shown": "always",
+              "theme": "dark",
+              "colour_by_group": {"person": "#8FE3E8", "place": "#8FCB62", "tech": "#5FA3C4", "topic": "#6FA58D", "thing": "#FFFFFF"}
+            }
+          }
+        }
+      }
+    },
+    "memory": {
+      "label": "Memory",
+      "description": "One thing the agent learnt from a message: a fact, a decision, a preference or a note, written as a single sentence that stands on its own. It records where it came from (FROM) and what it is about (ABOUT), and a newer memory in the same slot replaces it (SUPERSEDES) without deleting it. There is one label with a `kind`, not a label per kind, so that every relationship type has one source label. Not the message as it was said (use Message) and not the thing it describes (use Entity).",
+      "aliases": ["Fact", "Decision", "Preference", "Note", "Belief"],
+      "reference": "https://schema.org/Statement",
+      "properties": {
+        "id": {
+          "type": "STRING",
+          "name": "id",
+          "must_exist": true,
+          "description": "Identifier of the memory, unique in the store, and what a reply cites as `[[id]]`. A short slug chosen when the memory is extracted, e.g. `db-postgres`. A note the visitor typed gets `note-<seq>`."
+        },
+        "kind": {
+          "type": "STRING",
+          "name": "kind",
+          "must_exist": true,
+          "one_of": ["fact", "decision", "preference", "note"],
+          "description": "What sort of memory it is. The kind labels a memory for whoever reads it: it changes nothing about how the memory is stored, searched or superseded.",
+          "extensions": {
+            "custom": {
+              "relate-examples": {
+                "values": {
+                  "fact": "Something stated as true, e.g. `Dana owns the payments service`.",
+                  "decision": "A choice that was made, usually with a `rationale`, e.g. `Use CockroachDB for the checkout rewrite`.",
+                  "preference": "What someone likes, needs or avoids, e.g. `Maya is vegetarian`.",
+                  "note": "Text the visitor typed, stored word for word because no language model extracted it."
+                }
+              }
+            }
+          }
+        },
+        "text": {
+          "type": "STRING",
+          "name": "text",
+          "must_exist": true,
+          "description": "The memory as one self-contained sentence, e.g. `Use Postgres for the checkout rewrite`. It is the text the embedding is made from and the text the full-text index covers."
+        },
+        "gist": {
+          "type": "STRING",
+          "name": "gist",
+          "must_exist": true,
+          "description": "Two or three words of the memory, drawn on its node in the graph, e.g. `database: Postgres`. A typed note's gist is its first four words."
+        },
+        "slot": {
+          "type": "STRING",
+          "name": "slot",
+          "must_exist": true,
+          "pattern": "^([^/]+/[^/]+)?$",
+          "description": "The question the memory answers, as `<subject>/<aspect>`, e.g. `checkout rewrite/database`. At most one memory in a slot is current: storing another one supersedes it. The empty string, never a missing property, when the memory replaces nothing and stands beside any other."
+        },
+        "seq": {
+          "type": "INTEGER",
+          "name": "seq",
+          "must_exist": true,
+          "description": "The `seq` of the message the memory came from, copied so that memories sort by when they were learnt without a hop."
+        },
+        "at": {
+          "type": "ZONED DATETIME",
+          "name": "at",
+          "must_exist": true,
+          "description": "When the memory was learnt: the `at` of the message it came from."
+        },
+        "current": {
+          "type": "BOOLEAN",
+          "name": "current",
+          "must_exist": true,
+          "description": "Whether this is what the agent believes now. True when stored, false once a newer memory in the same slot supersedes it. Search looks at every memory, but the graph steps of recall and connect cross current memories only."
+        },
+        "rationale": {
+          "type": "STRING",
+          "name": "rationale",
+          "description": "The reason, when the message gave one, e.g. `the team knows it well`. Mostly on decisions, and absent on most memories."
+        },
+        "supersededAt": {
+          "type": "ZONED DATETIME",
+          "name": "supersededAt",
+          "description": "When a newer memory replaced this one: the `at` of that memory. Absent while the memory is current."
+        },
+        "embedding": {
+          "type": "VECTOR<FLOAT32>",
+          "name": "embedding",
+          "dimension": 384,
+          "description": "The vector of `text`, for search by meaning. The graph type gives it a type and a length but does not require it: a memory stored while no embedding model is available has none, and is still found by its words.",
+          "reference": "https://huggingface.co/Xenova/all-MiniLM-L6-v2",
+          "extensions": {
+            "custom": {
+              "relate-examples": {
+                "of": "text",
+                "model": "Xenova/all-MiniLM-L6-v2",
+                "quantisation": "q8",
+                "pooling": "mean",
+                "normalised": true,
+                "one_text_at_a_time": true,
+                "pinned_in": "web/embed.js MODEL"
+              }
+            }
+          }
+        }
+      },
+      "constraints": {
+        "memory-id-unique": {
+          "type": "UNIQUE",
+          "properties": ["id"],
+          "name": "memory_id",
+          "extensions": {"custom": {"relate-examples": {"backed_by": "a RANGE index of the same name, which the constraint owns", "merge_key": true}}}
+        },
+        "memory-id-type": {"type": "PROPERTY_TYPE", "properties": ["id"]},
+        "memory-kind-type": {"type": "PROPERTY_TYPE", "properties": ["kind"]},
+        "memory-text-type": {"type": "PROPERTY_TYPE", "properties": ["text"]},
+        "memory-gist-type": {"type": "PROPERTY_TYPE", "properties": ["gist"]},
+        "memory-slot-type": {"type": "PROPERTY_TYPE", "properties": ["slot"]},
+        "memory-seq-type": {"type": "PROPERTY_TYPE", "properties": ["seq"]},
+        "memory-at-type": {"type": "PROPERTY_TYPE", "properties": ["at"]},
+        "memory-current-type": {"type": "PROPERTY_TYPE", "properties": ["current"]},
+        "memory-rationale-type": {"type": "PROPERTY_TYPE", "properties": ["rationale"]},
+        "memory-superseded-at-type": {"type": "PROPERTY_TYPE", "properties": ["supersededAt"]},
+        "memory-embedding-type": {
+          "type": "PROPERTY_TYPE",
+          "properties": ["embedding"],
+          "extensions": {"custom": {"relate-examples": {"engine_type": "VECTOR<FLOAT32 NOT NULL>(384)", "refuses": "a vector of any other length, and a list that is not a vector"}}}
+        }
+      },
+      "extensions": {
+        "indexes": {
+          "memory-embedding": {
+            "type": "VECTOR",
+            "labels": ["Memory"],
+            "properties": ["embedding"],
+            "options": {
+              "type": "VECTOR",
+              "vector.dimensions": 384,
+              "vector.similarity_function": "cosine"
+            },
+            "custom": {
+              "relate-examples": {
+                "searched_by": "recall, by meaning",
+                "score": "(1 + cosine) / 2: 1 for the same direction, 0.5 for no similarity",
+                "returns": "the k nearest however poor the match, so the caller filters on the score; a memory without a vector is never returned"
+              }
+            },
+            "name": "memory_embedding"
+          },
+          "memory-text": {
+            "type": "FULLTEXT",
+            "labels": ["Memory"],
+            "properties": ["text"],
+            "custom": {
+              "relate-examples": {
+                "searched_by": "recall, by words",
+                "matches": "any of the query's terms, as whole words with no stemming: `test` does not find `tests`",
+                "query": "the content words of the question, without stop words"
+              }
+            },
+            "name": "memory_text"
+          }
+        },
+        "display": {
+          "x": 0,
+          "y": 140,
+          "colour": "#2F6682",
+          "custom": {
+            "relate-examples": {
+              "caption": "gist",
+              "radius": "30, or 27 once replaced",
+              "shown": "always",
+              "theme": "dark",
+              "colour_when_replaced": "#17506C"
+            }
+          }
+        }
+      }
+    }
+  },
+  "relationships": {
+    "in-session": {
+      "type": "IN_SESSION",
+      "description": "The message was sent in the session. Every message is in exactly one session, and a session exists only because a message was stored in it. With FROM it gives a memory its provenance: what was said, and in which conversation.",
+      "aliases": ["PART_OF", "SENT_IN"],
+      "reference": "https://schema.org/isPartOf",
+      "from": {"node": "message", "label": "Message", "count": 1},
+      "to": {"node": "session", "label": "Session", "min_count": 1},
+      "extensions": {"custom": {"relate-examples": {"endpoints": "enforced by the graph type", "written_by": "REMEMBER_MESSAGE", "drawn": "with provenance"}}}
+    },
+    "mentions": {
+      "type": "MENTIONS",
+      "description": "The message names the entity. It is written with the message, before any memory, and the same write creates the entity, so every entity is mentioned at least once. A message can name several entities or none. What is claimed about an entity is a Memory with ABOUT, not this.",
+      "aliases": ["NAMES", "REFERS_TO"],
+      "reference": "https://schema.org/mentions",
+      "from": {"node": "message", "label": "Message", "min_count": 0},
+      "to": {"node": "entity", "label": "Entity", "min_count": 1},
+      "extensions": {"custom": {"relate-examples": {"endpoints": "enforced by the graph type", "written_by": "REMEMBER_MESSAGE", "drawn": "never: it repeats what ABOUT shows"}}}
+    },
+    "from": {
+      "type": "FROM",
+      "description": "The memory was drawn from the message: its provenance. Following it, and then IN_SESSION, answers `how do you know?` with the user's own words and when they were said. Every memory has exactly one source, and every stored message is the source of at least one memory.",
+      "aliases": ["DERIVED_FROM", "SOURCE"],
+      "reference": "https://www.w3.org/TR/prov-o/#wasDerivedFrom",
+      "from": {"node": "memory", "label": "Memory", "count": 1},
+      "to": {"node": "message", "label": "Message", "min_count": 1},
+      "extensions": {"custom": {"relate-examples": {"endpoints": "enforced by the graph type", "written_by": "REMEMBER_MEMORIES", "drawn": "with provenance"}}}
+    },
+    "about": {
+      "type": "ABOUT",
+      "description": "The memory is about the entity. A memory about two entities joins them: `Priya leads the checkout rewrite` is ABOUT both, which puts Priya and the rewrite two steps apart. Recall and connect walk these to reach memories that no search found. A memory is ABOUT only entities that its own message mentions, and a typed note that names nothing known is about nothing.",
+      "aliases": ["CONCERNS", "REGARDING"],
+      "reference": "https://schema.org/about",
+      "from": {"node": "memory", "label": "Memory", "min_count": 0},
+      "to": {"node": "entity", "label": "Entity", "min_count": 0},
+      "extensions": {"custom": {"relate-examples": {"endpoints": "enforced by the graph type", "written_by": "REMEMBER_MEMORIES", "drawn": "always"}}}
+    },
+    "supersedes": {
+      "type": "SUPERSEDES",
+      "description": "The newer memory replaced the older one in the same slot. The older one stays in the store, with `current` false and `supersededAt` set, so the history of a slot is a chain from the current memory back to the first. Recall follows the chain forwards, to answer with what is true now when a search finds what used to be, and trace follows it backwards.",
+      "aliases": ["REPLACES", "REVISES"],
+      "reference": "https://www.w3.org/TR/prov-o/#wasRevisionOf",
+      "from": {"node": "memory", "label": "Memory", "min_count": 0, "max_count": 1},
+      "to": {"node": "memory", "label": "Memory", "min_count": 0, "max_count": 1},
+      "extensions": {"custom": {"relate-examples": {"endpoints": "enforced by the graph type", "written_by": "REMEMBER_SUPERSEDE", "drawn": "always"}}}
+    }
+  },
+  "extensions": {
+    "custom": {
+      "relate-examples": {
+        "describes": {
+          "example": "examples/03-wasm-agent-memory",
+          "schema": "web/memory.js SCHEMA",
+          "engine": "Relate 1.2.0",
+          "decisions": ["ADR-0016", "ADR-0017"]
+        },
+        "enforcement": {
+          "summary": "The schema is a graph type followed by four uniqueness constraints and two search indexes. Relate checks the graph type when a statement ends, so a write that breaks it stores nothing (NOTES.md M1, M2).",
+          "enforced": [
+            {"rule": "the type of every declared property, the vector's length included", "written_as": "the PROPERTY_TYPE constraints", "by": "the graph type"},
+            {"rule": "the presence of every required property", "written_as": "must_exist", "by": "the graph type"},
+            {"rule": "the label at each end of every relationship type", "written_as": "from and to", "by": "the graph type"},
+            {"rule": "one node per id or key", "written_as": "the UNIQUE constraints", "by": "CREATE CONSTRAINT, after the graph type"}
+          ],
+          "described_only": ["one_of", "pattern", "count, min_count and max_count", "the invariants below"],
+          "undeclared_properties": "accepted",
+          "constraint_names": "The engine names the graph type's own constraints itself, so only the UNIQUE constraints carry a name here."
+        },
+        "invariants": [
+          {
+            "id": "one-current-memory-per-slot",
+            "rule": "At most one memory in a slot is current.",
+            "violations": "MATCH (m:Memory)\nWHERE m.current AND m.slot <> ''\nWITH m.slot AS slot, count(m) AS current\nWHERE current > 1\nRETURN slot, current"
+          },
+          {
+            "id": "replaced-means-not-current",
+            "rule": "A memory is current exactly when nothing supersedes it, and it has a supersededAt exactly when it is not current.",
+            "violations": "MATCH (m:Memory)\nWITH m, EXISTS { (m)<-[:SUPERSEDES]-(:Memory) } AS replaced\nWHERE m.current = replaced OR m.current = (m.supersededAt IS NOT NULL)\nRETURN m.id AS id"
+          },
+          {
+            "id": "supersession-stays-in-its-slot",
+            "rule": "A memory supersedes an older memory in its own slot, which is not the empty one, and stamps it with its own time.",
+            "violations": "MATCH (newer:Memory)-[:SUPERSEDES]->(older:Memory)\nWHERE newer.slot = '' OR newer.slot <> older.slot OR newer.seq <= older.seq OR older.supersededAt <> newer.at\nRETURN newer.id AS newer, older.id AS older"
+          },
+          {
+            "id": "memory-carries-its-message-time",
+            "rule": "A memory's seq and at are those of the message it came from.",
+            "violations": "MATCH (m:Memory)-[:FROM]->(msg:Message)\nWHERE m.seq <> msg.seq OR m.at <> msg.at\nRETURN m.id AS id"
+          },
+          {
+            "id": "about-only-what-its-message-mentions",
+            "rule": "A memory is ABOUT only entities that its own message MENTIONS.",
+            "violations": "MATCH (m:Memory)-[:ABOUT]->(e:Entity)\nWHERE NOT EXISTS { (m)-[:FROM]->(:Message)-[:MENTIONS]->(e) }\nRETURN m.id AS id, e.key AS entity"
+          }
+        ],
+        "questions": [
+          {
+            "id": "current-beliefs",
+            "question": "What does the agent believe now about an entity?",
+            "cypher": "MATCH (e:Entity {key: $entity})<-[:ABOUT]-(m:Memory)\nWHERE m.current\nRETURN m.kind AS kind, m.text AS text, m.rationale AS rationale\nORDER BY m.seq, m.id",
+            "parameters": {"entity": {"of": "entity.key", "example": "checkout rewrite"}}
+          },
+          {
+            "id": "what-changed",
+            "question": "What used to be true, what replaced it, and why?",
+            "cypher": "MATCH (newer:Memory)-[:SUPERSEDES]->(older:Memory)\nRETURN older.slot AS slot, older.text AS was, newer.text AS now, newer.rationale AS because,\n       toString(older.supersededAt) AS changed\nORDER BY changed, slot"
+          },
+          {
+            "id": "source-of-a-memory",
+            "question": "Where did a memory come from?",
+            "cypher": "MATCH (m:Memory {id: $id})-[:FROM]->(msg:Message)-[:IN_SESSION]->(s:Session)\nRETURN msg.text AS said, s.title AS session, toString(msg.at) AS at",
+            "parameters": {"id": {"of": "memory.id", "example": "owner-dana"}}
+          },
+          {
+            "id": "between-two-entities",
+            "question": "Which memories join two entities directly?",
+            "cypher": "MATCH (a:Entity {key: $from})<-[:ABOUT]-(m:Memory)-[:ABOUT]->(b:Entity {key: $to})\nWHERE m.current\nRETURN m.kind AS kind, m.text AS text\nORDER BY m.seq, m.id",
+            "parameters": {"from": {"of": "entity.key", "example": "dana"}, "to": {"of": "entity.key", "example": "payments service"}}
+          },
+          {
+            "id": "decisions",
+            "question": "What has been decided, about what, and why?",
+            "cypher": "MATCH (m:Memory {kind: 'decision'})\nWHERE m.current\nRETURN m.text AS decision, m.rationale AS because,\n       COLLECT { MATCH (m)-[:ABOUT]->(e:Entity) RETURN e.name ORDER BY e.name } AS about\nORDER BY m.seq, m.id"
+          },
+          {
+            "id": "learnt-per-session",
+            "question": "What did the agent learn in each session?",
+            "cypher": "MATCH (s:Session)<-[:IN_SESSION]-(:Message)<-[:FROM]-(m:Memory)\nRETURN toString(s.startedAt) AS started, s.title AS session, count(m) AS memories\nORDER BY started, session"
+          },
+          {
+            "id": "central-entities",
+            "question": "Which entities does the conversation keep returning to?",
+            "cypher": "MATCH (e:Entity)<-[:ABOUT]-(m:Memory)\nWHERE m.current\nRETURN e.name AS entity, e.kind AS kind, count(m) AS memories\nORDER BY memories DESC, entity"
+          },
+          {
+            "id": "without-a-vector",
+            "question": "Which memories have no vector, and so are found by their words alone?",
+            "cypher": "MATCH (m:Memory)\nWHERE m.embedding IS NULL\nRETURN m.id AS id, m.text AS text\nORDER BY id"
+          }
+        ],
+        "tools": {
+          "remember": {
+            "does": "Stores one message and what was extracted from it. Three statements of MERGEs, so running them again changes nothing.",
+            "statements": ["REMEMBER_MESSAGE", "REMEMBER_MEMORIES", "REMEMBER_SUPERSEDE"],
+            "writes": {"nodes": ["session", "message", "entity", "memory"], "relationships": ["in-session", "mentions", "from", "about", "supersedes"]}
+          },
+          "recall": {
+            "does": "Finds the memories that answer a question, in one statement: a vector search and a full-text search fused by reciprocal rank, each hit followed along SUPERSEDES to its current version, then out through shared entities, up to two entities away.",
+            "statements": ["RECALL"],
+            "reads": {"nodes": ["memory", "entity", "message", "session"], "relationships": ["supersedes", "about", "from", "in-session"], "indexes": ["memory-embedding", "memory-text"]}
+          },
+          "connect": {
+            "does": "Returns the shortest chain of current memories between two entities.",
+            "statements": ["CONNECT"],
+            "reads": {"nodes": ["entity", "memory"], "relationships": ["about"]}
+          },
+          "trace": {
+            "does": "Returns the message and session a memory came from, for the memory and for every version it replaced.",
+            "statements": ["TRACE"],
+            "reads": {"nodes": ["memory", "message", "session"], "relationships": ["supersedes", "from", "in-session"]}
+          }
+        }
+      }
+    }
+  }
+}

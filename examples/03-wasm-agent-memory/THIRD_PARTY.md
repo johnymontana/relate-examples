@@ -16,6 +16,7 @@ Shipped in `dist/` (what the GitHub Pages site serves for this example):
 | `assets/relate-brand-1.0/`: `relate-logo-navy.svg`, `relate-logo-white.svg`, `favicon.svg`, `favicon.ico`, `apple-touch-icon.png`, `archie-mascot.svg`, `archie-mascot-flair.svg`, `README.txt` | the Relate logo, favicon and mascot, from the Relate brand kit v1.0 (November 2026), supplied by the repository owner (`data/brand/`), unmodified, with the kit's own README | Relate's trademarks, used as the kit's rules say (`README.txt`). They are not under this repository's licence: do not reuse them outside the kit's rules. |
 | `data/scenarios/team.json`, `trip.json`, `code.json`, `data/SOURCE.md` | the scripted conversations, written for this example; the people and projects are invented | this repository's licence |
 | `data/embeddings.json` | the vectors of the scripts' texts, computed with all-MiniLM-L6-v2 (below) by `harness/embed.mjs` | this repository's licence (the texts are its own; the model is Apache-2.0) |
+| `data/agent-memory.ontology.json` | the memory model as a document of the Neo4j Ontology Graph Specification 1.1.0, written for this example (`data/SOURCE.md`). It names the specification's JSON Schema by its URL and carries none of it | this repository's licence (the specification is Apache-2.0) |
 | `app.js`, `engine.worker.js`, `embed.worker.js`, `index.html`, `style.css` | this repository: `web/` and `lib/relate_wasm.mjs`, bundled by esbuild | this repository's licence |
 
 Fetched at run time, never shipped, and only when the visitor types a text the page has no vector
@@ -36,6 +37,8 @@ The page's colours are the brand kit's (`data/brand/relate-colors.json`).
 None of these is shipped:
 
 - esbuild 0.28.2 (MIT): bundles the page's modules and NVL;
+- the Neo4j Ontology Graph Spec SDK 0.12.2 (npm `@neo4j/ontology-graph-spec`, Apache-2.0):
+  `harness/run.mjs` validates `data/agent-memory.ontology.json` with it;
 - Playwright 1.63.0 (Apache-2.0) and its Chromium: the browser section, and `harness/embed.mjs`;
 - onnxruntime-node and sharp, which npm installs as dependencies of Transformers.js: nothing here
   loads them;

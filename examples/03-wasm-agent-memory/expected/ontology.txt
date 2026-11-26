@@ -1,0 +1,173 @@
+# Example 03: the memory model as an Ontology Graph Spec document (data/agent-memory.ontology.json, read by web/ontology.js)
+
+What the specification's SDK says of the document, the document against the schema the engine holds
+(web/memory.js SCHEMA), the rules the engine does not enforce against every store the conversations
+build, what its questions return, and what the Ontology tab searches and draws.
+
+## The document
+agent-memory-graph, version 1: "Agent memory graph" (https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json)
+4 labels, 22 properties, 5 relationship types, 2 indexes, 5 invariants, 8 questions
+constraints as written: 22 PROPERTY_TYPE, 4 UNIQUE; and must_exist on 19 properties
+
+### The specification's SDK (@neo4j/ontology-graph-spec 0.12.2, through lib/ogs.mjs)
+validation set core: no issues
+validation set labelled: no issues
+validation set consistentSchema: no issues
+validation set mappable: no issues
+validation set bulkImportable: no issues
+validation set wellConstrained: no issues
+decoded, the shorthand becomes constraints: 19 EXISTS, 22 PROPERTY_TYPE, 4 UNIQUE
+decoding the SDK's own encoding gives the same model again: yes
+fields of the document that the SDK's encoding of it does not have:
+  4 × label: shorthand for labels.identifier
+  19 × must_exist: shorthand for an EXISTS constraint
+  1 × vector.similarity_function: cosine is the default, which the encoder leaves out
+every other field is one the specification has: yes
+every label, property and relationship type has a description: yes (31; the longest is 488 characters of the 1024 allowed)
+
+## The document and the engine (Relate 1.2.0 WASM, after web/memory.js SCHEMA)
+property types (PROPERTY_TYPE): 22 in the document, 22 in the engine, the same: yes
+required properties (must_exist): 19 in the document, 19 in the engine, the same: yes
+uniqueness constraints (UNIQUE), with their names: 4 in the document, 4 in the engine, the same: yes
+  entity_key Entity(key)
+  memory_id Memory(id)
+  message_id Message(id)
+  session_id Session(id)
+source labels (from): 5 in the document, 5 in the engine, the same: yes
+target labels (to): 5 in the document, 5 in the engine, the same: yes
+search indexes, with their names: 2 in the document, 2 in the engine, the same: yes
+  memory_embedding VECTOR Memory(embedding)
+  memory_text FULLTEXT Memory(text)
+constraints the engine holds: 55; described by the document: 55: yes
+each uniqueness constraint owns a RANGE index of its own name, which the document therefore does not list: yes
+the vector index: 384 dimensions, cosine, as the statement that creates it says: yes
+the graph type derived from the document (web/ontology.js graphType) is the engine's SHOW CURRENT GRAPH TYPE, byte for byte: yes
+  {
+    (:`Entity` => {`key` :: STRING NOT NULL, `kind` :: STRING NOT NULL, `name` :: STRING NOT NULL}),
+    (:`Memory` => {`at` :: ZONED DATETIME NOT NULL, `current` :: BOOLEAN NOT NULL, `embedding` :: VECTOR<FLOAT32 NOT NULL>(384), `gist` :: STRING NOT NULL, `id` :: STRING NOT NULL, `kind` :: STRING NOT NULL, `rationale` :: STRING, `seq` :: INTEGER NOT NULL, `slot` :: STRING NOT NULL, `supersededAt` :: ZONED DATETIME, `text` :: STRING NOT NULL}),
+    (:`Message` => {`at` :: ZONED DATETIME NOT NULL, `id` :: STRING NOT NULL, `role` :: STRING NOT NULL, `seq` :: INTEGER NOT NULL, `text` :: STRING NOT NULL}),
+    (:`Session` => {`id` :: STRING NOT NULL, `startedAt` :: ZONED DATETIME NOT NULL, `title` :: STRING NOT NULL}),
+    (:`Memory` =>)-[:`ABOUT` =>]->(:`Entity` =>),
+    (:`Memory` =>)-[:`FROM` =>]->(:`Message` =>),
+    (:`Message` =>)-[:`IN_SESSION` =>]->(:`Session` =>),
+    (:`Message` =>)-[:`MENTIONS` =>]->(:`Entity` =>),
+    (:`Memory` =>)-[:`SUPERSEDES` =>]->(:`Memory` =>),
+    CONSTRAINT `entity_key` FOR (`n`:`Entity` =>) REQUIRE (`n`.`key`) IS UNIQUE,
+    CONSTRAINT `memory_id` FOR (`n`:`Memory` =>) REQUIRE (`n`.`id`) IS UNIQUE,
+    CONSTRAINT `message_id` FOR (`n`:`Message` =>) REQUIRE (`n`.`id`) IS UNIQUE,
+    CONSTRAINT `session_id` FOR (`n`:`Session` =>) REQUIRE (`n`.`id`) IS UNIQUE
+  }
+
+## The rules the engine does not enforce (web/ontology.js rules)
+17 rules, 18 statements. Each statement returns the rule's violations, or the rows the rule is judged on:
+values     Message.role: Message.role is one of: user
+             MATCH (n:Message) WHERE n.role IS NOT NULL RETURN n.id AS id, n.role AS value ORDER BY id
+values     Entity.key: Entity.key matches ^[a-z0-9]+( [a-z0-9]+)*$
+             MATCH (n:Entity) WHERE n.key IS NOT NULL RETURN n.key AS id, n.key AS value ORDER BY id
+values     Memory.kind: Memory.kind is one of: fact, decision, preference, note
+             MATCH (n:Memory) WHERE n.kind IS NOT NULL RETURN n.id AS id, n.kind AS value ORDER BY id
+values     Memory.slot: Memory.slot matches ^([^/]+/[^/]+)?$
+             MATCH (n:Memory) WHERE n.slot IS NOT NULL RETURN n.id AS id, n.slot AS value ORDER BY id
+counts     IN_SESSION from: every Message has exactly 1 IN_SESSION going out
+             MATCH (x:Message) OPTIONAL MATCH (x)-[r:IN_SESSION]->() WITH x, count(r) AS n WHERE n <> 1 RETURN x.id AS id, n ORDER BY id
+counts     IN_SESSION to: every Session has at least 1 IN_SESSION coming in
+             MATCH (x:Session) OPTIONAL MATCH (x)<-[r:IN_SESSION]-() WITH x, count(r) AS n WHERE n < 1 RETURN x.id AS id, n ORDER BY id
+counts     MENTIONS to: every Entity has at least 1 MENTIONS coming in
+             MATCH (x:Entity) OPTIONAL MATCH (x)<-[r:MENTIONS]-() WITH x, count(r) AS n WHERE n < 1 RETURN x.key AS id, n ORDER BY id
+counts     FROM from: every Memory has exactly 1 FROM going out
+             MATCH (x:Memory) OPTIONAL MATCH (x)-[r:FROM]->() WITH x, count(r) AS n WHERE n <> 1 RETURN x.id AS id, n ORDER BY id
+counts     FROM to: every Message has at least 1 FROM coming in
+             MATCH (x:Message) OPTIONAL MATCH (x)<-[r:FROM]-() WITH x, count(r) AS n WHERE n < 1 RETURN x.id AS id, n ORDER BY id
+counts     SUPERSEDES from: every Memory has at most 1 SUPERSEDES going out
+             MATCH (x:Memory) OPTIONAL MATCH (x)-[r:SUPERSEDES]->() WITH x, count(r) AS n WHERE n > 1 RETURN x.id AS id, n ORDER BY id
+counts     SUPERSEDES to: every Memory has at most 1 SUPERSEDES coming in
+             MATCH (x:Memory) OPTIONAL MATCH (x)<-[r:SUPERSEDES]-() WITH x, count(r) AS n WHERE n > 1 RETURN x.id AS id, n ORDER BY id
+invariants one-current-memory-per-slot: At most one memory in a slot is current.
+             MATCH (m:Memory) WHERE m.current AND m.slot <> '' WITH m.slot AS slot, count(m) AS current WHERE current > 1 RETURN slot, current
+invariants replaced-means-not-current: A memory is current exactly when nothing supersedes it, and it has a supersededAt exactly when it is not current.
+             MATCH (m:Memory) WITH m, EXISTS { (m)<-[:SUPERSEDES]-(:Memory) } AS replaced WHERE m.current = replaced OR m.current = (m.supersededAt IS NOT NULL) RETURN m.id AS id
+invariants supersession-stays-in-its-slot: A memory supersedes an older memory in its own slot, which is not the empty one, and stamps it with its own time.
+             MATCH (newer:Memory)-[:SUPERSEDES]->(older:Memory) WHERE newer.slot = '' OR newer.slot <> older.slot OR newer.seq <= older.seq OR older.supersededAt <> newer.at RETURN newer.id AS newer, older.id AS older
+invariants memory-carries-its-message-time: A memory's seq and at are those of the message it came from.
+             MATCH (m:Memory)-[:FROM]->(msg:Message) WHERE m.seq <> msg.seq OR m.at <> msg.at RETURN m.id AS id
+invariants about-only-what-its-message-mentions: A memory is ABOUT only entities that its own message MENTIONS.
+             MATCH (m:Memory)-[:ABOUT]->(e:Entity) WHERE NOT EXISTS { (m)-[:FROM]->(:Message)-[:MENTIONS]->(e) } RETURN m.id AS id, e.key AS entity
+declared   declared: every node, relationship and property in the store is one the document declares
+             MATCH (n) RETURN labels(n) AS labels, keys(n) AS keys, count(*) AS nodes
+             MATCH (a)-[r]->(b) RETURN type(r) AS type, labels(a) AS source, labels(b) AS target, keys(r) AS keys, count(*) AS relationships
+
+### Every store the conversations build, after every turn
+team: 10 scripted turns and 12 typed; every rule holds after each: yes (22 of 22)
+trip: 9 scripted turns; every rule holds after each: yes (9 of 9)
+code: 10 scripted turns; every rule holds after each: yes (10 of 10)
+memory kinds stored: decision, fact, note, preference; the document's one_of names these and no other: yes
+entity kinds the scripts use: event, module, person, place, project, repository, service, technology, tool, topic, trip; the document lists the same: yes
+
+### Writes the graph type allows and the document forbids (the team store after its scripted turns)
+a replaced memory made current again: MATCH (m:Memory) WHERE NOT m.current SET m.current = true
+  the engine accepts it: yes; rules then broken: 2
+    one-current-memory-per-slot: current 2, slot "checkout rewrite/database"
+    replaced-means-not-current: id "db-postgres"
+a property the document does not declare: MATCH (e:Entity {key: 'dana'}) SET e.note = 'on holiday'
+  the engine accepts it: yes; rules then broken: 1
+    declared: :Entity has the undeclared property note
+
+## The questions the document lists (the team store after its scripted turns)
+current-beliefs: What does the agent believe now about an entity? {"entity":"checkout rewrite"}
+  {"kind":"fact","rationale":null,"text":"Priya leads the checkout rewrite"}
+  {"kind":"fact","rationale":null,"text":"Tomás works on the checkout rewrite"}
+  {"kind":"fact","rationale":null,"text":"The checkout rewrite depends on the payments service"}
+  {"kind":"decision","rationale":"Postgres failover was too slow in the load test","text":"Use CockroachDB for the checkout rewrite"}
+what-changed: What used to be true, what replaced it, and why?
+  {"because":"Postgres failover was too slow in the load test","changed":"2026-03-12T14:03:00Z","now":"Use CockroachDB for the checkout rewrite","slot":"checkout rewrite/database","was":"Use Postgres for the checkout rewrite"}
+source-of-a-memory: Where did a memory come from? {"id":"owner-dana"}
+  {"at":"2026-03-09T09:03:00Z","said":"It depends on the payments service, which Dana owns. We decided on Postgres for checkout, since the team knows it well.","session":"Monday · kickoff"}
+between-two-entities: Which memories join two entities directly? {"from":"dana","to":"payments service"}
+  {"kind":"fact","text":"Dana owns the payments service"}
+decisions: What has been decided, about what, and why?
+  {"about":["CockroachDB","checkout rewrite"],"because":"Postgres failover was too slow in the load test","decision":"Use CockroachDB for the checkout rewrite"}
+learnt-per-session: What did the agent learn in each session?
+  {"memories":6,"session":"Monday · kickoff","started":"2026-03-09T09:00:00Z"}
+  {"memories":1,"session":"Thursday · a new conversation","started":"2026-03-12T14:00:00Z"}
+central-entities: Which entities does the conversation keep returning to?
+  {"entity":"checkout rewrite","kind":"project","memories":4}
+  {"entity":"Tomás","kind":"person","memories":2}
+  {"entity":"payments service","kind":"service","memories":2}
+  {"entity":"CockroachDB","kind":"technology","memories":1}
+  {"entity":"Dana","kind":"person","memories":1}
+  {"entity":"Lisbon","kind":"place","memories":1}
+  {"entity":"Priya","kind":"person","memories":1}
+without-a-vector: Which memories have no vector, and so are found by their words alone?
+  no rows
+
+The parameters the tab picks on each store (web/ontology.js bind), and how many rows come back:
+team: current-beliefs {"entity":"checkout rewrite"} 4 rows; what-changed 1 row; source-of-a-memory {"id":"owner-dana"} 1 row; between-two-entities {"from":"dana","to":"payments service"} 1 row; decisions 1 row; learnt-per-session 2 rows; central-entities 7 rows; without-a-vector 0 rows
+trip: current-beliefs {"entity":"lisbon trip"} 4 rows; what-changed 2 rows; source-of-a-memory {"id":"trip"} 1 row; between-two-entities {"from":"lisbon trip","to":"maya"} 1 row; decisions 1 row; learnt-per-session 2 rows; central-entities 5 rows; without-a-vector 0 rows
+code: current-beliefs {"entity":"tests"} 2 rows; what-changed 2 rows; source-of-a-memory {"id":"billing-frozen"} 1 row; between-two-entities {"from":"tests","to":"this repo"} 1 row; decisions 3 rows; learnt-per-session 2 rows; central-entities 7 rows; without-a-vector 0 rows
+
+## Search (web/ontology.js search): the parts that hold every word, best first
+"decision": Memory (node, also called Decision) | Memory.kind (property, the value decision) | Memory.rationale (property, its description) | What has been decided, about what, and why? (question, its statement)
+"replaces": SUPERSEDES (relationship, also called REPLACES) | Memory (node, its description) | Memory.slot (property, its description)
+"vector": memory_embedding (index, its kind) | Which memories have no vector, and so are f… (question, the question) | Memory.embedding (property, its type)
+"source": FROM (relationship, also called SOURCE) | Message (node, its description) | Memory (node, its description)
+"conversation": Session (node, also called Conversation) | Which entities does the conversation keep r… (question, the question) | Session.id (property, its description) | Message.id (property, its description) | Message.seq (property, its description) | Message.at (property, its description) | and 1 more
+"memory kind": Memory.kind (property, the property) | Memory (node, the label) | What does the agent believe now about an en… (question, its statement) | Which memories join two entities directly? (question, its statement) | What has been decided, about what, and why? (question, its statement) | Which entities does the conversation keep r… (question, its statement)
+"required date": Session.startedAt (property, a rule) | Message.at (property, a rule) | Memory.at (property, a rule)
+"slot": Memory.slot (property, the property) | At most one memory in a slot is current. (invariant, the rule) | A memory supersedes an older memory in its … (invariant, the rule) | Message.seq (property, its description) | Memory (node, its description) | Memory.current (property, its description) | and 2 more
+"kubernetes": nothing
+
+## The picture (web/ontology.js picture): where the tab draws each label, and a label's properties around it
+labels: Session (-216, -72), Message (0, -72), Entity (216, 6), Memory (0, 84); relationship types: IN_SESSION, MENTIONS, FROM, ABOUT, SUPERSEDES
+Session opened: 3 properties (id, title, startedAt); no two circles overlap: yes
+Message opened: 5 properties (id, seq, role, text, at); no two circles overlap: yes
+Entity opened: 3 properties (key, name, kind); no two circles overlap: yes
+Memory opened: 11 properties (id, kind, text, gist, slot, seq, at, current, rationale?, supersededAt?, embedding?); no two circles overlap: yes
+
+## What the document says about the page
+the colour group of each entity kind is web/graph.js GROUPS: yes
+each node's colour is the dark theme's in web/style.css: yes (Session #A9C6D3, Message #6D97AB, Entity #8FE3E8, Memory #2F6682)
+the relationship types it says are drawn are web/graph.js EDGES: yes (ABOUT, FROM, IN_SESSION, SUPERSEDES)
+the embedding model is web/embed.js MODEL, pooled and normalised as the worker asks: yes (Xenova/all-MiniLM-L6-v2, q8, mean, normalised)
+every statement a tool names is one web/memory.js exports: yes (REMEMBER_MESSAGE, REMEMBER_MEMORIES, REMEMBER_SUPERSEDE, RECALL, CONNECT, TRACE)
+each relationship type is MERGEd by the statement the document names: yes (IN_SESSION by REMEMBER_MESSAGE, MENTIONS by REMEMBER_MESSAGE, FROM by REMEMBER_MEMORIES, ABOUT by REMEMBER_MEMORIES, SUPERSEDES by REMEMBER_SUPERSEDE)
+the labels, relationship types and indexes the tools say they read and write are the document's own: yes

@@ -10,6 +10,9 @@
  *                   {result, calls, snapshot}
  *   query {cypher}  any statement, from the "Under the hood" console: {columns, rows, stats,
  *                   error, calls, snapshot}; an engine error is a result, not a failure
+ *   read {tool, statements}   reads for the Ontology tab, in order: `ask` (a question its document
+ *                   lists) or `check` (a rule's statement). {results: [{columns, rows, error}], calls};
+ *                   the store is as it was, so no snapshot comes back
  *
  * `calls` is every statement the op ran: {tool, write, statement, params (vectors summarised),
  * stats, rows (a count), error, ms}. `ms` is wall-clock time around the engine call, for the page only.
@@ -99,6 +102,20 @@ const OPS = {
       out = { columns: [], rows: [], stats: {}, error: err.detail };
     }
     return { ...out, calls: take(), snapshot: mem().snapshot() };
+  },
+  read(m) {
+    if (m.tool !== 'ask' && m.tool !== 'check') throw new Error(`unknown read ${m.tool}`);
+    const results = [];
+    for (const s of m.statements ?? []) {
+      try {
+        const res = mem().read(m.tool, String(s.text ?? ''), s.params ?? {});
+        results.push({ columns: res.columns, rows: res.rows, error: null });
+      } catch (err) {
+        if (!(err instanceof rw.RelateWasmError)) throw err;
+        results.push({ columns: [], rows: [], error: err.detail });
+      }
+    }
+    return { results, calls: take() };
   },
 };
 

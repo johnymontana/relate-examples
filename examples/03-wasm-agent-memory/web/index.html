@@ -65,6 +65,7 @@
       <div class="tabs" role="tablist" id="tabs">
         <button role="tab" class="tab active" data-pane="graph" data-testid="tab-graph" aria-selected="true">Memory</button>
         <button role="tab" class="tab" data-pane="ledger" data-testid="tab-ledger" aria-selected="false">What it knows</button>
+        <button role="tab" class="tab" data-pane="ontology" data-testid="tab-ontology" aria-selected="false">Ontology</button>
         <button role="tab" class="tab" data-pane="hood" data-testid="tab-hood" aria-selected="false">Under the hood <span class="pill-count" id="calls-count">0</span></button>
       </div>
       <div class="counts" id="counts" data-testid="counts"></div>
@@ -100,6 +101,41 @@
     </div>
 
     <div class="pane scroll" id="pane-ledger" data-testid="ledger" hidden></div>
+
+    <div class="pane scroll" id="pane-ontology" hidden>
+      <div class="onto">
+        <p class="lede">The memory has a shape, and this is that shape written down: an <b>ontology</b>, in Neo4j's <a href="https://neo4j.com/docs/ontology-graph-spec/" target="_blank" rel="noopener noreferrer">Ontology Graph Spec</a>. It says what each label, property and relationship type means, which rules the engine enforces, and which it leaves to the agent. <a href="data/agent-memory.ontology.json" target="_blank" rel="noopener">The document</a> is JSON, checked against the engine and against every conversation on each run of the example.</p>
+        <p class="note onto-status" id="onto-status" data-testid="onto-status"></p>
+        <div class="onto-find">
+          <input id="onto-q" type="search" data-testid="onto-q" placeholder="Search the model: try decision, replaces, vector or source" aria-label="Search the ontology" autocomplete="off" spellcheck="false">
+          <span class="dim" id="onto-hits" data-testid="onto-hits"></span>
+        </div>
+        <ul class="onto-results" id="onto-results" data-testid="onto-results" hidden></ul>
+        <div class="onto-stage">
+          <div class="onto-graph" id="onto-graph" data-testid="onto-graph"></div>
+          <div class="legend onto-legend">
+            <div class="legend-row" id="onto-counts" data-testid="onto-counts"></div>
+            <div class="legend-row">
+              <span class="key"><i class="sw o-label"></i>a label: click one to open it</span>
+              <span class="key"><i class="sw small o-property"></i>a property of the open label</span>
+              <span class="key"><i class="sw small o-optional"></i>optional</span>
+            </div>
+          </div>
+        </div>
+        <section class="onto-detail" id="onto-detail" data-testid="onto-detail" aria-live="polite"></section>
+        <h2 id="onto-rules-h">Does the store keep to it?</h2>
+        <p class="note">The engine enforces types, required properties and the label at each end of a relationship. The rest of the model is the agent's to keep: which values a property takes, how many relationships a node has, what must hold between memories. Each rule is a statement that returns its violations, run on the store as it is now. To see one break, run “A write the engine allows and the model forbids” under the hood, then check again.</p>
+        <div class="row">
+          <button id="onto-check" type="button" class="primary" data-testid="onto-check" disabled>Check the store</button>
+          <span class="dim" id="onto-check-note" data-testid="onto-check-note"></span>
+        </div>
+        <ul class="onto-rules" id="onto-rules" data-testid="onto-rules"></ul>
+        <h2 id="onto-questions-h">Questions it answers</h2>
+        <p class="note">The questions the model was written to answer. Click one to run its statement on the store as it is now. A parameter starts on a value the store holds; pick another to ask again.</p>
+        <ul class="onto-questions" id="onto-questions" data-testid="onto-questions"></ul>
+        <div class="onto-answer" id="onto-answer" data-testid="onto-answer"></div>
+      </div>
+    </div>
 
     <div class="pane scroll" id="pane-hood" hidden>
       <div class="hood">
