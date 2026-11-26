@@ -11,7 +11,7 @@
  * file is a regular file (site/build.mjs refuses anything else). Layout:
  *
  *   index.html style.css favicon.svg app.js ... worker.js console.js   the page and its modules (web/)
- *   assets/relate-1.2.0/            relate.js, relate_bg.wasm, trap.js and snippets/relate-wasm-<hash>/js/opfs.js from
+ *   assets/relate-1.3.0/            relate.js, relate_bg.wasm, trap.js and snippets/relate-wasm-<hash>/js/opfs.js from
  *                                   npm's @relate/relate-wasm (node_modules, npm ci: the lockfile's integrity is the
  *                                   pin), checked as lib/relate_wasm.mjs checks them, and LICENSE.txt (Relate's
  *                                   Apache-2.0 text from data/LICENSE-relate.txt, checked against its pin)
@@ -68,14 +68,14 @@ import { MODEL_FILES } from './web/gliner.js';
 
 export const EX = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(EX, '../..');
-export const RELATE = '1.2.0';
+export const RELATE = '1.3.0';
 const GLINER_REV = '4fa741eec466660daf4adc8703210138295e0b1b';
 const GLINER_DIR_NAME = `gliner-rs-${GLINER_REV.slice(0, 7)}`;
 const NVL_VERSION = '2.0.0';
 /** The Ontology Graph Spec SDK the page ships (package.json; web/ogs.js SDK_VERSION must agree). */
-const OGS_SDK_VERSION = '0.12.2';
+const OGS_SDK_VERSION = '0.13.0';
 /**
- * The Kotlin libraries compiled into the SDK's modules (neo4j/ontology-graph-spec at release/v0.12.2,
+ * The Kotlin libraries compiled into the SDK's modules (neo4j/ontology-graph-spec at release/v0.13.0,
  * gradle/libs.versions.toml and the module names in its npm package), for THIRD_PARTY.txt. Each is
  * Apache-2.0.
  */
@@ -146,7 +146,7 @@ function relateFiles(dir) {
   return ['relate.js', 'relate_bg.wasm', 'trap.js', `snippets/${found[0]}/js/opfs.js`].sort(cmp);
 }
 
-/** Relate's LICENSE at tag v<RELATE> (https://github.com/relatedb/relate/blob/v1.2.0/LICENSE): its sha256. */
+/** Relate's LICENSE at tag v<RELATE> (https://github.com/relatedb/relate/blob/v1.3.0/LICENSE): its sha256. */
 const RELATE_LICENSE_SHA256 = 'ac87d12e27d69f09130a7b4178e48e995ab131e4b476aa188e58ffac7ed7fab3';
 
 /** data/LICENSE-relate.txt, refused unless it is the pinned Apache-2.0 text. */

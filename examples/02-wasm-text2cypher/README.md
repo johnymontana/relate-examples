@@ -14,7 +14,7 @@ Both are checked, run on the same knowledge graph, and compared. Nothing runs on
 - **The ontology** (`data/corporate-events.ontology.yaml`) is read with the official Ontology Graph
   Spec SDK, npm `@neo4j/ontology-graph-spec`, through [`lib/ogs.mjs`](../../lib/ogs.mjs), shared with
   example 01. It produces the prompt, the static checks, and the store's schema.
-- **Relate 1.2.0**, compiled to WebAssembly (npm `@relate/relate-wasm`), holds the graph in the tab.
+- **Relate 1.3.0**, compiled to WebAssembly (npm `@relate/relate-wasm`), holds the graph in the tab.
   It enforces a graph type derived from the same ontology (endpoints and typed properties on every
   write), plus the ontology's constraints and indexes. It plans each generated query (`EXPLAIN`)
   before running it.
@@ -28,7 +28,7 @@ Live: <https://johnymontana.github.io/relate-examples/02-wasm-text2cypher/> (dep
 push to `main` that contains this example and passes CI).
 
 The ids cited below are defined in [NOTES.md](NOTES.md):
-- `P1`…: the Relate 1.2.0 behaviours this example pins;
+- `P1`…: the Relate 1.3.0 behaviours this example pins;
 - `Y`/`W`: the SDK's and WebLLM's behaviours;
 - `D1`…: its design decisions.
 
@@ -66,7 +66,7 @@ URL parameters: `?llm=canned` (the reference queries only; CI's mode), `?model=<
 | `text2cypher.build_schema_prompt` (grounded and bare) | `web/briefing.js`, byte for byte (`briefing.txt`) |
 | one OpenAI call per variant (gpt-4o-mini) | WebLLM in a worker (`web/llm.worker.js`), the briefing as the system message, the reply constrained to `{"cypher": …}` by JSON-schema decoding (W2); or the canned reference queries |
 | `validate_cypher`: read-only, known labels and types, legal endpoints | `web/validate.js`, byte for byte (`validate.txt`), plus Relate's `EXPLAIN` notifications (P5) |
-| Neo4j via the Python driver, or `demo_graph.run`, a toy evaluator of one query shape | Relate 1.2.0 WASM in a worker (`web/engine.worker.js`), real Cypher: every query shape runs |
+| Neo4j via the Python driver, or `demo_graph.run`, a toy evaluator of one query shape | Relate 1.3.0 WASM in a worker (`web/engine.worker.js`), real Cypher: every query shape runs |
 | `cypher.all_statements` applied to Neo4j by `load_demo.py` | `web/ddl.js`: a graph type derived from the ontology (P1, P3, P4), then the same DDL (`ddl.cypher`), then the graph (`web/load.js`) |
 | `main._compare` | `web/compare.js`, byte for byte |
 | the page's `/api/*` calls | `web/app.js`, which calls the modules directly |
@@ -190,19 +190,19 @@ The full queries, with every check's issues and Relate's errors, are in
 
 ## Setup
 
-From the repository root, the shared setup (README.md): `uv sync` (the `relate-db` 1.2.0 binding,
+From the repository root, the shared setup (README.md): `uv sync` (the `relate-db` 1.3.0 binding,
 for the native section). Then:
 
 ```bash
 cd examples/02-wasm-text2cypher
-npm ci --omit=peer                 # exact pins: @relate/relate-wasm 1.2.0, @mlc-ai/web-llm 0.2.89, @neo4j/ontology-graph-spec 0.12.2, NVL 2.0.0, js-yaml 4.3.2
+npm ci --omit=peer                 # exact pins: @relate/relate-wasm 1.3.0, @mlc-ai/web-llm 0.2.89, @neo4j/ontology-graph-spec 0.13.0, NVL 2.0.0, js-yaml 4.3.2
 npx playwright install chromium    # Playwright 1.63.0's Chromium, for the browser section (the same as example 01's)
 ./run.sh
 ```
 
 - **Pins.**
   - The Relate WASM bundle is pinned by its npm integrity in `package-lock.json`, and
-    `lib/relate_wasm.mjs` refuses one that does not report 1.2.0.
+    `lib/relate_wasm.mjs` refuses one that does not report 1.3.0.
   - Every other package is pinned exactly in `package.json` and by integrity in the lockfile.
   - The models are pinned by revision and SRI hash (`web/llm.js`).
 - **A new Relate release** moves with the repository's other pins (ADR-0005; AGENTS.md, "Engine
@@ -223,10 +223,10 @@ When `EXAMPLES_REQUIRE` names the key, it fails instead (CI names both).
 
 | Key | Needs | Without it |
 |---|---|---|
-| `wasm` | Node 20+, the Relate bundle reporting 1.2.0, every npm package at its pin | the whole example SKIPs |
+| `wasm` | Node 20+, the Relate bundle reporting 1.3.0, every npm package at its pin | the whole example SKIPs |
 | `browser` | Playwright's Chromium | the browser section is skipped (a note on stderr) |
 
-The native section needs the project env's `relate-db` 1.2.0 (`uv sync`); another version fails.
+The native section needs the project env's `relate-db` 1.3.0 (`uv sync`); another version fails.
 
 ### What the run checks
 
@@ -237,9 +237,9 @@ The native section needs the project env's `relate-db` 1.2.0 (`uv sync`); anothe
 | `ddl.cypher` | `harness/run.mjs` | The graph type, then the DDL, equal to the Python's. |
 | `queries.txt` | `harness/run.mjs` | The store built as the page builds it, the graph type read back, constraints and indexes. Every canned query (both variants, with the A/B notes), the fallback and the cookbook run through `web/run.js`; which canned entry each suggested question takes. |
 | `validate.txt` | `harness/run.mjs` | The validator on 17 cases and `compare` on 3, each equal to the Python's; `parseReply` on five reply shapes (W5); Relate's `EXPLAIN` notes. |
-| `probes.txt` | `harness/run.mjs` | P1–P9, each a minimal repro on Relate 1.2.0 WASM. |
+| `probes.txt` | `harness/run.mjs` | P1–P9, each a minimal repro on Relate 1.3.0 WASM. |
 | `browser.txt` | `harness/drive.mjs` | The page in headless Chromium against `dist/` at the Pages sub-path, with its production CSP: boot, the SDK's checks, NVL, every suggested question (its rows equal the Node section's), the Ask button, the own-query box (a read, a blocked write, a syntax error, an unknown property), the no-WebGPU fallback, and no console errors or CSP violations. |
-| `native.txt` | `harness/native.py` | The same store built by native Relate 1.2.0 (the graph type refusing the same bad edge), and all 32 queries returning the same rows as WASM. |
+| `native.txt` | `harness/native.py` | The same store built by native Relate 1.3.0 (the graph type refusing the same bad edge), and all 32 queries returning the same rows as WASM. |
 
 ## Testing the model
 
@@ -266,9 +266,9 @@ byte, every query path goes through the same checks, and the page falls back as 
   weights, and the pinned model libraries).
 - Relative URLs only.
 - Every dependency in a versioned `assets/<name>-<version>/` directory:
-  - `relate-1.2.0`;
+  - `relate-1.3.0`;
   - `web-llm-0.2.89`, 5.9 MB minified;
-  - `ontology-graph-spec-0.12.2`, 0.6 MB;
+  - `ontology-graph-spec-0.13.0`, 0.6 MB;
   - `nvl-2.0.0`;
   - `js-yaml-4.3.2`.
 
@@ -292,10 +292,10 @@ on some GPUs), Safari 26, or Firefox on Windows or macOS. It also needs about 1.
 ## Credits and licences
 
 [THIRD_PARTY.md](THIRD_PARTY.md) has every component. In short:
-- Relate 1.2.0 (Apache-2.0).
+- Relate 1.3.0 (Apache-2.0).
 - WebLLM 0.2.89 (Apache-2.0).
 - Qwen3.5 2B and 4B (Apache-2.0), fetched from the Hugging Face Hub.
-- The Ontology Graph Spec SDK 0.12.2 and its Kotlin runtime (Apache-2.0).
+- The Ontology Graph Spec SDK 0.13.0 and its Kotlin runtime (Apache-2.0).
 - NVL 2.0.0 (proprietary, used with Neo4j's permission).
 - js-yaml 4.3.2 (MIT).
 - The ontology, demo graph and reference queries: the repository owner's own project (data/SOURCE.md).

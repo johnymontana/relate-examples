@@ -4,7 +4,7 @@
  * server; here each is a module in the tab (README, "From the server app to the page"):
  *   /api/ontology, /api/ontology/raw   the ontology, read with the Ontology Graph Spec SDK (lib/ogs.mjs
  *                                      and ontology.js): the browser, the JSON document, the checks
- *   /api/graph                         Relate 1.2.0 (WebAssembly) in engine.worker.js: the demo graph,
+ *   /api/graph                         Relate 1.3.0 (WebAssembly) in engine.worker.js: the demo graph,
  *                                      under the ontology's graph type, drawn with NVL
  *   /api/ask                           the model (WebLLM in llm.worker.js, or the canned answers) writes
  *                                      two queries, ontology-grounded first, then the bare one; each is
@@ -25,7 +25,7 @@ import { DEFAULT_MODEL, MODELS, appConfig, modelById, parseReply, repairRequest,
 import { legalRelationships, loadOntology, nodeLabel, queryExamples } from './ontology.js';
 import { cellText } from './run.js';
 
-const SDK_VERSION = '0.12.2';
+const SDK_VERSION = '0.13.0';
 const params = new URLSearchParams(location.search);
 const FORCE_CANNED = params.get('llm') === 'canned';
 const ogs = createOgs({ yaml, sdk, sdkVersion: SDK_VERSION });
@@ -279,7 +279,7 @@ function showDetail(kind, id, nd, rd) {
 
 function modeText() {
   const llm = state.engine && state.modelId && !useCanned() ? `${modelById(state.modelId).label.replace(/ \(.*/, '')} (WebGPU, in this tab)` : 'canned answers';
-  return `ontology: ${state.doc?.name} v${state.doc?.version} · llm: ${llm} · store: Relate ${state.load ? '1.2.0 (WASM, in this tab)' : '…'}`;
+  return `ontology: ${state.doc?.name} v${state.doc?.version} · llm: ${llm} · store: Relate ${state.load ? '1.3.0 (WASM, in this tab)' : '…'}`;
 }
 const useCanned = () => FORCE_CANNED || !state.engine || /** @type {HTMLInputElement} */ ($('use-canned')).checked;
 function refreshMode() {

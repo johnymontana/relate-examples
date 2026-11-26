@@ -2,7 +2,7 @@
 /**
  * ogs.js: the Neo4j Ontology Graph Specification, spec 1.1.0 (https://neo4j.com/docs/ontology-graph-spec/,
  * Apache-2.0; its JSON Schema vendored in data/ontology-spec/ from neo4j/ontology-graph-spec at tag
- * release/v0.12.2): a document read from YAML or JSON, checked against the spec's JSON Schema, the
+ * release/v0.13.0): a document read from YAML or JSON, checked against the spec's JSON Schema, the
  * spec's official SDK (npm @neo4j/ontology-graph-spec, through lib/ogs.mjs) and the rules this
  * example needs, and written back out in one canonical form. The ontology format every other module
  * of the example reads (ontology.js builds its kinds and links from a document; convert.js turns
@@ -74,7 +74,7 @@ export const SPEC_VERSION = LIB_SPEC_VERSION;
 /** The schema's $id, which a document's `schema` names. */
 export const SCHEMA_ID = SCHEMA_URL;
 /** The SDK version this example pins (package.json; build.mjs and harness/ontology.mjs check it). */
-export const SDK_VERSION = '0.12.2';
+export const SDK_VERSION = '0.13.0';
 
 /** An ontology the rules refuse; the message is meant for the person who wrote it. errors: [{path, keyword, message}] when a document failed its checks. */
 export class OntologyError extends Error {

@@ -1,4 +1,4 @@
-# Example 03: the Relate 1.2.0 behaviours it depends on (harness/run.mjs; NOTES.md has one row per probe)
+# Example 03: the Relate 1.3.0 behaviours it depends on (harness/run.mjs; NOTES.md has one row per probe)
 
 M1 the graph type refuses a malformed memory, on every write
   a memory without its text: semantic error: ConstraintValidationFailed: `constraint_<generated>` requires properties
@@ -20,12 +20,20 @@ M3 SEARCH on a vector index: the k nearest, scored (1 + cosine) / 2, whatever th
   without LIMIT inside the search: syntax error: parse error: expected LIMIT, got ")" (RightParen)
   with a fifth memory that has no vector, LIMIT 8: a, b, c, d
 
-M4 SEARCH on a full-text index: terms are ORed and matched whole, with no stemming; punctuation is harmless; an empty query finds nothing
+M4 SEARCH on a full-text index: terms are ORed and matched whole, with no stemming; an empty query, a -, + or ! modifier, grouping parentheses and a quoted phrase are refused, * matches every memory, a query with no word in it finds nothing; WHERE takes comparisons
   "tests": a
   "test": a (the same memory holds both words; "tests" alone would not match "test")
   "kenji bun": d, c
-  a query full of punctuation: a, b, c, d
-  an empty query: 0 rows
+  an empty query: syntax error: Invalid fulltext query '': the query is empty
+  "%" (memory.js NO_WORDS): 0 rows
+  "*": 4 rows
+  "-y": syntax error: Invalid fulltext query term '-y': a `-` clause modifier is not supported
+  "+y": syntax error: Invalid fulltext query term '+y': a `+` clause modifier is not supported
+  "!y": syntax error: Invalid fulltext query term '!y': a `!` clause modifier is not supported
+  "(kenji bun)": syntax error: Invalid fulltext query '(kenji bun)': grouping parentheses are not supported
+  "\"kenji bun\"" (a quoted phrase): syntax error: Invalid fulltext query term 'kenji bun': a literal term the analyzer reads as several is a phrase, which is not supported
+  WHERE m.current = true: c, d
+  WHERE m.current (a bare boolean): syntax error: SyntaxError: InvalidSearchFilterPredicate: invalid predicate for vector search filtering. A vector search filter must consist of one or more predicates joined by AND, and the combined predicates for each property must specify either an exact value (e.g. `x.prop = 1`), a half-bounded range (e.g. `x.prop >= 1`), or a bounded range (e.g. `x.prop > 1 AND x.prop < 100`)
 
 M5 one statement: two SEARCH lists joined by UNION ALL inside CALL () {}, fused by rank, then two graph steps
   0.0328 update d: uses > uses (by meaning and words, cosine 1.00)

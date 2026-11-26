@@ -14,7 +14,7 @@ own brand: its colours, typefaces, logo and mascot.
 - **The agent is scripted.** Its replies, and the entities and memories it extracts from each
   message, are written ahead of time: the two things a language model would produce. No language
   model runs on the page, so it starts at once in any browser.
-- **Its memory is real.** Every remember and recall is a statement that Relate 1.2.0, compiled to
+- **Its memory is real.** Every remember and recall is a statement that Relate 1.3.0, compiled to
   WebAssembly (npm `@relate/relate-wasm`), runs in the tab. A graph type makes the shape of a
   memory something the engine enforces. Recall is one statement: a vector search and a full-text
   search, fused, then two steps through the graph.
@@ -35,7 +35,7 @@ own brand: its colours, typefaces, logo and mascot.
 Live: <https://johnymontana.github.io/relate-examples/03-wasm-agent-memory/> (deployed by the first
 push to `main` that contains this example and passes CI).
 
-The ids cited below are defined in [NOTES.md](NOTES.md): `M1`… are the Relate 1.2.0 behaviours this
+The ids cited below are defined in [NOTES.md](NOTES.md): `M1`… are the Relate 1.3.0 behaviours this
 example pins, and `D1`… its design decisions. The larger decisions are ADRs in
 [`docs/adr/`](../../docs/adr/README.md):
 - this example's own:
@@ -200,18 +200,18 @@ how it was found and its path.
 
 ## Setup
 
-From the repository root, the shared setup (README.md): `uv sync` (the `relate-db` 1.2.0 binding,
+From the repository root, the shared setup (README.md): `uv sync` (the `relate-db` 1.3.0 binding,
 for the native section). Then:
 
 ```bash
 cd examples/03-wasm-agent-memory
-ONNXRUNTIME_NODE_INSTALL=skip npm ci --omit=peer   # exact pins: @relate/relate-wasm 1.2.0, NVL 2.0.0, Transformers.js 4.3.2, the two typefaces, @neo4j/ontology-graph-spec 0.12.2, esbuild 0.28.2, playwright 1.63.0
+ONNXRUNTIME_NODE_INSTALL=skip npm ci --omit=peer   # exact pins: @relate/relate-wasm 1.3.0, NVL 2.0.0, Transformers.js 4.3.2, the two typefaces, @neo4j/ontology-graph-spec 0.13.0, esbuild 0.28.2, playwright 1.63.0
 npx playwright install chromium    # Playwright 1.63.0's Chromium, for the browser section (the same as examples 01 and 02)
 ./run.sh
 ```
 
 - **Pins.** The Relate WASM bundle is pinned by its npm integrity in `package-lock.json`, and
-  `lib/relate_wasm.mjs` refuses one that does not report 1.2.0. NVL and the two typefaces are
+  `lib/relate_wasm.mjs` refuses one that does not report 1.3.0. NVL and the two typefaces are
   pinned exactly in `package.json` and by integrity in the lockfile. `--omit=peer` skips NVL's
   unused neo4j-driver peer. The brand files are in `data/brand/` (`data/SOURCE.md`).
   Transformers.js is pinned the same way, and brings the onnxruntime-web it was built against.
@@ -227,7 +227,7 @@ npx playwright install chromium    # Playwright 1.63.0's Chromium, for the brows
   pins move together"): here `package.json` and its lockfile, `ver` in `run.sh`, and `RELATE` in
   `web/memory.js` and `build.mjs`. Re-run `./run.sh` and re-check every NOTES.md row.
 - **The Ontology Graph Spec SDK** is a development dependency, pinned at the version examples 01
-  and 02 pin (0.12.2). Only `harness/run.mjs` loads it.
+  and 02 pin (0.13.0). Only `harness/run.mjs` loads it.
 - **Node** 20 or later.
 
 ## `run.sh`
@@ -243,22 +243,22 @@ When `EXAMPLES_REQUIRE` names the key, it fails instead (CI names both).
 
 | Key | Needs | Without it |
 |---|---|---|
-| `wasm` | Node 20+, the Relate bundle reporting 1.2.0, every npm package at its pin | the whole example SKIPs |
+| `wasm` | Node 20+, the Relate bundle reporting 1.3.0, every npm package at its pin | the whole example SKIPs |
 | `browser` | Playwright's Chromium | the browser section is skipped (a note on stderr) |
 
-The native section needs the project env's `relate-db` 1.2.0 (`uv sync`); another version fails.
+The native section needs the project env's `relate-db` 1.3.0 (`uv sync`); another version fails.
 
 ### What the run checks
 
 | File | From | What |
 |---|---|---|
 | `statements.cypher` | `harness/run.mjs` | The schema and the statement behind each tool, as the page runs them. |
-| `scenarios.txt` | `harness/run.mjs` | All three conversations through `web/agent.js` and `web/memory.js` on Relate 1.2.0 WASM: every tool call's rows (score, how each memory was reached, its path), what each remember stored, every reply and its citations. Then every remember run a second time, which must change nothing. |
+| `scenarios.txt` | `harness/run.mjs` | All three conversations through `web/agent.js` and `web/memory.js` on Relate 1.3.0 WASM: every tool call's rows (score, how each memory was reached, its path), what each remember stored, every reply and its citations. Then every remember run a second time, which must change nothing. |
 | `ontology.txt` | `harness/run.mjs` | The ontology (D10, D11). What the specification's SDK says of the document: all six validation sets, and that it has no field the specification lacks. The document against the engine: the same property types, required properties, uniqueness constraints, relationship ends and search indexes, and a derived graph type that is the engine's own, byte for byte. The 17 rules the engine does not enforce, each with its statement, held against every store after every turn (41 turns), and against two stores that a write the graph type accepts has broken. What each of the document's questions returns, and the parameters the tab picks for it on each store. What the tab's search finds for nine queries, and where its picture puts each circle. What the document says about the page (colours, the kinds' colour groups, the embedding model, which statement writes each relationship) against the code. |
 | `typed.txt` | `harness/run.mjs` | Twelve turns nobody scripted: questions, one that shares no word with the note it finds, one that asks for a source, two entities to connect, notes that name known entities; then a note and a question that have no vector, stored and found by their words. |
-| `probes.txt` | `harness/run.mjs` | M1–M7, each a minimal repro on Relate 1.2.0 WASM, with vectors made for the probe so every similarity is known exactly. Then what the model's vectors say about eight pairs of the scripts' texts: five that share no word and are found by meaning, one found both ways, two unrelated. |
+| `probes.txt` | `harness/run.mjs` | M1–M7, each a minimal repro on Relate 1.3.0 WASM, with vectors made for the probe so every similarity is known exactly. Then what the model's vectors say about eight pairs of the scripts' texts: five that share no word and are found by meaning, one found both ways, two unrelated. |
 | `browser.txt` | `harness/drive.mjs` | The page in headless Chromium against `dist/` at the Pages sub-path, with its production CSP: boot; the logo and both typefaces loaded; every scripted turn (equal to the Node section's, with what NVL holds equal to the store, what NVL has selected equal to the returned paths, and the rest disabled); the buttons; typed turns, found by meaning with the vectors that come with the page, and two without a vector, found by words; the list; the console, with two refused writes and a result whose paths get highlighted; the toggles, a theme change among them; the whole graph inside the panel once the layout rests (N3); the Ontology tab, equal to the Node section's findings throughout (the picture NVL holds, with each label opened and every circle inside the panel; the search, typed into its box; a part's detail; the way from the model to the store and back; the rules, on the store and on the two broken ones; every question, with its parameters and rows; a theme change); nothing requested from any other origin; no console errors or CSP violations. NVL draws to a canvas, so these read NVL's own state, not pixels (N4, N5). |
-| `native.txt` | `harness/native.py` | Every statement the conversations ran (55), replayed on native Relate 1.2.0 with the same parameters: the same rows, ids, scores and paths included. The graph type refuses the same writes natively. |
+| `native.txt` | `harness/native.py` | Every statement the conversations ran (55), replayed on native Relate 1.3.0 with the same parameters: the same rows, ids, scores and paths included. The graph type refuses the same writes natively. |
 
 ## The GitHub Pages site
 
@@ -269,7 +269,7 @@ The native section needs the project env's `relate-db` 1.2.0 (`uv sync`); anothe
   the first time the visitor types something the page has no vector for (`site.json` `connect`).
 - Relative URLs only.
 - Every dependency in a versioned `assets/<name>-<version>/` directory, with its licence:
-  - `relate-1.2.0`, 6.9 MB, of which the WASM is 2.6 MB compressed;
+  - `relate-1.3.0`, 6.7 MB, of which the WASM is 2.5 MB compressed;
   - `nvl-2.0.0`, 1.3 MB;
   - `transformers-4.3.2`, 14.9 MB (3.9 MB compressed): Transformers.js and onnxruntime-web's
     WebAssembly build, requested only when the embedding model is (T2);
@@ -298,7 +298,7 @@ above the memory.
 ## Credits and licences
 
 [THIRD_PARTY.md](THIRD_PARTY.md) has every component. In short:
-- Relate 1.2.0 (Apache-2.0).
+- Relate 1.3.0 (Apache-2.0).
 - NVL 2.0.0 (proprietary, used with Neo4j's permission).
 - Transformers.js 4.3.2 (Apache-2.0) and onnxruntime-web (MIT), shipped; all-MiniLM-L6-v2
   (Apache-2.0), fetched from the Hugging Face Hub at a pinned revision and never shipped.

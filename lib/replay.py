@@ -44,7 +44,7 @@ Ids     elementIds do not carry over to another store. The dump numbers its node
 Nulls   The relationship rows are guarded on the parameter side (WHERE row.s IS NOT NULL AND
         row.e IS NOT NULL), dangling ids are refused before anything is written, and the
         created counts are checked. (A null in a MATCH property map matches nothing on Relate
-        1.2.0, R3; the guard keeps the load correct on any engine.)
+        1.3.0, as on 1.2.0, R3; the guard keeps the load correct on any engine.)
 
 The dump is plain JSON (json.dumps works on it), so it can cross a process, a surface (the WASM
 build writes the same format through lib/replay.mjs) or an engine version. Each node carries its

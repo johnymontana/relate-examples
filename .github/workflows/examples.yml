@@ -14,7 +14,7 @@ concurrency:
   group: examples-${{ github.ref }}
   cancel-in-progress: true
 env:
-  RELATE_VERSION: v1.2.0
+  RELATE_VERSION: v1.3.0
   RELATE_TELEMETRY: "off"   # examples run offline; no CLI call phones home from CI
   # Under an agent harness the relate CLI turns agent mode on for piped output (toon, 100-row cap).
   # CI sets none of its variables, so this changes nothing here; it keeps a run started by an agent

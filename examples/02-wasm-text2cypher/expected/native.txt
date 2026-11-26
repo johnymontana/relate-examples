@@ -1,4 +1,4 @@
-# Native Relate 1.2.0 (harness/native.py): the page's store, built natively, and every query compared with WASM
+# Native Relate 1.3.0 (harness/native.py): the page's store, built natively, and every query compared with WASM
 
 schema: 20 statements from out/ddl.cypher (the graph type first)
 loaded: 38 nodes, 43 relationships (data/demo-graph.json: 38, 43)
@@ -6,7 +6,7 @@ graph type: 20 elements read back
 valueType(r.supported): FLOAT NOT NULL
 a CEO_OF edge from a Product, against the graph type: refused (IntegrityError: ConstraintValidationFailed: endpoint label presence verification failed: expected Person)
 
-## The 32 queries the Node section ran on Relate 1.2.0 WASM, natively
+## The 32 queries the Node section ran on Relate 1.3.0 WASM, natively
 same: canned rumor: grounded (1 row)
 same: canned rumor: bare (3 rows)
 same: canned ceo: grounded (1 row)

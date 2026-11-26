@@ -48,9 +48,10 @@ for repeated keys.
 
 Dot entries. A path with any part that starts with "." is the engine's own side file: the
 role markers and writer leases a native directory database carries, and the
-.relate/schema/ mirror both builds write beside the snapshot and regenerate from it at the
-next checkpoint (an edited or foreign mirror refuses the open, so a copy must never carry
-one: NOTES.md R10, R22). They are skipped by that one rule, never by name, and reported as
+.relate/schema/ mirror both builds derive from the snapshot: written at a checkpoint and,
+from Relate 1.3.0, in an adopted snapshot only with its first statement that changes the
+graph. An edited or foreign mirror refuses the open, so a copy must never carry one
+(NOTES.md R10, R22). They are skipped by that one rule, never by name, and reported as
 ignored; nothing here writes one. In an extracted directory, a skipped file that a running
 process holds locked (a writer lease) refuses the input with exit 1: close that process
 first. (The rule cannot tell a lease from a marker or the mirror, so the old check that a
@@ -105,7 +106,7 @@ try:
 except ImportError:  # not POSIX: a held lease cannot be detected, only its emptiness
     fcntl = None
 
-VERIFIED = "1.2.0"
+VERIFIED = "1.3.0"
 CATALOG_MAGIC = b"MDBOPF01"
 CATALOG_VERSION = 1
 CATALOG_MAX = 1024 * 1024

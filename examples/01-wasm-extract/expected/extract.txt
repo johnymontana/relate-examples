@@ -1,4 +1,4 @@
-# Extraction in Node (harness/run.mjs): gliner2.5-small-v1 through gliner-rs, Relate 1.2.0 WASM in memory
+# Extraction in Node (harness/run.mjs): gliner2.5-small-v1 through gliner-rs, Relate 1.3.0 WASM in memory
 model fastino/gliner2.5-small-v1 @ 7132dc4, gliner-rs@4fa741e; every candidate at p >= 0.10 is cached and stored (D7)
 create-context-graph's ontologies are asked by label text ("maintenance record"), "<subtype> in <domain>" for a domain kind,
 base kinds bare, a base kind no link names and a domain kind covers not asked, links between their endpoints ("person works

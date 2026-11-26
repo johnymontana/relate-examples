@@ -1,4 +1,4 @@
-# Ontologies in Relate WASM 1.2.0 (harness/ontology.mjs)
+# Ontologies in Relate WASM 1.3.0 (harness/ontology.mjs)
 Every ontology is an Ontology Graph Spec 1.1 document (web/ogs.js): parsed by web/ontology.js, kept in an in-memory
 store by applyOntology (the D8 layer and a CIP-176 graph type, D15) and read back. The 27 bundled ones are converted
 (web/convert.js) from create-context-graph's domain files (data/ontologies/ccg/); the page and the harnesses load the
@@ -6,11 +6,11 @@ converted documents (data/ontologies/ogs/ccg/), and a create-context-graph file 
 its own WASM) is the parity oracle for the ported splitter and names.
 The example's own labels and relationship types all start with _ (_Entity, _Claim, _IN, ...); an ontology id may not.
 
-## the Ontology Graph Spec 1.1.0 (data/ontology-spec/: neo4j/ontology-graph-spec release/v0.12.2, Apache-2.0)
+## the Ontology Graph Spec 1.1.0 (data/ontology-spec/: neo4j/ontology-graph-spec release/v0.13.0, Apache-2.0)
 schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json (draft 2020-12; 35 definitions)
 web/ogs.js SCHEMA equals the vendored file: yes; SCHEMA_ID is its $id: yes
 keywords it uses (the ones web/ogs.js interprets, annotations aside): $ref, additionalProperties, const, enum, items, oneOf, properties, required, type
-the SDK: npm @neo4j/ontology-graph-spec 0.12.2 (web/ogs.js SDK_VERSION 0.12.2), through lib/ogs.mjs
+the SDK: npm @neo4j/ontology-graph-spec 0.13.0 (web/ogs.js SDK_VERSION 0.13.0), through lib/ogs.mjs
 
 ### the bundled documents (data/ontologies/ogs/, harness/convert.mjs): fresh conversions of their originals
 documents: 27, from create-context-graph (with _base.yaml)
@@ -735,8 +735,8 @@ FOUNDED now -> [{"domain":"Company","range":"Company"}]
 the gate moves FOUNDED's keep cutoff -> [{"keep":0.9}]
 edit: drop WORKS_FOR, drop the name 東京, move Ada Lovelace from Person to Company
 applyOntology -> altered true; previous sha the old document's yes
-links and cutoffs -> [{"drop":0.2,"id":"FOUNDED","keep":0.9},{"drop":0.2,"id":"PARTNER_OF","keep":0.8},{"drop":0.2,"id":"INVESTED_IN","keep":0.8},{"drop":0.2,"id":"HEADQUARTERED_IN","keep":0.8}]
-names -> [{"kind":"Company","name":"Ada Lovelace"},{"kind":"Company","name":"Northwind"},{"kind":"Company","name":"Acme Inc"}]
+links and cutoffs -> [{"id":"FOUNDED","keep":0.9,"drop":0.2},{"id":"PARTNER_OF","keep":0.8,"drop":0.2},{"id":"INVESTED_IN","keep":0.8,"drop":0.2},{"id":"HEADQUARTERED_IN","keep":0.8,"drop":0.2}]
+names -> [{"name":"Ada Lovelace","kind":"Company"},{"name":"Northwind","kind":"Company"},{"name":"Acme Inc","kind":"Company"}]
 layer: _Ontology 1, _Kind 3, _LinkType 4, _Alias 3; _IN 7, _DOMAIN 5, _RANGE 4, _OF 3
 applyOntology(financial-services) on this store -> OntologyApplyError other-ontology: this store holds the ontology "edge_cases", not "financial-services"; each ontology has its own store (D14): open ex01-kg-financial-services
 
@@ -753,7 +753,7 @@ graph type read back:
 write through dynamic labels and type -> [{"type":"ARBEITET_IN"}]
 the reverse direction -> constraint: ConstraintValidationFailed: endpoint label presence verification failed: expected KLINIK
 read back, unquoted -> [{"arzt":"Dr. Müller","klinik":"Charité"}]
-the derived layer -> [{"alias":"Dr. Müller","domain":"ÄRZTE","link":"ARBEITET_IN","range":"KLINIK"}]
+the derived layer -> [{"link":"ARBEITET_IN","domain":"ÄRZTE","range":"KLINIK","alias":"Dr. Müller"}]
 
 ## combining marks and the length cap: one id rule from the document to the published graph (D8; ontology.js isOntologyId, at most 64)
 parseOntology: kinds व्यक्ति, COMPANY (7 code points, 3 of them combining marks); links व्यक्ति_SE, WORKS_FOR
@@ -766,8 +766,8 @@ store.openStore: typed व्यक्ति_SE, WORKS_FOR; graph type read back
     (:`व्यक्ति` =>)-[:`व्यक्ति_SE` =>]->(:`व्यक्ति` =>)
   }
 publish -> 3 entities, 3 labelled, 2 relationships
-read back by label and type -> [{"a":"Asha Rao","b":["_Entity","COMPANY"],"type":"WORKS_FOR"},{"a":"Asha Rao","b":["_Entity","व्यक्ति"],"type":"व्यक्ति_SE"}]
-exportCypher's graph.cypher, run in a fresh database -> [{"n":1,"type":"WORKS_FOR"},{"n":1,"type":"व्यक्ति_SE"}]
+read back by label and type -> [{"a":"Asha Rao","type":"WORKS_FOR","b":["_Entity","COMPANY"]},{"a":"Asha Rao","type":"व्यक्ति_SE","b":["_Entity","व्यक्ति"]}]
+exportCypher's graph.cypher, run in a fresh database -> [{"type":"WORKS_FOR","n":1},{"type":"व्यक्ति_SE","n":1}]
 a 64-character label: accepted; store.js ident() takes it
 a 65-character label: refused (This document breaks the rules this page needs (1 problem): /nodes/PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP/label: The label id PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP… is 65 characters long; ids become labels and relationship types, so they hold at most 64. Shorten it.)
 a 65-character relationship type: refused (This document breaks the rules this page needs (1 problem): /relationships/RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR/type: The relationship type id RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR… is 65 characters long; ids become labels and relationship types, so they hold at most 64. Shorten it.)
@@ -789,7 +789,7 @@ the reverse (:BY)-[:RETURN]->(:MATCH) -> constraint: ConstraintValidationFailed:
 read back, backticked -> [{"a":"m","b":"b"}]
 
 ## system_ontologies does not exist (R17)
-SHOW DATABASES -> [{"access":"read-write","name":"neo4j","type":"standard"},{"access":"read-write","name":"system","type":"system"}]
+SHOW DATABASES -> [{"name":"neo4j","access":"read-write","type":"standard"},{"name":"system","access":"read-write","type":"system"}]
 A store has two databases, neo4j and system. Every statement that names system_ontologies is refused as a
 missing graph, reads included, so the ontology lives in neo4j beside the data (D15):
 USE system_ontologies MATCH (n) -> semantic: semantic error: DatabaseNotFound: Graph not found: system_ontologies

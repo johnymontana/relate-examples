@@ -74,7 +74,7 @@ export function identity(node) {
   return c ? c.properties[0] : null;
 }
 
-/** A property's type as Relate 1.2.0 prints it in a graph type. @param {any} p */
+/** A property's type as Relate 1.3.0 prints it in a graph type. @param {any} p */
 export function engineType(p) {
   return String(p.type).startsWith('VECTOR') ? `${String(p.type).replace('>', ' NOT NULL>')}(${p.dimension})` : String(p.type);
 }
@@ -125,7 +125,7 @@ export function bound(end) {
 // ---- the document and the engine -----------------------------------------------------------------
 
 /**
- * The graph type the document describes, spelt as Relate 1.2.0 prints the current one
+ * The graph type the document describes, spelt as Relate 1.3.0 prints the current one
  * (SHOW CURRENT GRAPH TYPE): labels, relationship types and constraints in name order, every name
  * in backticks. Equal text means the engine enforces exactly what the document declares.
  * @param {any} doc

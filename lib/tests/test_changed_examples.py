@@ -59,7 +59,7 @@ def test_what_no_run_reads_runs_nothing(path):
 @pytest.mark.parametrize("path", [
     "lib/relate_wasm.mjs", "lib/serve.mjs", "lib/replay.py", "lib/notes.md",
     "scripts/env.sh", "scripts/fetch-gliner.sh",
-    "ci/relate-1.2.0.sha256", "ci/gliner2.5-small-v1.sha256", "ci/changed-examples.sh",
+    "ci/relate-1.3.0.sha256", "ci/gliner2.5-small-v1.sha256", "ci/changed-examples.sh",
     "pyproject.toml", "uv.lock", ".github/workflows/examples.yml",
     "site/build.mjs",              # example 01's build imports it
     "examples/README.md",          # not inside any one example

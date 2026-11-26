@@ -1,7 +1,7 @@
 # Example 02 in headless Chromium (harness/drive.mjs): dist/ as GitHub Pages serves it, ?llm=canned
 
-boots: yes; Relate 1.2.0; llm canned
-header: ontology: Corporate Events v2.0.0 · llm: canned answers · store: Relate 1.2.0 (WASM, in this tab)
+boots: yes; Relate 1.3.0; llm canned
+header: ontology: Corporate Events v2.0.0 · llm: canned answers · store: Relate 1.3.0 (WASM, in this tab)
 ontology browser: 26 collapsible entries (nodes, relationships, cookbook)
 checks tab (the Ontology Graph Spec SDK): decode clean; core clean; labelled clean; consistentSchema 66 issues; mappable 9 issues; bulkImportable clean; wellConstrained clean
 the graph: NVL drew it
@@ -179,7 +179,7 @@ comparison: bare query omits the assertion filter — rumors, denials and specul
 ## run your own Cypher (the same checks, the same store)
 a read: MATCH (p:Person)-[:CEO_OF]->(c:Company) RETURN p.name AS ceo, c.name AS company ORDER BY company
   ✓ read-only · labels/types known · endpoints legal
-  5 row(s) · Relate 1.2.0 (WASM, in this tab)
+  5 row(s) · Relate 1.3.0 (WASM, in this tab)
     Marcus Duarte / Duarte Robotics
     Elena Voss / Halcyon Semiconductor Corporation
     Priya Raman / Northwind Logistics
@@ -191,11 +191,11 @@ a write: MATCH (c:Company {id: 'halcyon'}) DETACH DELETE c
 a syntax error: MATCH (c:Company RETURN c
   ✓ read-only · labels/types known · endpoints legal
   ✗ syntax error: parse error: expected RightParen, got "RETURN" (RETURN)
-  0 row(s) · not run: Relate 1.2.0 (WASM, in this tab) cannot plan it
+  0 row(s) · not run: Relate 1.3.0 (WASM, in this tab) cannot plan it
 an unknown property: MATCH (c:Company) WHERE c.revenue > 10 RETURN c.name
   ✓ read-only · labels/types known · endpoints legal
   ⚠ Relate: engine: unknown property key (The property key `revenue` does not exist in this database.)
-  0 row(s) · Relate 1.2.0 (WASM, in this tab)
+  0 row(s) · Relate 1.3.0 (WASM, in this tab)
 the store afterwards: 38 nodes (unchanged: yes)
 
 ## without ?llm=canned, where WebGPU cannot run the models

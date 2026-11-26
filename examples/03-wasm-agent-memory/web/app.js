@@ -3,7 +3,7 @@
  * app.js: the page. A conversation on the left, the agent's memory on the right.
  *
  * The page thread holds no data of its own: every tool call goes to the engine worker
- * (engine.worker.js, Relate 1.2.0 WASM), and each answer brings back the statements that ran and
+ * (engine.worker.js, Relate 1.3.0 WASM), and each answer brings back the statements that ran and
  * the whole store, which is what gets drawn (graph.js, with NVL), listed ("What it knows") and logged
  * ("Under the hood"). The agent's turns come from agent.js: scripted ones from a scenario file,
  * typed ones from rules. The Ontology tab (ontology-tab.js) shows the model the store keeps to, as

@@ -3,7 +3,7 @@
     uv run --project ../.. python -I harness/native.py > out/native.txt
 
 Run by run.sh after the Node sections, with the project env's binding (`relate-db`, the
-repository's engine; run.sh checks it is 1.2.0 like the WASM bundle). It builds the store the page
+repository's engine; run.sh checks it is 1.3.0 like the WASM bundle). It builds the store the page
 builds, natively: the statements of out/ddl.cypher (the ontology's graph type, then its constraints
 and indexes, as web/ddl.js derives them), then data/demo-graph.json with web/load.js's MERGE
 statements. Then it runs every query out/queries.json lists (the canned answers, both variants, the

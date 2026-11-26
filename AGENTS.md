@@ -6,9 +6,9 @@ which imports this file. Keep the guidance here, not in `CLAUDE.md`.
 ## What this repo is
 
 Runnable examples for Relate, an embedded openCypher graph database (one binary; a database is a
-directory, a single `.rl` file or `:memory:`). Everything targets **Relate 1.2.0**: the `relate` CLI
-on `PATH` (`relate --version`'s first line is `Relate v1.2.0`), the `relate-db==1.2.0` Python binding
-(root `pyproject.toml`, `uv.lock`; `import relate`), and the npm package `@relate/relate-wasm@1.2.0`
+directory, a single `.rl` file or `:memory:`). Everything targets **Relate 1.3.0**: the `relate` CLI
+on `PATH` (`relate --version`'s first line is `Relate v1.3.0`), the `relate-db==1.3.0` Python binding
+(root `pyproject.toml`, `uv.lock`; `import relate`), and the npm package `@relate/relate-wasm@1.3.0`
 (pinned in each browser example's `package.json` and `package-lock.json`). Browser examples are
 published as a static GitHub Pages project site, `https://johnymontana.github.io/relate-examples/`.
 
@@ -32,7 +32,7 @@ code cites. Read both before changing an example.
   Rows `M1`…`M8`, `N1`…`N8`, `T1`…`T5` and `S1`…`S3`; ids D.
 
 Examples 01 and 02 read Ontology Graph Spec 1.1 documents through the official SDK (npm
-`@neo4j/ontology-graph-spec` 0.12.2) via `lib/ogs.mjs`. Example 03's document describes its own
+`@neo4j/ontology-graph-spec` 0.13.0) via `lib/ogs.mjs`. Example 03's document describes its own
 schema: its harness validates it through the same SDK, and its page reads it as written
 (`web/ontology.js`) and does not ship the SDK (03's D10).
 
@@ -63,8 +63,8 @@ browser-site contract is in `site/README.md`, and CI's steps and pins are in `ci
 ## Setup and commands
 
 ```bash
-curl -sSfL https://relatedb.ai/install.sh | bash   # relate CLI (installs the latest release: check it says v1.2.0)
-uv sync                                             # relate-db 1.2.0 + pytest
+curl -sSfL https://relatedb.ai/install.sh | bash   # relate CLI (installs the latest release: check it says v1.3.0)
+uv sync                                             # relate-db 1.3.0 + pytest
 rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
 scripts/build-gliner-wasm.sh [--check|--force]      # gliner-rs v0.3.1 (4fa741e) → .cache/gliner-wasm/; prints GLINER_WASM_DIR
 scripts/fetch-gliner.sh small|base [--check|--pin]  # GLiNER2.5 weights → .cache/gliner/, checked against ci/gliner2.5-*.sha256
@@ -89,8 +89,8 @@ python3 -I lib/opfsfmt.py check|to-dir|to-tar ...   # strict guard for a store e
 ```
 
 While iterating on 01, run one section's harness directly from the example's directory, after
-`source ../../scripts/env.sh` (`node harness/probes.mjs 1.2.0 > out/probes.txt`,
-`node harness/run.mjs 1.2.0 --out out`, `node harness/drive.mjs --out out/browser.txt`,
+`source ../../scripts/env.sh` (`node harness/probes.mjs 1.3.0 > out/probes.txt`,
+`node harness/run.mjs 1.3.0 --out out`, `node harness/drive.mjs --out out/browser.txt`,
 `uv run --project ../.. python -I harness/native.py`) instead of the whole `run.sh`. Example 03's
 run is quick enough to run whole; one Node section alone is `node harness/run.mjs --only scenarios`
 (or `statements`, `typed`, `probes`, `ontology`).
@@ -119,7 +119,7 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   its key is named, then it fails. 01's keys: `wasm` (Node 20+, the pinned bundle, npm pins, NVL
   vendor bundle, gliner-rs build), `gliner` (small-v1 weights), `browser` (Playwright's Chromium;
   only that section skips). 02's and 03's keys: `wasm` (Node 20+, the pinned bundle, npm pins) and
-  `browser`. 01's native section needs `relate` 1.2.0 on `PATH` and the matching binding, 02's and
+  `browser`. 01's native section needs `relate` 1.3.0 on `PATH` and the matching binding, 02's and
   03's the binding; a different version fails at once. 02's model never runs in `run.sh` (no GPU in
   CI; its output is not byte-stable): its browser section uses `?llm=canned`. 03's embedding model never
   runs in `run.sh` either: the scripts' vectors are committed, and its browser section uses
@@ -143,7 +143,7 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   that both write byte for byte alike, graph types included. The JS side has its own parser: never
   pass a dump through `JSON.parse`/`JSON.stringify`/`postMessage` (send `canon(d)` text).
 - `lib/opfsfmt.py` (stdlib) and its browser twin `examples/01-wasm-extract/web/opfs.js`: the strict
-  format guard, pinned by `VERIFIED = "1.2.0"`; exit 3 on anything else.
+  format guard, pinned by `VERIFIED = "1.3.0"`; exit 3 on anything else.
 - `lib/tests/`: `test_opfsfmt.py`, `test_replay.py`, `test_replay_js.py`, `test_site_build.py`
   (`conftest.py` puts `lib/` on `sys.path`; `lib/` is a plain directory, not a package).
 - `scripts/env.sh`, `scripts/build-gliner-wasm.sh`, `scripts/fetch-gliner.sh` (each `--check` mode
@@ -161,7 +161,7 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
 - **Citations.** Cite engine behaviours by the example's `NOTES.md` row ids (`R1`…), and decisions
   by this repository's ADRs (`ADR-0002`). `ADR-NNNN` always means `docs/adr/`. Never cite another
   repository's issue rows, ADRs (Relate's own included) or plan documents, and never cite a plan
-  document of this repository either. Add a `NOTES.md` row instead, re-verified on 1.2.0, with a
+  document of this repository either. Add a `NOTES.md` row instead, re-verified on 1.3.0, with a
   minimal repro, or an ADR.
 - **Hosting is GitHub Pages only** (ADR-0002). No custom headers: every HTML page carries one CSP
   `<meta http-equiv>` in `<head>` before any script (no `frame-ancestors`, `report-uri`,
@@ -176,9 +176,12 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
 - **Engine pins move together** (ADR-0005, ADR-0007). A Relate upgrade bumps `@relate/relate-wasm` (package.json and
   lockfile), `relate-db` (pyproject and `uv.lock`), `ci/relate-<ver>.sha256`, `RELATE_VERSION` in
   `examples.yml`, `ver` in each `run.sh`, `RELATE` in each `build.mjs` and worker (03's is in
-  `web/memory.js`), `VERIFIED` in `lib/opfsfmt.py`, then every `NOTES.md` row is re-checked. The Ontology Graph Spec SDK is pinned in each example's package.json; 01's
-  `web/ogs.js` `SDK_VERSION` and `build.mjs` `OGS_SDK_VERSION` move with it, and so does 01's vendored
-  schema (`data/ontology-spec/`, from the SDK's release tag).
+  `web/memory.js`) and in 02's `harness/run.mjs`, 01's `web/console.js` `VERSION` and `GLUE` and
+  `web/worker.js` `GLUE`, `VER` in 01's `harness/drive.mjs` and `harness/native.py`, `VERIFIED` in
+  `lib/opfsfmt.py` and in its twin 01's `web/opfs.js`, then every `NOTES.md` row is re-checked. The
+  Ontology Graph Spec SDK is pinned in each example's package.json; 01's `web/ogs.js` `SDK_VERSION`,
+  01's `build.mjs` `OGS_SDK_VERSION` and 02's `web/app.js` `SDK_VERSION` move with it, and so does
+  01's vendored schema (`data/ontology-spec/`, from the SDK's release tag).
 - **Third-party code** (ADR-0009): ship only what may be redistributed, with its licence under
   `assets/<name>-<version>/`. Fetch everything else at run time, at a pinned revision. Every new
   component goes into the example's `THIRD_PARTY.md` and its `site.json` `credits`. Example 03
@@ -204,7 +207,7 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   exempt a path, add it to the script and to `lib/tests/test_changed_examples.py`.
 - Every change must pass offline. Don't commit or push unless asked.
 
-## Relate 1.2.0 rules for code here (details and repros in 01's NOTES.md)
+## Relate 1.3.0 rules for code here (details and repros in 01's NOTES.md)
 
 - **CLI grammar:** `relate [flags] -d DB 'Q'`; a piped script needs the verb,
   `relate query [flags] -d DB < script`; read-only is `relate --read-only -d DB 'Q'`; also
@@ -217,6 +220,9 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   parameter side (`WHERE $p IS NOT NULL`), so a forgotten value is loud.
 - **Numbers** (R4, R5): `JSON.parse` loses integers above 2^53; an integral JS number binds as
   INTEGER, so `toFloat()` every float parameter. Alias every RETURN column you read (R6).
+- **Key order** (R4): result keys come in the engine's order, not sorted: a row's in the RETURN's
+  column order, a node's as `{kind, id, labels, properties}` (WASM and the CLI's `--mode jsonl`);
+  property maps still have sorted keys. Read every value by name, never by key order.
 - **Indexes** (R9): every store has two built-in LOOKUP indexes; `OPTIONS {indexProvider: …}` is a
   syntax error; never create an index equivalent to a UNIQUE constraint (refused either order).
 - **One opener per OPFS store**, read-only included, across tabs and workers (R11): retry
@@ -229,11 +235,16 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
 - After an aggregating `RETURN`, `ORDER BY` may use only projected expressions (R20).
 - **Search** (03's M3, M4): `SEARCH n IN (VECTOR INDEX … FOR $v LIMIT k) SCORE AS s` needs the
   `LIMIT`, scores `(1 + cosine) / 2` and returns k rows however poor the match, so filter on the
-  score; a full-text `SEARCH` ORs whole words with no stemming and takes no `WHERE`.
+  score. A full-text `SEARCH` ORs whole words with no stemming, and its text is a query: an empty
+  text, a `-`, `+` or `!` modifier, grouping parentheses and a quoted phrase are refused, `*` matches everything, so
+  pass content words only (03's `NO_WORDS` when there are none). A `WHERE` inside it takes the vector
+  filter's rules: `AND`-joined comparisons filter, a bare boolean is refused.
 - **Paths** (03's M7): a returned path carries every node whole, vectors included. Return
   `[n IN nodes(p) | id(n)]` when ids are all the caller needs.
 - **Snapshots** (R22): a directory with only `graph.json` + `manifest.json` is adopted by a plain
   writable open (`mkdir db && tar -xf <store>.relate.tar -C db && relate -d db 'Q'`); a read-only
   open or `relate clone` refuses it until then; a directory with `wal/` but no markers is refused.
+  Adoption writes markers, leases and a WAL; the `.relate/schema/` mirror appears only with the
+  first statement that changes the graph (R10), natively and in OPFS. Nothing here needs the mirror.
 - Set `RELATE_MAX_ROWS=0` and `RELATE_AGENT_MODE=0` for any script that pipes CLI output: under an
   agent harness the CLI otherwise switches piped output to toon and caps it at 100 rows.

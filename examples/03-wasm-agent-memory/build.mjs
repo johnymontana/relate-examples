@@ -49,9 +49,9 @@ import * as esbuild from 'esbuild';
 import * as relateWasm from '../../lib/relate_wasm.mjs';
 
 export const EX = path.dirname(fileURLToPath(import.meta.url));
-export const RELATE = '1.2.0';
+export const RELATE = '1.3.0';
 const MODULES = path.join(EX, 'node_modules');
-/** Relate's LICENSE at tag v<RELATE> (https://github.com/relatedb/relate/blob/v1.2.0/LICENSE): its sha256 (as examples 01 and 02 pin it). */
+/** Relate's LICENSE at tag v<RELATE> (https://github.com/relatedb/relate/blob/v1.3.0/LICENSE): its sha256 (as examples 01 and 02 pin it). */
 const RELATE_LICENSE_SHA256 = 'ac87d12e27d69f09130a7b4178e48e995ab131e4b476aa188e58ffac7ed7fab3';
 /** The page's entries (bundled), the modules they import, and its static files; any other web/ file is an error. */
 const ENTRIES = ['app.js', 'engine.worker.js', 'embed.worker.js'];

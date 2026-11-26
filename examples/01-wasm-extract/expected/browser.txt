@@ -1,5 +1,5 @@
 # The page in headless Chromium (harness/drive.mjs): dist/ at /relate-examples/01-wasm-extract/, served as GitHub Pages serves it
-# (no custom headers: the page's own Content-Security-Policy <meta>); Relate 1.2.0 WASM in OPFS, GLiNER2.5-small-v1 through gliner-rs; the weights from .cache/gliner through page.route()
+# (no custom headers: the page's own Content-Security-Policy <meta>); Relate 1.3.0 WASM in OPFS, GLiNER2.5-small-v1 through gliner-rs; the weights from .cache/gliner through page.route()
 # on their Hub URLs; graphs laid out with d3Force (?test=1, V6); the console's watchdog at 3 s
 # Content is compared through lib/replay.mjs digests of dumps without their (:_Run) nodes (when and how often a
 # document was read); the Node side is web/pipeline.js and web/store.js in this process, as harness/run.mjs runs them.

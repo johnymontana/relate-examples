@@ -13,7 +13,7 @@ The model, the database and the page all live in one browser tab.
 - **Cutoffs you own** sort each answer into keep, review or drop. The approach (an ontology, a
   probability for every answer, keep/review/drop cutoffs), the sentence splitter and the name rules
   come from [edgextract](https://github.com/raphaelmansuy/edgextract), ported to JavaScript.
-- **Relate 1.2.0**, compiled to WebAssembly (npm `@relate/relate-wasm`) and persisted in the
+- **Relate 1.3.0**, compiled to WebAssembly (npm `@relate/relate-wasm`) and persisted in the
   browser's OPFS, holds all of it: the ontology with a graph type derived from it that the engine
   enforces, the inference cache, every candidate with its score, the gate and its review queue, and
   the extracted knowledge graph, accumulated across documents.
@@ -23,7 +23,7 @@ The model, the database and the page all live in one browser tab.
 
 Live: <https://johnymontana.github.io/relate-examples/01-wasm-extract/>.
 
-The ids cited below are defined in [NOTES.md](NOTES.md): `R1`… are the Relate 1.2.0 behaviours the
+The ids cited below are defined in [NOTES.md](NOTES.md): `R1`… are the Relate 1.3.0 behaviours the
 example depends on or pins (each with a minimal repro), and the D, E, G, O, V and X ids are the
 example's design decisions and findings. The larger decisions are ADRs in
 [`docs/adr/`](../../docs/adr/README.md). ADR-0010 covers this example's architecture: GLiNER2.5 in
@@ -70,13 +70,13 @@ console's 10 s watchdog), `?recycle=<n>` (recycle the engine after n extractions
 From the repository root:
 
 ```bash
-curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI (native section); `relate --version` must say v1.2.0
-uv sync                                             # the project env: relate-db 1.2.0 (the Python binding) and pytest
+curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI (native section); `relate --version` must say v1.3.0
+uv sync                                             # the project env: relate-db 1.3.0 (the Python binding) and pytest
 rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
 scripts/build-gliner-wasm.sh                        # gliner-rs v0.3.1 (4fa741e) built to WASM into .cache/gliner-wasm/
 scripts/fetch-gliner.sh small                       # GLiNER2.5-small-v1 @ 7132dc4 into .cache/gliner/, checked against ci/gliner2.5-small-v1.sha256
 cd examples/01-wasm-extract
-npm ci --omit=peer                                  # exact pins, @relate/relate-wasm 1.2.0 among them; --omit=peer skips NVL's unused neo4j-driver peer
+npm ci --omit=peer                                  # exact pins, @relate/relate-wasm 1.3.0 among them; --omit=peer skips NVL's unused neo4j-driver peer
 npm run vendor                                      # esbuild: NVL into web/vendor/ (gitignored), with the metafiles build.mjs reads for licence notices
 npx playwright install chromium                     # Playwright 1.63.0's Chromium, for the browser section
 ./run.sh
@@ -88,12 +88,10 @@ npx playwright install chromium                     # Playwright 1.63.0's Chromi
 - `fetch-gliner.sh base` fetches base-v1 (for `--model base`); `--check` verifies the cache offline.
 - **Pins.** The Relate WASM bundle is pinned by its npm integrity in `package-lock.json`, and
   `lib/relate_wasm.mjs` also refuses a bundle whose `dbms.components()` does not report Relate
-  1.2.0 (R1). The weights are pinned by sha256. The gliner-rs `.wasm` differs by build host, so its
+  1.3.0 (R1). The weights are pinned by sha256. The gliner-rs `.wasm` differs by build host, so its
   behaviour is pinned instead (`model.txt`).
-- **A new Relate release.** Bump `@relate/relate-wasm` (`package.json` and `package-lock.json`),
-  `relate-db` in `pyproject.toml`, `ci/relate-<ver>.sha256` and `RELATE_VERSION` in
-  `.github/workflows/examples.yml`, `ver` in `run.sh` and `VERIFIED` in `lib/opfsfmt.py` together,
-  then re-run the probes and re-check every NOTES.md row.
+- **A new Relate release.** It moves with the repository's other pins (ADR-0005; AGENTS.md,
+  "Engine pins move together"); then re-run the probes and re-check every NOTES.md row.
 - **Node** 20 or later (CI uses 22).
 - **Time and memory.** The Node pipeline asks gliner-rs about 1,000 questions. `harness/infer.mjs`
   asks them all first on up to 6 worker threads, each holding the model (about 700 MB of WASM
@@ -119,12 +117,12 @@ when `EXAMPLES_REQUIRE` names the key it fails (CI names all three).
 
 | Key | Needs | Without it |
 |---|---|---|
-| `wasm` | Node 20+, the Relate bundle in `node_modules` reporting 1.2.0, `node_modules` at `package.json`'s pins, the NVL vendor bundle, a verified gliner-rs build | the whole example SKIPs |
+| `wasm` | Node 20+, the Relate bundle in `node_modules` reporting 1.3.0, `node_modules` at `package.json`'s pins, the NVL vendor bundle, a verified gliner-rs build | the whole example SKIPs |
 | `gliner` | the small-v1 weights (`fetch-gliner.sh small --check`) | the whole example SKIPs |
 | `browser` | Playwright's Chromium launches headless | only the browser section is skipped (a note on stderr) |
 
-The native section has no key: it needs `relate` 1.2.0 on `PATH` and the project env's `relate-db`
-1.2.0 (another version fails the run at once; no `relate` skips the section with a note).
+The native section has no key: it needs `relate` 1.3.0 on `PATH` and the project env's `relate-db`
+1.3.0 (another version fails the run at once; no `relate` skips the section with a note).
 
 ### What the run checks
 
@@ -145,7 +143,7 @@ that section was skipped, so `native.txt` is the same either way.
 | `score.txt` | `harness/run.mjs` | Precision, recall and F1 against the samples' gold and the held-out set, computed in Cypher, with per-domain rows, the distractors, ablations and the grids that set the defaults. |
 | `graph.cypher` | `harness/run.mjs` | Two stores' typed graphs exported as Cypher (`store.exportCypher`). |
 | `browser.txt` | `harness/drive.mjs` | Headless Chromium against the built `dist/` served as Pages serves it: the first visit, the model from page-routed Hub URLs and then from Cache Storage, extraction equal to Node's, reload, download and restore (also of a natively made tar), the console's read-only lease (the lent store's 65 OPFS files byte-identical) and watchdog, NVL, review from the graph, the ontology's tools, two tabs and the handover, re-applying a bundled ontology, a crash mid-section, the pasted-document flow, `reset()`. Fails on any CSP violation, console error or request to another origin. |
-| `native.txt` | `harness/native.py` | Native Relate 1.2.0: the page's `dump.json` through `lib/replay.py` (equal digest, graph type, and Python's dump byte for byte the JS dump); `queries/*.cypher` giving the same rows on WASM and natively; the download route exactly as the page prints it; R22's adoption rules; the native-to-browser route (X4); a generic document's store. |
+| `native.txt` | `harness/native.py` | Native Relate 1.3.0: the page's `dump.json` through `lib/replay.py` (equal digest, graph type, and Python's dump byte for byte the JS dump); `queries/*.cypher` giving the same rows on WASM and natively; the download route exactly as the page prints it; R22's adoption rules; the native-to-browser route (X4); a generic document's store. |
 
 `uv run pytest -q` (from the root) adds `lib/tests/`: the format guard on good and tampered tars
 (`test_opfsfmt.py`), JS and Python dumps in both directions (`test_replay_js.py`, `test_replay.py`)
@@ -204,7 +202,7 @@ console worker: console.js                     RelateDb.open(uri, readOnly = tru
   of 01's names carry its prefix: stores `ex01-kg-…`, the cache `ex01-models-v1`, `localStorage`
   keys `ex01.*`, the channel `ex01-stores`.
 - **The build** (`build.mjs`, D13). `dist/` is deterministic, uses relative URLs only, and serves
-  fixed bytes under versioned directories: `assets/relate-1.2.0/`, `assets/gliner-rs-4fa741e/`,
+  fixed bytes under versioned directories: `assets/relate-1.3.0/`, `assets/gliner-rs-4fa741e/`,
   `assets/nvl-2.0.0/`, `assets/js-yaml-4.3.2/` and `assets/lib-<sha8>/` (`lib/replay.mjs`,
   `lib/relate_wasm.mjs`). The modules keep Node-style import specifiers, which `build.mjs` rewrites
   to those paths; an import map is not an option, because the CSP allows no inline script and
@@ -356,13 +354,13 @@ These are small synthetic documents: treat per-domain rows as anecdotes and the 
 
 Every ontology is a Neo4j Ontology Graph Specification 1.1 document
 (<https://neo4j.com/docs/ontology-graph-spec/>; its JSON Schema is vendored in
-[`data/ontology-spec/`](data/ontology-spec/) from neo4j/ontology-graph-spec at tag `release/v0.12.2`).
+[`data/ontology-spec/`](data/ontology-spec/) from neo4j/ontology-graph-spec at tag `release/v0.13.0`).
 A document has `nodes` and `relationships` maps keyed by local ids:
 - nodes carry labels, descriptions, properties (with `key`, `unique`, `must_exist`), constraints and
   `extensions` (indexes, `display`, `custom`);
 - a relationship type with several endpoint pairs is one entry per pair.
 
-Documents are read with the spec's official SDK, npm `@neo4j/ontology-graph-spec` 0.12.2, through
+Documents are read with the spec's official SDK, npm `@neo4j/ontology-graph-spec` 0.13.0, through
 [`lib/ogs.mjs`](../../lib/ogs.mjs), which example 02 shares. js-yaml parses the YAML, and the SDK
 decodes the JSON of the result: the SDK's own YAML decoder misreads plain YAML (NOTES.md Y1).
 
@@ -445,7 +443,7 @@ and the worker applies the published document in its place. Its sha256 changes, 
 gated and published again once, and the inference cache's keys (D7) change with it: the next
 extraction of a section asks the model again (O7).
 
-**Where it lives** (D15). Relate 1.2.0 has no `system_ontologies` database, and its `db.ontology.*`
+**Where it lives** (D15). Relate 1.3.0 has no `system_ontologies` database, and its `db.ontology.*`
 procedures are a preview feature the WASM build cannot enable (R17). So the document lives in `neo4j`:
 `(:_Ontology)` holds it as canonical JSON with its sha256, the `_Kind`/`_LinkType`/`_Alias` layer is
 derived from it, and the graph type is applied with `ALTER CURRENT GRAPH TYPE SET` and read back from
@@ -507,7 +505,7 @@ capped after the filter.
 holding `graph.json` and `manifest.json` only, refused if the WAL still held a record past the
 checkpoint (it never does right after `free()`); and reopens the store.
 
-Native Relate 1.2.0 opens it as a directory database. The first writable open adopts the directory
+Native Relate 1.3.0 opens it as a directory database. The first writable open adopts the directory
 (writes the engine's own side files and a WAL); a read-only open or `relate clone` refuses it until
 then (R22):
 
@@ -543,7 +541,7 @@ included). `lib/replay.py` loads it natively and `lib/replay.mjs` into WASM. Nev
 through `JSON.parse`, `JSON.stringify` or `postMessage`: integers above 2^53 and floats would not
 survive (R4, R5); send `canon(d)` text and `parse()` it on the other side.
 
-**The formats are internal** and pinned to Relate 1.2.0 (X5): the catalog `MDBOPF01` v1 with its
+**The formats are internal** and pinned to Relate 1.3.0 (X5): the catalog `MDBOPF01` v1 with its
 CRC32, at most 64 slots, the JSON codec, `value_encoding` 2, `MDBWAL01`. Both guards refuse any
 other version, integers written with a fraction or exponent, `-0`, JSON naming one key twice (which
 `JSON.parse` and Python's `json` would silently accept, keeping the last value), a crc-valid WAL
@@ -625,7 +623,7 @@ edge sets (`model.txt`), and gives the same answers in Node and Chromium (`brows
 
 ## Relate behaviours
 
-[NOTES.md](NOTES.md) lists every Relate 1.2.0 behaviour this example depends on or pins (R1-R23),
+[NOTES.md](NOTES.md) lists every Relate 1.3.0 behaviour this example depends on or pins (R1-R24),
 each with a minimal reproduction, how the example copes and which output pins it. The ones that
 shape the design most: no transactions in WASM (R2), one opener per OPFS store (R11), `free()` as the
 only checkpoint (R12), memory that never shrinks (R13), graph types dropping other constraints and
@@ -642,7 +640,7 @@ of site storage; it checks these before starting and says what is missing. It is
 [THIRD_PARTY.md](THIRD_PARTY.md) lists every component with its version, licence and where it ships;
 the site ships it too, linked from the page's footer, with each licence beside what it covers.
 
-- Relate 1.2.0's WASM build (Apache-2.0), npm `@relate/relate-wasm`, served as a pinned copy.
+- Relate 1.3.0's WASM build (Apache-2.0), npm `@relate/relate-wasm`, served as a pinned copy.
 - create-context-graph's 27 domain ontologies and `_base.yaml` (Apache-2.0, commit `707b168`,
   verbatim, with their licence in `data/ontologies/ccg/`); the 27 samples are written for this
   example.
@@ -650,7 +648,7 @@ the site ships it too, linked from the page's footer, with each licence beside w
   none of its data is bundled).
 - The GLiNER2.5 weights (Apache-2.0, Fastino), fetched from the Hub, never redistributed; gliner-rs
   v0.3.1 (Apache-2.0), with the Rust crates linked into its `.wasm` listed beside it.
-- The Ontology Graph Specification 1.1 schema and its SDK 0.12.2, with the Kotlin libraries compiled into it (Apache-2.0); js-yaml 4.3.2 (MIT).
+- The Ontology Graph Specification 1.1 schema and its SDK 0.13.0, with the Kotlin libraries compiled into it (Apache-2.0); js-yaml 4.3.2 (MIT).
 - **NVL 2.0.0 is proprietary.** Its licence allows use only with Neo4j Aura or Neo4j's commercial
   products under a subscription. In this repository and its public site, with Relate, NVL is used
   with Neo4j's permission (confirmed by the repository owner on 2026-10-08). The licence ships beside
@@ -661,7 +659,7 @@ the site ships it too, linked from the page's footer, with each licence beside w
 | Path | Role |
 |---|---|
 | `run.sh` | the sections, modes and diffs |
-| `NOTES.md` | the Relate 1.2.0 behaviours (R1-R23) and the design ids |
+| `NOTES.md` | the Relate 1.3.0 behaviours (R1-R24) and the design ids |
 | `web/` | the page: `index.html`, `style.css`, `app.js`; `worker.js` (engine worker); `console.js` (console worker, and the tools' checks and the bookkeeping filter); `pipeline.js`, `store.js` (the gate), `ontology.js`, `ogs.js` (the reader and writer, on lib/ogs.mjs and the SDK), `convert.js` (create-context-graph to the spec's format, tool placement), `split.js` and `names.js` (edgextract's rules), `gliner.js`, `models.js`, `graphview.js`, `tonvl.js`, `export.js`, `opfs.js`, `tar.js`; `vendor-entry.mjs` (the NVL bundle's entry) |
 | `build.mjs`, `site.json` | `npm run build` → `dist/`; the site contract |
 | `harness/` | `probes.mjs`, `model.mjs`, `ontology.mjs`, `run.mjs` (the Node sections), `infer.mjs` (the model pool), `fixtures.mjs` (edge-case documents and the generic document; `fixtures/`: two draft-format documents of the last draft build); `convert.mjs` (writes `data/ontologies/ogs/`, `--check`); `drive.mjs` (Chromium, `--smoke`; with `--screenshot screenshot.png` against a local `./run.sh --site` it retakes the picture on the Pages index); `native.py`; `serve.mjs` (`--dev`; `--site` is lib/serve.mjs); `reference.py` (`--reference`) |

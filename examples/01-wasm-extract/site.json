@@ -1,6 +1,6 @@
 {
   "title": "Markdown to knowledge graph, in your browser",
-  "description": "edgextract's approach in one tab: an ontology (one of create-context-graph's 27 domain ontologies, each with a synthetic sample document, or your own Ontology Graph Spec 1.1 document, read with the official SDK) decides which kinds and links are legal, GLiNER2.5 (through gliner-rs, compiled to WebAssembly) scores every candidate, and cutoffs you own sort each answer into keep, review or drop. Relate 1.2.0, compiled to WebAssembly and kept in this site's private storage (OPFS), holds the ontology and its engine-enforced graph type, the inference cache, the review queue and the knowledge graph; a Cypher console queries it read-only, NVL draws it, and the database downloads as a snapshot that native Relate opens.",
+  "description": "edgextract's approach in one tab: an ontology (one of create-context-graph's 27 domain ontologies, each with a synthetic sample document, or your own Ontology Graph Spec 1.1 document, read with the official SDK) decides which kinds and links are legal, GLiNER2.5 (through gliner-rs, compiled to WebAssembly) scores every candidate, and cutoffs you own sort each answer into keep, review or drop. Relate 1.3.0, compiled to WebAssembly and kept in this site's private storage (OPFS), holds the ontology and its engine-enforced graph type, the inference cache, the review queue and the knowledge graph; a Cypher console queries it read-only, NVL draws it, and the database downloads as a snapshot that native Relate opens.",
   "summary": "Turn a markdown document into a knowledge graph in your browser tab. An ontology says what is legal, GLiNER2.5 scores every candidate, you set the cutoffs, and Relate keeps the graph in the browser's own storage.",
   "screenshot": "screenshot.png",
   "path": "01-wasm-extract",
@@ -10,7 +10,7 @@
   "requires": ["wasm"],
   "browser": "Needs a current Chromium-based desktop browser (module workers, OPFS with sync access handles in a worker, WebAssembly) and about 1 GB of free site storage: the first visit downloads the 304 MB GLiNER2.5-small model from the Hugging Face Hub and caches it.",
   "credits": [
-    "Relate 1.2.0 WebAssembly build (Apache-2.0), served here as a pinned copy of npm's @relate/relate-wasm 1.2.0.",
+    "Relate 1.3.0 WebAssembly build (Apache-2.0), served here as a pinned copy of npm's @relate/relate-wasm 1.3.0.",
     "NVL 2.0.0, the Neo4j Visualization Library (proprietary), used with Neo4j's permission (confirmed by the repository owner on 2026-10-08).",
     "GLiNER2.5-small-v1 and -base-v1 weights by Fastino (Apache-2.0), fetched from the Hugging Face Hub at pinned revisions; gliner-rs v0.3.1 (Apache-2.0) runs them.",
     "edgextract by Raphael Mansuy (Apache-2.0): the approach, and the sentence splitter and name rules this page ports.",

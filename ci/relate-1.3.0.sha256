@@ -1,0 +1,7 @@
+# relate-release-version: v1.3.0
+a278193a61c03e514d61469b1dc12ad440dc96a8ded4f70e05012514e714b281  relate-linux-amd64
+a8b5d3727787d42daad37fea7e4e1f176d15a8a6c3cf082cb2eb57920bbcd86e  relate-linux-arm64
+9595ab272616dc2e4143c7fcbbb95da0e482e043168033aafdaf91efa9d16249  relate-darwin-amd64
+b1d2d2f59fca696b0c2df35364c8a198a317b6fa733f0b8ff21b8fdcb7e30bc6  relate-darwin-arm64
+9d887ffdb412d8b411bad53c5dc91337f1a4e7ff3769837a51b5bcb46f1c99b5  relate-windows-amd64.exe
+ee3906e4a72013e571ecaf1dcdae3df3a0c14e81d64e865247d5f9014dcd3f62  assets.json

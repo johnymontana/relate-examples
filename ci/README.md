@@ -41,8 +41,8 @@ The workflow also sets `RELATE_TELEMETRY=off`, `RELATE_MAX_ROWS=0` and
 `RELATE_AGENT_MODE=0` (as `scripts/env.sh` does), so the CLI's output never depends on who started
 the run. No `.env` and no network beyond the downloads below.
 
-1. **The relate CLI.** `relate-linux-amd64` from the public `v1.2.0` release, checked against
-   `ci/relate-1.2.0.sha256`, installed on `PATH`, and its `--version` first line checked.
+1. **The relate CLI.** `relate-linux-amd64` from the public `v1.3.0` release, checked against
+   `ci/relate-1.3.0.sha256`, installed on `PATH`, and its `--version` first line checked.
 2. **The Python env.** `astral-sh/setup-uv` (uv 0.11.29, the version that wrote `uv.lock`; Python
    3.12), `uv sync --locked`, then a check that `relate.__version__` matches the CLI.
 3. **Node 22** with npm's cache keyed on every example's `package-lock.json`
@@ -97,7 +97,7 @@ GitHub Actions. See [site/README.md](../site/README.md).
 
 | File | What it pins |
 |---|---|
-| `relate-1.2.0.sha256` | The v1.2.0 release's own SHA256SUMS, every platform's CLI (CI uses `relate-linux-amd64`). |
+| `relate-1.3.0.sha256` | The v1.3.0 release's own SHA256SUMS, copied verbatim: every platform's CLI (CI uses `relate-linux-amd64`) and the release's `assets.json`, after a `# relate-release-version` comment line. |
 | `changed-examples.sh` | Not a pin: which examples a pull request's changes need run (above). |
 | `gliner2.5-small-v1.sha256`, `gliner2.5-base-v1.sha256` | Every file of the GLiNER2.5 weights at the pinned Hugging Face revisions, read by `scripts/fetch-gliner.sh` and embedded into example 01's page by its build. |
 

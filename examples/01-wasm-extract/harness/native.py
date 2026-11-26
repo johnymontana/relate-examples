@@ -1,4 +1,4 @@
-"""harness/native.py: example 01's store on native Relate 1.2.0, the repository's engine (native.txt).
+"""harness/native.py: example 01's store on native Relate 1.3.0, the repository's engine (native.txt).
 
 Run it with the project env's interpreter, isolated, from anywhere in the repository (run.sh does):
 
@@ -6,7 +6,7 @@ Run it with the project env's interpreter, isolated, from anywhere in the reposi
     uv run --quiet python -I examples/01-wasm-extract/harness/native.py x4 DOWNLOAD.tar OUT.tar
 
 The CLI is `relate` from PATH and the binding is this interpreter's `relate` (relate-db): both must
-report 1.2.0 (they share files here), or it exits 2 before doing anything. The CLI is called as
+report 1.3.0 (they share files here), or it exits 2 before doing anything. The CLI is called as
 `relate --version`, `relate --mode jsonl -d DB 'Q'` and `relate clone [--to-snapshot-format F] SOURCE
 DEST`. Node (for the WASM side) must be on PATH.
 
@@ -63,7 +63,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 EX = HERE.parent
 ROOT = EX.parent.parent
-VER = "1.2.0"
+VER = "1.3.0"
 STORE = "ex01-kg-financial-services"
 sys.path.insert(0, str(ROOT / "lib"))
 

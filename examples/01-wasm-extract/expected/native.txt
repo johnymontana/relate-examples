@@ -1,11 +1,11 @@
-# Native Relate 1.2.0 (harness/native.py): the repository's engine, the CLI on PATH and the project env's binding
+# Native Relate 1.3.0 (harness/native.py): the repository's engine, the CLI on PATH and the project env's binding
 # The store is the browser section's opfs://ex01-kg-financial-services (create-context-graph's format) after the
 # financial-services sample: its dump.json and its database download, taken at the same moment (made in Node and
 # natively when the browser section is skipped, with the same content; stderr says which). Then a generic Ontology Graph Spec document's
 # store (harness/fixtures.mjs GENERIC_YAML: a gazetteer, a symmetric link), made in Node. Paths are left out of `path` columns.
 
 ## lib/replay.py loads the browser-format dump (D18)
-dump.json: format 1, engine 1.2.0; 157 nodes, 258 relationships, 15 constraints, 4 indexes, a graph type of 22 elements
+dump.json: format 1, engine 1.3.0; 157 nodes, 258 relationships, 15 constraints, 4 indexes, a graph type of 22 elements
 load into a fresh .rl: 157 nodes, 258 relationships, 15 constraints, 4 indexes
 content_digest == digest(dump): yes
 the graph type reads back: 22 elements, equal to the dump's: yes
@@ -37,7 +37,7 @@ lib/opfsfmt.py check --snapshot: ok, a snapshot (graph.json, manifest.json; code
 mkdir db && tar -xf <store>.relate.tar -C db; a read-only open first: exit 1: read-only open requires an existing database at <db>
   and clone: exit 1 (nothing written: yes)
 relate --mode jsonl -d db 'MATCH (e:_Entity) RETURN e.kind AS kind, count(*) AS n' (the page's command, a writable open): Account 2, Decision 2, Location 1, Organization 1, Person 3, Policy 1, Security 1, Transaction 1; the dump's _Entity kinds: yes
-  that open adopted the directory: the engine wrote its own side files (6 dot entries) and a WAL (1 segment): yes
+  that open adopted the directory: the engine wrote its own side files (4 dot entries) and a WAL (1 segment): yes
   SHOW INDEXES: 19 (FULLTEXT 1, LOOKUP 2, RANGE 16), every one ONLINE: yes; the page's indexes and one backing index per UNIQUE constraint, by name and type: yes
   SHOW CONSTRAINTS: 15 of the store's own (UNIQUE 15), equal to the page's by name and type: yes; 44 the graph type's, as many as the dump's graph type makes: yes
   a second _Entity with an existing key: exit 6: ConstraintValidationFailed

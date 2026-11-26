@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * opfs.js: Relate 1.2.0's OPFS store layout, read and written outside the engine, and the strict
+ * opfs.js: Relate 1.3.0's OPFS store layout, read and written outside the engine, and the strict
  * format guard of lib/opfsfmt.py ported to JavaScript. WASM has no export or import call
  * (NOTES.md R12), so the page handles the files: export.js builds the download and the restore on
  * it; app.js lists the stores with it.
@@ -16,7 +16,7 @@
  * {"value_encoding":2,), manifest.json ({"codec": "json", "checkpoint_lsn": n, ...}), any number
  * of wal/NNNNNNNN.log segments (MDBWAL01, then frames crc32 | length | JSON {lsn, commit_ts,
  * ops}), and dot entries: any path with a part that starts with "." is the engine's own side file
- * (the .relate/schema/ mirror the engine rewrites from the snapshot at each checkpoint; in a
+ * (the .relate/schema/ mirror the engine derives from the snapshot, when R10 says; in a
  * native tree also its role markers and writer leases). Dot entries are skipped by that one rule,
  * never by name, and never written into a store or a download: a copied mirror that does not match
  * its snapshot refuses the open (NOTES.md R10). A final WAL frame that is cut short or fails its
@@ -50,7 +50,7 @@
  * listStores, readStore, writeStore, storeExists, removeStore.
  */
 
-export const VERIFIED = '1.2.0';
+export const VERIFIED = '1.3.0';
 export const CATALOG_MAGIC = 'MDBOPF01';
 export const CATALOG_VERSION = 1;
 export const CATALOG_MAX = 1024 * 1024;
@@ -63,7 +63,7 @@ export const SNAPSHOT = Object.freeze(['graph.json', 'manifest.json']);
 const SEGMENT = /^wal\/\d{8}\.log$/;
 const te = new TextEncoder();
 
-/** A tree or catalog that is not exactly Relate 1.2.0's formats; nothing was written. */
+/** A tree or catalog that is not exactly Relate 1.3.0's formats; nothing was written. */
 export class FormatError extends Error {
   /** @param {string} where @param {string} found @param {string} expected @param {string} [tail] */
   constructor(where, found, expected, tail) {

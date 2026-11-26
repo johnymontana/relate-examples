@@ -2,7 +2,7 @@
 
 document: data/corporate-events.ontology.yaml (id corporate-events, version "2.0.0")
 schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
-SDK: @neo4j/ontology-graph-spec 0.12.2
+SDK: @neo4j/ontology-graph-spec 0.13.0
 decoded: yes; usable (no decode or core issue): yes
 
 ## Issues per validation set

@@ -8,7 +8,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self'; connect-src 'self' https://huggingface.co https://*.hf.co; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; base-uri 'self'; object-src 'none'">
   <meta name="referrer" content="strict-origin-when-cross-origin">
   <title>Markdown to knowledge graph · Relate example 01</title>
-  <meta name="description" content="Markdown in, knowledge graph out, in one browser tab: GLiNER2.5 through gliner-rs WASM, Relate 1.2.0 WASM in OPFS, NVL.">
+  <meta name="description" content="Markdown in, knowledge graph out, in one browser tab: GLiNER2.5 through gliner-rs WASM, Relate 1.3.0 WASM in OPFS, NVL.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
@@ -106,7 +106,7 @@
       </section>
 
       <footer class="foot">
-        <p>Example 01 of <a href="https://github.com/johnymontana/relate-examples">relate-examples</a>. Relate 1.2.0 (Apache-2.0) · gliner-rs 4fa741e (Apache-2.0) · GLiNER2.5 weights by Fastino (Apache-2.0, fetched from the Hugging Face Hub) · NVL 2.0.0 by Neo4j (proprietary), used with Neo4j's permission (confirmed by the repository owner on 2026-10-08) · edgextract's approach, with its sentence splitter and name rules ported (Apache-2.0) · create-context-graph's domain ontologies (Apache-2.0, neo4j-labs/create-context-graph contributors; the samples written for them here are synthetic). <a href="THIRD_PARTY.md">Third-party notices</a>.</p>
+        <p>Example 01 of <a href="https://github.com/johnymontana/relate-examples">relate-examples</a>. Relate 1.3.0 (Apache-2.0) · gliner-rs 4fa741e (Apache-2.0) · GLiNER2.5 weights by Fastino (Apache-2.0, fetched from the Hugging Face Hub) · NVL 2.0.0 by Neo4j (proprietary), used with Neo4j's permission (confirmed by the repository owner on 2026-10-08) · edgextract's approach, with its sentence splitter and name rules ported (Apache-2.0) · create-context-graph's domain ontologies (Apache-2.0, neo4j-labs/create-context-graph contributors; the samples written for them here are synthetic). <a href="THIRD_PARTY.md">Third-party notices</a>.</p>
       </footer>
     </aside>
 
@@ -249,7 +249,7 @@ LIMIT 100</textarea>
         <details class="native">
           <summary>Open the download with native Relate</summary>
           <pre class="code" id="native-commands" data-testid="native-commands"></pre>
-          <p class="hint">The tar is the store's snapshot, taken right after a checkpoint: <code>graph.json</code> and <code>manifest.json</code>, a directory database that native Relate 1.2.0 adopts on its first writable open (a read-only open or <code>relate clone</code> needs that open first). Going the other way, <code>relate clone --to-snapshot-format json kg.rl dir</code>, then <code>python3 -I lib/opfsfmt.py to-tar dir kg.tar</code>, restores here. <code>dump.json</code> is the engine-independent format of <code>lib/replay</code>.</p>
+          <p class="hint">The tar is the store's snapshot, taken right after a checkpoint: <code>graph.json</code> and <code>manifest.json</code>, a directory database that native Relate 1.3.0 adopts on its first writable open (a read-only open or <code>relate clone</code> needs that open first). Going the other way, <code>relate clone --to-snapshot-format json kg.rl dir</code>, then <code>python3 -I lib/opfsfmt.py to-tar dir kg.tar</code>, restores here. <code>dump.json</code> is the engine-independent format of <code>lib/replay</code>.</p>
         </details>
         <h3>Stores in this browser</h3>
         <ul id="store-list" class="docs" data-testid="store-list"></ul>

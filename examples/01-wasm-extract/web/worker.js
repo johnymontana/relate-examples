@@ -80,7 +80,7 @@
  * Error codes: no-store, no-model, locked (R11: another tab holds the store; the page offers
  * the handover), trap (the instance is gone, R14: the page replaces this worker, committed data
  * survives, R24), blocked (an ontology edit the data breaks, O5), ontology (invalid YAML), format
- * (a restore input that is not Relate 1.2.0's, or that 1.2.0 cannot open, X5), engine (an error
+ * (a restore input that is not Relate 1.3.0's, or that 1.3.0 cannot open, X5), engine (an error
  * envelope), lent, busy, usage, error.
  *
  * Engine facts this worker leans on: no transaction control (R2), so every write is an idempotent
@@ -110,8 +110,8 @@ import { splitSentences } from './split.js';
 import * as store from './store.js';
 
 const ASSETS = new URL('./assets/', import.meta.url);
-const RELATE = '1.2.0';
-const GLUE = 'relate-1.2.0/relate.js';
+const RELATE = '1.3.0';
+const GLUE = 'relate-1.3.0/relate.js';
 const GLINER_GLUE = 'gliner-rs-4fa741e/gliner_rs.js';
 const GLINER_WASM = 'gliner-rs-4fa741e/gliner_rs_bg.wasm';
 /** How long a reopen retries `storage locked` (R11: about 2 s in Chromium after a terminate mid-call). */
@@ -787,7 +787,7 @@ RETURN count(DISTINCT s) AS n`, { cut })[0]?.n ?? 0)
         ro = await mod.RelateDb.open(`opfs://${name}`, true);
       } catch (e) {
         // The guard checks the files' framing (X5), not every byte: a snapshot that passes it and
-        // still fails to open is not Relate 1.2.0's, or is damaged. The leftover store goes (finally).
+        // still fails to open is not Relate 1.3.0's, or is damaged. The leftover store goes (finally).
         const text = e instanceof Error ? e.message : String(e);
         if (LOCKED.test(text) || cl.isTrap(e)) throw e;
         throw new WorkerError('format', `${fileName} passed the format check, but Relate ${RELATE} could not open it ` +

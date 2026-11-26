@@ -210,7 +210,7 @@ function bothValidate(doc) {
   const mine = validateSchema(doc).map((e) => `${e.path || '/'} ${e.keyword}`).sort();
   return { same: canonJson(theirs) === canonJson(mine), ajv: theirs, ogs: mine };
 }
-section(`the Ontology Graph Spec ${SPEC_VERSION} (data/ontology-spec/: neo4j/ontology-graph-spec release/v0.12.2, Apache-2.0)`);
+section(`the Ontology Graph Spec ${SPEC_VERSION} (data/ontology-spec/: neo4j/ontology-graph-spec release/v0.13.0, Apache-2.0)`);
 {
   const file = JSON.parse(readFileSync(join(SPEC_DIR, 'ontology-graph-spec.schema.json'), 'utf8'));
   const keywords = new Set();

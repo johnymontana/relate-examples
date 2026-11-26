@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# The Relate playground as an agent's memory: a scripted chat, Relate 1.2.0 WASM, and the graph it fills (NVL).
+# The Relate playground as an agent's memory: a scripted chat, Relate 1.3.0 WASM, and the graph it fills (NVL).
 #   ./run.sh               offline: the Node sections, then browser, then native; checked against expected/
 #   ./run.sh --update      rewrite expected/ from this run
 #   ./run.sh --site        build dist/ and serve it at /relate-examples/03-wasm-agent-memory/ as GitHub Pages would
 #
-# Setup (README.md): here `npm ci --omit=peer` (exact pins, @relate/relate-wasm 1.2.0 among them; --omit=peer
+# Setup (README.md): here `npm ci --omit=peer` (exact pins, @relate/relate-wasm 1.3.0 among them; --omit=peer
 # skips NVL's unused neo4j-driver peer) and `npx playwright install chromium`.
 # The native section runs on the repository's engine: the project env's binding (uv run python: relate-db),
-# 1.2.0 like the WASM bundle; another version fails the run.
+# 1.3.0 like the WASM bundle; another version fails the run.
 # EXAMPLES_REQUIRE keys: without `wasm` (Node >= 20, the pinned Relate bundle and npm packages) the whole
 # example prints SKIP and exits 0; without `browser` (Playwright's Chromium) only that section is skipped,
 # with a note on stderr. A key named in EXAMPLES_REQUIRE fails instead (CI names both).
@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source ../../scripts/env.sh   # loads <repo>/.env; RELATE_TELEMETRY=off, RELATE_MAX_ROWS=0, RELATE_AGENT_MODE=0
 root="$(cd ../.. && pwd)"
-ver=1.2.0                     # Relate: the WASM bundle (package.json), and the release the native section checks the project engine is
+ver=1.3.0                     # Relate: the WASM bundle (package.json), and the release the native section checks the project engine is
 py() { uv run --project "$root" --quiet python "$@"; }   # the project env: relate-db, the repository's binding
 
 update=0 mode=run
@@ -155,7 +155,7 @@ if check_browser; then
   diffed+=(browser.txt)
 fi
 
-# ---- native 1.2.0: every statement the conversations ran, replayed natively and compared -> out/native.txt --
+# ---- native 1.3.0: every statement the conversations ran, replayed natively and compared -> out/native.txt --
 if (( native )); then
   if ! py -I harness/native.py > out/native.txt 2> out/native.err; then
     grep -h '^native.py: FAIL' out/native.err >&2 || tail -n 20 out/native.err >&2

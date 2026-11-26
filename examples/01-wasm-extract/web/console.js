@@ -84,8 +84,8 @@ import { MAX_DRAWN_NODES, MAX_DRAWN_RELS, capGraph, collectGraph, isNode, isRel 
 import { paramBindings, paramComparisons } from './convert.js';
 
 const ASSETS = new URL('./assets/', import.meta.url);
-const GLUE = 'relate-1.2.0/relate.js';
-const VERSION = '1.2.0';
+const GLUE = 'relate-1.3.0/relate.js';
+const VERSION = '1.3.0';
 /** The only stores this worker opens: the engine's (D14 names), never another: a read-only open of a missing store leaves an empty one behind (R15). */
 const STORE_URI = /^opfs:\/\/ex01-kg-[A-Za-z0-9_-]{1,56}$/;
 

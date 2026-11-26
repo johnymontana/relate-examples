@@ -34,7 +34,7 @@
  *       text`); each row as canon text without its `path` columns (paths carry internal ids).
  *
  * The Node side (also used in-process by the browser run for its comparisons) is web/gliner.js,
- * web/pipeline.js and web/store.js on Relate 1.2.0 WASM in memory and GLiNER2.5-small-v1,
+ * web/pipeline.js and web/store.js on Relate 1.3.0 WASM in memory and GLiNER2.5-small-v1,
  * exactly as harness/run.mjs runs them, with the page's defaults (no cutoffs, DEFAULT_GATE).
  *
  * Content comparisons use lib/replay.mjs digests of a dump without its (:_Run) nodes: a Run records
@@ -62,7 +62,7 @@ import { GENERIC_TEXT, GENERIC_YAML } from './fixtures.mjs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EX = path.resolve(HERE, '..');
 const ROOT = path.resolve(EX, '../..');
-const VER = '1.2.0';
+const VER = '1.3.0';
 const GLINER_REV = '4fa741eec466660daf4adc8703210138295e0b1b';
 const SMALL = { repo: 'fastino/gliner2.5-small-v1', rev: '7132dc4561c3f94563c6147e75ffa8ef34c4964a', name: 'gliner2.5-small-v1' };
 const WASM_DIR = process.env.GLINER_WASM_DIR || path.join(ROOT, '.cache/gliner-wasm', GLINER_REV.slice(0, 7));
@@ -746,7 +746,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
       else note(`native.py x4 failed (${r.error ? r.error.message : `exit ${r.status}`}): ${(r.stderr || r.stdout || '').trim().split('\n').slice(-3).join(' | ')}`);
     }
     if (!x4made) {
-      // No 1.2.0 CLI on PATH (or it failed, noted above): the download through opfsfmt to-dir and to-tar, the
+      // No 1.3.0 CLI on PATH (or it failed, noted above): the download through opfsfmt to-dir and to-tar, the
       // same restore form X4 produces, but not written by native code. native.txt covers the native side.
       note(`no native clone for the X4 restore input${eng ? '' : ` (no relate on PATH reporting Relate v${VER}, or no uv)`}: using the download re-tarred by lib/opfsfmt.py`);
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ex01-x4-'));

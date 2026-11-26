@@ -1,4 +1,4 @@
-# Example 03: the scripted conversations on Relate 1.2.0 WASM (harness/run.mjs), as the page runs them
+# Example 03: the scripted conversations on Relate 1.3.0 WASM (harness/run.mjs), as the page runs them
 
 Each turn: what the user said, what each memory tool returned, and the reply. In a recall row,
 [n] marks a memory the reply cites, then its score, how it was reached (search: a search hit;

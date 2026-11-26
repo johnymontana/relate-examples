@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The pipeline in Node: GLiNER2.5 through gliner-rs WASM, Relate 1.2.0 WASM in memory, one store
+// The pipeline in Node: GLiNER2.5 through gliner-rs WASM, Relate 1.3.0 WASM in memory, one store
 // per ontology (D14), web/pipeline.js and web/store.js exactly as the page's worker runs them
 // (D7-D11, D14, D16; score.txt also holds the evidence the default cutoffs were settled on).
 //   node harness/run.mjs <ver> [--out <dir>] [--model small|base]

@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * engine.worker.js: Relate 1.2.0 (WebAssembly) in a dedicated module worker, holding the agent's
+ * engine.worker.js: Relate 1.3.0 (WebAssembly) in a dedicated module worker, holding the agent's
  * memory in memory (`new RelateDb()`), rebuilt whenever a conversation starts (NOTES.md D4).
  *
  * Messages, each {id, op, ...} answered by {id, ok: true, result} or {id, ok: false, error, trap}:
@@ -18,7 +18,7 @@
  * stats, rows (a count), error, ms}. `ms` is wall-clock time around the engine call, for the page only.
  * `snapshot` is the whole store after the op (memory.js snapshot), which is what the page draws.
  *
- * The bundle is served from ./assets/relate-1.2.0/ (build.mjs), so its .wasm is fetched next to it.
+ * The bundle is served from ./assets/relate-1.3.0/ (build.mjs), so its .wasm is fetched next to it.
  * A WebAssembly trap leaves the handle unusable (example 01's NOTES.md R14): the worker reports it
  * and the page starts a new worker.
  */

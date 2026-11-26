@@ -8,11 +8,11 @@ Shipped in `dist/` (what the GitHub Pages site serves for this example):
 
 | Path in `dist/` | Component | Licence |
 |---|---|---|
-| `assets/relate-1.2.0/`: `relate.js`, `relate_bg.wasm`, `trap.js`, `snippets/relate-wasm-dd0c6225f894802b/js/opfs.js`, `LICENSE.txt` | Relate 1.2.0, WASM build | Apache-2.0 (`LICENSE.txt`) |
+| `assets/relate-1.3.0/`: `relate.js`, `relate_bg.wasm`, `trap.js`, `snippets/relate-wasm-19215b5d5f97ddd6/js/opfs.js`, `LICENSE.txt` | Relate 1.3.0, WASM build | Apache-2.0 (`LICENSE.txt`) |
 | `assets/gliner-rs-4fa741e/`: `gliner_rs.js`, `gliner_rs_bg.wasm`, `LICENSE.txt`, `THIRD_PARTY-crates.txt` | gliner-rs v0.3.1, with the Rust crates it links (listed in `THIRD_PARTY-crates.txt`) | Apache-2.0; the crates MIT and/or Apache-2.0 for most, a few Unicode-3.0, Zlib, BSL-1.0, BSD-2-Clause or Unlicense (below) |
 | `assets/nvl-2.0.0/`: `nvl.js`, `HierarchicalLayout.worker.js`, their `.LEGAL.txt`, `NVL-LICENSE.txt`, the files the `.LEGAL.txt` refer to (`base.mjs.LICENSE.txt`, `dagre.esm.js.LEGAL.txt`), `THIRD_PARTY-npm.txt` and one `LICENSE-<package>-<version>.txt` per bundled npm package | NVL 2.0.0, with its bundled dependencies (only packages that put bytes into the bundle: NVL's `@segment/*` analytics packages are tree-shaken out and are neither shipped nor listed) | proprietary, used with Neo4j's permission (confirmed by the repository owner on 2026-10-08); the dependencies MIT, ISC, Unlicense |
 | `assets/js-yaml-4.3.2/`: `js-yaml.js`, `LICENSE.txt` | js-yaml 4.3.2 | MIT |
-| `assets/ontology-graph-spec-0.12.2/`: `ontology-graph-spec.js`, `LICENSE.txt`, `THIRD_PARTY.txt` | the Ontology Graph Spec SDK 0.12.2 (npm `@neo4j/ontology-graph-spec`), bundled into one module with the Kotlin libraries compiled into it (listed in `THIRD_PARTY.txt`) | Apache-2.0, the Kotlin libraries Apache-2.0 |
+| `assets/ontology-graph-spec-0.13.0/`: `ontology-graph-spec.js`, `LICENSE.txt`, `THIRD_PARTY.txt` | the Ontology Graph Spec SDK 0.13.0 (npm `@neo4j/ontology-graph-spec`), bundled into one module with the Kotlin libraries compiled into it (listed in `THIRD_PARTY.txt`) | Apache-2.0, the Kotlin libraries Apache-2.0 |
 | `data/LICENSE-edgextract.txt`, `data/SOURCE.md` | edgextract's licence, for the approach and the rules the page's modules port (below) | Apache-2.0 |
 | `data/ontologies/ogs/ccg/*.ontology.yaml`, `data/ontologies/ogs/SOURCE.md`, `data/ontologies/ccg/_base.yaml`, `data/ontologies/ccg/LICENSE-create-context-graph.txt`, `data/ontologies/ccg/SOURCE.md` | create-context-graph's domain ontologies, converted to Ontology Graph Spec 1.1, and their base, verbatim | Apache-2.0 |
 | `data/ontology-spec/`: `ontology-graph-spec.schema.json`, `LICENSE-graph-spec.txt`, `SOURCE.md` | the Neo4j Ontology Graph Specification 1.1.0's JSON Schema, verbatim (also carried in `ogs.js`) | Apache-2.0 |
@@ -139,16 +139,16 @@ Not shipped:
 
 ## Relate
 
-- **What:** Relate 1.2.0's WASM bundle: `relate.js`, `relate_bg.wasm`, `trap.js`
-  and `snippets/relate-wasm-<hash>/js/opfs.js`. The native 1.2.0 CLI and Python binding,
+- **What:** Relate 1.3.0's WASM bundle: `relate.js`, `relate_bg.wasm`, `trap.js`
+  and `snippets/relate-wasm-<hash>/js/opfs.js`. The native 1.3.0 CLI and Python binding,
   the repository's engine, run the round trips in `harness/native.py`, and are not shipped.
-- **Source:** npm's `@relate/relate-wasm@1.2.0` (provenance-signed), installed by `npm ci`
+- **Source:** npm's `@relate/relate-wasm@1.3.0` (provenance-signed), installed by `npm ci`
   from `package-lock.json`, whose sha512 integrity is the pin.
 - **Licence:** Apache-2.0 (the package's `license` field). The package ships no licence file, so
-  Relate's `LICENSE` at tag `v1.2.0` of [relatedb/relate](https://github.com/relatedb/relate) is
+  Relate's `LICENSE` at tag `v1.3.0` of [relatedb/relate](https://github.com/relatedb/relate) is
   committed as `data/LICENSE-relate.txt` (`build.mjs` checks its sha256) and served beside the
-  bundle as `assets/relate-1.2.0/LICENSE.txt`. The deployed site serves a copy of the pinned bundle
-  under `assets/relate-1.2.0/`.
+  bundle as `assets/relate-1.3.0/LICENSE.txt`. The deployed site serves a copy of the pinned bundle
+  under `assets/relate-1.3.0/`.
 
 ## NVL (Neo4j Visualization Library) 2.0.0
 
@@ -191,21 +191,22 @@ Not shipped:
   `data/ontology-spec/ontology-graph-spec.schema.json`. `web/ogs.js` carries the same schema as a
   JavaScript object (pinned equal to the file in `expected/ontology.txt`) and interprets it.
 - **Source:** [neo4j/ontology-graph-spec](https://github.com/neo4j/ontology-graph-spec), tag
-  `release/v0.12.2`, commit `30e9122cb035e58b8e0c51e090f1dad2c66a26f9` (2026-11-23), the same bytes
-  <https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json> serves.
+  `release/v0.13.0`, commit `d3b4ec6de7d570139e3ba3aef5d64990155440e4` (2026-11-26), the same bytes
+  <https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json> serves (and the same blobs as at the
+  previous pin, `release/v0.12.2`: the schema did not change).
   [`data/ontology-spec/SOURCE.md`](data/ontology-spec/SOURCE.md) has the blob hashes.
 - **Licence:** Apache-2.0. The repository's `LICENSE`, copied unchanged, travels with the schema
   as `data/ontology-spec/LICENSE-graph-spec.txt`, in the repo and in `dist/`. No NOTICE file.
 
-## The Ontology Graph Spec SDK 0.12.2
+## The Ontology Graph Spec SDK 0.13.0
 
 - **What:** the spec's official library. Through `lib/ogs.mjs` it decodes every ontology document
   and runs its core validation, in the page, the worker and the Node harness.
-- **Source:** npm, `@neo4j/ontology-graph-spec@0.12.2` (pinned in `package.json` and
+- **Source:** npm, `@neo4j/ontology-graph-spec@0.13.0` (pinned in `package.json` and
   `package-lock.json`), built from [neo4j/ontology-graph-spec](https://github.com/neo4j/ontology-graph-spec)
-  at tag `release/v0.12.2`. The package is Kotlin/JS output spread over 13 modules; `npm run vendor`
+  at tag `release/v0.13.0`. The package is Kotlin/JS output spread over 13 modules; `npm run vendor`
   bundles them with esbuild into `web/vendor/ontology-graph-spec.js`, which `dist/` serves as
-  `assets/ontology-graph-spec-0.12.2/ontology-graph-spec.js`.
+  `assets/ontology-graph-spec-0.13.0/ontology-graph-spec.js`.
 - **Licence:** Apache-2.0. The npm package ships no licence file and its metadata names none: the
   repository's `LICENSE` (the same text as `data/ontology-spec/LICENSE-graph-spec.txt`) travels as
   `LICENSE.txt` beside the bundle. The Kotlin libraries compiled into it are Apache-2.0:
@@ -236,5 +237,5 @@ None of these is shipped:
   against;
 - Python `gliner2` 2.0.0 (Apache-2.0) and torch: only in `harness/reference.py`'s uv side env
   (`./run.sh --reference`);
-- the native Relate 1.2.0 CLI and the `relate-db` 1.2.0 Python binding (Apache-2.0), the
+- the native Relate 1.3.0 CLI and the `relate-db` 1.3.0 Python binding (Apache-2.0), the
   repository's engine: the native section.

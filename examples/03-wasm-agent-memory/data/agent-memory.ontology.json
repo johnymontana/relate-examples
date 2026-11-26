@@ -3,7 +3,7 @@
   "version": "1",
   "id": "agent-memory-graph",
   "name": "Agent memory graph",
-  "description": "What a conversational agent keeps between sessions, as a graph. A user's messages are stored in the sessions they were sent in, with the entities they name. From each message the agent draws memories: single facts, decisions, preferences and notes. A memory records the message it came from and the entities it is about, so two memories that share an entity are two steps apart and recall can walk from one to the other. A newer memory in the same slot supersedes the older one and nothing is deleted, so the store holds what is believed now and what used to be believed. Each memory can carry an embedding, searched by meaning through a vector index, and its text is searched by its words through a full-text index. This is the model of example 03 of relate-examples, where Relate 1.2.0 enforces it as a graph type on every write.",
+  "description": "What a conversational agent keeps between sessions, as a graph. A user's messages are stored in the sessions they were sent in, with the entities they name. From each message the agent draws memories: single facts, decisions, preferences and notes. A memory records the message it came from and the entities it is about, so two memories that share an entity are two steps apart and recall can walk from one to the other. A newer memory in the same slot supersedes the older one and nothing is deleted, so the store holds what is believed now and what used to be believed. Each memory can carry an embedding, searched by meaning through a vector index, and its text is searched by its words through a full-text index. This is the model of example 03 of relate-examples, where Relate 1.3.0 enforces it as a graph type on every write.",
   "nodes": {
     "session": {
       "label": "Session",
@@ -399,7 +399,7 @@
         "describes": {
           "example": "examples/03-wasm-agent-memory",
           "schema": "web/memory.js SCHEMA",
-          "engine": "Relate 1.2.0",
+          "engine": "Relate 1.3.0",
           "decisions": ["ADR-0016", "ADR-0017"]
         },
         "enforcement": {

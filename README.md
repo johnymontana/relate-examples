@@ -2,7 +2,7 @@
 
 Runnable examples for [Relate](https://github.com/relatedb/relate), an embedded openCypher graph
 database: one binary, and a database that is a directory, a single `.rl` file or `:memory:`. Every
-example targets **Relate 1.2.0**: the `relate` CLI, the `relate-db` Python binding and the
+example targets **Relate 1.3.0**: the `relate` CLI, the `relate-db` Python binding and the
 `@relate/relate-wasm` npm package (the WebAssembly build). Each example runs offline and checks its
 own output against committed `expected/` files.
 
@@ -25,8 +25,8 @@ macOS or Linux, with `curl`, [uv](https://docs.astral.sh/uv/), Node 20 or later 
 [rustup](https://rustup.rs/).
 
 ```bash
-curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI; `relate --version`'s first line must be "Relate v1.2.0"
-uv sync                                             # the project env: relate-db 1.2.0 and pytest (uv.lock)
+curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI; `relate --version`'s first line must be "Relate v1.3.0"
+uv sync                                             # the project env: relate-db 1.3.0 and pytest (uv.lock)
 rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
 scripts/build-gliner-wasm.sh                        # example 01: gliner-rs v0.3.1 built to WASM into .cache/gliner-wasm/
 scripts/fetch-gliner.sh small                       # example 01: GLiNER2.5-small-v1 weights into .cache/gliner/ (304 MB)

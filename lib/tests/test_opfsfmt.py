@@ -129,7 +129,7 @@ def test_to_dir_then_to_tar(tmp_path, capsys):
     for vpath in ("graph.json", "manifest.json"):
         assert (db / vpath).read_bytes() == raw[slot(raw, vpath)]
     assert run("check", "--snapshot", db) == 0
-    assert capsys.readouterr().out.startswith("ok: snapshot (Relate 1.2.0 formats), 2 files")
+    assert capsys.readouterr().out.startswith("ok: snapshot (Relate 1.3.0 formats), 2 files")
     download = tmp_path / "db.tar"
     assert run("to-tar", db, download) == 0
     assert [m.name for m in tarfile.open(download).getmembers()] == ["graph.json", "manifest.json"]
@@ -201,7 +201,7 @@ def test_cli_runs_standalone_in_isolated_mode(tmp_path):
     assert ok.returncode == 0 and json.loads(ok.stdout)["kind"] == "raw"
     bad = subprocess.run([sys.executable, "-I", str(REPO / "lib" / "opfsfmt.py"), "check", str(FIXTURES / "make.mjs")],
                          capture_output=True, text=True)
-    assert bad.returncode == 3 and "accepts only the formats of Relate 1.2.0" in bad.stderr
+    assert bad.returncode == 3 and "accepts only the formats of Relate 1.3.0" in bad.stderr
 
 
 # --- tampered raw exports: each exits 3 -----------------------------------------------------
@@ -263,7 +263,7 @@ def test_tampered_raw_export_exits_3(tmp_path, capsys, damage):
     RAW_DAMAGE[damage](raw)
     bad = write(tmp_path, raw)
     assert run("check", bad) == 3
-    assert "accepts only the formats of Relate 1.2.0" in capsys.readouterr().err
+    assert "accepts only the formats of Relate 1.3.0" in capsys.readouterr().err
     assert run("to-dir", bad, tmp_path / "db") == 3
     assert not (tmp_path / "db").exists()  # refused before anything is written
 
@@ -607,10 +607,14 @@ def test_pin_a_snapshot_is_adopted_by_a_writable_open(tmp_path):
 @needs_cli
 def test_pin_schema_mirror_is_derived(tmp_path):
     """NOTES.md R10: the .relate/schema/ mirror is rewritten from the snapshot; one that differs
-    refuses the open, which is why no copy here ever carries one."""
+    refuses the open, which is why no copy here ever carries one. The engine writes the mirror at
+    the first statement that changes the graph (R22): an open that only reads, such as the
+    adopting open with `RETURN 1`, leaves the directory without one."""
     db = tmp_path / "db"
     opfsfmt.to_dir(CLEAN, db)
     rows("-d", db, "RETURN 1 AS x")
+    assert not [p for p in db.rglob("*.cypher")], "pin: a reading open now writes the schema mirror (R22)"
+    rows("-d", db, "CREATE (:Z {id: 1})")
     mirrors = [p for p in db.rglob("*.cypher") if opfsfmt.is_dot(p.relative_to(db).as_posix())]
     assert mirrors, "the engine no longer writes a schema mirror"
     target = next(p for p in mirrors if "CONSTRAINT" in p.read_text())

@@ -376,7 +376,7 @@ async function busy(fn) {
 
 function refreshStatus() {
   const parts = [];
-  parts.push(state.engineReady ? 'Relate 1.2.0' : state.recycling ? 'engine recycling' : 'engine starting');
+  parts.push(state.engineReady ? 'Relate 1.3.0' : state.recycling ? 'engine recycling' : 'engine starting');
   parts.push(state.store ? `store ${state.store.name}` : 'no store open');
   parts.push(state.model.loaded ? `model ${state.model.loaded.which} loaded` : state.model.loading ? 'model loading' : 'no model loaded');
   $('#status').textContent = parts.join(' · ');
@@ -2744,7 +2744,7 @@ function renderStoreFacts() {
   }));
   $('#native-commands').textContent = [
     `mkdir db && tar -xf ${s.name}.relate.tar -C db`,
-    `relate --mode jsonl -d db 'MATCH (e:_Entity) RETURN e.kind AS kind, count(*) AS n'   # the 1.2.0 CLI; this first open adopts the directory`,
+    `relate --mode jsonl -d db 'MATCH (e:_Entity) RETURN e.kind AS kind, count(*) AS n'   # the 1.3.0 CLI; this first open adopts the directory`,
     `relate clone db ${s.name.replace(/^ex01-/, '')}.rl   # optional: a single-file bundle`,
   ].join('\n');
 }
