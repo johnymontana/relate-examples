@@ -1,0 +1,646 @@
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
+id: insurance-claims-fraud
+name: Insurance Claims Fraud
+description: Models motor and personal-injury claims as a graph of claimants, the vehicles they own, the claims they file, and the medical professionals attached to those claims. Answers which claimants file repeatedly, which vehicles recur across otherwise unrelated claims, and which professionals are attached to an unusual share of claim volume or value — the repetition across records that organised fraud produces and that per-claim scoring cannot see.
+nodes:
+  Claimant:
+    label: Claimant
+    properties:
+      name:
+        type: STRING
+        key: true
+        description: Full name of the claimant, and the identifier by which the same person is recognised across separate claims. Expected to be already normalised, since the reference ontology performs no fuzzy matching. e.g. `Richard Sanders`.
+    extensions:
+      display:
+        x: -150
+        'y': 0
+        colour: '#2563eb'
+      custom:
+        relate-examples:
+          ask: a person who filed an insurance claim for an accident or injury, named by full name; the person seeking payment, not the insurer's staff
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: claimants-with-multiple-claims
+            question: Claimants with multiple claims
+            description: Flags claimants who filed more than one claim — the simplest repeat-claimant check — by counting HAS_CLAIM relationships per claimant.
+            cypher: |-
+              MATCH (c:Claimant)-[:HAS_CLAIM]->(cl:Claim)
+              WITH c, count(cl) AS numClaims
+              WHERE numClaims > 1
+              RETURN c.name AS claimant, numClaims
+              ORDER BY numClaims DESC
+            parameters: []
+            category: query
+            teaches: 'The literal threshold numClaims > 1 is the definition of a repeat claimant, not a tuned value. On a large portfolio the list is long: raise the literal towards the portfolio''s upper percentile of claims per claimant until the result is reviewable by hand. Claimants are keyed by name, so a spelling variant counts as a different claimant and splits the count. Frequency alone is a lead, not a finding.'
+            returns: 'One row per claimant with more than one claim: claimant (Claimant.name) and numClaims, ordered by numClaims descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - repeat-claimant
+              - claimant
+              - claim
+              - frequency
+            upstream:
+              file: QUERIES.md
+              heading: Claimants with multiple claims
+              sample: 'Bundled sample data only: returns 600 rows — 20 claimants with 10 claims, then 80 with 5 and 500 with 2.'
+          - type: canonicalQuery
+            name: claim-subgraphs-of-the-most-frequent-repeat-claimants
+            question: Claim subgraphs of the most frequent repeat claimants
+            description: 'Visualises the claims of the most frequent repeat claimants: ranks claimants with more than one claim by claim count, keeps the top 20, and re-matches each one''s HAS_CLAIM paths after the count for Browser or Bloom to draw.'
+            cypher: |-
+              MATCH (c:Claimant)-[:HAS_CLAIM]->(:Claim)
+              WITH c, count(*) AS numClaims
+              WHERE numClaims > 1
+              ORDER BY numClaims DESC
+              LIMIT 20
+              MATCH path = (c)-[:HAS_CLAIM]->(:Claim)
+              RETURN path
+            parameters: []
+            category: picture
+            teaches: Visual, not tabular — use Claimants with multiple claims for the counts. The literal LIMIT 20 caps how many claimants are drawn and keeps the picture readable; lower it if the graph is crowded. Claimants tied on claim count at the cut-off are chosen arbitrarily.
+            returns: Paths Claimant → Claim, one per claim, for at most 20 claimants.
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - visualisation
+              - repeat-claimant
+              - claimant
+              - claim
+            upstream:
+              file: QUERIES.md
+              heading: Claim subgraphs of the most frequent repeat claimants
+              sample: 'Bundled sample data only: returns 200 paths — the 20 claimants with 10 claims each.'
+          - type: canonicalQuery
+            name: project-the-fraud-graph
+            question: Project the fraud-graph
+            description: Builds the in-memory GDS projection 'fraud-graph' over all four node labels and the HAS_CLAIM, TREATED_BY, OWNS, and INVOLVED_IN relationships, each projected undirected.
+            cypher: |-
+              CALL gds.graph.project(
+                'fraud-graph',
+                ['Claimant', 'MedicalProfessional', 'Claim', 'Vehicle'],
+                {
+                  HAS_CLAIM:   { orientation: 'UNDIRECTED' },
+                  TREATED_BY:  { orientation: 'UNDIRECTED' },
+                  OWNS:        { orientation: 'UNDIRECTED' },
+                  INVOLVED_IN: { orientation: 'UNDIRECTED' }
+                }
+              )
+            parameters: []
+            category: graph data science
+            teaches: Run before the Louvain and PageRank queries, and drop the projection afterwards to release its memory. TREATS is not projected, so the algorithms see claim-borne links only.
+            returns: One row describing the projection, including its node and relationship counts. GDS counts each undirected relationship once in each direction.
+            prerequisites: GDS library installed. No projection named fraud-graph already in the GDS graph catalog.
+            tags:
+              - gds
+              - projection
+            requires:
+              - gds
+            upstream:
+              file: QUERIES.md
+              heading: Project the fraud-graph
+              sample: 'Bundled sample data only: projects 13550 nodes and 39000 relationships (19500 relationships, each counted in both directions).'
+          - type: canonicalQuery
+            name: louvain-communities-in-the-fraud-graph
+            question: Louvain communities in the fraud-graph
+            description: Runs Louvain community detection over the fraud-graph to reveal clusters of related claimants, medical professionals, claims, and vehicles, and summarises each community by its size and by how many members carry each label.
+            cypher: |-
+              CALL gds.louvain.stream('fraud-graph')
+              YIELD nodeId, communityId
+              WITH communityId, gds.util.asNode(nodeId) AS member
+              WITH communityId,
+                   count(*) AS size,
+                   sum(CASE WHEN member:Claimant THEN 1 ELSE 0 END) AS claimants,
+                   sum(CASE WHEN member:MedicalProfessional THEN 1 ELSE 0 END) AS professionals,
+                   sum(CASE WHEN member:Claim THEN 1 ELSE 0 END) AS claims,
+                   sum(CASE WHEN member:Vehicle THEN 1 ELSE 0 END) AS vehicles
+              RETURN communityId, size, claimants, professionals, claims, vehicles
+              ORDER BY size DESC
+              LIMIT $limit
+            parameters:
+              - name: limit
+                type: INTEGER
+                description: Maximum number of communities returned, largest first. Start at 10 for a reviewable list; raise it to reach smaller communities.
+            category: graph data science
+            teaches: 'Louvain is not deterministic: community IDs are arbitrary labels that change between runs, and boundaries can shift too, so compare compositions rather than IDs. With $limit at least the number of communities, the sizes and each label column sum to the projected node counts. A community whose claims outnumber its vehicles or its claimants concentrates the reused-vehicle or repeat-claimant signal; to list its members, filter the stream on its communityId within the same run. A community is a lead for review, not a ring.'
+            returns: 'One row per community, at most $limit: communityId, size (members), and claimants, professionals, claims, and vehicles (members with each label), ordered by size descending.'
+            prerequisites: GDS library installed; the fraud-graph projection from Project the fraud-graph.
+            tags:
+              - gds
+              - community-detection
+              - louvain
+              - ring
+            requires:
+              - gds
+            upstream:
+              file: QUERIES.md
+              heading: Louvain communities in the fraud-graph
+              sample: 'Bundled sample data only: $limit = 10 returns 10 communities, each with claimants, professionals, claims, and vehicles summing to its size; community IDs and compositions vary between runs.'
+          - type: canonicalQuery
+            name: pagerank-centrality-in-the-fraud-graph
+            question: PageRank centrality in the fraud-graph
+            description: Runs PageRank over the fraud-graph to highlight highly connected, potentially central entities.
+            cypher: |-
+              CALL gds.pageRank.stream('fraud-graph')
+              YIELD nodeId, score
+              RETURN gds.util.asNode(nodeId) AS node, score
+              ORDER BY score DESC
+              LIMIT $limit
+            parameters:
+              - name: limit
+                type: INTEGER
+                description: Maximum number of nodes returned, highest score first. Start at 20 for a reviewable list; raise it to look past the top-scoring label.
+            category: graph data science
+            teaches: 'Scores grow with the number of claim links reaching a node, and each medical professional is attached to many claims, so professionals score highest by construction: compare a node''s score with others of the same label rather than across labels. To rank one label, filter the streamed nodes by label before the ORDER BY and LIMIT.'
+            returns: 'At most $limit rows: node (the node itself) and score, ordered by score descending.'
+            prerequisites: GDS library installed; the fraud-graph projection from Project the fraud-graph.
+            tags:
+              - gds
+              - centrality
+              - pagerank
+            requires:
+              - gds
+            upstream:
+              file: QUERIES.md
+              heading: PageRank centrality in the fraud-graph
+              sample: 'Bundled sample data only: $limit = 20 returns 20 medical professionals; the three highest scores belong to Dr. Jason Brown, Dr. Eric Robinson, and Dr. Ruth Butler.'
+          - type: canonicalQuery
+            name: drop-the-fraud-graph-projection
+            question: Drop the fraud-graph projection
+            description: Removes the fraud-graph projection from the GDS graph catalog, releasing its memory.
+            cypher: CALL gds.graph.drop('fraud-graph')
+            parameters: []
+            category: graph data science
+            teaches: Run last, after the Louvain and PageRank queries. Fails when no projection named fraud-graph exists.
+            returns: One row describing the dropped projection.
+            prerequisites: GDS library installed; the fraud-graph projection exists.
+            tags:
+              - gds
+              - projection
+              - clean-up
+            requires:
+              - gds
+            upstream:
+              file: QUERIES.md
+              heading: Drop the fraud-graph projection
+              sample: ''
+          - type: canonicalQuery
+            name: node-key-constraints
+            question: Node-key constraints
+            cypher: |-
+              CREATE CONSTRAINT name_Claimant_key IF NOT EXISTS
+                FOR (c:Claimant) REQUIRE c.name IS NODE KEY;
+              CREATE CONSTRAINT name_MedicalProfessional_key IF NOT EXISTS
+                FOR (m:MedicalProfessional) REQUIRE m.name IS NODE KEY;
+              CREATE CONSTRAINT claimID_Claim_key IF NOT EXISTS
+                FOR (cl:Claim) REQUIRE cl.claimID IS NODE KEY;
+              CREATE CONSTRAINT VIN_Vehicle_key IF NOT EXISTS
+                FOR (v:Vehicle) REQUIRE v.VIN IS NODE KEY;
+            parameters: []
+            category: setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Node-key constraints
+              sample: ''
+    description: 'A person who has filed one or more claims against a policy. Identified by name alone, so the reference ontology treats a spelling variant as a different claimant: real deployments are expected to resolve identity before import rather than rely on this label to do it.'
+  MedicalProfessional:
+    label: MedicalProfessional
+    properties:
+      name:
+        type: STRING
+        key: true
+        description: Full name of the medical professional, including any title as recorded by the insurer, and the identifier by which they are recognised across separate claims. e.g. `Dr. Steven Fisher`.
+    extensions:
+      display:
+        x: 150
+        'y': -125
+        colour: '#059669'
+      custom:
+        relate-examples:
+          ask: a doctor, physiotherapist or other clinician who assessed or treated a claimant's injury, usually named with a title such as Dr.
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: medical-professionals-with-unusual-patterns
+            question: Medical professionals with unusual patterns
+            description: Surfaces medical professionals who are outliers by claim volume or by total value claimed, counting TREATED_BY relationships and summing Claim.amountClaimed per professional.
+            cypher: |-
+              MATCH (m:MedicalProfessional)<-[:TREATED_BY]-(cl:Claim)
+              WITH m, count(cl) AS claimCount, sum(cl.amountClaimed) AS totalAmount
+              WHERE claimCount > $minClaims OR totalAmount > $minTotal
+              RETURN m.name AS medicalProfessional, claimCount, totalAmount
+              ORDER BY totalAmount DESC
+            parameters:
+              - name: minClaims
+                type: INTEGER
+                description: Number of claims a professional must exceed to be flagged on volume. Integer. Start at twice the portfolio's median claims per professional, then raise it until the result is reviewable by hand. minTotal - Total amountClaimed, in whole currency units, a professional must exceed to be flagged on value. Integer. Start at twice the portfolio's median total per professional, and tune it the same way.
+                example: 1
+              - name: minTotal
+                type: INTEGER
+                description: ''
+                example: 50000
+            category: query
+            teaches: A professional above either threshold is returned. The starting points use the median because it is not pulled up by the outliers being looked for, as a high percentile can be when outliers are more than a few percent of professionals; the factor of two has no strong prior behind it. Compute the medians with percentileCont(…, 0.5) over the per-professional counts and totals, and read Medical professionals ranked by total claim value to keep each threshold between the bulk of professionals and the outliers. Thresholds set too low flag every busy professional. totalAmount assumes a single-currency portfolio. A busy clinic and a fraudulent one look alike from the outside, so an outlier is a lead for review.
+            returns: 'One row per professional above either threshold: medicalProfessional (MedicalProfessional.name), claimCount, and totalAmount (summed amountClaimed, in whole currency units), ordered by totalAmount descending.'
+            prerequisites: Claim.amountClaimed loaded as an INTEGER, so the sum is numeric.
+            tags:
+              - medical-professional
+              - outlier
+              - claim-value
+              - claim-volume
+            upstream:
+              file: QUERIES.md
+              heading: Medical professionals with unusual patterns
+              sample: 'Bundled sample data only: $minClaims = 150, $minTotal = 3000000 returns 3 rows — Dr. Ruth Butler (200 claims, 8135003), Dr. Jason Brown (200, 8001365), and Dr. Eric Robinson (200, 7701383).'
+          - type: canonicalQuery
+            name: medical-professionals-ranked-by-total-claim-value
+            question: Medical professionals ranked by total claim value
+            description: Threshold-free ranking of medical professionals by the total value claimed across the claims they are attached to, with claim count alongside.
+            cypher: |-
+              MATCH (m:MedicalProfessional)<-[:TREATED_BY]-(cl:Claim)
+              RETURN m.name AS medicalProfessional,
+                     count(cl) AS claimCount,
+                     sum(cl.amountClaimed) AS totalAmount
+              ORDER BY totalAmount DESC
+              LIMIT 10
+            parameters: []
+            category: query
+            teaches: 'Run it first, to see the spread before choosing the thresholds for Medical professionals with unusual patterns: outliers show as a gap between the leading rows and the rest. The literal LIMIT 10 sets how many are shown; raise it to see where the bulk of professionals sits. It ranks rather than filters, so it stays meaningful as the portfolio grows.'
+            returns: 'Up to 10 rows: medicalProfessional (MedicalProfessional.name), claimCount, and totalAmount (summed amountClaimed, in whole currency units), ordered by totalAmount descending.'
+            prerequisites: Claim.amountClaimed loaded as an INTEGER, so the sum is numeric.
+            tags:
+              - medical-professional
+              - ranking
+              - claim-value
+            upstream:
+              file: QUERIES.md
+              heading: Medical professionals ranked by total claim value
+              sample: 'Bundled sample data only: returns 10 rows, led by Dr. Ruth Butler (200 claims, 8135003), Dr. Jason Brown (200, 8001365), and Dr. Eric Robinson (200, 7701383); the other seven have 93–94 claims and totals from 848139 down to 788452.'
+    description: A clinician who assesses or treats claimants and whose assessment supports a claim for injury. Concentration of claims on one professional is a fraud signal in its own right, so this is a first-class entity rather than a property of the claim.
+    aliases:
+      - Doctor
+  Claim:
+    label: Claim
+    properties:
+      claimID:
+        type: STRING
+        key: true
+        description: The insurer's reference for the claim, unique across the portfolio. e.g. `CL-000001`.
+        pattern: ^CL-[0-9]{6}$
+      date:
+        type: STRING
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              parse: DATE
+              ask: the date of the incident the claim relates to, such as 9 January 2024
+        description: Calendar date of the incident the claim relates to, as an ISO 8601 date in YYYY-MM-DD form. Held as a string rather than a temporal type, so comparisons are lexicographic — which orders correctly for this format but requires an explicit conversion before any date arithmetic. e.g. `2024-01-25`.
+      amountClaimed:
+        type: INTEGER
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              parse: MONEY
+              ask: the amount of money sought on the claim, a sum such as £28,449
+        description: Amount sought on the claim, as a whole currency unit with no minor units. The reference ontology carries no currency code and assumes a single-currency portfolio, so totals across claims are only meaningful under that assumption. e.g. `1447`.
+    extensions:
+      display:
+        x: 50
+        'y': 0
+        colour: '#d97706'
+      custom:
+        relate-examples:
+          ask: an insurance claim for a motor or personal-injury incident, named by its claim reference, such as CL-004417
+          proper: true
+          propose: true
+    description: A single claim submitted for settlement following an incident. The unit at which money is sought and at which fraud is ultimately assessed, though rarely the unit at which it is detectable.
+  Vehicle:
+    label: Vehicle
+    properties:
+      VIN:
+        type: STRING
+        key: true
+        description: Vehicle identification number — the manufacturer's 17-character serial for the vehicle. Expected to be the identifier that survives a change of registration plate or of owner, which is what makes it usable for linking claims. e.g. `PYXLNVHK732U50J1C`.
+        pattern: ^[A-HJ-NPR-Z0-9]{17}$
+    extensions:
+      display:
+        x: -150
+        'y': -125
+        colour: '#7c3aed'
+      custom:
+        relate-examples:
+          ask: a motor vehicle named in a claim, identified by its 17-character vehicle identification number (VIN)
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: potential-crash-for-cash-scams
+            question: Potential "crash for cash" scams
+            description: Identifies vehicles involved in more than one claim — the staged-accident signal — by counting INVOLVED_IN relationships per vehicle.
+            cypher: |-
+              MATCH (v:Vehicle)-[:INVOLVED_IN]->(cl:Claim)
+              WITH v, count(cl) AS claimCount
+              WHERE claimCount > 1
+              RETURN v.VIN AS vehicle, claimCount
+              ORDER BY claimCount DESC
+            parameters: []
+            category: query
+            teaches: 'The literal threshold claimCount > 1 flags any repeat involvement. A vehicle can feature in more than one genuine incident, so on a large portfolio raise the literal until the result is reviewable and look hardest at the highest counts. Relies on VIN being recorded consistently: a missing or mistyped VIN splits one vehicle into several.'
+            returns: 'One row per vehicle involved in more than one claim: vehicle (Vehicle.VIN) and claimCount, ordered by claimCount descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - crash-for-cash
+              - vehicle
+              - staged-accident
+              - claim
+            upstream:
+              file: QUERIES.md
+              heading: Potential "crash for cash" scams
+              sample: 'Bundled sample data only: returns 100 rows, each with claimCount 6.'
+          - type: canonicalQuery
+            name: claim-subgraphs-of-vehicles-involved-in-more-than-one-claim
+            question: Claim subgraphs of vehicles involved in more than one claim
+            description: 'Visualises the claims linked to vehicles involved in more than one claim: ranks those vehicles by claim count, keeps the top 10, and returns each one''s INVOLVED_IN paths for Browser or Bloom to draw.'
+            cypher: |-
+              MATCH (v:Vehicle)-[:INVOLVED_IN]->(:Claim)
+              WITH v, count(*) AS claimCount
+              WHERE claimCount > 1
+              ORDER BY claimCount DESC
+              LIMIT 10
+              MATCH path = (v)-[:INVOLVED_IN]->(:Claim)
+              RETURN path
+            parameters: []
+            category: picture
+            teaches: Visual, not tabular — use Potential "crash for cash" scams for the full list. The literal LIMIT 10 keeps the picture readable; drop it to draw every vehicle involved in more than one claim. Vehicles tied on claim count at the cut-off are chosen arbitrarily.
+            returns: Paths Vehicle → Claim, one per claim, for at most 10 vehicles.
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - visualisation
+              - crash-for-cash
+              - vehicle
+              - claim
+            upstream:
+              file: QUERIES.md
+              heading: Claim subgraphs of vehicles involved in more than one claim
+              sample: 'Bundled sample data only: returns 60 paths — 10 of the 100 vehicles with 6 claims each; which 10 is not fixed.'
+    description: A motor vehicle that can be owned by a claimant and named in claims. Held separately from the claim so that a single vehicle appearing across several otherwise unconnected incidents becomes visible — the classic staged-accident signal.
+relationships:
+  hasClaim:
+    type: HAS_CLAIM
+    from:
+      node: Claimant
+    to:
+      node: Claim
+      count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: filed
+    description: Records that the claimant filed this claim. Exactly one claimant per claim; a claimant may file many claims, and in the general case none. Counting and totalling along this link is the simplest repeat-claimant check the reference ontology supports.
+  treatedBy:
+    type: TREATED_BY
+    from:
+      node: Claim
+      count: 1
+    to:
+      node: MedicalProfessional
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was assessed by
+    description: Records that this medical professional was attached to the claim and provided the clinical assessment it rests on. Exactly one professional per claim; a professional may be attached to many claims, or to none. Concentration of claim count or claim value on one professional is what marks them an outlier against their peers.
+  owns:
+    type: OWNS
+    from:
+      node: Claimant
+    to:
+      node: Vehicle
+      count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: owns
+    description: Records that the claimant owns this vehicle. Exactly one owner per vehicle in this reference ontology, which therefore represents current ownership rather than an ownership history; a claimant may own several vehicles, or none.
+  involvedIn:
+    type: INVOLVED_IN
+    from:
+      node: Vehicle
+    to:
+      node: Claim
+      count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was involved in
+    description: Records that this vehicle featured in the incident behind the claim. Exactly one vehicle per claim; a vehicle may be involved in several claims, or in none. A vehicle implausibly often involved is the entry point to a staged-accident ring.
+  treats:
+    type: TREATS
+    from:
+      node: MedicalProfessional
+    to:
+      node: Claimant
+    extensions:
+      custom:
+        relate-examples:
+          phrase: treats
+    description: 'Records a care relationship between the professional and the person, independent of any particular claim. Many-to-many in both directions: a professional may treat many claimants and a claimant may be treated by several professionals. Held separately from the claim link so the two can be compared — a professional treating someone whose claim they were never attached to is a different situation from one with a simply large caseload.'
+extensions:
+  data_source_tables:
+    claimants.csv:
+      source: local
+      columns:
+        - name: name
+          type: string
+    medical_professionals.csv:
+      source: local
+      columns:
+        - name: name
+          type: string
+    claims.csv:
+      source: local
+      columns:
+        - name: claimID
+          type: string
+        - name: date
+          type: string
+        - name: amountClaimed
+          type: string
+    vehicles.csv:
+      source: local
+      columns:
+        - name: VIN
+          type: string
+    has_claim.csv:
+      source: local
+      columns:
+        - name: claimantName
+          type: string
+        - name: claimID
+          type: string
+    treated_by.csv:
+      source: local
+      columns:
+        - name: claimID
+          type: string
+        - name: medicalProfessionalName
+          type: string
+    owns.csv:
+      source: local
+      columns:
+        - name: claimantName
+          type: string
+        - name: VIN
+          type: string
+    involved_in.csv:
+      source: local
+      columns:
+        - name: VIN
+          type: string
+        - name: claimID
+          type: string
+    treats.csv:
+      source: local
+      columns:
+        - name: medicalProfessionalName
+          type: string
+        - name: claimantName
+          type: string
+  data_source_mappings:
+    mapping0:
+      - type: NODE
+        node: Claimant
+        table: claimants.csv
+        mode: MERGE
+        key:
+          - name
+        properties:
+          name:
+            column: name
+      - type: NODE
+        node: MedicalProfessional
+        table: medical_professionals.csv
+        mode: MERGE
+        key:
+          - name
+        properties:
+          name:
+            column: name
+      - type: NODE
+        node: Claim
+        table: claims.csv
+        mode: MERGE
+        key:
+          - claimID
+        properties:
+          claimID:
+            column: claimID
+          date:
+            column: date
+          amountClaimed:
+            column: amountClaimed
+      - type: NODE
+        node: Vehicle
+        table: vehicles.csv
+        mode: MERGE
+        key:
+          - VIN
+        properties:
+          VIN:
+            column: VIN
+      - type: RELATIONSHIP
+        relationship: hasClaim
+        table: has_claim.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Claimant
+          properties:
+            name:
+              column: claimantName
+        to_node:
+          label: Claim
+          properties:
+            claimID:
+              column: claimID
+      - type: RELATIONSHIP
+        relationship: treatedBy
+        table: treated_by.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Claim
+          properties:
+            claimID:
+              column: claimID
+        to_node:
+          label: MedicalProfessional
+          properties:
+            name:
+              column: medicalProfessionalName
+      - type: RELATIONSHIP
+        relationship: owns
+        table: owns.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Claimant
+          properties:
+            name:
+              column: claimantName
+        to_node:
+          label: Vehicle
+          properties:
+            VIN:
+              column: VIN
+      - type: RELATIONSHIP
+        relationship: involvedIn
+        table: involved_in.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Vehicle
+          properties:
+            VIN:
+              column: VIN
+        to_node:
+          label: Claim
+          properties:
+            claimID:
+              column: claimID
+      - type: RELATIONSHIP
+        relationship: treats
+        table: treats.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: MedicalProfessional
+          properties:
+            name:
+              column: medicalProfessionalName
+        to_node:
+          label: Claimant
+          properties:
+            name:
+              column: claimantName
+  custom:
+    relate-examples:
+      family: studio
+      source:
+        repository: neo4j/studio-agent-use-cases
+        commit: b76f767e85c5853b7d70eb2bb3b10879d0e394a9
+        package: insurance-claims-fraud
+        files:
+          - ONTOLOGY.json
+          - QUERIES.md
+          - human_description.md
+      card:
+        title: Insurance Claims Fraud
+        category: Insurance
+        description: Uncover fraud rings and suspicious claims through the connections between claimants, doctors, vehicles, and claims.
+      industry: Insurance
+      about: data/ontologies/studio/insurance-claims-fraud/human_description.md

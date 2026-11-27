@@ -26,24 +26,29 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as cl from '../../../lib/relate_wasm.mjs';
-import { conversions, losses, stale } from './convert.mjs';
+import { ccgConversions, losses, stale, studioConversions } from './convert.mjs';
+import { lintBar, loadOntologies as corpusOntologies } from './corpus.mjs';
+import { checkVendored, manifest as vendoredManifest } from './vendor-studio.mjs';
+import { stripStudio } from '../web/studio.js';
 import { PROPERTY_TYPES, paramBindings, toolAnchor } from '../web/convert.js';
 import yaml from 'js-yaml';
 import * as sdk from '@neo4j/ontology-graph-spec';
 import { createOgs, DRAFT_MAPPING, VALIDATION_SETS } from '../../../lib/ogs.mjs';
 import {
-  SCHEMA, SCHEMA_ID, SDK_VERSION, SPEC_VERSION, checkDocument, fromDraft, isDraft, parseDocument, toCanonicalJson, toYaml, validateSchema, validateSpec,
+  SCHEMA, SCHEMA_ID, SDK_VERSION, SPEC_VERSION, checkDocument, fromDraft, fromSpec10, isDraft, parseDocument, toCanonicalJson, toYaml, validateDocument,
+  validateSchema, validateSpec,
 } from '../web/ogs.js';
 import * as replay from '../../../lib/replay.mjs';
-import { checkSchema, relationPhrase } from '../web/gliner.js';
+import { checkSchema, relationPhrase, structureSpec } from '../web/gliner.js';
+import { parseValue } from '../web/values.js';
 import { entityName, kindWords, normalizeEntityName } from '../web/names.js';
 import {
   applyOntology, currentGraphType, DRAFT_FORMAT, graphTypeSpec, INTERNAL_LABELS, INTERNAL_TYPES, isOntologyId, kindDescription,
   labelText, MAX_ID_CHARS, MAX_TYPES, MIN_TYPES, ONTOLOGY_CONSTRAINTS, ontologyCanary, OntologyApplyError, OntologyError, ontologyFromStored,
-  ontologySha, parseOntology, readOntology, RESERVED_PREFIX, storeName,
+  ontologySha, parseOntology, readOntology, RESERVED_PREFIX, SCHEMA_BUDGET_CHARS, schemaChars, storeName, fromDocument,
 } from '../web/ontology.js';
 import { sha256 } from '../../../lib/replay.mjs';
-import { mentionName, modelSchema } from '../web/pipeline.js';
+import { mentionName, modelSchema, patternMentions, proposedPatterns, valueCue } from '../web/pipeline.js';
 import { offsetMap, splitSentences } from '../web/split.js';
 import * as store from '../web/store.js';
 import { FIXTURES, GENERIC_TEXT, GENERIC_YAML } from './fixtures.mjs';
@@ -228,17 +233,16 @@ section(`the Ontology Graph Spec ${SPEC_VERSION} (data/ontology-spec/: neo4j/ont
   pin('the SDK pin (package.json = web/ogs.js SDK_VERSION)', sdkPkg === SDK_VERSION, SDK_VERSION, sdkPkg);
 }
 /** @type {Array<{group: string, source: string, file: string, text: string, o: any}>} */
-const CONVERTED = conversions();
+const CONVERTED = ccgConversions();
 {
-  sub('the bundled documents (data/ontologies/ogs/, harness/convert.mjs): fresh conversions of their originals');
-  const bad = stale();
-  say(`documents: ${CONVERTED.length}, from create-context-graph (with _base.yaml)`);
-  say(`each byte for byte a fresh conversion of its original: ${bad.length ? `NO (${bad.map((b) => `${b.file} ${b.why}`).join('; ')})` : 'yes'}`);
-  for (const b of bad) pins.push(`PIN: data/ontologies/${b.file} ${b.why}: run node harness/convert.mjs`);
+  sub("create-context-graph's 27 domain files, converted as the page converts a pasted one (harness/convert.mjs ccgConversions, with _base.yaml)");
+  say('They are no longer bundled (the curated documents replace them, D20): they are the converter\'s corpus, converted in memory.');
+  say('Each conversion\'s sha256 (of its canonical JSON), so that a change of the converter shows here:');
+  for (const c of CONVERTED) say(`  ${c.o.id.padEnd(22)} ${c.o.sha.slice(0, 16)}`);
   let same = 0;
   let trips = 0;
   for (const c of CONVERTED) {
-    const text = readFileSync(join(DATA, 'ontologies', c.file), 'utf8');
+    const text = c.text;
     const loaded = parseOntology(text);
     // the document as the page loads it gives the ontology its original gives (kinds, links, asks, the graph type)
     const key = (o) => canonJson({
@@ -269,13 +273,197 @@ const CONVERTED = conversions();
   say(`keys a conversion dropped (keys the format's own reader ignores): ${dropped.length ? dropped.join('; ') : 'none'}`);
 }
 {
+  sub('spec 1.0.0 beside it (data/ontology-spec/ontology-graph-spec-1.0.0.schema.json, tag release-spec/v1.0.0): what 1.1.0 changed');
+  const v10 = JSON.parse(readFileSync(join(SPEC_DIR, 'ontology-graph-spec-1.0.0.schema.json'), 'utf8'));
+  const v11 = JSON.parse(readFileSync(join(SPEC_DIR, 'ontology-graph-spec.schema.json'), 'utf8'));
+  /** Every difference between two JSON values, as JSON pointers: `+ p` only in b, `- p` only in a, `~ p` both, different. */
+  const jdiff = (a, b, p = '') => {
+    const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
+    if (isObj(a) && isObj(b)) {
+      return [...new Set([...Object.keys(a), ...Object.keys(b)])].sort().flatMap((k) => {
+        const q = `${p}/${k.replaceAll('~', '~0').replaceAll('/', '~1')}`;
+        if (!Object.hasOwn(a, k)) return [`+ ${q}`];
+        if (!Object.hasOwn(b, k)) return [`- ${q}`];
+        return jdiff(a[k], b[k], q);
+      });
+    }
+    return canonJson(a) === canonJson(b) ? [] : [`~ ${p}`];
+  };
+  const d = jdiff(v10, v11);
+  say(`1.0.0 -> 1.1.0: ${d.join(', ')}`);
+  pin('spec 1.1.0 is 1.0.0 with one field added, a property\'s aliases (Y3)', canonJson(d) === canonJson(['+ /$defs/Property/properties/aliases', '~ /$id']), 'that alone', d.join(', '));
+  const nAliases = (doc) => Object.values(doc.nodes ?? {}).reduce((n, x) => n + Object.values(x.properties ?? {}).filter((p) => p.aliases !== undefined).length, 0) +
+    Object.values(doc.relationships ?? {}).reduce((n, x) => n + Object.values(x.properties ?? {}).filter((p) => p.aliases !== undefined).length, 0);
+  say("Neo4j's solution packages name 1.0.0; under the 1.0.0 schema, and under 1.1.0 once they name it (web/ogs.js fromSpec10):");
+  const v10Validate = (doc) => validateSchema(doc, v10).length;
+  for (const pkg of [...new Set(Object.keys(vendoredManifest().files).map((f) => f.split('/')[0]))].sort()) {
+    const up = JSON.parse(readFileSync(join(DATA, 'ontologies/studio', pkg, 'ONTOLOGY.json'), 'utf8'));
+    const as11 = fromSpec10(up);
+    const e10 = v10Validate(up);
+    const e11 = validateDocument(as11);
+    say(`  ${pkg.padEnd(30)} 1.0.0: ${e10 ? `${e10} errors` : 'valid'}${nAliases(up) ? ` (${nAliases(up)} properties with aliases, a 1.1.0 field)` : ''}; as 1.1.0: ${e11.ok ? 'valid' : `${e11.stage}: ${e11.errors[0]?.message}`}`);
+    if (!e11.ok) pins.push(`PIN: ${pkg}'s document read as 1.1.0 is refused: ${e11.errors[0]?.message}`);
+    const o = parseOntology(readFileSync(join(DATA, 'ontologies/studio', pkg, 'ONTOLOGY.json'), 'utf8'));
+    if (o.convertedFrom !== 'ontology-graph-spec-1.0.0' || o.doc.schema !== SCHEMA_ID) pins.push(`PIN: ${pkg}: parseOntology does not read the 1.0.0 document as 1.1.0`);
+  }
+}
+
+section('the bundled ontologies: the curated documents (data/ontologies/domains/, D20) and Neo4j\'s solution packages (D21)');
+const BUNDLED = corpusOntologies();
+for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology does not load: ${why}`);
+{
+  sub('the vendored packages (data/ontologies/studio/<package>/, harness/vendor-studio.mjs)');
+  const m = vendoredManifest();
+  const problems = checkVendored();
+  say(`${m.repository} at ${m.commit.slice(0, 7)} (committed ${m.committed}): ${Object.keys(m.files).length} files, every sha256 the manifest's and none spelling the engine's earlier product name: ${problems.length ? `NO (${problems.join('; ')})` : 'yes'}`);
+  for (const p of problems) pins.push(`PIN: vendored: ${p}`);
+}
+{
+  sub('the packages converted with their overlays (web/studio.js, harness/convert.mjs studioConversions)');
+  const STUDIO = studioConversions();
+  for (const [, why] of STUDIO.errors ?? []) pins.push(`PIN: ${why}`);
+  const bad = stale().filter((b) => b.file.startsWith('ogs/studio/'));
+  say(`documents: ${STUDIO.length}; each byte for byte a fresh conversion: ${bad.length ? `NO (${bad.map((b) => `${b.file} ${b.why}`).join('; ')})` : 'yes'}`);
+  for (const b of bad) pins.push(`PIN: data/ontologies/${b.file} ${b.why}: run node harness/convert.mjs`);
+  for (const c of STUDIO) {
+    const back = stripStudio(c.o.doc, c.overlay, c.upstream);
+    const lossless = canonJson(back) === canonJson(c.upstream);
+    const blocks = (readFileSync(join(DATA, 'ontologies/studio', c.o.id, 'QUERIES.md'), 'utf8').match(/^```cypher\s*$/gm) ?? []).length;
+    const requires = c.report.tools.filter((t) => t.requires.length);
+    const rules = new Map();
+    for (const t of c.report.tools) rules.set(t.rule, (rules.get(t.rule) ?? 0) + 1);
+    say(`${c.o.id}: lossless ${lossless ? 'yes' : 'NO'}; tools ${c.report.tools.length} of ${blocks} queries (${[...rules].map(([r, n]) => `${r} ${n}`).join(', ')}); ` +
+      `requiring ${['gds', 'apoc', 'write'].map((k) => `${k} ${requires.filter((t) => t.requires.includes(k)).length}`).join(', ')}`);
+    if (!lossless) pins.push(`PIN: ${c.o.id}: the conversion is not lossless (stripStudio does not give the package's document back)`);
+    if (c.report.tools.length !== blocks) pins.push(`PIN: ${c.o.id}: ${c.report.tools.length} tools from ${blocks} cypher blocks`);
+  }
+}
+{
+  sub('each bundled ontology: its size, what the model reads, what the graph type enforces, and the bar (harness/corpus.mjs lintBar)');
+  let barOk = 0;
+  for (const [id, { o, group }] of BUNDLED) {
+    const gt = graphTypeSpec(o);
+    const asks = new Map(o.types.map((t) => [t.id, t.ask]));
+    const modes = new Map();
+    for (const t of o.types) modes.set(t.askMode ?? t.unasked ?? '-', (modes.get(t.askMode ?? t.unasked ?? '-') ?? 0) + 1);
+    const pairs = o.relations.reduce((n, r) => n + r.pairs.length, 0);
+    const bar = lintBar(o);
+    if (!bar.length) barOk++;
+    say(`${id} (${group}): ${o.types.length} kinds (${[...modes].map(([k, n]) => `${k} ${n}`).join(', ')}), ${o.relations.length} links (${gt.typed.length} in the graph type, ` +
+      `${gt.untyped.length} gate only), ${pairs} legal pairs, ${o.tools.length} tools; the model reads ${schemaChars(asks, o.relations)} characters per sentence; ` +
+      `identifiers proposed: ${o.types.filter((t) => t.propose).map((t) => t.id).join(', ') || 'none'}; the bar ${bar.length ? `${bar.length} PROBLEMS` : 'holds'}`);
+    for (const p of bar) pins.push(`PIN: the bar: ${p}`);
+  }
+  say(`=> the bar holds for ${barOk} of ${BUNDLED.size}`);
+}
+{
+  sub('the relate-examples extension and the schema budget (D22, D25, D26), on tampered documents');
+  const base = () => ({
+    schema: SCHEMA_ID, version: '1', id: 'tamper',
+    nodes: {
+      A: { label: 'Alpha', description: 'An alpha.', properties: { name: { type: 'STRING', key: true } } },
+      B: { label: 'Beta', description: 'A beta.', properties: { code: { type: 'STRING', key: true, pattern: '^B-[0-9]{3}$' }, name: { type: 'STRING' } } },
+    },
+    relationships: { ab: { type: 'LINKS', from: { node: 'A' }, to: { node: 'B' } } },
+  });
+  const repo = (el, x) => { el.extensions = { custom: { 'relate-examples': x } }; };
+  const cases = [
+    ['a cue of 241 characters', (d) => repo(d.nodes.A, { ask: 'x'.repeat(241) }), '/nodes/A/extensions/custom/relate-examples/ask'],
+    ['a link phrase with a capital', (d) => repo(d.relationships.ab, { phrase: 'Links To' }), '/relationships/ab/extensions/custom/relate-examples/phrase'],
+    ['extract as text', (d) => repo(d.nodes.A, { extract: 'no' }), '/nodes/A/extensions/custom/relate-examples/extract'],
+    ['propose on a node keyed by name', (d) => repo(d.nodes.A, { propose: true }), '/nodes/A/extensions/custom/relate-examples/propose'],
+    ['two entries of one type with two phrases', (d) => {
+      d.nodes.C = { label: 'Gamma', properties: { name: { type: 'STRING', key: true } } };
+      d.relationships.ac = { type: 'LINKS', from: { node: 'A' }, to: { node: 'C' } };
+      repo(d.relationships.ab, { phrase: 'links to' });
+      repo(d.relationships.ac, { phrase: 'joins' });
+    }, '/relationships'],
+    ['a tool whose question is not text', (d) => { d.nodes.A.extensions = { custom: { tools: [{ type: 'canonicalQuery', name: 't', cypher: 'RETURN 1', question: 7 }] } }; }, '/nodes/A/extensions/custom/tools/0/question'],
+    // D27: a property read from text
+    ['extract on the key', (d) => repo(d.nodes.B.properties.code, { extract: true }), '/nodes/B/properties/code/extensions/custom/relate-examples/extract'],
+    ['extract on a vector', (d) => { d.nodes.A.properties.v = { type: 'VECTOR<FLOAT32>', dimension: 4 }; repo(d.nodes.A.properties.v, { extract: true }); }, '/nodes/A/properties/v/extensions/custom/relate-examples/extract'],
+    ['extract on a relationship property', (d) => { d.relationships.ab.properties = { since: { type: 'DATE' } }; repo(d.relationships.ab.properties.since, { extract: true }); }, '/relationships/ab/properties/since/extensions/custom/relate-examples/extract'],
+    ['an ask with the structure syntax\'s ;', (d) => { d.nodes.A.properties.n = { type: 'INTEGER' }; repo(d.nodes.A.properties.n, { extract: true, ask: 'a count; or not' }); }, '/nodes/A/properties/n/extensions/custom/relate-examples/ask'],
+    ['parse: MONEY on a STRING', (d) => { d.nodes.A.properties.s = { type: 'STRING' }; repo(d.nodes.A.properties.s, { extract: true, parse: 'MONEY' }); }, '/nodes/A/properties/s/extensions/custom/relate-examples/parse'],
+  ];
+  for (const [label, edit, at] of cases) {
+    const d = base();
+    edit(d);
+    const v = validateDocument(d);
+    const hit = v.errors.find((e) => e.path === at);
+    say(`${label}: ${hit ? `refused at ${at}: ${hit.message}` : `NOT refused (${v.errors.map((e) => `${e.path} ${e.message}`).join('; ') || 'valid'})`}`);
+    if (!hit) pins.push(`PIN: the relate-examples rules: ${label} is not refused at ${at}`);
+  }
+  {
+    const d = base();
+    repo(d.nodes.B, { ask: 'a beta, named by its code such as B-123', proper: true, propose: true });
+    repo(d.relationships.ab, { phrase: 'links to' });
+    const o = fromDocument(d);
+    const b = o.types.find((t) => t.id === 'Beta');
+    say(`a cue, a phrase and a proposing key pattern: Beta asked ${JSON.stringify(b.ask)} (${b.askMode}), key ${b.keyProp} ~ /${b.keyPattern}/; the link asked ${JSON.stringify(o.relations[0].ask)}; ` +
+      `"see B-042, then B-1." proposes ${JSON.stringify(patternMentions('see B-042, then B-1.', proposedPatterns(o)))}`);
+    pin('a cue, a phrase and a proposing pattern', b.askMode === 'cue' && o.relations[0].ask === 'alpha links to beta' && b.keyProp === 'code' &&
+      canonJson(patternMentions('see B-042, then B-1.', proposedPatterns(o))) === canonJson([{ start: 4, end: 9, text: 'B-042', label: 'Beta' }]), 'as designed', 'different');
+    pin('keyValue fills a key property from a name that holds a match', store.keyValue(['beta B-042', 'B-042'], b.keyPattern) === 'B-042' && store.keyValue(['the beta'], b.keyPattern) === null, 'B-042 and null', 'different');
+  }
+  {
+    const d = base();
+    repo(d.nodes.B, { extract: false });
+    const o = fromDocument(d);
+    say(`extract: false on Beta: asked ${JSON.stringify(o.types.find((t) => t.id === 'Beta').ask)} (${o.types.find((t) => t.id === 'Beta').unasked}); LINKS asked ${JSON.stringify(o.relations[0].ask)}; the model's schema ${JSON.stringify(modelSchema(o).schema.entities.map((e) => e.id))}, links ${modelSchema(o).schema.relations.length}`);
+    pin('extract: false leaves the kind and its links out of the model\'s schema', o.relations[0].ask === null && modelSchema(o).schema.relations.length === 0 && graphTypeSpec(o).spec.includes('Beta'), 'not asked, still a node type', 'different');
+  }
+  {
+    // D27: properties read from text are a second call of structures alone; the first call is the one without them.
+    const d = base();
+    const plainSchema = canonJson(modelSchema(fromDocument(d)).schema);
+    Object.assign(d.nodes.B.properties, {
+      amount: { type: 'FLOAT', description: 'The amount. It is in pounds.', extensions: { custom: { 'relate-examples': { extract: true, parse: 'MONEY' } } } },
+      opened: { type: 'DATE', extensions: { custom: { 'relate-examples': { extract: true, ask: 'the date it opened' } } } },
+      tier: { type: 'STRING', one_of: ['gold', 'silver'], extensions: { custom: { 'relate-examples': { extract: true } } } },
+    });
+    const o = fromDocument(d);
+    const ms = modelSchema(o);
+    const specs = ms.valueSchema.structures.map((st) => structureSpec(checkSchema({ entities: [], structures: [st], threshold: 0.5 }).structures[0]));
+    say(`Beta reads ${o.types.find((t) => t.id === 'Beta').attributes.map((a) => `${a.prop} (${a.type}${a.form ? `, ${a.form}` : ''})`).join(', ')}; the first call unchanged: ${canonJson(ms.schema) === plainSchema}; the second: ${JSON.stringify(specs)}`);
+    pin('the first call is the one without extracted properties', canonJson(ms.schema) === plainSchema, 'the same', 'different');
+    pin('the second call\'s structure', canonJson(specs) === canonJson(['beta=beta::str::A beta.;amount::str::The amount.;opened::str::the date it opened;tier::[gold|silver]']), 'as designed', specs.join(' '));
+    const cues = ['It cost £12.', 'It is gold.', 'Nothing here.'].map((t) => valueCue(t, o));
+    say(`which sentences get the second call: ${JSON.stringify(cues)} ("It cost £12.", "It is gold.", "Nothing here.")`);
+    pin('the second call only where a value can be', canonJson(cues) === '[true,true,false]', '[true, true, false]', canonJson(cues));
+    const parses = [['£410,000', 'money'], ['12.7%', 'money'], ['12.7%', null], ['9 Jan 2024', 'DATE'], ['01/09/2024', 'DATE'], ['January 2025', 'DATE']]
+      .map(([t, f]) => parseValue(t, f === 'DATE' ? { type: 'DATE' } : { type: 'FLOAT', form: f }));
+    say(`values: ${parses.map((p) => (p.ok ? JSON.stringify(p.value) : `refused (${p.why})`)).join('; ')}`);
+    pin('values parse as web/values.js says', canonJson(parses.map((p) => (p.ok ? p.value : null))) === canonJson([410000, null, 0.127, '2024-01-09', null, null]), 'as designed', 'different');
+    const twin = base();
+    twin.nodes.B.properties.Amount = { type: 'FLOAT', extensions: { custom: { 'relate-examples': { extract: true } } } };
+    twin.nodes.B.properties.amount = { type: 'FLOAT', extensions: { custom: { 'relate-examples': { extract: true } } } };
+    let why = 'accepted';
+    try { fromDocument(twin); } catch (e) { why = String(/** @type {any} */ (e).message); }
+    say(`two properties that read alike to the model: ${why}`);
+    pin('two properties that read alike are refused', why.includes('both read as'), 'refused', why);
+  }
+  {
+    const d = base();
+    // The SDK refuses a description over 1,024 characters (Y4), so three of 900 exceed the budget together.
+    const long = `A sentence of description that runs long. ${'More words that only cost time. '.repeat(27)}`.slice(0, 900);
+    d.nodes.C = { label: 'Gamma', description: long, properties: { name: { type: 'STRING', key: true } } };
+    d.nodes.A.description = long;
+    d.nodes.B.description = long;
+    const o = fromDocument(d);
+    const chars = schemaChars(new Map(o.types.map((t) => [t.id, t.ask])), o.relations);
+    say(`three descriptions of ${long.length} characters (budget ${SCHEMA_BUDGET_CHARS}): asked as ${o.types.map((t) => t.askMode).join(', ')}, ${chars} characters`);
+    pin('the schema budget cuts a description to its first sentence', o.types.every((t) => t.askMode === 'first') && chars <= SCHEMA_BUDGET_CHARS, 'first sentences', o.types.map((t) => t.askMode).join(', '));
+  }
+}
+{
   sub('the SDK on the bundled documents (lib/ogs.mjs: GraphSpec.Json decodes the js-yaml reading; the SDK\'s validation sets)');
   const ogs = createOgs({ yaml, sdk, sdkVersion: SDK_VERSION });
   /** @type {Map<string, number>} 'set code' -> count */
   const counts = new Map();
   let decoded = 0;
   for (const c of CONVERTED) {
-    const text = readFileSync(join(DATA, 'ontologies', c.file), 'utf8');
+    const text = c.text;
     const v = ogs.validate(parseDocument(text), VALIDATION_SETS);
     if (!v.issues.some((i) => i.set === 'decode' || i.set === 'core')) decoded++;
     else pins.push(`PIN: ${c.file}: the SDK refuses it (${v.issues.filter((i) => i.set === 'decode' || i.set === 'core').map((i) => i.message).join('; ')})`);
@@ -293,14 +481,14 @@ const CONVERTED = conversions();
   const url = tryYaml(`schema: ${SCHEMA_ID}\nversion: '1'\nid: y\nnodes:\n  a:\n    label: A\n`);
   const urlQuoted = tryYaml(`schema: "${SCHEMA_ID}"\nversion: '1'\nid: y\nnodes:\n  a:\n    label: A\n`);
   const viaJson = (() => { try { ogs.decode(parseDocument(`${q}LIST<STRING>\n`)); return 'decoded'; } catch (e) { return describe(e); } })();
-  const bundled = CONVERTED.filter((c) => tryYaml(readFileSync(join(DATA, 'ontologies', c.file), 'utf8')) === 'decoded').length;
+  const bundled = CONVERTED.filter((c) => tryYaml(c.text) === 'decoded').length;
   say(`Y1: through the SDK's YAML decoder: type: LIST<STRING> -> ${plain}; quoted -> ${quoted}`);
   say(`    schema: <a plain URL> then version: '1' -> ${url}; the URL quoted -> ${urlQuoted}`);
   say(`    the bundled documents (js-yaml's YAML) -> ${bundled} of ${CONVERTED.length} decoded; through js-yaml and GraphSpec.Json (lib/ogs.mjs) -> ${viaJson}, and all ${decoded} above`);
   pin('Y1 (the SDK\'s YAML decoder misreads plain YAML)', plain.startsWith("refused: Neo4jType does not contain element with name ''") && quoted === 'decoded' &&
     url.startsWith('refused: Top-level decoder') && urlQuoted === 'decoded' && viaJson === 'decoded', 'plain refused, quoted and JSON decoded', `${plain} / ${quoted} / ${url} / ${urlQuoted} / ${viaJson}`);
   // Y2: the decoder is lenient where the schema is strict
-  const lenient = { ...parseDocument(readFileSync(join(DATA, 'ontologies', CONVERTED[0].file), 'utf8')), version: 1, extra_field: true };
+  const lenient = { ...parseDocument(CONVERTED[0].text), version: 1, extra_field: true };
   const lv = ogs.validate(lenient, ['core']);
   say(`Y2: a document with an integer version and an unknown field: the SDK -> ${lv.ok ? 'accepted' : lv.issues.map((i) => i.code).join(', ')}; ` +
     `the JSON Schema -> ${validateSchema(lenient).map((e) => `${e.path || '/'} ${e.keyword}`).join(', ')}`);
@@ -432,7 +620,7 @@ const CONVERTED = conversions();
   say('the SDK accepts to the rules web/ogs.js adds, which neither can say.');
   let agree = 0;
   for (const c of CONVERTED) {
-    const doc = parseDocument(readFileSync(join(DATA, 'ontologies', c.file), 'utf8'));
+    const doc = parseDocument(c.text);
     const v = bothValidate(doc);
     const spec = validateSpec(doc);
     const rules = checkDocument(doc);
@@ -600,8 +788,8 @@ const ccgRows = [];
 const baseTypes = ['WORKS_FOR', 'LOCATED_AT', 'PARTICIPATED_IN'];
 for (const file of ccgFiles) {
   const src = readFileSync(join(CCG_DIR, file), 'utf8');
-  const v1File = `ogs/ccg/${file.replace(/\.yaml$/, '.ontology.yaml')}`;
-  const text = readFileSync(join(DATA, 'ontologies', v1File), 'utf8');
+  const v1File = `${file.replace(/\.yaml$/, '')}, converted`;
+  const text = /** @type {any} */ (CONVERTED.find((c) => c.source === `ccg/${file}`)).text;
   const o = parseOntology(text);
   ccg.set(o.id, { o, text, src, file });
   const gt = graphTypeSpec(o);
@@ -1178,10 +1366,11 @@ REMOVE x.doc, x.spec, x.converted_from, x.source_sha RETURN count(x) AS n`, { ya
 {
   const samples = JSON.parse(readFileSync(join(DATA, 'samples', 'samples.json'), 'utf8'));
   sub(`samples (data/samples/samples.json): ${samples.length}, each with its ontology`);
-  const ccgWith = [...ccg.keys()].filter((id) => samples.some((s) => s.ontology === id));
-  say(`create-context-graph domains with samples: ${ccgWith.length ? ccgWith.map((id) => `${id} (${samples.filter((s) => s.ontology === id).length})`).join(', ') : 'none'}`);
-  const orphans = samples.filter((s) => !ccg.has(s.ontology) || s.group !== 'ccg').map((s) => s.id);
-  pin('data (every sample names a bundled ontology, in the ccg group)', orphans.length === 0, 'none without', orphans.join(', '));
+  const bundledIds = corpusOntologies();
+  const withDocs = [...bundledIds.keys()].filter((id) => samples.some((s) => s.ontology === id));
+  say(`bundled ontologies with documents: ${withDocs.length ? withDocs.map((id) => `${id} (${samples.filter((s) => s.ontology === id).length})`).join(', ') : 'none'}`);
+  const orphans = samples.filter((s) => !bundledIds.has(s.ontology) || s.group !== bundledIds.get(s.ontology)?.group).map((s) => s.id);
+  pin('data (every sample names a bundled ontology of its own group)', orphans.length === 0, 'none without', orphans.join(', '));
 }
 
 // ---- 3. the graph type enforces (O4) -------------------------------------------------------------------
@@ -1704,8 +1893,9 @@ const STRESS = [
   const samples = JSON.parse(readFileSync(join(DATA, 'samples', 'samples.json'), 'utf8'));
   let n = 0;
   const differ = [];
+  const bundledO = corpusOntologies();
   for (const s of samples) {
-    const o = parseOntology(readFileSync(join(DATA, 'ontologies/ogs/ccg', `${s.ontology}.ontology.yaml`), 'utf8'));
+    const o = bundledO.get(s.ontology).o;
     const label = new Map(o.types.map((k) => [k.id, k.ask?.label ?? k.id]));
     for (const e of JSON.parse(readFileSync(join(DATA, 'samples', s.gold), 'utf8')).entities) {
       n++;

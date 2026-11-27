@@ -48,6 +48,10 @@
         <label class="field" for="domain-select">Ontology and sample document</label>
         <select id="domain-select" data-testid="domain-select"></select>
         <p class="hint" id="domain-about" data-testid="domain-about"></p>
+        <details class="domain-more" id="domain-more" data-testid="domain-more" hidden>
+          <summary>About this domain</summary>
+          <div id="domain-more-body"></div>
+        </details>
         <p class="step-status" id="domain-status" data-testid="domain-status"></p>
       </section>
 
@@ -165,7 +169,7 @@
 
       <div class="tab" id="tab-ontology" role="tabpanel" aria-labelledby="tabbtn-ontology" data-testid="panel-ontology" hidden>
         <p class="hint" id="ontology-about" data-testid="ontology-about"></p>
-        <p class="banner warn inline" id="ontology-stale" data-testid="ontology-stale" hidden><span id="ontology-stale-text"></span> <button type="button" class="small" id="ontology-reapply" data-testid="ontology-reapply">Re-apply the bundled one</button></p>
+        <p class="banner warn inline" id="ontology-stale" data-testid="ontology-stale" hidden><span id="ontology-stale-text"></span> <button type="button" class="small" id="ontology-reapply" data-testid="ontology-reapply">Re-apply the bundled one</button> <button type="button" class="small" id="ontology-migrate" data-testid="ontology-migrate" hidden>Empty it and use version 2</button></p>
         <div class="graph-area onto-area">
           <div id="onto-host" class="nvl-host" data-testid="ontology-graph"></div>
           <aside id="onto-side" class="side" data-testid="ontology-side" aria-label="Kind or link">

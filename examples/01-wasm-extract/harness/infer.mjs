@@ -21,22 +21,27 @@ import os from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
-import { MODEL_FILES, checkSchema, extractRaw, loadModel } from '../web/gliner.js';
+import { MODEL_FILES, checkSchema, extractRaw, loadModel, structureSpec } from '../web/gliner.js';
 
-/** The key of one extractRaw(model, text, schema): what gliner-rs's extractCli is called with. */
+/**
+ * The key of one extractRaw(model, text, schema): what gliner-rs's extractCli is called with. The
+ * structures (D27) join it only when there are any, so every other key is the one it always was.
+ */
 export function requestKey(text, schema) {
   const s = checkSchema(schema);
-  return JSON.stringify([text, s.entities.map((e) => [e.id, e.description]), s.relations, s.threshold, s.overlap]);
+  const base = [text, s.entities.map((e) => [e.id, e.description]), s.relations, s.threshold, s.overlap];
+  return JSON.stringify(s.structures.length ? [...base, s.structures.map(structureSpec)] : base);
 }
 
 /** extractCli's arguments as gliner.js extractRaw passes them -> the same key as requestKey. */
-function callKey(text, ents, relations, opts) {
+function callKey(text, ents, relations, structures, opts) {
   const o = JSON.parse(opts);
   const entities = ents.map((x) => {
     const i = x.indexOf(':');
     return i < 0 ? [x, null] : [x.slice(0, i), x.slice(i + 1)];
   });
-  return JSON.stringify([text, entities, relations, o.threshold, o.overlap ?? null]);
+  const base = [text, entities, relations, o.threshold, o.overlap ?? null];
+  return JSON.stringify(structures?.length ? [...base, [...structures]] : base);
 }
 
 /**
@@ -48,7 +53,7 @@ export function cachedModel(real, answers) {
   const stats = { hits: 0, misses: 0 };
   const model = {
     extractCli(text, ents, relations, a, b, c, opts) {
-      const hit = answers.get(callKey(text, ents, relations, opts));
+      const hit = answers.get(callKey(text, ents, relations, a, opts));
       if (hit !== undefined) {
         stats.hits++;
         return hit;

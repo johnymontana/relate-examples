@@ -77,6 +77,7 @@ import { ONTOLOGY_CONSTRAINTS, OntologyError, graphTypeSpec, parseOntology, stor
 import { listStores } from './opfs.js';
 import { FLOOR } from './pipeline.js';
 import { DEFAULT_GATE, LOOKUP_INDEXES, STORE_CONSTRAINTS, STORE_FULLTEXT } from './store.js';
+import { markdownBlocks } from './markdown.js';
 
 const PARAMS = new URLSearchParams(location.search);
 const TEST = PARAMS.get('test') === '1';
@@ -305,6 +306,7 @@ const state = {
   /** a store a restart could not reopen (the crash banner's retry) */
   /** @type {string|null} */ lostStore: null,
   /** @type {any} the bundled ontology whose id the open store's document has, when that document differs from it (applyStore) */ staleBundled: null,
+  /** @type {{sha: string, doc: any}|null} the open store's document, parsed (ontologyDoc) */ ontoDoc: null,
   /** a console lease is out (between lend and reclaim) */
   lease: false,
   /** @type {Promise<void>|null} the recycle in progress (R13) */
@@ -487,7 +489,7 @@ async function showSelection(sel, side, where) {
   try {
     const d = await call('details', ask);
     if (!current()) return;
-    side.replaceChildren(...entityAbout(d), evidenceList(d), storedProperties(d.properties));
+    side.replaceChildren(...entityAbout(d), ...valueList(d), evidenceList(d), storedProperties(d.properties));
   } catch (e) {
     if (!current()) return;
     side.append(h('p', { class: 'error-text', text: message(e) }));
@@ -534,6 +536,26 @@ function evidenceList(d) {
   }
   box.append(list);
   return box;
+}
+
+/**
+ * D27: the property values read from the text for an entity, as publish wrote them (the best kept value of each
+ * property), each with the sentence it was read in and the value marked; a kept value that differs from the one
+ * written is in review (another value of the same property scored higher). None for a fact, or an entity without any.
+ * @param {any} d
+ */
+function valueList(d) {
+  const vals = /** @type {any[]} */ (d.what === 'node' && Array.isArray(d.values) ? d.values : []);
+  if (!vals.length) return [];
+  const list = h('ul', { class: 'evidence values', 'data-testid': 'side-values' });
+  for (const v of vals) {
+    const via = v.via === 'sole' ? 'the only one of its kind in the sentence' : 'named with it';
+    list.append(h('li', { 'data-testid': 'side-value', 'data-prop': v.prop },
+      h('div', {}, h('code', { text: v.prop }), ' = ', h('strong', { text: String(v.stored ?? v.value) })),
+      marked(v.sentence, v.spans),
+      h('div', { class: 'meta', text: `${sentenceAt(v)} · read as "${v.text}" · p ${f3(v.p)} · ${via}` })));
+  }
+  return [h('p', { class: 'hint', text: `${plural(vals.length, 'value')} read from the text` }), list];
 }
 
 /** The store's own properties of an entity or fact, collapsed (the key is what Cypher matches on). @param {Record<string, any>} props */
@@ -643,10 +665,11 @@ async function text(url) {
 
 /**
  * The bundled ontologies (data/ontologies/index.json, written by build.mjs): {bases: {name: file},
- * groups: [{id, label, files}]}: Ontology Graph Spec 1.1 documents (data/ontologies/ogs/ccg/,
- * converted from create-context-graph's 27 domains). The bases (create-context-graph's _base.yaml)
- * are for a create-context-graph file pasted or uploaded into the editor, whose `inherits: _base`
- * names it.
+ * groups: [{id, label, files}]}: Ontology Graph Spec 1.1 documents in two families, the curated
+ * domains (data/ontologies/domains/, D20) and Neo4j's solution packages with this example's overlays
+ * (data/ontologies/ogs/studio/, D21). Each carries `about`, its relate-examples extension (family,
+ * industry, card, source). The bases (create-context-graph's _base.yaml) are for a create-context-graph
+ * file pasted or uploaded into the editor, whose `inherits: _base` names it.
  */
 async function loadData() {
   const index = /** @type {{bases: Record<string, string>, groups: Array<{id: string, label: string, files: string[]}>}} */ (
@@ -656,12 +679,27 @@ async function loadData() {
   state.ontologies = await Promise.all(index.groups.flatMap((g) => g.files.map(async (file) => {
     const yaml = await text(`data/ontologies/${file}`);
     const o = parseOntology(yaml, { bases: state.bases });
-    return { file, group: g.id, yaml, id: o.id, title: o.title || o.id, format: o.format, meta: o.meta };
+    return { file, group: g.id, yaml, id: o.id, title: o.title || o.id, format: o.format, meta: o.meta, about: o.about, doc: o.doc };
   })));
   state.samples = JSON.parse(await text('data/samples/samples.json'));
   const qfiles = /** @type {string[]} */ (JSON.parse(await text('queries/index.json')));
   state.queries = await Promise.all(qfiles.map(async (file) => parseQuery(file, await text(`queries/${file}`))));
 }
+
+/** An ontology's primary sample, else its first one, else null. @param {string|undefined} oid */
+function primarySample(oid) {
+  const mine = state.samples.filter((x) => x.ontology === oid);
+  return mine.find((x) => (x.role ?? 'primary') === 'primary') ?? mine[0] ?? null;
+}
+/** An ontology's other documents (companions in its case). @param {string|undefined} oid */
+function companionSamples(oid) {
+  return state.samples.filter((x) => x.ontology === oid && x.role === 'companion');
+}
+
+/** The picker's industries, in order: the solution packages' categories first, then the curated domains' others. */
+const INDUSTRY_ORDER = ['Financial Services', 'Insurance', 'Healthcare & Life Sciences', 'Manufacturing', 'Cybersecurity', 'Energy', 'Software & AI',
+  'Public Sector', 'Legal', 'Media', 'Education', 'Real Estate', 'Consumer & Retail', 'Travel & Hospitality', 'Science & Environment',
+  'Sports & Gaming', 'Personal Productivity', 'Industry Agnostic'];
 
 /**
  * A saved query's header: the first comment line is its title, the others its description,
@@ -834,9 +872,19 @@ function applyStore(r) {
   // such as one with the icon and size in display, or an edit): say so, and offer the bundled one,
   // re-applied as the picker applies it (one re-gate; verdicts and the cutoffs you moved stay).
   state.staleBundled = bundled && bundled.yaml !== o.yaml ? bundled : null;
+  // A store an earlier build made under create-context-graph's version of a domain this build curates (D20,
+  // ADR-0019): the kinds changed (no POLE+O), so its facts cannot carry over. The page offers to empty the
+  // store and use the curated version, or to keep the old one; never a rebuild from candidates of other kinds.
+  const migrate = Boolean(state.staleBundled && o.convertedFrom === 'create-context-graph' && state.staleBundled.about?.family === 'domains');
   $('#ontology-stale').hidden = !state.staleBundled;
-  $('#ontology-stale-text').textContent = state.staleBundled
-    ? `This store keeps a version of ${state.staleBundled.title} that differs from the bundled one (an earlier build's conversion, or an edit).` : '';
+  $('#ontology-stale').dataset.migrate = migrate ? '1' : '0';
+  $('#ontology-reapply').hidden = migrate;
+  $('#ontology-migrate').hidden = !migrate;
+  $('#ontology-stale-text').textContent = !state.staleBundled ? ''
+    : migrate ? `This store was made with create-context-graph's version of ${state.staleBundled.title}. Version ${state.staleBundled.doc?.version ?? '2'} is curated: ` +
+      'its kinds are named for the domain, without the generic POLE+O base, so this store\'s facts cannot carry over. Empty it to extract again under the new ' +
+      'ontology, or keep working with the old one here.'
+      : `This store keeps a version of ${state.staleBundled.title} that differs from the bundled one (an earlier build's conversion, or an edit).`;
   renderOntologyAbout(o);
   renderOntologyGraph(o);
   renderTools(o);
@@ -870,15 +918,96 @@ const formatName = (f) => (f === 'create-context-graph' ? "create-context-graph'
  */
 function renderOntologyAbout(o) {
   const bundled = state.ontologies.find((x) => x.id === o.id && x.yaml === o.yaml);
-  const original = bundled ? bundled.file.replace(/^ogs\/ccg\//, '').replace(/\.ontology\.yaml$/, '.yaml') : '';
-  const source = bundled
-    ? `create-context-graph's ${original}, as an Ontology Graph Spec 1.1 document`
-    : `this store's own Ontology Graph Spec 1.1 document${o.convertedFrom ? `, converted from ${formatName(o.convertedFrom)}` : ''}`;
-  const what = o.meta ? `${o.meta.emoji ? `${o.meta.emoji} ` : ''}${o.meta.name}: ${o.meta.description}${o.meta.tagline ? ` (${o.meta.tagline})` : ''}` : o.title;
+  const about = bundled?.about;
+  const commit = String(about?.source?.commit ?? '').slice(0, 7);
+  const source = !bundled ? `this store's own Ontology Graph Spec 1.1 document${o.convertedFrom ? `, converted from ${formatName(o.convertedFrom)}` : ''}`
+    : about?.family === 'studio' ? `Neo4j's ${about.card?.title ?? o.title} solution package (studio-agent-use-cases at ${commit}), with this example's overlay`
+      : about?.family === 'domains' ? `this example's curated ontology, written from create-context-graph's ${o.id}.yaml`
+        : 'a bundled Ontology Graph Spec 1.1 document';
+  const card = about?.card?.description ?? '';
+  const what = o.meta ? `${o.meta.emoji ? `${o.meta.emoji} ` : ''}${o.meta.name}: ${o.meta.description}${o.meta.tagline ? ` (${o.meta.tagline})` : ''}`
+    : `${o.title}${card ? `: ${card.replace(/\.$/, '')}` : ''}`;
   $('#ontology-about').textContent = `${what}. From ${source}: ${plural(o.kinds.length, 'kind')} and ${plural(o.links.length, 'link')}, ` +
     `${plural((o.tools ?? []).length, 'tool')}.`;
-  // Step 1 says the same in one line: the domain's description (its tagline is in the Ontology tab).
-  $('#domain-about').textContent = o.meta ? `${o.meta.description}.` : `${o.title}: this store's own ontology document.`;
+  // Step 1 says the same in one line: the card (or the domain's description), and the About drawer says more.
+  $('#domain-about').textContent = card || (o.meta ? `${o.meta.description}.` : `${o.title}: this store's own ontology document.`);
+  renderDomainMore(o, bundled);
+}
+
+/**
+ * Step 1's "About this domain" drawer: the document's description, the questions its tools answer, the
+ * documents of its case, and for a solution package its own description (human_description.md, rendered by
+ * markdown.js) and notice, fetched when the drawer opens.
+ * @param {any} o  stats.ontology @param {any} bundled  state.ontologies' entry, when the store holds a bundled document
+ */
+function renderDomainMore(o, bundled) {
+  const box = $('#domain-more-body');
+  const doc = bundled?.doc;
+  const parts = [];
+  if (doc?.description) parts.push(h('p', { class: 'about', text: doc.description }));
+  const questions = (o.tools ?? []).map((/** @type {any} */ t) => t.question).filter(Boolean);
+  if (questions.length) parts.push(h('p', { class: 'hint', text: 'The questions its tools answer (the Console tab runs them):' }), h('ul', {}, ...questions.slice(0, 15).map((q) => h('li', { text: q }))));
+  const companions = companionSamples(o.id);
+  if (companions.length) {
+    parts.push(h('p', { class: 'hint', text: `More documents in this case (each extracts into the same store, so facts both state meet):` }),
+      h('ul', { 'data-testid': 'case-docs' }, ...companions.map((s) => h('li', {}, h('button', { type: 'button', class: 'small', 'data-testid': 'case-doc',
+        'data-doc': s.id, onclick: () => useSample(s) }, `Load ${s.title ?? s.id.split('/').pop()}`), ' ', h('span', { class: 'hint', text: s.blurb ?? '' })))));
+  }
+  const about = bundled?.about;
+  if (about?.family === 'studio' && about.about) {
+    const holder = h('div', { class: 'md', 'data-testid': 'package-about' }, h('p', { class: 'hint', text: 'The package\'s own description loads when this opens.' }));
+    parts.push(h('h5', { text: `About the ${about.card?.title ?? o.title} package` }), holder);
+    const files = /** @type {string[]} */ (about.source?.files ?? []);
+    const notice = files.includes('NOTICE.md') ? about.about.replace(/human_description\.md$/, 'NOTICE.md') : null;
+    box.dataset.about = about.about;
+    box.dataset.notice = notice ?? '';
+  } else {
+    delete box.dataset.about;
+    delete box.dataset.notice;
+  }
+  box.replaceChildren(...parts);
+  $('#domain-more').hidden = parts.length === 0;
+  if ($('#domain-more').open) loadPackageAbout().catch(() => {});
+}
+
+/**
+ * A markdown text as elements (markdown.js markdownBlocks), with textContent only: headings come in one
+ * size smaller than the drawer's own, a link shows its text with its address as the title.
+ * @param {string} md
+ */
+function renderMarkdown(md) {
+  const inl = (/** @type {any[]} */ spans) => spans.map((s) => (s.type === 'text' ? s.text
+    : s.type === 'link' ? h('span', { class: 'md-link', title: s.href, text: s.text })
+      : h(s.type === 'strong' ? 'strong' : s.type === 'em' ? 'em' : 'code', { text: s.text })));
+  const out = h('div', { class: 'md' });
+  for (const b of markdownBlocks(md)) {
+    if (b.type === 'heading') out.append(h(b.level <= 2 ? 'h5' : 'h6', {}, ...inl(b.inline)));
+    else if (b.type === 'paragraph') out.append(h('p', {}, ...inl(b.inline)));
+    else if (b.type === 'quote') out.append(h('blockquote', {}, ...inl(b.inline)));
+    else if (b.type === 'code') out.append(h('pre', { class: 'code', text: b.text }));
+    else if (b.type === 'rule') out.append(h('hr'));
+    else if (b.type === 'list') out.append(h(b.ordered ? 'ol' : 'ul', {}, ...b.items.map((/** @type {any[]} */ it) => h('li', {}, ...inl(it)))));
+    else if (b.type === 'table') {
+      out.append(h('table', { class: 'md-table' },
+        h('thead', {}, h('tr', {}, ...b.head.map((/** @type {any[]} */ c) => h('th', {}, ...inl(c))))),
+        h('tbody', {}, ...b.rows.map((/** @type {any[][]} */ r) => h('tr', {}, ...r.map((c) => h('td', {}, ...inl(c))))))));
+    }
+  }
+  return out;
+}
+
+$('#domain-more').addEventListener('toggle', () => { if ($('#domain-more').open) loadPackageAbout().catch(() => {}); });
+
+/** Fetch and render the open package's own description (and notice) into the About drawer, once per open. */
+async function loadPackageAbout() {
+  const box = $('#domain-more-body');
+  const holder = box.querySelector('[data-testid="package-about"]');
+  if (!holder || !box.dataset.about || holder.dataset.loaded === box.dataset.about) return;
+  holder.dataset.loaded = box.dataset.about;
+  const md = await text(box.dataset.about);
+  const out = [renderMarkdown(md)];
+  if (box.dataset.notice) out.push(h('details', {}, h('summary', { text: 'Source and licence notice' }), renderMarkdown(await text(box.dataset.notice))));
+  holder.replaceChildren(...out);
 }
 
 const ONTO_HINT = 'The ontology as a picture: each kind a node, coloured as in the graph tab, and each link a relationship between ' +
@@ -915,6 +1044,19 @@ function renderOntologyGraph(o) {
   legend.replaceChildren(h('span', { text: `${plural(nodes.length, 'kind')}, ${plural(o.links?.length ?? 0, 'link')} (${plural(rels.length, 'kind pair')} they may join)` }));
 }
 
+/** The open store's ontology document, parsed once per sha (its nodes' aliases, references and properties). @param {any} o  stats.ontology */
+function ontologyDoc(o) {
+  if (!o?.yaml) return null;
+  if (state.ontoDoc?.sha !== o.sha) {
+    try {
+      state.ontoDoc = { sha: o.sha, doc: parseOntology(o.yaml, { bases: state.bases }).doc };
+    } catch {
+      state.ontoDoc = { sha: o.sha, doc: null };
+    }
+  }
+  return state.ontoDoc.doc;
+}
+
 /** A kind or a link of the Ontology tab's picture, in its side panel. @param {import('./graphview.js').Selection|null} sel */
 function showOntologyElement(sel) {
   const side = $('#onto-side');
@@ -927,14 +1069,30 @@ function showOntologyElement(sel) {
     const out = o.links.filter((/** @type {any} */ l) => (l.pairs ?? []).some((/** @type {string} */ p) => p.startsWith(`${k.id}|`))).map((/** @type {any} */ l) => l.id);
     const inn = o.links.filter((/** @type {any} */ l) => (l.pairs ?? []).some((/** @type {string} */ p) => p.endsWith(`|${k.id}`))).map((/** @type {any} */ l) => l.id);
     const tools = (o.tools ?? []).filter((/** @type {any} */ t) => t.anchor?.kind === 'node' && t.anchor.label === k.id).length;
-    const asked = k.ask === null ? 'Not asked of the model: a domain kind covers its pole.' : k.ask ? `Asked of the model as "${k.ask.label}"${k.ask.description ? `: ${k.ask.description}` : ''}.` : '';
+    const using = (o.tools ?? []).filter((/** @type {any} */ t) => typeof t.cypher === 'string' && new RegExp(`:\\s*\`?${k.id}\\b`).test(t.cypher)).map((/** @type {any} */ t) => t.name);
+    const unasked = k.unasked === 'extract' ? 'Not asked of the model: the ontology marks it as not extracted from text (it stays a node type).'
+      : 'Not asked of the model: a domain kind covers its pole.';
+    const asked = k.ask === null ? unasked : k.ask ? `Asked of the model as "${k.ask.label}"${k.ask.description ? `: ${k.ask.description}` : ''}.` : '';
+    // What the document says of the kind beyond what the store keeps: aliases, a reference, the declared properties.
+    const node = Object.values(ontologyDoc(o)?.nodes ?? {}).find((/** @type {any} */ n) => (n.labels?.identifier ?? n.label) === k.id);
+    const props = Object.entries(/** @type {any} */ (node)?.properties ?? {}).map(([name, p]) => {
+      const read = (k.attributes ?? []).includes(name);
+      const bits = [p.type, p.key ? 'key' : '', p.pattern ? `pattern ${p.pattern}` : '', p.one_of ? `one of ${p.one_of.join(', ')}` : '', read ? 'read from the text' : ''].filter(Boolean).join('; ');
+      return h('li', read ? { 'data-testid': 'kind-read-property' } : {}, h('code', { text: name }), ` (${bits})${p.description ? `: ${p.description}` : ''}`);
+    });
+    const flags = [k.proper ? 'its mentions are proper names or identifiers' : '', k.propose ? `identifiers matching its key pattern are listed names (rule 1)` : ''].filter(Boolean);
     side.replaceChildren(
       h('h4', { 'data-testid': 'side-title', text: k.id }),
       h('p', { class: 'kind-line' }, kindChip(k.id), ' ', h('span', { class: 'hint', text: k.origin === 'base' ? 'a base kind (create-context-graph\'s POLE+O)' : `a kind of this domain${k.pole ? ` (pole ${k.pole})` : ''}` })),
       ...(k.description ? [h('p', { class: 'about', text: k.description })] : []),
-      ...(asked ? [h('p', { class: 'hint', text: asked })] : []),
+      ...(asked ? [h('p', { class: 'hint', 'data-testid': 'kind-asked', text: asked })] : []),
+      ...(flags.length ? [h('p', { class: 'hint', text: `${flags.join('; ')}.` })] : []),
+      ...((/** @type {any} */ (node)?.aliases ?? []).length ? [h('p', { class: 'hint', text: `Also called: ${andList(/** @type {any} */ (node).aliases)}.` })] : []),
+      ...(/** @type {any} */ (node)?.reference ? [h('p', { class: 'hint' }, 'Reference: ', h('a', { href: /** @type {any} */ (node).reference, rel: 'noopener noreferrer', target: '_blank', text: /** @type {any} */ (node).reference }))] : []),
+      ...(props.length ? [h('details', { 'data-testid': 'kind-properties' }, h('summary', { text: `${plural(props.length, 'declared property', 'declared properties')} (the extractor writes name${k.keyProp ? `, ${k.keyProp}` : ''}${(k.attributes ?? []).length ? ` and the ${plural(k.attributes.length, 'value')} it reads: ${andList(k.attributes)}` : ''})` }), h('ul', {}, ...props))] : []),
       h('p', { class: 'hint', text: `Its cutoffs: ${cut(k)}.` }),
-      h('p', { class: 'hint', text: `Links from it: ${out.length ? andList(out) : 'none'}; to it: ${inn.length ? andList(inn) : 'none'}. ${plural(tools, 'tool')} in the Console tab.` }));
+      h('p', { class: 'hint', text: `Links from it: ${out.length ? andList(out) : 'none'}; to it: ${inn.length ? andList(inn) : 'none'}. ${plural(tools, 'tool')} on it in the Console tab` +
+        `${using.length ? `; ${plural(using.length, 'tool')} query it (${andList(using.slice(0, 6))}${using.length > 6 ? ', …' : ''})` : ''}.` }));
     return;
   }
   const l = o.links.find((/** @type {any} */ x) => x.id === sel.type);
@@ -1089,6 +1247,24 @@ $('#rebuild').addEventListener('click', () => busy(async () => {
     notice(message(e), 'error');
   }
 }));
+$('#ontology-migrate').addEventListener('click', () => busy(async () => {
+  const b = state.staleBundled;
+  if (!b) return;
+  $('#ontology-migrate').disabled = true;
+  try {
+    await call('reset');
+    $('#yaml').dataset.dirty = '0';
+    await openStore({ yaml: b.yaml });
+    notice(`The store is empty, under the curated ${b.title} ontology (version ${b.doc?.version ?? '2'}): extract its sample, or your own text, again.`);
+    await refreshAll();
+    const s = primarySample(b.id);
+    if (s && !$('#text').value.trim()) await useSample(s);
+  } catch (e) {
+    notice(message(e), 'error');
+  } finally {
+    $('#ontology-migrate').disabled = false;
+  }
+}));
 $('#ontology-reapply').addEventListener('click', async () => {
   const b = state.staleBundled;
   if (!b) return;
@@ -1108,7 +1284,7 @@ $('#domain-select').addEventListener('change', async () => {
   if (!o) return;
   $('#yaml').dataset.dirty = '0';
   const opened = await openStore({ yaml: o.yaml }).then(() => true, () => false);
-  const sample = state.samples.find((x) => x.ontology === o.id);
+  const sample = primarySample(o.id);
   if (opened && sample) await useSample(sample);
 });
 $('#legacy-discard').addEventListener('click', async () => {
@@ -1405,7 +1581,7 @@ async function followDomain() {
   const oid = state.stats.ontology.id;
   const own = !docIsSample() && $('#text').value.trim() !== '';
   if (own || (docIsSample() && state.doc.sample.ontology === oid)) return;
-  const s = state.samples.find((x) => x.ontology === oid);
+  const s = primarySample(oid);
   if (s) await useSample(s);
 }
 
@@ -1424,7 +1600,7 @@ function renderDoc() {
   const sample = docIsSample();
   const { title } = currentDoc();
   $('#title').placeholder = $('#text').value.trim() ? title : 'untitled';
-  $('#doc-name').textContent = sample ? `the ${s.label} sample` : $('#text').value.trim() ? `“${title}”` : 'empty';
+  $('#doc-name').textContent = sample ? `the ${s.label} ${s.role === 'companion' ? 'companion document' : 'sample'}` : $('#text').value.trim() ? `“${title}”` : 'empty';
   $('#doc-note').textContent = sample
     ? `${s.blurb} Its YAML front matter (where it comes from) is not shown here; it is kept with the text.`
     : s ? `Your text (edited from the ${s.label} sample): extracted as it is. "Use the sample" puts the sample back.` : '';
@@ -1453,7 +1629,7 @@ function updateExtractButton() {
 $('#text').addEventListener('input', () => textEdited());
 $('#title').addEventListener('input', () => titleTyped());
 $('#use-sample').addEventListener('click', async () => {
-  const s = state.samples.find((x) => x.ontology === state.stats?.ontology.id);
+  const s = primarySample(state.stats?.ontology.id);
   if (s) await useSample(s);
 });
 $('#load-file').addEventListener('click', () => $('#file').click());
@@ -2471,8 +2647,11 @@ function renderTools(o) {
     $('#tools-about').textContent = `The ${o.title} document has no tools. An Ontology Graph Spec 1.1 document can give a node or a relationship tools (example queries for agents); create-context-graph's domains bring theirs.`;
     return;
   }
-  $('#tools-about').textContent = `The example queries (tools) of the ${o.title} document, each on the element its query starts from. They were written for create-context-graph's ` +
-    'full Neo4j graphs, while an extracted entity has only a name (and key, kind, display, docs), so each says what it can do here. ' +
+  const fam = state.ontologies.find((x) => x.id === o.id && x.yaml === o.yaml)?.about?.family;
+  const written = fam === 'domains' ? 'This curated ontology\'s tools were written for the graph this page extracts: each answers a question about it, many with the sentences behind the facts.'
+    : fam === 'studio' ? 'This solution package\'s queries were written for its own sample data, loaded in full: on an extracted graph, where an entity has a name (and its identifier when the text gives one), each says what it can do here. Those that need GDS, APOC or a write cannot run on this page.'
+      : 'Each says what it can do on an extracted graph, where an entity has a name (and key, kind, display, docs).';
+  $('#tools-about').textContent = `The example queries (tools) of the ${o.title} document, each on the element its query is about. ${written} ` +
     'Run checks the arguments first (a missing or empty one is refused, so a query never runs without a value it needs), then runs the query ' +
     'as any console query: through the read-only lease, with the 10 s watchdog.';
   /** @type {Map<string, any[]>} */
@@ -2510,9 +2689,12 @@ function refreshToolNotes() {
 function toolCard(t) {
   const note = toolCompat(t, toolCtx());
   const card = h('details', { class: 'tool', 'data-testid': 'tool', 'data-tool': t.name, 'data-anchor': anchorName(t), 'data-predict': note.predict });
-  card.append(h('summary', {}, h('code', { text: t.name }), h('span', { class: 'tool-type', text: t.type ?? '?' }), chip(note.predict),
-    h('span', { class: 'tool-desc', text: t.description })));
+  card.append(h('summary', {}, h('code', { text: t.name }), h('span', { class: 'tool-type', text: t.category || t.type || '?' }), chip(note.predict),
+    h('span', { class: 'tool-desc', text: t.question || t.description })));
+  if (t.question && t.description) card.append(h('p', { class: 'about', text: t.description }));
   card.append(h('p', { class: 'hint', text: `On the ${t.anchor.kind} ${anchorName(t)} (${t.anchor.kind === 'node' ? 'nodes' : 'relationships'}/${t.anchor.key} in the document).` }));
+  if (t.teaches) card.append(h('p', { class: 'hint tool-teaches', 'data-testid': 'tool-teaches', text: `Cypher: ${t.teaches}` }));
+  if ((t.requires ?? []).length) card.append(h('p', { class: 'hint', text: `Needs ${andList(t.requires.map((/** @type {string} */ r) => (r === 'write' ? 'a write (the console is read-only)' : r.toUpperCase())))}: not runnable on this page.` }));
   card.append(h('p', { class: 'tool-compat', 'data-testid': 'tool-compat', text: note.text }));
   if (t.type !== 'canonicalQuery' || typeof t.cypher !== 'string' || !t.cypher.trim()) {
     card.append(h('p', { class: 'hint', 'data-testid': 'tool-url', text: t.url ? `URL: ${t.url}` : 'No query and no URL.' }),
@@ -2535,7 +2717,7 @@ function toolCard(t) {
   const specs = toolParams(t);
   if (specs.length) {
     const grid = h('div', { class: 'params' });
-    for (const sp of specs) grid.append(...toolParamField(sp));
+    for (const sp of specs) grid.append(...toolParamField(sp, (t.parameters ?? []).find((/** @type {any} */ p) => p.name === sp.name)?.example));
     card.append(grid);
   } else card.append(h('p', { class: 'hint', text: 'No parameters.' }));
   card.append(h('div', { class: 'row' }, h('button', { type: 'button', class: 'primary small', 'data-testid': 'tool-run', onclick: () => runTool(t, card) }, 'Run'), status));
@@ -2547,8 +2729,10 @@ function toolCard(t) {
  * The input starts at the default, else at the value the description suggests ("(default: 10)").
  * @param {ReturnType<typeof toolParams>[number]} sp
  */
-function toolParamField(sp) {
-  const initial = sp.default !== undefined ? (typeof sp.default === 'string' ? sp.default : JSON.stringify(sp.default)) : sp.hint ?? '';
+function toolParamField(sp, example = undefined) {
+  // The example (D22: a curated tool's parameters each carry one, from its documents) fills the input when there is no default.
+  const ex = example === undefined ? undefined : typeof example === 'string' ? example : JSON.stringify(example);
+  const initial = sp.default !== undefined ? (typeof sp.default === 'string' ? sp.default : JSON.stringify(sp.default)) : ex ?? sp.hint ?? '';
   /** @type {HTMLInputElement|HTMLSelectElement} */
   let input;
   if (sp.oneOf || sp.type === 'BOOLEAN') {
@@ -3158,13 +3342,17 @@ async function main() {
       notice(`This browser gives the site ${mb(est.quota ?? 0)} of storage; the model needs about 300 MB and the stores more. Loading may fail; caching surely will.`, 'warn');
     }
   } catch { /* no estimate */ }
-  // Step 1's picker: each bundled ontology by its emoji and name (its description shows under the picker).
-  for (const g of state.ontologyGroups) {
-    const mine = state.ontologies.filter((x) => x.group === g.id);
-    const group = h('optgroup', { label: `${g.label}'s ${mine.length} domains` });
+  // Step 1's picker: every bundled ontology by its name, grouped by industry, a solution package marked as one
+  // (its card's description shows as the option's title and under the picker).
+  const industryOf = (/** @type {any} */ o) => o.about?.industry ?? 'Other';
+  const rank = (/** @type {string} */ i) => (INDUSTRY_ORDER.includes(i) ? INDUSTRY_ORDER.indexOf(i) : INDUSTRY_ORDER.length);
+  const industries = [...new Set(state.ontologies.map(industryOf))].sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));
+  for (const ind of industries) {
+    const mine = state.ontologies.filter((x) => industryOf(x) === ind).sort((a, b) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0));
+    const group = h('optgroup', { label: ind });
     for (const o of mine) {
-      const label = o.meta ? `${o.meta.emoji ? `${o.meta.emoji} ` : ''}${o.meta.name}` : `${o.title} (${o.id})`;
-      group.append(h('option', { value: o.file, text: label, title: o.meta?.description ?? '' }));
+      const label = o.meta ? `${o.meta.emoji ? `${o.meta.emoji} ` : ''}${o.meta.name}` : `${o.title}${o.group === 'studio' ? ' · solution package' : ''}`;
+      group.append(h('option', { value: o.file, text: label, title: o.about?.card?.description ?? o.meta?.description ?? '', 'data-family': o.group }));
     }
     $('#domain-select').append(group);
   }

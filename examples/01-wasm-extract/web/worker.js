@@ -312,6 +312,9 @@ RETURN s.doc AS doc, count(s) AS n`, { schema }).map((r) => [r.doc, Number(r.n)]
       kinds: onto.kinds.map((k) => ({
         ...k, description: kinds.get(k.id)?.description ?? '', color: kinds.get(k.id)?.color ?? null,
         pole: kinds.get(k.id)?.pole ?? null, origin: kinds.get(k.id)?.origin ?? 'own', ask: kinds.get(k.id)?.ask ?? null,
+        unasked: kinds.get(k.id)?.unasked ?? null, askMode: kinds.get(k.id)?.askMode ?? null, proper: kinds.get(k.id)?.proper ?? false,
+        propose: kinds.get(k.id)?.propose ?? false, keyProp: kinds.get(k.id)?.keyProp ?? null,
+        attributes: (kinds.get(k.id)?.attributes ?? []).map((a) => a.prop),
       })),
       links: onto.links.map((l) => ({ ...l, ask: links.get(l.id)?.ask ?? l.phrase })),
       colors: kindColors(c.ontology),
@@ -898,7 +901,19 @@ RETURN d.title AS document, s.idx AS idx, s.text AS sentence, m.text AS text, m.
        m.start - s.start AS start, m.end - s.start AS end
 ORDER BY document, idx, start
 LIMIT 200`, { key: m.node });
-      return { what: 'node', title: `${e.name} (${e.kind})`, properties: { ...e, docs: named(e.docs) }, evidence: evidence.map((x) => ({ ...x, spans: [[x.start, x.end]] })) };
+      // D27: the values read from the text for the entity: the kept ones publish wrote (_OF), each with its sentence,
+      // and the property as the entity now carries it (the best kept value, typed).
+      const values = q(`MATCH (a:_Attribute)-[:_OF]->(e:_Entity {key: $key}) WHERE $key IS NOT NULL
+MATCH (a)-[:_IN]->(s:_Sentence)
+OPTIONAL MATCH (d:_Document {id: a.doc})
+RETURN a.prop AS prop, a.text AS text, a.p AS p, a.via AS via, toString(properties(e)[a.prop]) AS stored, toString(a.value) AS value,
+       d.title AS document, s.idx AS idx, s.text AS sentence, a.start - s.start AS start, a.end - s.start AS end
+ORDER BY prop, p DESC, document, idx`, { key: m.node });
+      return {
+        what: 'node', title: `${e.name} (${e.kind})`, properties: { ...e, docs: named(e.docs) },
+        evidence: evidence.map((x) => ({ ...x, spans: [[x.start, x.end]] })),
+        values: values.map((x) => ({ ...x, spans: [[x.start, x.end]] })),
+      };
     }
     const r = m.rel ?? {};
     if (typeof r.a !== 'string' || typeof r.b !== 'string' || typeof r.type !== 'string') throw new WorkerError('usage', 'details: {node} or {rel: {a, type, b}}');

@@ -32,7 +32,7 @@
  *   (:_Document {id: sha256(text), title, chars})
  *   (:_Section {key: '<doc>#s<n>', n, doc, complete})-[:_OF]->(:_Document)   complete=true written last (D9)
  *   (:_Sentence {key: '<doc>#<idx>', idx, doc, start, end, text, heading})-[:_IN]->(:_Section)
- *   (:_Inference {key, model, rev, weights, build, floor, schema, parts})<-[:_INFERRED]-(:_Sentence)
+ *   (:_Inference {key, model, rev, weights, build, floor, schema, parts, task?})<-[:_INFERRED]-(:_Sentence)  task: 'values' for D27's second call
  *   (:_InferencePart {key: '<inference>#<n>', n, text})-[:_OF]->(:_Inference)  raw JSON, <= 16,000 chars each
  *   (:_Mention {key, doc, sentence, start, end, text, label, name, plain, p, source, band, rule, alt})-[:_IN]->(:_Sentence)
  *     name: the entity key's NAME (names.js mentionName with the kind's label words); plain: the same
@@ -57,7 +57,7 @@
  * an alias and a map key (`AS drop`).
  */
 import { schemaKey } from './gliner.js';
-import { entityName, kindWords, mentionName } from './names.js';
+import { entityName, kindWords, mentionName, rustTrim } from './names.js';
 import { applyOntology, isOntologyId, ONTOLOGY_KEYS } from './ontology.js';
 import { canon, cmp, dump, sha256 } from '../../../lib/replay.mjs';
 
@@ -99,7 +99,7 @@ import { canon, cmp, dump, sha256 } from '../../../lib/replay.mjs';
  * LEGACY_DEFAULTS.)
  */
 export const DEFAULT_GATE = Object.freeze({
-  entKeep: 0.5, entDrop: 0.3, relKeep: 0.35, relDrop: 0.2, typeMargin: 0.05, relMargin: 0.05, poleMargin: 0.25,
+  entKeep: 0.5, entDrop: 0.3, relKeep: 0.35, relDrop: 0.2, typeMargin: 0.05, relMargin: 0.05, poleMargin: 0.25, attrKeep: 0.5, attrDrop: 0.3,
 });
 
 /** The model the defaults assume when none is named (models.js DEFAULT_MODEL). */
@@ -139,7 +139,7 @@ export function defaultGate(format, model = DEFAULT_MODEL) {
 export const LEGACY_DEFAULTS = Object.freeze({ kind: Object.freeze({ keep: 0.85, drop: 0.2 }), link: Object.freeze({ keep: 0.7, drop: 0.2 }) });
 
 /** The gate's rules in D10's order, by the names gate({off}) uses (the `rule` column names what decided each row). */
-export const RULES = Object.freeze(['gazetteer', 'one-kind', 'name-kind', 'span-join', 'legality', 'band', 'hedge', 'ambiguity', 'verdicts']);
+export const RULES = Object.freeze(['gazetteer', 'one-kind', 'name-kind', 'span-join', 'legality', 'band', 'hedge', 'ambiguity', 'verdicts', 'attributes']);
 
 /** A character that is not a letter, a digit or `_` (Unicode): a cue's word boundary, the same in Cypher and JS. */
 const NOT_WORD = '[^\\p{L}\\p{N}_]';
@@ -159,11 +159,14 @@ export const HEDGE_CUES = Object.freeze([
   // hedges
   ['may', 'may', false, true], ['might', 'might', true, true], ['could', 'could', true, true], ['possibly', 'possibl[ey]', true, true],
   ['perhaps', 'perhaps', true, true], ['probably', 'probabl[ey]', true, true], ['likely', '(?:un)?likely', true, true],
-  ['reportedly', 'reportedly', true, true], ['allegedly', 'alleged(?:ly)?', true, true], ['supposedly', 'supposedly', true, true],
+  ['reportedly', 'reportedly', true, true], ['allegedly', 'alleg(?:e|es|ed|edly)', true, true], ['supposedly', 'supposedly', true, true],
   ['apparently', 'apparently', true, true], ['rumoured', 'rumou?r(?:ed|s)?', true, true], ['unconfirmed', 'unconfirmed', true, true],
   ['unverified', 'unverified', true, true], ['suspected', 'suspected', true, true], ['unclear', 'unclear', true, true],
   ['uncertain', 'uncertain', true, true], ['whether', 'whether', true, true], ['believed', 'believed', true, true],
   ['seems', 'seem(?:s|ed)?', true, true],
+  // what has not happened yet, or holds only on a condition (D23's future and conditional distractors)
+  ['expected', '(?:is|are|was|were|be)\\s+expected', true, true], ['would', 'would', true, true], ['proposed', 'proposed', true, true],
+  ['planned', 'planned', true, true], ['pending', 'pending', true, true],
 ].map((c) => Object.freeze(c)));
 
 /**
@@ -221,6 +224,7 @@ const KEYS = [
   ['_InferencePart', 'key', 'inference_part_key', 'inference_part_key_unique'],
   ['_Mention', 'key', 'mention_key', 'mention_key_unique'],
   ['_Claim', 'key', 'claim_key', 'claim_key_unique'],
+  ['_Attribute', 'key', 'attribute_key', 'attribute_key_unique'],
   ['_Run', 'id', 'run_id', 'run_id_unique'],
   ['_Verdict', 'key', 'verdict_key', 'verdict_key_unique'],
   ['_Verdict', 'target', 'verdict_target', null],
@@ -478,8 +482,12 @@ export function resetCutoffs(db, cl, format, model = DEFAULT_MODEL) {
 export function storedOntology(db, cl) {
   const o = q(db, cl, 'MATCH (o:_Ontology) RETURN o.id AS id ORDER BY id').rows;
   if (o.length !== 1) throw new StoreError('ontology', `this store holds ${o.length} ontologies; open it with openStore first (D14: one per store)`);
-  const kinds = q(db, cl, 'MATCH (k:_Kind)-[:_IN]->(:_Ontology) RETURN k.id AS id, k.implied AS implied, k.keep AS keep, k.drop AS drop, k.cut_src AS src, k.ord AS ord ORDER BY ord').rows
-    .map((r) => ({ id: r.id, implied: r.implied ?? [], keep: r.keep, drop: r.drop, src: r.src ?? 'default' }));
+  const kinds = q(db, cl, `MATCH (k:_Kind)-[:_IN]->(:_Ontology)
+RETURN k.id AS id, k.implied AS implied, k.keep AS keep, k.drop AS drop, k.cut_src AS src, k.ord AS ord, k.keyprop AS keyprop, k.keypattern AS keypattern,
+       k.attrs AS attrs, k.attr_types AS attr_types
+ORDER BY ord`).rows
+    .map((r) => ({ id: r.id, implied: r.implied ?? [], keep: r.keep, drop: r.drop, src: r.src ?? 'default', keyprop: r.keyprop ?? null, keypattern: r.keypattern ?? null,
+      attrs: (r.attrs ?? []).map((p, i) => ({ prop: p, type: (r.attr_types ?? [])[i] })) }));
   const links = q(db, cl, `MATCH (l:_LinkType)-[:_IN]->(:_Ontology)
 RETURN l.id AS id, l.phrase AS phrase, l.symmetric AS symmetric, l.typed AS typed, l.pairs AS pairs, l.keep AS keep, l.drop AS drop, l.cut_src AS src, l.ord AS ord
 ORDER BY ord`).rows
@@ -665,7 +673,7 @@ RETURN count(p) AS n`, { rows: w.parts }, w.parts.length);
   step('inferences', `UNWIND $rows AS r
 WITH r WHERE r.key IS NOT NULL
 MERGE (i:_Inference {key: r.key})
-SET i.model = r.model, i.rev = r.rev, i.weights = r.weights, i.build = r.build, i.floor = toFloat(r.floor), i.schema = r.schema
+SET i.model = r.model, i.rev = r.rev, i.weights = r.weights, i.build = r.build, i.floor = toFloat(r.floor), i.schema = r.schema, i.task = r.task
 RETURN count(i) AS n`, { rows: w.inferences }, w.inferences.length);
   step('inference parts', `UNWIND $rows AS r
 WITH r WHERE r.key IS NOT NULL AND r.inference IS NOT NULL
@@ -707,6 +715,21 @@ SET c.doc = r.doc, c.sentence = r.sentence, c.rel = r.rel, c.p = toFloat(r.p),
     c.hjs = r.hjs, c.hje = r.hje, c.tjs = r.tjs, c.tje = r.tje, c.hkeys = r.hkeys, c.tkeys = r.tkeys
 MERGE (c)-[:_EVIDENCE]->(s)
 RETURN count(c) AS n`, { rows: claims }, claims.length);
+  // D27: the values of extracted properties (only when the section has any, so a store without them writes
+  // what it always did).
+  const attributes = w.attributes ?? [];
+  if (attributes.length) {
+    step('attributes', `UNWIND $rows AS r
+WITH r WHERE r.key IS NOT NULL AND r.sentence IS NOT NULL
+MATCH (s:_Sentence {key: r.sentence})
+MERGE (a:_Attribute {key: r.key})
+SET a.doc = r.doc, a.sentence = r.sentence, a.kind = r.kind, a.prop = r.prop, a.vtype = r.vtype, a.anchor = r.anchor, a.aname = r.aname,
+    a.astart = r.astart, a.aend = r.aend, a.ap = CASE WHEN r.ap IS NULL THEN null ELSE toFloat(r.ap) END, a.text = r.text, a.start = r.start, a.end = r.end,
+    a.p = toFloat(r.p), a.valid = r.valid,
+    a.value = r.value, a.why = r.why
+MERGE (a)-[:_IN]->(s)
+RETURN count(a) AS n`, { rows: attributes }, attributes.length);
+  }
   step('read', `MATCH (run:_Run {id: $run}) WHERE $run IS NOT NULL AND $sec IS NOT NULL
 MATCH (sec:_Section {key: $sec})
 MERGE (run)-[:_READ]->(sec)
@@ -728,6 +751,7 @@ export function forgetDocument(db, cl, docId) {
   return {
     claims: n(db, cl, `MATCH (c:_Claim {doc: $doc}) ${g} DETACH DELETE c RETURN count(*) AS n`, p),
     mentions: n(db, cl, `MATCH (m:_Mention {doc: $doc}) ${g} DETACH DELETE m RETURN count(*) AS n`, p),
+    attributes: n(db, cl, `MATCH (a:_Attribute {doc: $doc}) ${g} DETACH DELETE a RETURN count(*) AS n`, p),
     sentences: n(db, cl, `MATCH (s:_Sentence {doc: $doc}) ${g} DETACH DELETE s RETURN count(*) AS n`, p),
     sections: n(db, cl, `MATCH (s:_Section {doc: $doc}) ${g} DETACH DELETE s RETURN count(*) AS n`, p),
     runs: n(db, cl, `MATCH (r:_Run {doc: $doc}) ${g} DETACH DELETE r RETURN count(*) AS n`, p),
@@ -785,7 +809,8 @@ const OVERRIDABLE_CLAIM_RULES = ['band', 'floor', 'hedged', 'end-in-review', 'am
  * @param {{typeMargin?: number, relMargin?: number, poleMargin?: number|null, off?: string[]}} [opts]
  * @returns {Array<{rule: string, text: string, params: object|null}>}
  */
-export function gateStatements({ typeMargin = DEFAULT_GATE.typeMargin, relMargin = DEFAULT_GATE.relMargin, poleMargin = DEFAULT_GATE.poleMargin, off = [] } = {}) {
+export function gateStatements({ typeMargin = DEFAULT_GATE.typeMargin, relMargin = DEFAULT_GATE.relMargin, poleMargin = DEFAULT_GATE.poleMargin,
+  attrKeep = DEFAULT_GATE.attrKeep, attrDrop = DEFAULT_GATE.attrDrop, off = [] } = {}) {
   for (const r of off) if (!RULES.includes(r)) throw new StoreError('gate', `no rule ${JSON.stringify(r)} (rules: ${RULES.join(', ')})`);
   const on = (r) => !off.includes(r);
   /** @type {Array<{rule: string, text: string, params: object|null}>} */
@@ -1060,6 +1085,53 @@ WITH c, head(collect(v)) AS v
 SET c.band = CASE WHEN v.value = 'accept' THEN 'keep' ELSE 'drop' END, c.rule = 'verdict'
 RETURN count(c) AS n`, { rules: OVERRIDABLE_CLAIM_RULES });
   }
+  // 8. Values of extracted properties (D27), once every mention is decided. An invalid value drops
+  //    ('unparsed'). A value joins a live mention of its kind in its sentence (kept, else in review; the
+  //    best scoring): one the model's anchor names (the spans nest, or the canonical names are equal:
+  //    a.via 'anchor'), else the one entity of the kind the sentence names (a.via 'sole'); with neither
+  //    it drops ('unanchored'), and joined to a mention in review it waits ('end-in-review'). Then the
+  //    band ($attr_keep, $attr_drop), the hedge cap as claims have it ('hedged'), and one value per entity
+  //    and property: the best kept one, a different value to review ('other-value').
+  add('reset', 'MATCH (a:_Attribute) SET a.band = null, a.rule = null, a.entity = null, a.via = null, a.cue = null RETURN count(a) AS n');
+  if (on('attributes')) {
+    const LIVE_A = 'MATCH (sec:_Section {complete: true})<-[:_IN]-(s:_Sentence)<-[:_IN]-(a:_Attribute)';
+    add('attributes', `${LIVE_A} WHERE a.valid = false SET a.band = 'drop', a.rule = 'unparsed' RETURN count(a) AS n`);
+    add('attributes', `${LIVE_A} WHERE a.band IS NULL
+OPTIONAL MATCH (m:_Mention)-[:_IN]->(s) WHERE m.label = a.kind AND m.band IN ['keep', 'review'] AND m.name <> ''
+WITH a, m, CASE WHEN m IS NOT NULL AND ((a.astart IS NOT NULL AND ((m.start <= a.astart AND m.end >= a.aend) OR (a.astart <= m.start AND a.aend >= m.end)))
+  OR (a.aname <> '' AND m.name = a.aname)) THEN 1 ELSE 0 END AS named
+ORDER BY a.key, named DESC, CASE WHEN m.band = 'keep' THEN 0 ELSE 1 END, m.p DESC, m.key ASC
+WITH a, collect(m) AS ms, collect(DISTINCT m.name) AS names, max(named) AS hit
+WITH a, CASE WHEN hit = 1 THEN 'anchor' WHEN size(names) = 1 THEN 'sole' ELSE null END AS via, ms
+WITH a, via, CASE WHEN via IS NULL THEN null ELSE ms[0] END AS m
+SET a.entity = CASE WHEN m IS NULL THEN null ELSE m.label + ':' + m.name END, a.via = via,
+    a.band = CASE WHEN m IS NULL THEN 'drop' WHEN m.band = 'review' THEN 'review' ELSE null END,
+    a.rule = CASE WHEN m IS NULL THEN 'unanchored' WHEN m.band = 'review' THEN 'end-in-review' ELSE null END
+RETURN count(a) AS n`);
+    add('attributes', `${LIVE_A} WHERE a.band IS NULL AND $keep IS NOT NULL AND $drop IS NOT NULL
+SET a.band = CASE WHEN a.p >= toFloat($keep) THEN 'keep' WHEN a.p <= toFloat($drop) THEN 'drop' ELSE 'review' END, a.rule = 'band'
+RETURN count(a) AS n`, { keep: attrKeep, drop: attrDrop });
+    if (on('hedge')) {
+      const hp = hedgeCuePatterns();
+      add('attributes', `MATCH (a:_Attribute)-[:_IN]->(s:_Sentence) WHERE a.band = 'keep' AND $any IS NOT NULL AND $cues IS NOT NULL
+WITH a, substring(s.text, 0, CASE WHEN a.aend IS NOT NULL AND a.aend > a.end THEN a.aend ELSE a.end END - s.start) AS upto
+WHERE upto =~ $any
+WITH a, [x IN $cues WHERE upto =~ x.re | x.cue] AS hits
+WHERE size(hits) > 0
+SET a.band = 'review', a.rule = 'hedged', a.cue = hits[0]
+RETURN count(a) AS n`, { any: hp.any, cues: hp.cues });
+    }
+    add('attributes', `MATCH (a:_Attribute) WHERE a.band = 'keep' AND a.entity IS NOT NULL
+WITH a ORDER BY a.p DESC, a.key ASC
+WITH a.entity AS e, a.prop AS prop, collect(a) AS xs
+WITH xs, xs[0] AS best
+UNWIND xs AS a
+WITH a, best WHERE a.value <> best.value
+SET a.band = 'review', a.rule = 'other-value'
+RETURN count(a) AS n`);
+  } else {
+    add('attributes', "MATCH (a:_Attribute) SET a.band = 'drop', a.rule = 'off' RETURN count(a) AS n");
+  }
   return st;
 }
 
@@ -1091,7 +1163,12 @@ ORDER BY key`).rows;
 RETURN c.key AS key, c.doc AS doc, c.sentence AS sentence, c.rel AS rel, c.p AS p, c.htext AS htext, c.ttext AS ttext,
        c.head AS head, c.tail AS tail, c.band AS band, c.rule AS rule, c.cue AS cue
 ORDER BY key`).rows;
-  return { mentions, claims };
+  // D27: the values of extracted properties, with the entity each joined.
+  const attributes = q(db, cl, `MATCH (a:_Attribute) WHERE a.band IS NOT NULL
+RETURN a.key AS key, a.doc AS doc, a.sentence AS sentence, a.kind AS kind, a.prop AS prop, a.text AS text, a.value AS value, a.p AS p,
+       a.anchor AS anchor, a.entity AS entity, a.via AS via, a.band AS band, a.rule AS rule, a.cue AS cue
+ORDER BY key`).rows;
+  return { mentions, claims, attributes };
 }
 
 // ---- publish (D16) ------------------------------------------------------------------------------
@@ -1112,6 +1189,41 @@ function display(texts) {
   return [...counts].sort((a, b) => b[1] - a[1] || Array.from(b[0]).length - Array.from(a[0]).length || cmp(a[0], b[0]))[0][0];
 }
 const sorted = (xs) => [...new Set(xs)].sort(cmp);
+
+/**
+ * An entity's value for its kind's key property (D25): the first token of its surface texts, most
+ * frequent text first, that matches the property's `pattern` whole ("claim CL-004417" gives
+ * "CL-004417" for `^CL-[0-9]{6}$`), or the whole text when that matches; null when nothing does.
+ * Tokens are split on whitespace and trimmed of the punctuation around them. The value is checked
+ * here, never taken from the model.
+ * @param {string[]} texts  the entity's mentions' texts
+ * @param {string} pattern  the property's pattern
+ * @returns {string|null}
+ */
+export function keyValue(texts, pattern) {
+  let re;
+  try {
+    re = new RegExp(pattern, 'u');
+  } catch {
+    return null;
+  }
+  const whole = (s) => {
+    const m = re.exec(s);
+    return m !== null && m.index === 0 && m[0].length === s.length;
+  };
+  const counts = new Map();
+  for (const t of texts) counts.set(t, (counts.get(t) ?? 0) + 1);
+  const order = [...counts].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([t]) => t);
+  for (const t of order) {
+    const s = rustTrim(t);
+    if (whole(s)) return s;
+    for (const w of s.split(/\s+/u)) {
+      const token = w.replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '');
+      if (token !== '' && whole(token)) return token;
+    }
+  }
+  return null;
+}
 
 /**
  * Write typed relationships of one link type (D16), validated against the stored ontology but not
@@ -1169,9 +1281,14 @@ RETURN m.key AS mention, m.label AS kind, m.name AS norm, m.text AS text, m.doc 
     e.mentions.push(m.mention);
     ents.set(key, e);
   }
+  // D25: a kind whose one key property is not `name` and has a pattern gets that property from the
+  // entity's texts when one matches (keyValue); a null value removes one an earlier publish wrote.
+  const keyOf = new Map(onto.kinds.filter((k) => k.keyprop && k.keypattern).map((k) => [k.id, k]));
   const entityRows = [...ents.values()].sort((a, b) => cmp(a.key, b.key)).map((e) => {
     const d = display(e.texts);
-    return { key: e.key, kind: e.kind, norm: e.norm, name: d, display: d, docs: sorted(e.docs), mentions: e.mentions.length };
+    const k = keyOf.get(e.kind);
+    const props = k ? { [k.keyprop]: keyValue(e.texts, k.keypattern) } : {};
+    return { key: e.key, kind: e.kind, norm: e.norm, name: d, display: d, docs: sorted(e.docs), mentions: e.mentions.length, props };
   });
 
   const claims = q(db, cl, `MATCH (c:_Claim) WHERE c.band = 'keep'
@@ -1209,7 +1326,39 @@ WITH r WHERE r.key IS NOT NULL AND $gen IS NOT NULL
 MERGE (e:_Entity {key: r.key})
 SET e.kind = r.kind, e.norm = r.norm, e.name = r.name, e.display = r.display, e.docs = r.docs, e.mentions = r.mentions,
     e.generation = $gen
+SET e += r.props
 RETURN count(e) AS n`, { rows: entityRows, gen });
+  // D27: each kept value of an extracted property onto its entity, as the property's declared type (the best
+  // value when several are kept: the gate's rule 8 leaves one per entity and property), and null, which removes
+  // it, for an entity of the kind with none kept; the evidence is (:_Attribute)-[:_OF]->(:_Entity).
+  const attrKinds = onto.kinds.filter((k) => (k.attrs ?? []).length);
+  if (attrKinds.length) {
+    const best = new Map();
+    for (const r of q(db, cl, `MATCH (a:_Attribute) WHERE a.band = 'keep' AND a.entity IS NOT NULL
+RETURN a.entity AS entity, a.prop AS prop, a.value AS value, a.p AS p, a.key AS key ORDER BY p DESC, key`).rows) {
+      const k = `${r.entity}\u0000${r.prop}`;
+      if (!best.has(k)) best.set(k, r.value);
+    }
+    const CAST = { INTEGER: 'toInteger(r.v)', FLOAT: 'toFloat(r.v)', DATE: 'date(r.v)', BOOLEAN: 'r.v', STRING: 'r.v' };
+    for (const k of attrKinds) {
+      for (const { prop, type } of k.attrs) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(prop) || !Object.hasOwn(CAST, type)) throw new StoreError('publish', `the property ${JSON.stringify(prop)} (${type}) of ${k.id} cannot be written`);
+        const rows = entityRows.filter((e) => e.kind === k.id).map((e) => ({ key: e.key, v: best.get(`${e.key}\u0000${prop}`) ?? null }));
+        if (!rows.length) continue;
+        n(db, cl, `UNWIND $rows AS r
+WITH r WHERE r.key IS NOT NULL
+MATCH (e:_Entity {key: r.key})
+SET e.\`${prop}\` = CASE WHEN r.v IS NULL THEN null ELSE ${CAST[/** @type {keyof typeof CAST} */ (type)]} END
+RETURN count(e) AS n`, { rows });
+      }
+    }
+    n(db, cl, `MATCH (a:_Attribute) WHERE a.band = 'keep' AND a.entity IS NOT NULL
+MATCH (e:_Entity {key: a.entity})
+MERGE (a)-[:_OF]->(e)
+RETURN count(a) AS n`);
+  }
+  n(db, cl, `MATCH (a:_Attribute)-[r:_OF]->(e:_Entity) WHERE a.band IS NULL OR a.band <> 'keep' OR a.entity IS NULL OR e.key <> a.entity
+DELETE r RETURN count(*) AS n`);
   for (const { id: kind, implied } of onto.kinds) {
     ident(kind);
     out.labelled += n(db, cl, `MATCH (e:_Entity) WHERE $kind IS NOT NULL AND $gen IS NOT NULL AND e.kind = $kind AND e.generation = $gen
@@ -1412,7 +1561,7 @@ export function exportCypher(db, cl, { docs, batch = 100 } = {}) {
   const within = (ds) => (keep ? ds.filter((d) => keep.has(d)) : ds);
   const docTitles = (ds) => sorted(within(ds).map((d) => titles.get(d) ?? d));
   const ents = q(db, cl, `MATCH (e:_Entity) WHERE e.kind IS NOT NULL
-RETURN e.key AS key, e.kind AS kind, e.name AS name, e.docs AS docs ORDER BY key`).rows;
+RETURN e.key AS key, e.kind AS kind, e.name AS name, e.docs AS docs, properties(e) AS props ORDER BY key`).rows;
   const rels = q(db, cl, `MATCH (a:_Entity)-[r]->(b:_Entity)
 RETURN a.key AS a, type(r) AS rel, b.key AS b, r.p AS p, r.claims AS claims, r.docs AS docs, r.sentences AS sentences
 ORDER BY a, rel, b`).rows;
@@ -1443,18 +1592,27 @@ MATCH (c:_Claim {key: k}) RETURN DISTINCT c.key AS key, c.doc AS doc, c.p AS p`)
     return out;
   };
   const impliedOf = new Map(onto.kinds.map((k) => [k.id, k.implied]));
+  // The properties publish writes beside the name: a key filled from the name (D25) and the values read from the
+  // text (D27), each as its declared type (a DATE through date(), a FLOAT through toFloat(): R5).
+  const CAST = { STRING: (x) => x, BOOLEAN: (x) => x, INTEGER: (x) => `toInteger(${x})`, FLOAT: (x) => `toFloat(${x})`, DATE: (x) => `date(${x})` };
+  const written = new Map(onto.kinds.map((k) => [k.id, [
+    ...(k.keyprop && k.keypattern ? [{ prop: k.keyprop, type: 'STRING' }] : []),
+    ...(k.attrs ?? []),
+  ].filter((a) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(a.prop) && Object.hasOwn(CAST, a.type))]));
   for (const kind of kindIds) {
     const rows = entRows.filter((e) => e.kind === kind);
     if (!rows.length) continue;
     // the kind's label, then its implied ones (the document's labels.implied)
     const label = [kind, ...(impliedOf.get(kind) ?? [])].map(ident).join(':');
+    const extra = (written.get(kind) ?? []).filter((a) => rows.some((e) => e.props?.[a.prop] != null));
+    const sets = extra.map((a) => `, e.\`${a.prop}\` = ${a.type === 'STRING' || a.type === 'BOOLEAN' ? `row.\`${a.prop}\`` : `CASE WHEN row.\`${a.prop}\` IS NULL THEN null ELSE ${CAST[a.type](`row.\`${a.prop}\``)} END`}`).join('');
     for (const part of chunks(rows)) {
       lines.push('UNWIND [');
-      lines.push(part.map((e) => `  ${litMap({ key: e.key, name: e.name, docs: docTitles(e.docs) })}`).join(',\n'));
+      lines.push(part.map((e) => `  ${litMap({ key: e.key, name: e.name, docs: docTitles(e.docs), ...Object.fromEntries(extra.map((a) => [a.prop, e.props?.[a.prop] ?? null])) })}`).join(',\n'));
       lines.push('] AS row');
       lines.push('WITH row WHERE row.key IS NOT NULL');
       lines.push('MERGE (e:_Entity {key: row.key})');
-      lines.push(`SET e:${label}, e.name = row.name, e.docs = row.docs;`);
+      lines.push(`SET e:${label}, e.name = row.name, e.docs = row.docs${sets};`);
     }
   }
   for (const rel of linkIds) {

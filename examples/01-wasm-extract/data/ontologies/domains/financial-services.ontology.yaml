@@ -1,0 +1,564 @@
+# Financial Services: example 01's curated ontology for wealth-management and compliance documents
+# (D20). Written for this repository from create-context-graph's financial-services.yaml at 707b168
+# (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, and the parties are named for what the
+# domain calls them (Client, Advisor, Firm, Issuer, Regulator).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: financial-services
+name: Financial Services
+description: >-
+  Wealth management as its compliance, risk and investment teams write about it: the clients a firm
+  serves, the advisors who look after them, the accounts that hold their money, the securities those
+  accounts trade and hold and the issuers behind them, the investment decisions that cause trades, and
+  the policies and regulators those decisions answer to. It answers who owns and who manages an
+  account, which decision led to which trade, which clients are exposed to an issuer through their
+  holdings, which policy a trade breached, and what the source text says about each fact. Prices,
+  valuations and positions over time are out of scope, and so is the firm's own corporate structure:
+  a document names them, the extractor does not keep them.
+nodes:
+  Client:
+    label: Client
+    description: >-
+      A person or entity whose money the firm manages or advises on, named in full in a document
+      ("Arjun Mehta", "the Mehta Family Trust"). A client is the account's owner, never the firm's staff.
+    aliases: [customer, investor, account holder]
+    reference: https://spec.edmcouncil.org/fibo/ontology/FBC/ProductsAndServices/ClientsAndAccounts/Client
+    properties:
+      name: {type: STRING, key: true, description: "The client's full name as the documents write it."}
+      segment: {type: STRING, one_of: [retail, professional, high-net-worth], description: "The client's regulatory classification."}
+      riskProfile: {type: STRING, one_of: [cautious, balanced, adventurous], description: "The risk profile agreed at onboarding."}
+      domicile: {type: STRING, description: "The client's country of residence for tax purposes, as an ISO 3166 alpha-2 code (GB)."}
+    extensions:
+      display: {x: -360, y: -60, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a client of a wealth manager or bank: a person, family or trust whose money is managed or advised on, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-client
+            category: lookup
+            question: Who is this client, and what does the store connect to them?
+            description: Finds clients whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (c:Client) WHERE toLower(c.name) CONTAINS toLower($client)
+              OPTIONAL MATCH (c)-[r]-(x:_Entity)
+              RETURN c.name AS client, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY client, link, other
+            parameters:
+              - {name: client, type: STRING, description: "Part of the client's name.", example: Mehta}
+          - type: canonicalQuery
+            name: accounts-of-a-client
+            category: neighbourhood
+            question: Which accounts does this client own, who manages them, and where are they held?
+            description: Each account the client owns, with its managers and the firm that holds it.
+            teaches: OPTIONAL MATCH keeps an account in the answer even when the text names no manager or firm for it.
+            cypher: |-
+              MATCH (c:Client)-[:OWNS]->(a:Account) WHERE toLower(c.name) CONTAINS toLower($client)
+              OPTIONAL MATCH (adv:Advisor)-[:MANAGES]->(a)
+              OPTIONAL MATCH (a)-[:HELD_AT]->(f:Firm)
+              RETURN c.name AS client, a.name AS account, a.accountId AS number,
+                     collect(DISTINCT adv.name) AS managers, collect(DISTINCT f.name) AS firms
+              ORDER BY account
+            parameters:
+              - {name: client, type: STRING, description: "Part of the client's name.", example: Arjun Mehta}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Priya Raman}
+          - type: canonicalQuery
+            name: client-in-graph-and-text
+            category: evidence
+            question: How is this client connected in the graph, and where in the text was it read?
+            description: The client's links to other entities, then every mention of it in the documents, as one picture.
+            teaches: UNION ALL joins two answers of one shape; the trace links an entity to its mentions (_Mention -[:_OF]->), which the console can hide as the example's bookkeeping.
+            cypher: |-
+              MATCH (c:Client) WHERE toLower(c.name) CONTAINS toLower($client)
+              MATCH (c)-[r]-(x:_Entity)
+              RETURN c AS entity, r AS link, x AS other
+              UNION ALL
+              MATCH (c:Client) WHERE toLower(c.name) CONTAINS toLower($client)
+              MATCH (m:_Mention)-[o:_OF]->(c)
+              RETURN c AS entity, o AS link, m AS other
+            parameters:
+              - {name: client, type: STRING, description: "Part of the client's name.", example: Arjun Mehta}
+  Advisor:
+    label: Advisor
+    description: >-
+      A person at the firm who advises clients or manages their accounts: an investment manager,
+      financial planner, analyst or compliance officer, usually named with a role ("Colm Brady, a
+      director"). Advisors are the firm's staff; clients are not.
+    aliases: [adviser, investment manager, relationship manager, portfolio manager, wealth manager]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The advisor's full name."}
+      role: {type: STRING, one_of: [investment manager, financial planner, analyst, compliance officer, director], description: "The advisor's role at the firm."}
+    extensions:
+      display: {x: -120, y: -200, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a person working at a wealth manager or bank who advises clients or manages their accounts, such as an investment manager or compliance officer", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: advisor-workload
+            category: aggregation
+            question: How many accounts and clients does each advisor look after?
+            description: Per advisor, the accounts they manage and the clients they advise.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each account is counted once per client.
+            cypher: |-
+              MATCH (adv:Advisor)
+              OPTIONAL MATCH (adv)-[:MANAGES]->(a:Account)
+              OPTIONAL MATCH (adv)-[:ADVISES]->(c:Client)
+              RETURN adv.name AS advisor, count(DISTINCT a) AS accounts, count(DISTINCT c) AS clients
+              ORDER BY accounts DESC, clients DESC, advisor
+  Firm:
+    label: Firm
+    description: >-
+      A wealth manager, private bank, broker or custodian: the organisation that employs advisors and
+      holds clients' accounts. Firms are named with their legal suffix as often as without ("Halvorsen
+      Pryce Partners LLP").
+    aliases: [wealth manager, bank, broker, custodian, investment firm]
+    reference: https://schema.org/FinancialService
+    properties:
+      name: {type: STRING, key: true, description: "The firm's name."}
+      frn: {type: STRING, pattern: "^[0-9]{6}$", description: "The firm's Financial Services Register reference number, six digits."}
+      city: {type: STRING, description: "The city of the firm's head office."}
+    extensions:
+      display: {x: 120, y: -200, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a wealth manager, private bank, broker or custodian firm that employs advisors and holds client accounts", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: firm-staff-and-regulators
+            category: neighbourhood
+            question: Who works for each firm, and who regulates it?
+            description: Each firm with the advisors it employs and the regulators that supervise it.
+            teaches: Two independent neighbourhoods of one node come back as two collected lists.
+            cypher: |-
+              MATCH (f:Firm)
+              OPTIONAL MATCH (adv:Advisor)-[:EMPLOYED_BY]->(f)
+              OPTIONAL MATCH (f)-[:SUPERVISED_BY]->(r:Regulator)
+              RETURN f.name AS firm, collect(DISTINCT adv.name) AS staff, collect(DISTINCT r.name) AS regulators
+              ORDER BY firm
+  Account:
+    label: Account
+    description: >-
+      A client's account at the firm, holding cash and securities, identified by its account number
+      (ACC-2207). One client owns it; one or more advisors manage it.
+    aliases: [portfolio account, client account, ISA, SIPP]
+    reference: https://spec.edmcouncil.org/fibo/ontology/FBC/ProductsAndServices/ClientsAndAccounts/Account
+    properties:
+      accountId: {type: STRING, key: true, pattern: "^ACC-[0-9]{4}$", description: "The account number, ACC- and four digits."}
+      name: {type: STRING, description: "The account as a document names it."}
+      accountType: {type: STRING, one_of: [discretionary, advisory, execution-only], description: "The service the account is run under: the firm decides (discretionary), the client decides on advice (advisory), or the client decides alone (execution-only).", extensions: {custom: {relate-examples: {extract: true, ask: "the service the account is run under, discretionary, advisory or execution-only"}}}}
+      wrapper: {type: STRING, one_of: [ISA, SIPP, GIA], description: "The tax wrapper the account sits in: an ISA, a SIPP, or a general investment account (GIA).", extensions: {custom: {relate-examples: {extract: true, ask: "the tax wrapper the account sits in, such as an ISA or a SIPP"}}}}
+      currency: {type: STRING, pattern: "^[A-Z]{3}$", description: "The account's base currency, ISO 4217 (GBP)."}
+      openedOn: {type: DATE, description: "The date the account was opened."}
+    extensions:
+      display: {x: -120, y: 0, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "a client's investment or cash account at a firm, identified by an account number such as ACC-2207", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: account-by-number
+            category: lookup
+            question: Which account has this number, who owns it, and what does it hold?
+            description: The account whose number is the parameter, with its owner, its managers and its holdings.
+            teaches: An identifier the text states is the entity's key property (accountId, from its name), so an exact match finds it.
+            cypher: |-
+              MATCH (a:Account) WHERE a.accountId = $accountId
+              OPTIONAL MATCH (c:Client)-[:OWNS]->(a)
+              OPTIONAL MATCH (adv:Advisor)-[:MANAGES]->(a)
+              OPTIONAL MATCH (a)-[:HOLDS]->(s:Security)
+              RETURN a.accountId AS account, collect(DISTINCT c.name) AS owners, collect(DISTINCT adv.name) AS managers, collect(DISTINCT s.name) AS holdings
+            parameters:
+              - {name: accountId, type: STRING, description: "An account number, ACC- and four digits.", example: ACC-2207}
+          - type: canonicalQuery
+            name: who-manages-what-and-why
+            category: evidence
+            question: Which sentences say who manages each account?
+            description: Every MANAGES fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (adv:Advisor)-[r:MANAGES]->(a:Account)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN adv.name AS advisor, a.name AS account, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY account, advisor
+          - type: canonicalQuery
+            name: facts-in-more-than-one-document
+            category: cross-document
+            question: Which facts do two or more documents both state?
+            description: Every extracted relationship whose evidence spans more than one document, with the documents' titles.
+            teaches: A relationship's docs list holds every document that supports it; size() over it finds the corroborated facts.
+            cypher: |-
+              MATCH (a:_Entity)-[r]->(b:_Entity) WHERE size(r.docs) > 1
+              MATCH (d:_Document) WHERE d.id IN r.docs
+              RETURN a.name AS source, type(r) AS link, b.name AS target, collect(d.title) AS documents
+              ORDER BY link, source, target
+  Security:
+    label: Security
+    description: >-
+      A tradable financial instrument (a share, bond, fund or exchange-traded fund) identified by its
+      ISIN and named by its issuer and kind ("the Kestrel Water 2031 green bond").
+    aliases: [instrument, bond, share, stock, fund, ETF, holding]
+    reference: https://schema.org/FinancialProduct
+    properties:
+      isin: {type: STRING, key: true, pattern: "^[A-Z]{2}[A-Z0-9]{9}[0-9]$", description: "The International Securities Identification Number, twelve characters (XS2391840357)."}
+      name: {type: STRING, description: "The security as a document names it."}
+      assetClass: {type: STRING, one_of: [equity, bond, fund, ETF, derivative], description: "The kind of instrument."}
+      couponRate: {type: FLOAT, description: "A bond's annual coupon, as a fraction (0.045 for 4.5%)."}
+      maturity: {type: DATE, description: "A bond's maturity date."}
+    extensions:
+      display: {x: 120, y: 120, colour: "#06b6d4"}
+      custom:
+        relate-examples: {ask: "a share, bond, fund or other tradable security, named by its issuer and kind or identified by its ISIN, such as XS2391840357", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: security-by-isin
+            category: lookup
+            question: Which security has this ISIN, and who issued it?
+            description: The security whose ISIN is the parameter, with its issuer and the accounts that hold it.
+            teaches: The key property (isin) is filled from the entity's name when the text gives the identifier, so an exact match works here.
+            cypher: |-
+              MATCH (s:Security) WHERE s.isin = $isin
+              OPTIONAL MATCH (s)-[:ISSUED_BY]->(i:Issuer)
+              OPTIONAL MATCH (a:Account)-[:HOLDS]->(s)
+              RETURN s.name AS security, s.isin AS isin, collect(DISTINCT i.name) AS issuers, collect(DISTINCT a.name) AS held_in
+            parameters:
+              - {name: isin, type: STRING, description: "A twelve-character ISIN.", example: XS2391840357}
+  Issuer:
+    label: Issuer
+    description: >-
+      The company or public body that issued a security and owes its holders: a borrower for a bond,
+      the company for a share. Concentration limits are usually set per issuer.
+    aliases: [issuing company, borrower, obligor]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The issuer's name."}
+      lei: {type: STRING, pattern: "^[A-Z0-9]{18}[0-9]{2}$", description: "The issuer's Legal Entity Identifier, twenty characters."}
+      sector: {type: STRING, description: "The issuer's industry sector (utilities)."}
+    extensions:
+      display: {x: 360, y: 120, colour: "#14b8a6"}
+      custom:
+        relate-examples: {ask: "a company or public body that issued a bond or share", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: clients-exposed-to-an-issuer
+            category: path
+            question: Which clients are exposed to an issuer through the securities their accounts hold?
+            description: The chain issuer, security, account, client, for every issuer whose name holds the text.
+            teaches: A four-hop pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (i:Issuer)<-[:ISSUED_BY]-(s:Security)<-[:HOLDS]-(a:Account)<-[:OWNS]-(c:Client)
+              WHERE toLower(i.name) CONTAINS toLower($issuer)
+              RETURN i.name AS issuer, s.name AS security, a.name AS account, c.name AS client
+              ORDER BY client, account
+            parameters:
+              - {name: issuer, type: STRING, description: "Part of the issuer's name.", example: Kestrel}
+  Transaction:
+    label: Transaction
+    description: >-
+      A trade or transfer in an account (a purchase, sale or movement of cash), identified by its
+      reference (TX-4471) and dated. One decision usually causes it.
+    aliases: [trade, order, transfer, deal]
+    reference: https://schema.org/MoneyTransfer
+    properties:
+      transactionId: {type: STRING, key: true, pattern: "^TX-[0-9]{4,6}$", description: "The transaction reference, TX- and four to six digits."}
+      name: {type: STRING, description: "The transaction as a document names it."}
+      side: {type: STRING, one_of: [buy, sell, transfer-in, transfer-out], description: "What the transaction did.", extensions: {custom: {relate-examples: {extract: true, ask: "what the transaction did, buy or sell"}}}}
+      amount: {type: FLOAT, description: "The consideration in the account's base currency.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the sum of money the trade moved, such as £410,000"}}}}
+      tradeDate: {type: DATE, description: "The trade date.", extensions: {custom: {relate-examples: {extract: true, ask: "the date of the trade, such as 22 September 2026"}}}}
+    extensions:
+      display: {x: 120, y: 0, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a trade, order or transfer in an account, identified by a reference such as TX-4471", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Arjun Mehta}
+  Decision:
+    label: Decision
+    description: >-
+      An investment or compliance decision recorded by the firm (a rebalance, a trim, an approval or a
+      waiver), named the way the file names it ("the Rebalancing Decision"). Decisions cause trades,
+      follow earlier decisions and apply policies.
+    aliases: [investment decision, rebalance, approval, waiver, ruling]
+    properties:
+      name: {type: STRING, key: true, description: "The decision as the file names it."}
+      decisionType: {type: STRING, one_of: [rebalance, trim, purchase, approval, waiver, escalation], description: "What kind of decision it was."}
+      decidedOn: {type: DATE, description: "The date the decision was recorded.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the decision was recorded, such as 18 September 2026"}}}}
+    extensions:
+      display: {x: 360, y: -80, colour: "#8b5cf6"}
+      custom:
+        relate-examples: {ask: "an investment or compliance decision recorded by the firm, such as a rebalance, trim, approval or waiver, named as the file names it", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: from-decision-to-trades
+            category: path
+            question: Which trades did each decision lead to, in which accounts and securities, and who recommended it?
+            description: Every decision with the transactions it caused, each transaction's account and security, and the decision's recommenders.
+            teaches: Start from the decision and fan out; OPTIONAL MATCH on each side keeps a trade whose account or security the text leaves out.
+            cypher: |-
+              MATCH (d:Decision)-[:CAUSED]->(t:Transaction)
+              OPTIONAL MATCH (t)-[:EXECUTED_IN]->(a:Account)
+              OPTIONAL MATCH (t)-[:INVOLVES]->(s:Security)
+              OPTIONAL MATCH (d)-[:RECOMMENDED_BY]->(adv:Advisor)
+              RETURN d.name AS decision, t.name AS trade, collect(DISTINCT a.name) AS accounts,
+                     collect(DISTINCT s.name) AS securities, collect(DISTINCT adv.name) AS recommended_by
+              ORDER BY decision, trade
+          - type: canonicalQuery
+            name: decisions-before-this-one
+            category: path
+            question: Which earlier decisions does this decision follow?
+            description: The chain of PRECEDED_BY links back from a decision, up to four steps.
+            teaches: A bounded variable-length pattern (*1..4) walks a chain without risking an unbounded search.
+            cypher: |-
+              MATCH p = (d:Decision)-[:PRECEDED_BY*1..4]->(:Decision)
+              WHERE toLower(d.name) CONTAINS toLower($decision)
+              RETURN d.name AS decision, [n IN nodes(p) | n.name] AS chain, length(p) AS steps
+              ORDER BY steps
+            parameters:
+              - {name: decision, type: STRING, description: "Part of the decision's name.", example: Trim}
+  Policy:
+    label: Policy
+    description: >-
+      A rule the firm or its regulator sets for the accounts it runs (a concentration limit, a
+      suitability rule, a best-execution or conflicts policy), named by its title. Decisions apply
+      policies; trades can breach them.
+    aliases: [rule, limit, guideline, mandate restriction]
+    reference: https://schema.org/DigitalDocument
+    properties:
+      name: {type: STRING, key: true, description: "The policy's title."}
+      category: {type: STRING, one_of: [concentration, suitability, best execution, conflicts, anti-money-laundering], description: "What the policy governs."}
+      threshold: {type: FLOAT, description: "The limit a concentration policy sets, as a fraction of an account (0.10)."}
+      effectiveFrom: {type: DATE, description: "The date the policy took effect."}
+    extensions:
+      display: {x: 360, y: -240, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "an internal or regulatory rule the firm applies, such as a concentration limit or suitability policy, named by its title", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: policies-applied-and-breached
+            category: aggregation
+            question: Which policies were applied by decisions or breached by trades, and how often?
+            description: Per policy, the decisions that applied it and the transactions that breached it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (p:Policy)
+              OPTIONAL MATCH (d:Decision)-[:APPLIED]->(p)
+              OPTIONAL MATCH (t:Transaction)-[:BREACHED]->(p)
+              RETURN p.name AS policy, count(DISTINCT d) AS applied_by, count(DISTINCT t) AS breaches
+              ORDER BY breaches DESC, applied_by DESC, policy
+  Regulator:
+    label: Regulator
+    description: >-
+      The public authority that authorises and supervises a firm (the Financial Conduct Authority, the
+      SEC), named in full or by its initials.
+    aliases: [supervisor, authority, watchdog]
+    reference: https://schema.org/GovernmentOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The regulator's name."}
+      jurisdiction: {type: STRING, description: "The country the regulator acts for, as an ISO 3166 alpha-2 code (GB)."}
+    extensions:
+      display: {x: 120, y: -360, colour: "#b91c1c"}
+      custom:
+        relate-examples: {ask: "a public financial regulator or supervisory authority, such as the Financial Conduct Authority", proper: true}
+relationships:
+  clientOwnsAccount:
+    type: OWNS
+    description: >-
+      The client owns the account: exactly one owner per account in this ontology; a client may own
+      several accounts.
+    aliases: [holds, is the owner of, opened]
+    from: {node: Client}
+    to: {node: Account, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: owns}
+  advisorManagesAccount:
+    type: MANAGES
+    description: >-
+      The advisor manages the account day to day; an account has one or more managers, and an advisor
+      manages many accounts.
+    aliases: [runs, looks after, is responsible for]
+    from: {node: Advisor}
+    to: {node: Account}
+    extensions:
+      custom:
+        relate-examples: {phrase: manages}
+  advisorAdvisesClient:
+    type: ADVISES
+    description: >-
+      The advisor gives the client advice, whoever manages the client's accounts; many to many.
+    aliases: [is the adviser of, counsels]
+    from: {node: Advisor}
+    to: {node: Client}
+    extensions:
+      custom:
+        relate-examples: {phrase: advises}
+  advisorEmployedByFirm:
+    type: EMPLOYED_BY
+    description: >-
+      The advisor works for the firm; one employer per advisor in this ontology, many advisors per firm.
+    aliases: [works for, is a partner at, is a director of]
+    from: {node: Advisor}
+    to: {node: Firm, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: works for}
+  accountHeldAtFirm:
+    type: HELD_AT
+    description: >-
+      The account is held and administered at the firm; one firm per account, many accounts per firm.
+    aliases: [is custodied at, is booked at]
+    from: {node: Account}
+    to: {node: Firm, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is held at}
+  accountHoldsSecurity:
+    type: HOLDS
+    description: >-
+      The account holds a position in the security at the time the document describes; many to many.
+    aliases: [has a position in, owns units of, is invested in]
+    from: {node: Account}
+    to: {node: Security}
+    extensions:
+      custom:
+        relate-examples: {phrase: holds}
+  securityIssuedByIssuer:
+    type: ISSUED_BY
+    description: >-
+      The security was issued by the issuer; one issuer per security, many securities per issuer.
+    aliases: [is a bond of, is a share of]
+    from: {node: Security}
+    to: {node: Issuer, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was issued by}
+  transactionInAccount:
+    type: EXECUTED_IN
+    description: >-
+      The transaction was executed in the account; one account per transaction, many transactions per
+      account.
+    aliases: [was booked to, was placed in]
+    from: {node: Transaction}
+    to: {node: Account, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was executed in}
+  transactionInvolvesSecurity:
+    type: INVOLVES
+    description: >-
+      The transaction bought or sold the security; a trade involves one security, a security many trades.
+    aliases: [bought, sold, traded]
+    from: {node: Transaction}
+    to: {node: Security, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: traded}
+  transactionBreachedPolicy:
+    type: BREACHED
+    description: >-
+      The transaction took an account outside the policy (over a concentration limit, say); recorded
+      when the firm's monitoring found it; many to many.
+    aliases: [broke, exceeded, contravened]
+    from: {node: Transaction}
+    to: {node: Policy}
+    extensions:
+      custom:
+        relate-examples: {phrase: breached}
+  decisionCausedTransaction:
+    type: CAUSED
+    description: >-
+      The decision led to the transaction; a decision may cause several trades, a trade has one cause.
+    aliases: [led to, resulted in, triggered]
+    from: {node: Decision}
+    to: {node: Transaction}
+    extensions:
+      custom:
+        relate-examples: {phrase: led to}
+  decisionRecommendedByAdvisor:
+    type: RECOMMENDED_BY
+    description: >-
+      The advisor recommended or proposed the decision; one or more advisors per decision.
+    aliases: [was proposed by, was advised by, was signed off by]
+    from: {node: Decision}
+    to: {node: Advisor}
+    extensions:
+      custom:
+        relate-examples: {phrase: was recommended by}
+  decisionAppliedPolicy:
+    type: APPLIED
+    description: >-
+      The decision applied the policy: it was taken to comply with it, or cites it; many to many.
+    aliases: [cited, followed, was taken under]
+    from: {node: Decision}
+    to: {node: Policy}
+    extensions:
+      custom:
+        relate-examples: {phrase: applied}
+  decisionPrecededByDecision:
+    type: PRECEDED_BY
+    description: >-
+      The decision came after the other, earlier decision, which it builds on or reverses; read from the
+      later decision to the earlier one.
+    aliases: [followed, came after, superseded]
+    from: {node: Decision}
+    to: {node: Decision}
+    extensions:
+      custom:
+        relate-examples: {phrase: was preceded by}
+  firmSupervisedByRegulator:
+    type: SUPERVISED_BY
+    description: >-
+      The firm is authorised and supervised by the regulator; a firm may answer to several regulators.
+    aliases: [is regulated by, is authorised by]
+    from: {node: Firm}
+    to: {node: Regulator}
+    extensions:
+      custom:
+        relate-examples: {phrase: is regulated by}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Financial Services
+      card:
+        title: Financial Services
+        description: Trace clients, advisors, accounts and trades through to the decisions behind them and the policies they answer to.
+      source:
+        derived_from: create-context-graph's financial-services.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Client and Advisor, Organization
+          became Firm, Issuer and Regulator; Account, Transaction, Decision, Policy and Security keep their
+          meaning with new descriptions and properties; the links were renamed for their meaning and given
+          cardinalities; the tools were written anew for an extracted graph.

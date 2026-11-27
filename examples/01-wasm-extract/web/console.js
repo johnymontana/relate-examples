@@ -949,7 +949,7 @@ export function prefillPlan(tool, name, kind) {
  * An allowlist: a `_` label not listed here (a later build's) shows, and audit.txt fails unless every
  * internal label (ontology.js INTERNAL_LABELS) is either this, the ontology layer or `_Entity`.
  */
-export const BOOKKEEPING_LABELS = Object.freeze(['_Document', '_Section', '_Sentence', '_Inference', '_InferencePart', '_Mention', '_Claim', '_Run',
+export const BOOKKEEPING_LABELS = Object.freeze(['_Document', '_Section', '_Sentence', '_Inference', '_InferencePart', '_Mention', '_Claim', '_Attribute', '_Run',
   '_Verdict', '_Gold']);
 /** The ontology layer (ontology.js): the stored document and the kinds, links and aliases derived from it. Content: shown. */
 export const ONTOLOGY_LABELS = Object.freeze(['_Ontology', '_Kind', '_LinkType', '_Alias']);

@@ -88,8 +88,8 @@ const OGS_SDK_RUNTIME = [
 ];
 
 /** The page's modules, in web/; every other web/*.js is an error (a module build.mjs forgot). */
-const WEB_MODULES = ['app.js', 'console.js', 'convert.js', 'export.js', 'gliner.js', 'graphview.js', 'models.js', 'names.js',
-  'ogs.js', 'ontology.js', 'opfs.js', 'pipeline.js', 'split.js', 'store.js', 'tar.js', 'tonvl.js', 'worker.js'];
+const WEB_MODULES = ['app.js', 'console.js', 'convert.js', 'export.js', 'gliner.js', 'graphview.js', 'markdown.js', 'models.js', 'names.js',
+  'ogs.js', 'ontology.js', 'opfs.js', 'pipeline.js', 'split.js', 'store.js', 'studio.js', 'tar.js', 'tonvl.js', 'worker.js'];
 const WEB_STATIC = ['index.html', 'style.css', 'favicon.svg'];
 /** The esbuild outputs of `npm run vendor` and their metafiles (the bundled npm packages are read from these). */
 const VENDOR_BUNDLES = ['nvl.js', 'HierarchicalLayout.worker.js'];
@@ -705,34 +705,47 @@ export function plan() {
 
   // data and queries
   const dataDir = path.join(EX, 'data');
-  // The ontologies, as Ontology Graph Spec v1 documents (data/ontologies/ogs/ccg/, harness/convert.mjs):
-  // create-context-graph's domains. index.json is the page's list. The base, _base.yaml, ships for a
-  // create-context-graph file pasted or uploaded into the page (its `inherits: _base`); the originals the
-  // documents were converted from stay in the repository.
-  const docs = (/** @type {string} */ group) => fs.readdirSync(path.join(dataDir, 'ontologies', 'ogs', group))
-    .filter((f) => f.endsWith('.ontology.yaml')).sort(cmp).map((f) => `ogs/${group}/${f}`);
-  const ccg = docs('ccg');
-  for (const f of ccg) {
-    if (!/^ogs\/ccg\/[A-Za-z0-9_-]+\.ontology\.yaml$/.test(f)) throw new BuildError(`data/ontologies/${f} is not a plain .ontology.yaml name`);
+  // The ontologies, as Ontology Graph Spec 1.1 documents, in two families (index.json is the page's list):
+  // the curated domains (data/ontologies/domains/, D20) and Neo4j's solution packages converted with this
+  // repository's overlays (data/ontologies/ogs/studio/, harness/convert.mjs, D21). Each package's human
+  // description ships for the page's About drawer, and its NOTICE (FIBO's copyright lines) with it. The base,
+  // _base.yaml, ships for a create-context-graph file pasted or uploaded into the page (its `inherits: _base`).
+  const docs = (/** @type {string} */ dir) => (fs.existsSync(path.join(dataDir, 'ontologies', dir))
+    ? fs.readdirSync(path.join(dataDir, 'ontologies', dir)).filter((f) => f.endsWith('.ontology.yaml')).sort(cmp).map((f) => `${dir}/${f}`) : []);
+  const curated = docs('domains');
+  const studio = docs('ogs/studio');
+  for (const f of [...curated, ...studio]) {
+    if (!/^(?:domains|ogs\/studio)\/[A-Za-z0-9_-]+\.ontology\.yaml$/.test(f)) throw new BuildError(`data/ontologies/${f} is not a plain .ontology.yaml name`);
     add(`data/ontologies/${f}`, { from: path.join(dataDir, 'ontologies', f) });
   }
-  if (!ccg.length) throw new BuildError('data/ontologies/ogs/ccg/ has no converted documents: run node harness/convert.mjs');
-  add('data/ontologies/ogs/SOURCE.md', { from: path.join(dataDir, 'ontologies/ogs/SOURCE.md') });
+  if (!curated.length) throw new BuildError('data/ontologies/domains/ has no curated documents');
+  if (!studio.length) throw new BuildError('data/ontologies/ogs/studio/ has no converted packages: run node harness/convert.mjs');
+  for (const f of ['domains/SOURCE.md', 'ogs/SOURCE.md', 'studio/SOURCE.md', 'studio/manifest.json']) {
+    if (fs.existsSync(path.join(dataDir, 'ontologies', f))) add(`data/ontologies/${f}`, { from: path.join(dataDir, 'ontologies', f) });
+  }
+  for (const f of studio) {
+    const pkg = path.basename(f, '.ontology.yaml');
+    for (const g of ['human_description.md', 'NOTICE.md']) {
+      const src = path.join(dataDir, 'ontologies', 'studio', pkg, g);
+      if (fs.existsSync(src)) add(`data/ontologies/studio/${pkg}/${g}`, { from: src });
+    }
+  }
   const bases = fs.readdirSync(path.join(dataDir, 'ontologies', 'ccg')).filter((f) => /^_[A-Za-z0-9_-]+\.yaml$/.test(f)).sort(cmp);
-  if (!bases.includes('_base.yaml')) throw new BuildError('data/ontologies/ccg/_base.yaml is missing: create-context-graph\'s domains inherit it');
+  if (!bases.includes('_base.yaml')) throw new BuildError('data/ontologies/ccg/_base.yaml is missing: a pasted create-context-graph file inherits it');
   for (const f of [...bases, 'SOURCE.md', 'LICENSE-create-context-graph.txt']) add(`data/ontologies/ccg/${f}`, { from: path.join(dataDir, 'ontologies/ccg', f) });
   for (const f of ['ontology-graph-spec.schema.json', 'LICENSE-graph-spec.txt', 'SOURCE.md']) add(`data/ontology-spec/${f}`, { from: path.join(dataDir, 'ontology-spec', f) });
   const index = {
     bases: Object.fromEntries(bases.map((f) => [f.replace(/\.yaml$/, ''), `ccg/${f}`])),
     groups: [
-      { id: 'ccg', label: 'create-context-graph', files: ccg },
+      { id: 'domains', label: 'Curated domains', files: curated },
+      { id: 'studio', label: "Neo4j's solution packages", files: studio },
     ],
   };
   add('data/ontologies/index.json', { data: () => Buffer.from(`${JSON.stringify(index, null, 2)}\n`) });
   const samples = JSON.parse(fs.readFileSync(path.join(dataDir, 'samples/samples.json'), 'utf8'));
   add('data/samples/samples.json', { from: path.join(dataDir, 'samples/samples.json') });
   for (const s of [...samples].sort((a, b) => cmp(a.file, b.file))) {
-    if (!/^(?:[A-Za-z0-9_-]+\/)?[A-Za-z0-9_-]+\.md$/.test(s.file)) throw new BuildError(`data/samples/samples.json: ${JSON.stringify(s.file)} is not a plain .md name`);
+    if (!/^(?:[A-Za-z0-9_-]+\/){0,2}[A-Za-z0-9_-]+\.md$/.test(s.file)) throw new BuildError(`data/samples/samples.json: ${JSON.stringify(s.file)} is not a plain .md name`);
     add(`data/samples/${s.file}`, { from: path.join(dataDir, 'samples', s.file) });
   }
   add('data/LICENSE-edgextract.txt', { from: path.join(dataDir, 'LICENSE-edgextract.txt') });

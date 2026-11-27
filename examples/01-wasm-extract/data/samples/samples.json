@@ -1,272 +1,38 @@
 [
   {
-    "id": "agent-memory",
-    "label": "Agent Memory",
-    "ontology": "agent-memory",
-    "group": "ccg",
-    "blurb": "Agent Session Log (create-context-graph's agent_session_log template): “Billing Agent Session Log, 14 March 2026”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/agent-memory.md",
-    "gold": "ccg/agent-memory.gold.json",
-    "source": "written for example 01 from create-context-graph's agent_session_log template (707b168)"
-  },
-  {
-    "id": "conservation",
-    "label": "Conservation",
-    "ontology": "conservation",
-    "group": "ccg",
-    "blurb": "Impact Assessment (create-context-graph's impact_assessment template): “Impact Assessment: Year Three at Marrow Fen”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/conservation.md",
-    "gold": "ccg/conservation.gold.json",
-    "source": "written for example 01 from create-context-graph's impact_assessment template (707b168)"
-  },
-  {
-    "id": "cybersecurity",
-    "label": "Cybersecurity",
-    "ontology": "cybersecurity",
-    "group": "ccg",
-    "blurb": "Incident Report (create-context-graph's incident_report template): “Incident Report: Payroll Portal Intrusion”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/cybersecurity.md",
-    "gold": "ccg/cybersecurity.gold.json",
-    "source": "written for example 01 from create-context-graph's incident_report template (707b168)"
-  },
-  {
-    "id": "data-journalism",
-    "label": "Data Journalism",
-    "ontology": "data-journalism",
-    "group": "ccg",
-    "blurb": "Fact-Check Report (create-context-graph's fact_check_report template): “Fact-Check: Have the County's Poor Bridges Been Repaired?”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/data-journalism.md",
-    "gold": "ccg/data-journalism.gold.json",
-    "source": "written for example 01 from create-context-graph's fact_check_report template (707b168)"
-  },
-  {
-    "id": "digital-twin",
-    "label": "Digital Twin",
-    "ontology": "digital-twin",
-    "group": "ccg",
-    "blurb": "Alert Digest (create-context-graph's alert_digest template): “Alert Digest: Cooling Loop B, 18 to 24 May”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/digital-twin.md",
-    "gold": "ccg/digital-twin.gold.json",
-    "source": "written for example 01 from create-context-graph's alert_digest template (707b168)"
-  },
-  {
-    "id": "education",
-    "label": "Education",
-    "ontology": "education",
-    "group": "ccg",
-    "blurb": "Student Progress Report (create-context-graph's progress_report template): “Midterm Progress Report: Tomas Ferreira”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/education.md",
-    "gold": "ccg/education.gold.json",
-    "source": "written for example 01 from create-context-graph's progress_report template (707b168)"
-  },
-  {
     "id": "financial-services",
     "label": "Financial Services",
     "ontology": "financial-services",
-    "group": "ccg",
-    "blurb": "Compliance Memo (create-context-graph's compliance_memo template): “Compliance Memo: Concentration Review, 6 October 2026”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/financial-services.md",
-    "gold": "ccg/financial-services.gold.json",
-    "source": "written for example 01 from create-context-graph's compliance_memo template (707b168)"
+    "group": "domains",
+    "role": "primary",
+    "case": "cm-2026-031",
+    "blurb": "Compliance memo: “Issuer concentration in ACC-2207”, a single-issuer breach and the decisions around it. Synthetic: written for this example; its people, firms, accounts and securities are fictional, the cities and the regulator real.",
+    "file": "domains/financial-services/compliance-memo.md",
+    "gold": "domains/financial-services/compliance-memo.gold.json",
+    "source": "written for example 01 under its curated Financial Services ontology, after create-context-graph’s compliance memo template (707b168)"
   },
   {
-    "id": "gaming",
-    "label": "Gaming",
-    "ontology": "gaming",
-    "group": "ccg",
-    "blurb": "Guild Communication (create-context-graph's guild_communication template): “Raid Night: Sunken Bastion on Heroic”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/gaming.md",
-    "gold": "ccg/gaming.gold.json",
-    "source": "written for example 01 from create-context-graph's guild_communication template (707b168)"
+    "id": "financial-services/risk-review",
+    "label": "Financial Services",
+    "ontology": "financial-services",
+    "group": "domains",
+    "role": "companion",
+    "case": "cm-2026-031",
+    "blurb": "Quarterly risk review of ACC-1980, the same client’s ISA: a companion to the compliance memo. Synthetic, as the memo.",
+    "file": "domains/financial-services/risk-review.md",
+    "gold": "domains/financial-services/risk-review.gold.json",
+    "source": "written for example 01 under its curated Financial Services ontology, after create-context-graph’s risk assessment template (707b168)"
   },
   {
-    "id": "genai-llm-ops",
-    "label": "GenAI & LLM Ops",
-    "ontology": "genai-llm-ops",
-    "group": "ccg",
-    "blurb": "Evaluation Report (create-context-graph's eval_report template): “Evaluation Report: Skerry-7B Claims Model”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/genai-llm-ops.md",
-    "gold": "ccg/genai-llm-ops.gold.json",
-    "source": "written for example 01 from create-context-graph's eval_report template (707b168)"
-  },
-  {
-    "id": "gis-cartography",
-    "label": "GIS & Cartography",
-    "ontology": "gis-cartography",
-    "group": "ccg",
-    "blurb": "Spatial Analysis Report (create-context-graph's spatial_analysis template): “Spatial Analysis: Mill Creek Flood Zones”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/gis-cartography.md",
-    "gold": "ccg/gis-cartography.gold.json",
-    "source": "written for example 01 from create-context-graph's spatial_analysis template (707b168)"
-  },
-  {
-    "id": "golf-sports",
-    "label": "Golf Sports",
-    "ontology": "golf-sports",
-    "group": "ccg",
-    "blurb": "Tournament Recap (create-context-graph's tournament_recap template): “Tournament Recap: Harrow Cup”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/golf-sports.md",
-    "gold": "ccg/golf-sports.gold.json",
-    "source": "written for example 01 from create-context-graph's tournament_recap template (707b168)"
-  },
-  {
-    "id": "government",
-    "label": "Government",
-    "ontology": "government",
-    "group": "ccg",
-    "blurb": "Policy Brief (create-context-graph's policy_brief template): “Policy Brief: Home Heat Resilience Policy”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/government.md",
-    "gold": "ccg/government.gold.json",
-    "source": "written for example 01 from create-context-graph's policy_brief template (707b168)"
-  },
-  {
-    "id": "healthcare",
-    "label": "Healthcare",
-    "ontology": "healthcare",
-    "group": "ccg",
-    "blurb": "Discharge Summary (create-context-graph's discharge_summary template): “Discharge Summary: Eleanor Vasquez”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/healthcare.md",
-    "gold": "ccg/healthcare.gold.json",
-    "source": "written for example 01 from create-context-graph's discharge_summary template (707b168)"
-  },
-  {
-    "id": "hospitality",
-    "label": "Hospitality",
-    "ontology": "hospitality",
-    "group": "ccg",
-    "blurb": "Service Request Log (create-context-graph's service_request template): “Service Request Log: Vellardo Terrace Hotel”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/hospitality.md",
-    "gold": "ccg/hospitality.gold.json",
-    "source": "written for example 01 from create-context-graph's service_request template (707b168)"
-  },
-  {
-    "id": "legal",
-    "label": "Legal",
-    "ontology": "legal",
-    "group": "ccg",
-    "blurb": "Case Summary (create-context-graph's case_summary template): “Case Summary: Delgado Wage-Statement Dispute, 26-CV-0419”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/legal.md",
-    "gold": "ccg/legal.gold.json",
-    "source": "written for example 01 from create-context-graph's case_summary template (707b168)"
-  },
-  {
-    "id": "manufacturing",
-    "label": "Manufacturing",
-    "ontology": "manufacturing",
-    "group": "ccg",
-    "blurb": "Quality Audit (create-context-graph's quality_audit template): “Quality Audit: B-7 Body Casting on Line 3”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/manufacturing.md",
-    "gold": "ccg/manufacturing.gold.json",
-    "source": "written for example 01 from create-context-graph's quality_audit template (707b168)"
-  },
-  {
-    "id": "oil-gas",
-    "label": "Oil & Gas",
-    "ontology": "oil-gas",
-    "group": "ccg",
-    "blurb": "Safety Inspection Report (create-context-graph's safety_inspection template): “Safety Inspection Report: Corsair 14-2H”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/oil-gas.md",
-    "gold": "ccg/oil-gas.gold.json",
-    "source": "written for example 01 from create-context-graph's safety_inspection template (707b168)"
-  },
-  {
-    "id": "options-intelligence",
-    "label": "Options Intelligence",
-    "ontology": "options-intelligence",
-    "group": "ccg",
-    "blurb": "Trade Journal Entry (create-context-graph's trade_journal template): “Trade Journal: the HLX Put Trade”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/options-intelligence.md",
-    "gold": "ccg/options-intelligence.gold.json",
-    "source": "written for example 01 from create-context-graph's trade_journal template (707b168)"
-  },
-  {
-    "id": "personal-knowledge",
-    "label": "Personal Knowledge",
-    "ontology": "personal-knowledge",
-    "group": "ccg",
-    "blurb": "Project Update (create-context-graph's project_update template): “Project Update: Backyard Kiln Build”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/personal-knowledge.md",
-    "gold": "ccg/personal-knowledge.gold.json",
-    "source": "written for example 01 from create-context-graph's project_update template (707b168)"
-  },
-  {
-    "id": "product-management",
-    "label": "Product Management",
-    "ontology": "product-management",
-    "group": "ccg",
-    "blurb": "Product Requirements Document (create-context-graph's prd template): “PRD: Printer Pool Routing”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/product-management.md",
-    "gold": "ccg/product-management.gold.json",
-    "source": "written for example 01 from create-context-graph's prd template (707b168)"
-  },
-  {
-    "id": "real-estate",
-    "label": "Real Estate",
-    "ontology": "real-estate",
-    "group": "ccg",
-    "blurb": "Closing Document (create-context-graph's closing_doc template): “Closing Summary: Juniper Lane House”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/real-estate.md",
-    "gold": "ccg/real-estate.gold.json",
-    "source": "written for example 01 from create-context-graph's closing_doc template (707b168)"
-  },
-  {
-    "id": "retail-ecommerce",
-    "label": "Retail & E-Commerce",
-    "ontology": "retail-ecommerce",
-    "group": "ccg",
-    "blurb": "Support Ticket (create-context-graph's support_ticket template): “Support Ticket: Cracked Kettle Handle”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/retail-ecommerce.md",
-    "gold": "ccg/retail-ecommerce.gold.json",
-    "source": "written for example 01 from create-context-graph's support_ticket template (707b168)"
-  },
-  {
-    "id": "scientific-research",
-    "label": "Scientific Research",
-    "ontology": "scientific-research",
-    "group": "ccg",
-    "blurb": "Publication Draft (create-context-graph's publication_draft template): “Draft: Drought Roots in Sorghum, Introduction and Methods”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/scientific-research.md",
-    "gold": "ccg/scientific-research.gold.json",
-    "source": "written for example 01 from create-context-graph's publication_draft template (707b168)"
-  },
-  {
-    "id": "software-engineering",
-    "label": "Software Engineering",
-    "ontology": "software-engineering",
-    "group": "ccg",
-    "blurb": "Incident Report (create-context-graph's incident_report template): “Post-Incident Report: Checkout Timeouts”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/software-engineering.md",
-    "gold": "ccg/software-engineering.gold.json",
-    "source": "written for example 01 from create-context-graph's incident_report template (707b168)"
-  },
-  {
-    "id": "trip-planning",
-    "label": "Trip Planning",
-    "ontology": "trip-planning",
-    "group": "ccg",
-    "blurb": "Itinerary Document (create-context-graph's itinerary_doc template): “Itinerary: Douro Weekend”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/trip-planning.md",
-    "gold": "ccg/trip-planning.gold.json",
-    "source": "written for example 01 from create-context-graph's itinerary_doc template (707b168)"
-  },
-  {
-    "id": "vacation-industry",
-    "label": "Vacation Industry",
-    "ontology": "vacation-industry",
-    "group": "ccg",
-    "blurb": "Booking Confirmation (create-context-graph's booking_confirmation template): “Booking Confirmation: June Booking, Reef Point Resort”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/vacation-industry.md",
-    "gold": "ccg/vacation-industry.gold.json",
-    "source": "written for example 01 from create-context-graph's booking_confirmation template (707b168)"
-  },
-  {
-    "id": "wildlife-management",
-    "label": "Wildlife Management",
-    "ontology": "wildlife-management",
-    "group": "ccg",
-    "blurb": "Field Report (create-context-graph's field_report template): “Field Report: Sakuti Riverine Belt”. Synthetic: written for this example; its people, organisations, identifiers, events and sites are fictional, the cities and regions real.",
-    "file": "ccg/wildlife-management.md",
-    "gold": "ccg/wildlife-management.gold.json",
-    "source": "written for example 01 from create-context-graph's field_report template (707b168)"
+    "id": "insurance-claims-fraud",
+    "label": "Insurance Claims Fraud",
+    "ontology": "insurance-claims-fraud",
+    "group": "studio",
+    "role": "primary",
+    "case": "siu-2025-0412",
+    "blurb": "SIU referral memo: “Special Investigations Unit referral SIU-2025-0412”, a staged-accident ring around one vehicle. Synthetic: written for this example from the package’s sample data; its people, claims and vehicles are synthetic, the places real.",
+    "file": "studio/insurance-claims-fraud/siu-referral.md",
+    "gold": "studio/insurance-claims-fraud/siu-referral.gold.json",
+    "source": "written for example 01 from the sample data of Neo4j’s insurance-claims-fraud package (studio-agent-use-cases b76f767)"
   }
 ]

@@ -37,6 +37,8 @@
 import { extractRaw, normalize, relationPhrase, utf16Index } from './gliner.js';
 import { mentionName, PRONOUNS } from './names.js';
 import { splitSentences, utf8Length } from './split.js';
+import { parseValue } from './values.js';
+import { firstSentence } from './ontology.js';
 import * as store from './store.js';
 import { sha256 } from '../../../lib/replay.mjs';
 
@@ -102,20 +104,93 @@ export function modelSchema(o, { threshold = FLOOR, asked = 'ontology' } = {}) {
     return t.ask;
   };
   const kinds = o.types.map((t) => ({ id: t.id, ask: askOf(t) })).filter((t) => t.ask !== null);
-  const relations = o.relations.map((r) => (asked === 'ids' ? relationPhrase(r.id) : r.ask ?? relationPhrase(r.id)));
+  // A link the ontology does not ask (ontology.js: ask null) is left out, under both ways of asking.
+  const rels = o.relations.filter((r) => r.ask !== null)
+    .map((r) => ({ id: r.id, ask: asked === 'ids' ? relationPhrase(r.id) : r.ask ?? relationPhrase(r.id) }));
+  const relations = rels.map((r) => r.ask);
+  // D27: a kind with extracted properties is a structure named by its label text: the anchor field, named by the
+  // label too and described by the kind's ask's first sentence, then one field per property (a choice field for a
+  // vocabulary or a BOOLEAN). Not under asked 'ids' (experiment B's schema).
+  const structured = asked === 'ids' ? [] : o.types.filter((t) => t.ask && (t.attributes ?? []).length);
+  const plain = (/** @type {string|null} */ d) => (d ? firstSentence(d).replace(/[;=|[\]]|::/g, ',').trim() : '');
+  const structures = structured.map((t) => ({
+    name: /** @type {any} */ (t.ask).label,
+    fields: [
+      { name: /** @type {any} */ (t.ask).label, ...(plain(/** @type {any} */ (t.ask).description) ? { description: plain(/** @type {any} */ (t.ask).description) } : {}) },
+      ...t.attributes.map((a) => ({
+        name: a.field,
+        ...(a.type === 'BOOLEAN' ? { choices: ['yes', 'no'] } : a.type === 'STRING' && a.oneOf ? { choices: a.oneOf.map(String) } : {}),
+        ...(a.ask ? { description: a.ask } : {}),
+      })),
+    ],
+  }));
   return {
     schema: {
       entities: kinds.map((t) => ({ id: /** @type {any} */ (t.ask).label, description: /** @type {any} */ (t.ask).description })),
       relations,
       threshold,
     },
+    // D27: the values are a second call of structures alone, so the first call (and its cache key) is the one a
+    // document without extracted properties makes: asked together, the structures shift the model's entities and
+    // relations (G12).
+    valueSchema: structures.length ? { entities: [], relations: [], structures, threshold } : null,
     kindOf: new Map(kinds.map((t) => [/** @type {any} */ (t.ask).label, t.id])),
-    relOf: new Map(relations.map((a, i) => [a, o.relations[i].id])),
+    relOf: new Map(rels.map((r) => [r.ask, r.id])),
+    /** structure name -> {kind, fields: field name -> the property as the kind declares it} */
+    structOf: new Map(structured.map((t) => [/** @type {any} */ (t.ask).label, { kind: t.id, anchor: /** @type {any} */ (t.ask).label, fields: new Map(t.attributes.map((a) => [a.field, a])) }])),
   };
 }
 
 /** Rust's char::is_alphanumeric. */
 const ALNUM = /[\p{Alphabetic}\p{N}]/u;
+/** A capital letter or a digit: what a proper name or an identifier holds (D26). */
+const CASED = /[\p{Lu}\p{Lt}\p{Nd}]/u;
+
+/**
+ * The kinds whose key pattern proposes identifiers (relate-examples propose, D26), as [kind, RegExp]
+ * in document order; a pattern JavaScript does not compile is left out (ontology.js keyPropertyOf).
+ * @param {import('./ontology.js').Ontology} o
+ * @returns {Array<[string, RegExp]>}
+ */
+export function proposedPatterns(o) {
+  return o.types.filter((t) => t.propose && t.keyPattern).map((t) => [t.id, new RegExp(t.keyPattern, 'u')]);
+}
+
+/**
+ * The identifiers in a sentence that a kind's key pattern matches whole (D26): each whitespace-separated
+ * token, trimmed of the punctuation around it, tested against every proposing kind's pattern in document
+ * order; the first that matches wins. Offsets are code points into the sentence, as gazetteerMentions'.
+ * @param {string} text  the sentence
+ * @param {Array<[string, RegExp]>} patterns  proposedPatterns
+ * @returns {Array<{start: number, end: number, text: string, label: string}>}
+ */
+export function patternMentions(text, patterns) {
+  if (!patterns.length) return [];
+  const cps = Array.from(text);
+  const out = [];
+  let i = 0;
+  while (i < cps.length) {
+    while (i < cps.length && /\s/u.test(cps[i])) i++;
+    let j = i;
+    while (j < cps.length && !/\s/u.test(cps[j])) j++;
+    let a = i;
+    let b = j;
+    while (a < b && /[\p{P}\p{S}]/u.test(cps[a])) a++;
+    while (b > a && /[\p{P}\p{S}]/u.test(cps[b - 1])) b--;
+    const token = cps.slice(a, b).join('');
+    if (token) {
+      for (const [label, re] of patterns) {
+        const m = re.exec(token);
+        if (m && m.index === 0 && m[0].length === token.length) {
+          out.push({ start: a, end: b, text: token, label });
+          break;
+        }
+      }
+    }
+    i = j;
+  }
+  return out;
+}
 
 /**
  * edgextract's GazetteerProposer (candidates.rs:48 at 3f08b1d): listed names found in a sentence,
@@ -156,6 +231,37 @@ export function gazetteerMentions(text, names) {
   return out.sort((a, b) => a.start - b.start || a.end - b.end);
 }
 
+/**
+ * D27: whether a sentence could state a value of an extracted property, so the second call (structures) is
+ * worth making: it has a digit and a property is a number or a date, or it holds a word of a property's
+ * vocabulary (case-insensitive, whole words), or a property is free text. A value the model reads needs a
+ * span in the sentence, so a sentence with none of these has no value to give.
+ * @param {string} text @param {import('./ontology.js').Ontology} o
+ */
+export function valueCue(text, o) {
+  const attrs = o.types.filter((t) => t.ask).flatMap((t) => t.attributes ?? []);
+  if (!attrs.length) return false;
+  if (attrs.some((a) => a.parse === 'STRING' && !a.oneOf)) return true;
+  if (/\p{Nd}/u.test(text) && attrs.some((a) => ['INTEGER', 'FLOAT', 'DATE', 'STRING-AS-DATE'].includes(a.parse))) return true;
+  const words = new Set(text.toLowerCase().split(/[^\p{L}\p{N}-]+/u).filter(Boolean));
+  const lower = text.toLowerCase();
+  return attrs.some((a) => (a.type === 'BOOLEAN' ? ['yes', 'no'] : (a.oneOf ?? []).map((x) => String(x).toLowerCase()))
+    .some((v) => (v.includes(' ') ? lower.includes(v) : words.has(v))));
+}
+
+/**
+ * Every model call extractDocument makes for a text, as {text, schema}: the first call for each sentence, and
+ * the second (D27's values) for each sentence valueCue lets through. The harnesses answer these up front.
+ * @param {import('./ontology.js').Ontology} o @param {string} text @param {{asked?: 'ontology'|'ids', threshold?: number}} [opts]
+ */
+export function modelRequests(o, text, opts = {}) {
+  const { schema, valueSchema } = modelSchema(o, opts);
+  return splitSentences(text).flatMap((s) => [
+    { text: s.text, schema },
+    ...(valueSchema && valueCue(s.text, o) ? [{ text: s.text, schema: valueSchema }] : []),
+  ]);
+}
+
 /** store.kindWordsOf: each kind's label words, for its mentions' names. */
 export const kindWordsOf = store.kindWordsOf;
 
@@ -180,8 +286,11 @@ export async function extractDocument(job) {
   const sentences = splitSentences(text);
   const sections = planSections(sentences, sectionChars);
   const doc = sha256(text);
-  const { schema, kindOf, relOf } = modelSchema(ontology, { asked });
+  const { schema, valueSchema, kindOf, relOf, structOf } = modelSchema(ontology, { asked });
+  const valueSchemaText = valueSchema ? JSON.stringify(valueSchema) : null;
   const words = kindWordsOf(ontology);
+  const proper = new Set(ontology.types.filter((t) => t.proper).map((t) => t.id));
+  const patterns = proposedPatterns(ontology);
   store.writeDocument(db, cl, { id: doc, title, chars: Array.from(text).length });
   const run = store.startRun(db, cl, { doc, model: modelInfo, floor: FLOOR, sections: sections.length, sentences: sentences.length });
   const done = store.completeSections(db, cl, doc);
@@ -195,7 +304,7 @@ export async function extractDocument(job) {
         c.skipped++;
         continue;
       }
-      const w = { doc, run, section: { key, n }, sentences: [], parts: [], inferences: [], inferred: [], mentions: [], claims: [] };
+      const w = { doc, run, section: { key, n }, sentences: [], parts: [], inferences: [], inferred: [], mentions: [], claims: [], attributes: [] };
       /** @type {Map<string, string>} inferences made in this section, before they are written */
       const fresh = new Map();
       for (const s of sentences.slice(a, b)) {
@@ -215,6 +324,25 @@ export async function extractDocument(job) {
         }
         w.inferred.push({ sentence: skey, inference: ckey });
         const out = normalize(raw, schema);
+        // D27: the second call, for the values (an inference of its own, task 'values', cached the same way)
+        /** @type {import('./gliner.js').StructureResult[]} */
+        let structures = [];
+        if (valueSchema && valueCue(s.text, ontology)) {
+          const vkey = store.cacheKey({ model: modelInfo, schema: valueSchema, floor: FLOOR, text: s.text });
+          let vraw = fresh.get(vkey) ?? store.readInference(db, cl, vkey);
+          if (vraw === null) {
+            vraw = extractRaw(model, s.text, valueSchema);
+            c.inferences++;
+            fresh.set(vkey, vraw);
+            const parts = store.splitParts(vraw);
+            w.inferences.push({ key: vkey, task: 'values', model: modelInfo.repo, rev: modelInfo.rev, weights: modelInfo.weights, build: modelInfo.build, floor: FLOOR, schema: valueSchemaText, parts: parts.length });
+            parts.forEach((t, i) => w.parts.push({ key: `${vkey}#${i}`, inference: vkey, n: i, text: t }));
+          } else {
+            c.hits++;
+          }
+          w.inferred.push({ sentence: skey, inference: vkey });
+          structures = normalize(vraw, valueSchema).structures;
+        }
         const slice = (x, y) => s.text.slice(utf16Index(s.text, x), utf16Index(s.text, y));
         const mentions = new Map();
         for (const e of out.entities) {
@@ -223,10 +351,19 @@ export async function extractDocument(job) {
           const surface = slice(e.start, e.end);
           if (surface !== e.text) c.offsetMismatches++;
           const mkey = `${skey}|m|${label}|${s.start + e.start}-${s.start + e.end}`;
-          mentions.set(mkey, { key: mkey, sentence: skey, doc, start: s.start + e.start, end: s.start + e.end, text: surface, label, name: mentionName(surface, words.get(label)), plain: mentionName(surface), p: e.score, source: 'model' });
+          // A kind of proper names (relate-examples proper, D26): a mention with no capital letter and no
+          // digit ("the claimant", "two other cars") names none, so it gets no canonical name and rule 0 drops it.
+          const named = !proper.has(label) || CASED.test(surface);
+          mentions.set(mkey, { key: mkey, sentence: skey, doc, start: s.start + e.start, end: s.start + e.end, text: surface, label, name: named ? mentionName(surface, words.get(label)) : '', plain: mentionName(surface), p: e.score, source: 'model' });
         }
         for (const g of gazetteerMentions(s.text, ontology.names)) {
           const mkey = `${skey}|g|${g.label}|${s.start + g.start}-${s.start + g.end}`;
+          mentions.set(mkey, { key: mkey, sentence: skey, doc, start: s.start + g.start, end: s.start + g.end, text: g.text, label: g.label, name: mentionName(g.text, words.get(g.label)), plain: mentionName(g.text), p: 1, source: 'gazetteer' });
+        }
+        // Identifiers a kind's key pattern proposes (relate-examples propose, D26) are listed names too:
+        // rule 1 keeps them at p = 1.0 and drops the model mentions they overlap.
+        for (const g of patternMentions(s.text, patterns)) {
+          const mkey = `${skey}|p|${g.label}|${s.start + g.start}-${s.start + g.end}`;
           mentions.set(mkey, { key: mkey, sentence: skey, doc, start: s.start + g.start, end: s.start + g.end, text: g.text, label: g.label, name: mentionName(g.text, words.get(g.label)), plain: mentionName(g.text), p: 1, source: 'gazetteer' });
         }
         w.mentions.push(...mentions.values());
@@ -244,6 +381,42 @@ export async function extractDocument(job) {
             hkeys: store.claimEndKeys(htext, words), tkeys: store.claimEndKeys(ttext, words) });
         }
         w.claims.push(...claims.values());
+        // D27: a value of an extracted property, one candidate per field the model gave a span in the sentence (a
+        // choice it did not read in the text has none), scored by the value's own confidence: the model reads values
+        // well and anchors them poorly (G12), so the gate's rule 8 joins the value to an entity by the mentions,
+        // not by the anchor alone. The anchor's span, when there is one, goes with it; one candidate per property and
+        // value span (the instance with the best anchor), its value parsed by the property's type.
+        for (const st of structures) {
+          const sx = structOf.get(st.name);
+          if (!sx) throw new Error(`pipeline: the model returned the structure ${JSON.stringify(st.name)}, which was not asked`);
+          /** @type {Map<string, any>} */
+          const best = new Map();
+          for (const inst of st.instances) {
+            const anchor = inst[sx.anchor];
+            const spanned = Boolean(anchor && anchor.start !== null && anchor.end !== null);
+            for (const [field, a] of sx.fields) {
+              const v = inst[field];
+              if (!v || v.start === null || v.end === null || !(v.score >= FLOOR)) continue;
+              const id = `${a.prop}|${v.start}-${v.end}`;
+              const ap = spanned ? /** @type {any} */ (anchor).score : -1;
+              if (best.has(id) && best.get(id).ap >= ap) continue;
+              best.set(id, { a, v, anchor: spanned ? anchor : null, ap });
+            }
+          }
+          for (const { a, v, anchor } of [...best.values()].sort((x, y) => x.v.start - y.v.start || x.v.end - y.v.end || (x.a.prop < y.a.prop ? -1 : x.a.prop > y.a.prop ? 1 : 0))) {
+            const text = slice(v.start, v.end);
+            const atext = anchor ? slice(anchor.start, anchor.end) : null;
+            const named = atext !== null && (!proper.has(sx.kind) || CASED.test(atext));
+            const parsed = parseValue(text, { type: a.parse ?? a.type, one_of: a.oneOf ?? undefined, pattern: a.pattern ?? undefined, form: a.form ?? null });
+            const [vs, ve] = [v.start, v.end].map((x) => s.start + x);
+            const [as, ae] = anchor ? [anchor.start, anchor.end].map((x) => s.start + x) : [null, null];
+            w.attributes.push({
+              key: `${skey}|a|${sx.kind}|${a.prop}|${vs}-${ve}`, sentence: skey, doc, kind: sx.kind, prop: a.prop, vtype: a.type,
+              anchor: atext, aname: named ? mentionName(/** @type {string} */ (atext), words.get(sx.kind)) : '', astart: as, aend: ae, ap: anchor ? anchor.score : null,
+              text, start: vs, end: ve, p: v.score, valid: parsed.ok, value: parsed.ok ? parsed.value : null, why: parsed.ok ? null : parsed.why,
+            });
+          }
+        }
       }
       store.writeSection(db, cl, w, onStep ? (step) => onStep(step, n) : undefined);
       c.written++;

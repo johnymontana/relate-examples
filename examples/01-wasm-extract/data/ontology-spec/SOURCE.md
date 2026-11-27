@@ -24,6 +24,17 @@ ships no NOTICE file.
 | `ontology-graph-spec.schema.json` | `ontology-graph-spec.schema.json` | `0e0d79e72ec257d5bbd67a4a41c2344b6b6f0931` |
 | `LICENSE-graph-spec.txt` | `LICENSE` | `261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64` |
 
+**Spec 1.0.0, beside it.** `ontology-graph-spec-1.0.0.schema.json` is the JSON Schema of spec 1.0.0
+(`$id` `https://neo4j.com/docs/ontology-graph-spec/1.0.0/schema.json`), copied verbatim from the
+same repository at tag `release-spec/v1.0.0`, commit `9c0e3e8c2d511bf689bfc682a281c0a7cee37a09`
+(`9c0e3e8`, committed 2026-10-21, fetched 2026-11-26), git blob
+`b64392b28614951c5e47fd15998ae9cd3a46d677`, sha256
+`56cd1364fa6d4f0222c24663c459521d2fb7edb45a9e229f0018cb4a1f797ca9`. The licence at that tag is the
+same blob as `LICENSE-graph-spec.txt`. The example never validates against it: Neo4j's solution
+packages (`../ontologies/studio/`) name 1.0.0, and `harness/ontology.mjs` pins that the 1.1.0 schema
+is this one with exactly one field added (a property's `aliases`), so a 1.0.0 document is read as
+1.1.0 by naming 1.1.0 (`web/ogs.js` `fromSpec10`, NOTES.md Y3).
+
 **How this example uses it.** `web/ogs.js` carries the same schema as a JavaScript object and
 validates documents with a small interpreter of the keywords the schema uses: the strict check,
 which refuses fields the spec does not have. Then the SDK, through `lib/ogs.mjs`, decodes each

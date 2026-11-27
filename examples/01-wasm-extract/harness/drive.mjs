@@ -58,6 +58,8 @@ import { splitSentences } from '../web/split.js';
 import * as store from '../web/store.js';
 import { CANDIDATE_SIZE, NODE_SIZE } from '../web/tonvl.js';
 import { GENERIC_TEXT, GENERIC_YAML } from './fixtures.mjs';
+import { loadOntologies } from './corpus.mjs';
+import { ccgConversions } from './convert.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EX = path.resolve(HERE, '..');
@@ -67,15 +69,15 @@ const GLINER_REV = '4fa741eec466660daf4adc8703210138295e0b1b';
 const SMALL = { repo: 'fastino/gliner2.5-small-v1', rev: '7132dc4561c3f94563c6147e75ffa8ef34c4964a', name: 'gliner2.5-small-v1' };
 const WASM_DIR = process.env.GLINER_WASM_DIR || path.join(ROOT, '.cache/gliner-wasm', GLINER_REV.slice(0, 7));
 const MODEL_DIR = process.env.GLINER_SMALL_DIR || path.join(ROOT, '.cache/gliner', `${SMALL.name}@${SMALL.rev.slice(0, 7)}`);
-/** The browser section's store: the page's default ontology, create-context-graph's financial-services domain. */
+/** The browser section's store: the page's default ontology, the curated Financial Services (D20). */
 const ONTOLOGY = 'financial-services';
 const STORE = `ex01-kg-${ONTOLOGY}`;
 /** The sample the browser section extracts there, and the Node side reproduces. */
 const SAMPLE = 'financial-services';
 /** The kept entity the graph tab clicks (its evidence must show). */
-const CLICK = { id: 'Person:DANA_WHITLOCK', title: 'Dana Whitlock' };
-/** An edge the financial-services graph type refuses: OWNS is typed (:Person)-[:OWNS]->(:Account). */
-const ILLEGAL = { label: '(:Account)-[:OWNS]->(:Person)', query: "CREATE (:Account {name: 'Probe'})-[:OWNS]->(:Person {name: 'Probe Person'})" };
+const CLICK = { id: 'Client:ARJUN_MEHTA', title: 'Arjun Mehta' };
+/** An edge the financial-services graph type refuses: OWNS is typed (:Client)-[:OWNS]->(:Account). */
+const ILLEGAL = { label: '(:Account)-[:OWNS]->(:Client)', query: "CREATE (:Account {name: 'Probe'})-[:OWNS]->(:Client {name: 'Probe Client'})" };
 /** The ontology the picker opens next (D14: another store), and where the engine is terminated mid-section. */
 const OTHER = 'software-engineering';
 const WATCHDOG_MS = 3000;
@@ -120,13 +122,9 @@ function nodeEnv() {
     const modelInfo = { repo: SMALL.repo, rev: SMALL.rev, weights: sums.get('model.safetensors'), build: pipeline.BUILD };
     /** @type {Map<string, any>} */
     const ontologies = new Map();
-    // the bundled ontologies as the page's picker loads them: Ontology Graph Spec 1.1 documents (data/ontologies/ogs/ccg/),
-    // and the generic document of native.py's second round trip
-    const dir = path.join(EX, 'data/ontologies/ogs/ccg');
-    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.ontology.yaml')).sort()) {
-      const o = parseOntology(fs.readFileSync(path.join(dir, f), 'utf8'));
-      ontologies.set(o.id, o);
-    }
+    // the bundled ontologies as the page's picker loads them (curated and the packages, harness/corpus.mjs), and the
+    // generic document of native.py's second round trip
+    for (const [id, x] of loadOntologies()) ontologies.set(id, x.o);
     const generic = parseOntology(GENERIC_YAML);
     ontologies.set(generic.id, generic);
     const samples = new Map(JSON.parse(fs.readFileSync(path.join(EX, 'data/samples/samples.json'), 'utf8'))
@@ -587,7 +585,7 @@ async function browserRun(argv) {
     const look0 = await firstLook();
     say(`step 1: ${JSON.stringify(look0.domain)} of ${look0.domains} domains, ${JSON.stringify(look0.about)}; ${JSON.stringify(look0.status)}`);
     say(`step 2: ${JSON.stringify(look0.load)}; step 3: ${JSON.stringify(look0.extract)} ${look0.extractOff ? 'disabled' : 'ENABLED'}, ${JSON.stringify(look0.hint)}; ` +
-      `Document: ${JSON.stringify(look0.doc)}: ${yes(look0.extractOff && look0.domains === 27 && look0.doc === 'the Financial Services sample', 'step 3 waits for the model, with the sample ready')}`);
+      `Document: ${JSON.stringify(look0.doc)}: ${yes(look0.extractOff && look0.domains === env.ontologies.size - 1 && look0.doc === 'the Financial Services sample', 'step 3 waits for the model, with the sample ready')}`);
     say(`the graph tab's empty state (${look0.empty}): ${JSON.stringify(look0.emptyTitle)}, ${JSON.stringify(look0.emptyText)} [${look0.emptyButton}]: ` +
       `${yes(look0.empty === 'load-model' && look0.emptyButton === look0.load, 'the empty graph tab says to load the model, with its button')}`);
     const docBox = await page.evaluate(() => ({ box: /** @type {HTMLTextAreaElement} */ (document.querySelector('[data-testid="doc-text"]')).value, doc: /** @type {any} */ (window).ex01.currentDoc() }));
@@ -631,7 +629,7 @@ async function browserRun(argv) {
 
     // ---- the sample -----------------------------------------------------------------------------------
     say();
-    say(`## the store: the ${SAMPLE} sample, create-context-graph's format (D7, D9, D16)`);
+    say(`## the store: the ${SAMPLE} sample, under its curated ontology (D7, D9, D16, D20)`);
     {
       const progress = /** @type {string[]} */ ([]);
       // The progress line over the graph while it runs (one per model call; their number is the plan's).
@@ -670,8 +668,8 @@ async function browserRun(argv) {
         `${yes(fitOk(f0), 'the graph is fitted after an extraction, its nodes and relationships labelled')}`);
     }
     const s0 = splitSentences(env.samples.get(SAMPLE).text)[1].text;
-    const rawRows = await consoleCall(page, `MATCH (s:_Sentence)-[:_INFERRED]->(:_Inference)<-[:_OF]-(p:_InferencePart)
-WHERE $text IS NOT NULL AND s.text = $text
+    const rawRows = await consoleCall(page, `MATCH (s:_Sentence)-[:_INFERRED]->(i:_Inference)<-[:_OF]-(p:_InferencePart) WHERE i.task IS NULL
+  AND $text IS NOT NULL AND s.text = $text
 RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
     const workerRaw = rawRows.ok ? rawRows.rows.map((/** @type {any} */ r) => r.text).join('') : '';
     const nodeRaw0 = await nodeRaw(ONTOLOGY, s0);
@@ -805,7 +803,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
     say(`a click on ${CLICK.id} shows ${JSON.stringify(side)}, ${about.kind}, ${JSON.stringify(about.line)}, with ${ev.length} evidence sentence(s):`);
     for (const e of ev) say(`  ${e}`);
     yes(side.startsWith(CLICK.title) && ev.length > 0, 'a node click shows its evidence');
-    say(`  its key, generation and document ids only under "Stored properties", collapsed: ${yes(about.kind === 'Person' && about.props && !about.keyShown, 'the side panel keeps the store\'s bookkeeping folded away')}`);
+    say(`  its key, generation and document ids only under "Stored properties", collapsed: ${yes(about.kind === 'Client' && about.props && !about.keyShown, 'the side panel keeps the store\'s bookkeeping folded away')}`);
     // Relationship labels and the pointer: a selected node shows its relationships' labels; at a
     // zoom that leaves a kept relationship's line no room for its label, the label shows while the pointer is
     // over the line, on its midpoint, and goes when the pointer leaves.
@@ -884,16 +882,16 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
       `${yes(oc.nodes === st.ontology.kinds.length && oc.rels === oPairs && oc.rels > 0, 'the ontology tab draws the kinds and links')}; fitted, every kind inside and labelled: ${yes(fitOk(fo), 'the ontology picture is fitted and labelled')}`);
     const oPos = await page.evaluate(() => {
       const nvl = /** @type {any} */ (window).ex01.ontologyView.nvl;
-      const n = nvl.getNodes().find((/** @type {any} */ x) => x.id === 'Person');
+      const n = nvl.getNodes().find((/** @type {any} */ x) => x.id === 'Client');
       const r = /** @type {HTMLElement} */ (document.querySelector('[data-testid="ontology-graph"]')).getBoundingClientRect();
       return n && n.clientPosition ? { x: r.left + n.clientPosition.x, y: r.top + n.clientPosition.y } : null;
     });
     if (oPos) await page.mouse.click(oPos.x, oPos.y);
-    await page.waitForFunction(() => (document.querySelector('[data-testid="ontology-side"] [data-testid="side-title"]')?.textContent ?? '') === 'Person', null, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => (document.querySelector('[data-testid="ontology-side"] [data-testid="side-title"]')?.textContent ?? '') === 'Client', null, { timeout: 15000 }).catch(() => {});
     const oSide = await page.$$eval(`${tid('ontology-side')} p`, (ps) => ps.map((x) => (x.textContent ?? '').trim()));
-    say('a click on Person shows:');
+    say('a click on Client shows:');
     for (const l of oSide) say(`  ${l}`);
-    yes(oSide.some((l) => /^Asked of the model as "person"/.test(l)) && oSide.some((l) => /^Its cutoffs: keeps at p ≥ /.test(l)), 'a kind click shows what it is asked and its cutoffs');
+    yes(oSide.some((l) => /^Asked of the model as "client"/.test(l)) && oSide.some((l) => /^Its cutoffs: keeps at p ≥ /.test(l)), 'a kind click shows what it is asked and its cutoffs');
 
     // ---- the console ----------------------------------------------------------------------------------------
     say();
@@ -1013,8 +1011,8 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
     say(`an extraction queued during that lease ran after it: ${yes(wd.order.join(',') === 'console watchdog,extraction', 'the queued extraction runs after the lease')} (${wd.status}, ${wd.inferences} inference)`);
     const after = await consoleCall(page, 'MATCH (d:_Document) RETURN count(d) AS n');
     say(`the engine took the store back and the console works again: ${yes(after.ok, 'the console works after the watchdog')} (${after.ok ? after.rows[0].n : '?'} documents)`);
-    const qRaw = await consoleCall(page, `MATCH (s:_Sentence)-[:_INFERRED]->(:_Inference)<-[:_OF]-(p:_InferencePart)
-WHERE $text IS NOT NULL AND s.text = $text
+    const qRaw = await consoleCall(page, `MATCH (s:_Sentence)-[:_INFERRED]->(i:_Inference)<-[:_OF]-(p:_InferencePart) WHERE i.task IS NULL
+  AND $text IS NOT NULL AND s.text = $text
 RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const raw2 = qRaw.ok ? qRaw.rows.map((/** @type {any} */ r) => r.text).join('') : '';
     say(`its inference (the model from Cache Storage) is bit-identical to Node's: ${yes(raw2 !== '' && raw2 === await nodeRaw(ONTOLOGY, newSentence), 'the reloaded model infers as Node does')}`);
@@ -1337,17 +1335,12 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     // ---- a store that keeps another version of its bundled ontology ---------------------------------------------------
     say();
     say("## a store that keeps another version of its bundled ontology (an earlier build's conversion), and Re-apply");
-    // The financial-services document converted another way: create-context-graph's icon and node size in
-    // display.custom, beside the caption, not in a createContextGraph:display extension. Applied through the editor.
-    const olderDoc = parseDocument(fs.readFileSync(path.join(EX, 'data/ontologies/ogs/ccg', `${ONTOLOGY}.ontology.yaml`), 'utf8'));
+    // The financial-services document as an earlier wording of it: every node's description with a clause added,
+    // its kinds, links and graph type unchanged. Applied through the editor.
+    const olderDoc = parseDocument(fs.readFileSync(path.join(EX, 'data/ontologies/domains', `${ONTOLOGY}.ontology.yaml`), 'utf8'));
     let olderMoved = 0;
     for (const node of Object.values(olderDoc.nodes)) {
-      const custom = node.extensions?.custom ?? {};
-      const disp = custom['createContextGraph:display'];
-      if (!disp) continue;
-      node.extensions.display = { ...node.extensions.display, custom: { ...node.extensions.display.custom, ...disp } };
-      delete custom['createContextGraph:display'];
-      if (!Object.keys(custom).length) delete node.extensions.custom;
+      node.description = `${String(node.description ?? '').trim()} (An earlier wording.)`;
       olderMoved++;
     }
     // A cutoff the user set (at its default value, small-v1's store.DEFAULT_GATE, so the graph does not move): it must
@@ -1371,7 +1364,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const keep1 = await keeps();
     const staleText = ((await page.textContent('#ontology-stale-text')) ?? '').trim();
     const pick1 = await page.$eval(tid('domain-select'), (e) => /** @type {HTMLSelectElement} */ (e).selectedOptions[0]?.textContent ?? '');
-    say(`applied through the editor: the ${ONTOLOGY} document with the icon and size of its ${olderMoved} nodes in display.custom; the page says: ${JSON.stringify(staleText)}; ` +
+    say(`applied through the editor: the ${ONTOLOGY} document with the descriptions of its ${olderMoved} nodes reworded; the page says: ${JSON.stringify(staleText)}; ` +
       `the picker shows ${JSON.stringify(pick1)}: ${yes(await page.isVisible(tid('ontology-stale')) && /an earlier build's conversion, or an edit/.test(staleText) && keep1.sha !== keep0.sha, 'a store with another version of a bundled ontology says so')}`);
     say(`  ${(await text(page, 'notice')) || 'no notice'}`);
     await page.click(tid('ontology-reapply'));
@@ -1380,7 +1373,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const keep2 = await keeps();
     const pick2 = await page.$eval(tid('domain-select'), (e) => /** @type {HTMLSelectElement} */ (e).value);
     say(`Re-apply the bundled one: the note is gone, the picker holds ${pick2}, the store's document is the bundled one again (its sha): ` +
-      `${yes(!(await page.isVisible(tid('ontology-stale'))) && pick2 === `ogs/ccg/${ONTOLOGY}.ontology.yaml` && keep2.sha === keep0.sha, 'Re-apply brings the bundled document back')}`);
+      `${yes(!(await page.isVisible(tid('ontology-stale'))) && pick2 === `domains/${ONTOLOGY}.ontology.yaml` && keep2.sha === keep0.sha, 'Re-apply brings the bundled document back')}`);
     say(`  ${(await text(page, 'notice')) || 'no notice'}`);
     say(`  kept: verdicts ${keep0.verdicts} -> ${keep2.verdicts}; cutoffs set by you: ${keep0.user} -> ${keep2.user}; the typed graph ${keep0.entities} entities and ${keep0.facts} relationships -> ` +
       `${keep2.entities} and ${keep2.facts}: ${yes(keep2.verdicts === keep0.verdicts && keep0.verdicts > 0 && keep2.user === keep0.user && keep0.user !== '' && keep2.entities === keep0.entities && keep2.facts === keep0.facts, 'Re-apply keeps verdicts, the cutoffs you set and the graph')}`);
@@ -1403,7 +1396,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     if (pPos) await page.mouse.click(pPos.x, pPos.y);
     await page.waitForSelector(`${tid('side-panel')} ${tid('side-title')}`, { timeout: 15000 }).catch(() => {});
     const sideBefore = await page.$eval(tid('side-panel'), (e) => (e.querySelector('[data-testid="side-title"]')?.textContent ?? '').trim()).catch(() => '');
-    await page.selectOption(tid('domain-select'), `ogs/ccg/${OTHER}.ontology.yaml`);
+    await page.selectOption(tid('domain-select'), `domains/${OTHER}.ontology.yaml`);
     await page.waitForFunction((name) => document.body.dataset.store === name, `ex01-kg-${OTHER}`, { timeout: 60000 }).catch(() => {});
     await waitDs(page, 'busy', ['0'], 60000);
     await page.waitForFunction((t) => /** @type {any} */ (window).ex01.state.doc.sample?.id === t, OTHER, { timeout: 30000 }).catch(() => {});

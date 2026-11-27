@@ -16,7 +16,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { EXTENSIONS, custom, isMap, loadText, toolsOf } from '../web/ogs.js';
 import { CCG_DEFAULT_COLOR, CCG_DEFAULT_ICON, CCG_DISPLAY, PROPERTY_TYPES } from '../web/convert.js';
-import { parseOntology } from '../web/ontology.js';
+import { fromDocument, parseOntology } from '../web/ontology.js';
+import { fromStudioPackage } from '../web/studio.js';
 
 export const EX = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const ONTOLOGIES = join(EX, 'data', 'ontologies');
@@ -26,6 +27,14 @@ export const ONTOLOGIES = join(EX, 'data', 'ontologies');
  * in file order. source and file are relative to data/ontologies/.
  */
 export function conversions() {
+  const out = [];
+  if (existsSync(join(ONTOLOGIES, 'ogs', 'ccg'))) out.push(...ccgConversions());
+  out.push(...studioConversions());
+  return out;
+}
+
+/** create-context-graph's 27 domain files converted (with _base.yaml): the converter's test corpus (D20). */
+export function ccgConversions() {
   const bases = { _base: readFileSync(join(ONTOLOGIES, 'ccg', '_base.yaml'), 'utf8') };
   const out = [];
   for (const f of readdirSync(join(ONTOLOGIES, 'ccg')).filter((x) => x.endsWith('.yaml') && !x.startsWith('_')).sort()) {
@@ -34,6 +43,40 @@ export function conversions() {
     if (`${o.id}.yaml` !== f) throw new Error(`convert.mjs: ${source} holds the ontology ${o.id}; the file is named after its id`);
     out.push({ group: 'ccg', source, file: `ogs/ccg/${o.id}.ontology.yaml`, text: o.yaml, o });
   }
+  return out;
+}
+
+/**
+ * Neo4j's solution packages (data/ontologies/studio/<package>/, vendored by harness/vendor-studio.mjs),
+ * each with its overlay (<package>.overlay.yaml), converted by web/studio.js (D21): {group: 'studio',
+ * source, file, text, o, report, upstream, overlay}. A package without an overlay is not bundled.
+ */
+export function studioConversions() {
+  const dir = join(ONTOLOGIES, 'studio');
+  if (!existsSync(join(dir, 'manifest.json'))) return [];
+  const m = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
+  /** @type {any[] & {errors?: Map<string, string>}} */
+  const out = [];
+  // A package whose overlay does not convert is not thrown: it is listed in out.errors, so one broken overlay
+  // never stops the others (the command line and domain.mjs report it; harness/ontology.mjs fails on any).
+  const errors = new Map();
+  for (const pkg of [...new Set(Object.keys(m.files).map((f) => f.split('/')[0]))].sort()) {
+    const ovFile = join(dir, `${pkg}.overlay.yaml`);
+    if (!existsSync(ovFile)) continue;
+    try {
+      const overlay = loadText(readFileSync(ovFile, 'utf8'), `studio/${pkg}.overlay.yaml`);
+      const ontology = readFileSync(join(dir, pkg, 'ONTOLOGY.json'), 'utf8');
+      const queries = readFileSync(join(dir, pkg, 'QUERIES.md'), 'utf8');
+      const files = Object.keys(m.files).filter((f) => f.startsWith(`${pkg}/`)).map((f) => f.slice(pkg.length + 1));
+      const { doc, report } = fromStudioPackage({ ontology, queries, overlay, source: { repository: m.repository, commit: m.commit, package: pkg, files } });
+      const o = fromDocument(doc);
+      if (o.id !== pkg) throw new Error(`studio/${pkg} holds the ontology ${o.id}; the package is named after its id`);
+      out.push({ group: 'studio', source: `studio/${pkg}/ONTOLOGY.json`, file: `ogs/studio/${pkg}.ontology.yaml`, text: o.yaml, o, report, upstream: JSON.parse(ontology), overlay });
+    } catch (e) {
+      errors.set(pkg, `data/ontologies/studio/${pkg}.overlay.yaml: ${String(/** @type {any} */ (e)?.message ?? e)}`);
+    }
+  }
+  out.errors = errors;
   return out;
 }
 
@@ -183,6 +226,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.log(`convert.mjs: the ${conversions().length} documents in data/ontologies/ogs/ are fresh conversions`);
   } else {
     let wrote = 0;
+    for (const [pkg, why] of studioConversions().errors ?? []) console.error(`convert.mjs: ${pkg} not converted: ${why}`);
     for (const c of conversions()) {
       const path = join(ONTOLOGIES, c.file);
       if (existsSync(path) && readFileSync(path, 'utf8') === c.text) continue;

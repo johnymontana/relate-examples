@@ -54,7 +54,8 @@ needs_wasm = pytest.mark.skipif(not (WASM / "relate_bg.wasm").exists() or not (W
 
 # One graph, built with the same statements on both engines: a graph type, a UNIQUE constraint
 # (whose backing index serves its key), every index kind lib/replay rebuilds, a NODE KEY, a relationship type constraint, and the
-# values the JS port has to keep exact (integral floats, NaN, -Infinity, an integer above 2^53).
+# values the JS port has to keep exact (integral floats, NaN, -Infinity, an integer above 2^53) or carry in the typed sidecar
+# (a DATE and a list of DATEs, the one temporal type it handles).
 BUILD = [
     "ALTER CURRENT GRAPH TYPE SET { (:PERSON => {name :: STRING NOT NULL}), (:COMPANY => {name :: STRING NOT NULL}), "
     "(:`ÄRZTE` => {name :: STRING NOT NULL}), (:PERSON)-[:FOUNDED => {p :: FLOAT}]->(:COMPANY) }",
@@ -68,7 +69,8 @@ BUILD = [
     "CREATE CONSTRAINT sent_key FOR (s:Sentence) REQUIRE (s.doc, s.idx) IS NODE KEY",
     "CREATE CONSTRAINT evidence_p FOR ()-[r:EVIDENCE]-() REQUIRE r.p IS :: FLOAT",
     "CREATE (:PERSON:Entity {name: 'Ada', score: 1.0, big: 9007199254740993, l: [1.0, 2.5], nan: toFloat('NaN'), "
-    "inf: toFloat('-Infinity'), e: [], s: 'é\\n\"😀', b: true, tags: ['x', 'y']})"
+    "inf: toFloat('-Infinity'), e: [], s: 'é\\n\"😀', b: true, tags: ['x', 'y'], born: date('1815-12-10'), "
+    "seen: [date('2024-01-09'), date('2025-12-31')]})"
     "-[:FOUNDED {p: 0.9, n: 2}]->(:COMPANY {name: 'Acme', tiny: 1.5e-7, huge: 1e16, neg: -0.0})",
     "CREATE (:Kind {id: 'PERSON', description: 'A named person.'}), (:Kind {id: 'COMPANY', description: 'A company.'}), "
     "(:`ÄRZTE` {name: 'Dr'}), ({plain: 2}), (:Anon {v: 1}), (:Anon {v: 1})",
@@ -290,31 +292,31 @@ def test_js_refuses_what_it_does_not_handle(tmp_path):
     dangling = dict(good, relationships=[{"s": 0, "e": 9, "type": "R", "props": {}, "vecs": [], "typed": []}])
     typed_gt = dict(good, graph_type="{\n  (:`N` => {`a` :: INTEGER})\n}")
     cases = {
-        "dump": ["CREATE (:T {when: date('2026-10-08')})", "CREATE (:T {at: point({x: 1.0, y: 2.0})})",
+        "dump": ["CREATE (:T {when: localtime('12:00')})", "CREATE (:T {at: point({x: 1.0, y: 2.0})})",
                  "CREATE (:T {e: vector([0.1, 0.2], 2, FLOAT32)})", "CREATE (:T {d: duration('P1D')})",
                  "CREATE (:__Mig {__k: 0})"],
         "load": [_dump_with(vecs=[{"k": "e", "dim": 2, "type": "FLOAT32", "values": [0.1, 0.2]}]),
-                 _dump_with(typed=[{"k": "when", "type": "DATE", "list": False, "values": ["2026-10-08"]}]),
+                 _dump_with(typed=[{"k": "when", "type": "LOCAL TIME", "list": False, "values": ["12:00:00"]}]),
                  _dump_with(props={"m": {"nested": 1}}), json.dumps(dangling), json.dumps(typed_gt),
                  json.dumps(dict(good, format=2)), json.dumps(dict(good, graph_type="{ CONSTRAINT `c` FOR (`n`:`N`) "
                                                                     "REQUIRE (`n`.`a`) IS UNIQUE }"))],
     }
     got = node(tmp_path, "refusals", cases)
     assert [why.split(": ", 2)[-1] for why in got["dump"]] == [
-        "property 'when' has type DATE NOT NULL, which replay.mjs does not handle (temporal, POINT, DURATION and "
-        "VECTOR values need lib/replay.py)",
-        "property 'at' has type POINT NOT NULL, which replay.mjs does not handle (temporal, POINT, DURATION and "
-        "VECTOR values need lib/replay.py)",
-        "property 'e' has type VECTOR<FLOAT32 NOT NULL>(2) NOT NULL, which replay.mjs does not handle (temporal, "
-        "POINT, DURATION and VECTOR values need lib/replay.py)",
-        "property 'd' has type DURATION NOT NULL, which replay.mjs does not handle (temporal, POINT, DURATION and "
-        "VECTOR values need lib/replay.py)",
+        "property 'when' has type LOCAL TIME NOT NULL, which replay.mjs does not handle (temporal values other than"
+        " DATE, POINT, DURATION and VECTOR values need lib/replay.py)",
+        "property 'at' has type POINT NOT NULL, which replay.mjs does not handle (temporal values other than"
+        " DATE, POINT, DURATION and VECTOR values need lib/replay.py)",
+        "property 'e' has type VECTOR<FLOAT32 NOT NULL>(2) NOT NULL, which replay.mjs does not handle (temporal values other than"
+        " DATE, POINT, DURATION and VECTOR values need lib/replay.py)",
+        "property 'd' has type DURATION NOT NULL, which replay.mjs does not handle (temporal values other than"
+        " DATE, POINT, DURATION and VECTOR values need lib/replay.py)",
         "node :__Mig carries __Mig/__k, the scratch names load() uses; is this the target of an interrupted load?"]
     assert all(why.startswith("ReplayError: node :T: ") for why in got["dump"][:4])
     whys = [case["why"] for case in got["load"]]
     assert whys == [
         "ReplayError: node 0: VECTOR property 'e' needs lib/replay.py",
-        "ReplayError: node 0: DATE property 'when' needs lib/replay.py",
+        "ReplayError: node 0: LOCAL TIME property 'when' needs lib/replay.py",
         "ReplayError: node 0: property 'm' holds a map, which replay.mjs does not handle",
         "ReplayError: relationship 0 :R points at node 0 -> 9, which the dump does not contain",
         "ReplayError: the target already has constraints (mine), which ALTER CURRENT GRAPH TYPE SET would drop; "

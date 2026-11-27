@@ -245,3 +245,20 @@ pre.tool-cypher { margin: 4px 0; font-size: 12px; white-space: pre-wrap; }
 .side-tools h5 { margin: 0 0 4px; font-size: 13px; }
 .side-tool { padding: 4px 0; border-top: 1px dashed var(--line); }
 .side-tool button { margin-top: 3px; }
+
+/* step 1: About this domain (app.js renderDomainMore), and the markdown it renders (markdown.js) */
+.domain-more { margin: 6px 0; font-size: 13px; }
+.domain-more > summary { cursor: pointer; color: var(--accent, #2563eb); }
+.domain-more ul { margin: 4px 0 6px 18px; padding: 0; }
+.domain-more li { margin: 2px 0; }
+.md { max-height: 360px; overflow: auto; border-left: 2px solid var(--line, #d8dde6); padding: 0 8px; margin: 6px 0; }
+.md h5, .md h6 { margin: 10px 0 4px; font-size: 13px; }
+.md p, .md li, .md blockquote { font-size: 12.5px; line-height: 1.45; }
+.md blockquote { margin: 4px 0; padding-left: 8px; border-left: 2px solid var(--line, #d8dde6); color: var(--muted); }
+.md-table { border-collapse: collapse; font-size: 12px; margin: 6px 0; }
+.md-table th, .md-table td { border: 1px solid var(--line, #d8dde6); padding: 2px 6px; vertical-align: top; text-align: left; }
+.md-link { text-decoration: underline dotted; }
+.tool-teaches { font-style: italic; }
+/* D27: values read from the text, in the entity side panel */
+.evidence.values li > div:first-child { margin-bottom: 2px; }
+.evidence.values strong { font-variant-numeric: tabular-nums; }
