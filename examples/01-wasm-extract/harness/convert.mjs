@@ -225,9 +225,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
     console.log(`convert.mjs: the ${conversions().length} documents in data/ontologies/ogs/ are fresh conversions`);
   } else {
+    // --only <id>: write that package's or domain's document alone (parallel writers each touch their own)
+    const oi = process.argv.indexOf('--only');
+    const only = oi > 0 ? process.argv[oi + 1] : null;
+    const mine = (/** @type {{file: string}} */ c) => !only || c.file.endsWith(`/${only}.ontology.yaml`);
     let wrote = 0;
-    for (const [pkg, why] of studioConversions().errors ?? []) console.error(`convert.mjs: ${pkg} not converted: ${why}`);
-    for (const c of conversions()) {
+    for (const [pkg, why] of studioConversions().errors ?? []) if (!only || pkg === only) console.error(`convert.mjs: ${pkg} not converted: ${why}`);
+    for (const c of conversions().filter(mine)) {
       const path = join(ONTOLOGIES, c.file);
       if (existsSync(path) && readFileSync(path, 'utf8') === c.text) continue;
       mkdirSync(dirname(path), { recursive: true });
@@ -235,6 +239,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       wrote++;
       console.log(`wrote data/ontologies/${c.file}`);
     }
-    console.log(`convert.mjs: ${wrote} written, ${conversions().length - wrote} unchanged`);
+    console.log(`convert.mjs: ${wrote} written, ${conversions().filter(mine).length - wrote} unchanged`);
   }
 }

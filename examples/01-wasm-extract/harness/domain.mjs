@@ -85,6 +85,13 @@ const docs = loadIndex().filter((d) => d.ontology === id);
 if (!docs.length) out('no documents name this ontology yet (data/samples/samples.json, data/samples/heldout/)');
 for (const d of docs) problems(`${d.id} (${d.role}, ${d.file})`, lintDocument(o, d));
 problems('coverage', lintCoverage(o, docs));
+// D27: an ontology that reads properties from text has values to score them by in its primary document.
+{
+  const read = o.types.flatMap((t) => (t.ask ? t.attributes : []));
+  const pd = docs.find((d) => d.role === 'primary');
+  const n = (pd?.gold?.properties ?? []).length;
+  if (read.length && pd && n < 3) problems('properties', [`${pd.id}: the ontology reads ${read.length} properties from text, but the primary document's gold has ${n} values of them (at least 3)`]);
+}
 if (flag('--lint') || !docs.length) process.exit(failed ? 1 : 0);
 
 // ---- extraction ------------------------------------------------------------------------------------
@@ -127,8 +134,10 @@ for (const [list, db] of stores) {
     const docKey = rows[i].doc;
     for (const x of g.distractors) {
       const [h, t, rel] = x.key.split('|');
-      const c = cl.exec(db, 'MATCH (c:_Claim {doc: $doc}) WHERE c.hn = $h AND c.tn = $t AND c.rel = $rel RETURN c.band AS band, c.rule AS rule, c.p AS p ORDER BY p DESC',
-        { doc: docKey, h, t, rel }).rows;
+      // an end named in its sentence by a gold alias is the gold entity too
+      const also = (/** @type {string} */ k) => [k, ...[...g.alias].filter(([, c]) => c.split('|')[0] === k).map(([a]) => a.split('|')[0])];
+      const c = cl.exec(db, 'MATCH (c:_Claim {doc: $doc}) WHERE c.hn IN $hs AND c.tn IN $ts AND c.rel = $rel RETURN c.band AS band, c.rule AS rule, c.p AS p ORDER BY p DESC',
+        { doc: docKey, hs: also(h), ts: also(t), rel }).rows;
       out(`distractor (${x.family}) ${x.d.source} -[${x.d.type}]-> ${x.d.target}: ${c.length ? c.map((y) => `${y.band} by ${y.rule} at ${f3(y.p)}`).join('; ') : 'never proposed'}`);
       if (c.some((y) => y.band === 'keep')) out('  ^ KEPT: the gate kept a claim the text does not assert');
     }

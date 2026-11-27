@@ -16,6 +16,9 @@ Shipped in `dist/` (what the GitHub Pages site serves for this example):
 | `data/LICENSE-edgextract.txt`, `data/SOURCE.md` | edgextract's licence, for the approach and the rules the page's modules port (below) | Apache-2.0 |
 | `data/ontologies/ogs/ccg/*.ontology.yaml`, `data/ontologies/ogs/SOURCE.md`, `data/ontologies/ccg/_base.yaml`, `data/ontologies/ccg/LICENSE-create-context-graph.txt`, `data/ontologies/ccg/SOURCE.md` | create-context-graph's domain ontologies, converted to Ontology Graph Spec 1.1, and their base, verbatim | Apache-2.0 |
 | `data/ontology-spec/`: `ontology-graph-spec.schema.json`, `LICENSE-graph-spec.txt`, `SOURCE.md` | the Neo4j Ontology Graph Specification 1.1.0's JSON Schema, verbatim (also carried in `ogs.js`) | Apache-2.0 |
+| `data/ontologies/ogs/studio/*.ontology.yaml`, `data/ontologies/studio/<package>/human_description.md` and `NOTICE.md`, `data/ontologies/studio/SOURCE.md`, `data/ontologies/studio/manifest.json` | Neo4j's solution packages from studio-agent-use-cases at `b76f767`, each with this repository's overlay applied (below) | used with Neo4j's permission (confirmed by the repository owner on 2026-11-26); the parts drawn from FIBO MIT (EDM Council), with their notices in `NOTICE.md`; the overlays this repository's licence |
+| `data/ontologies/domains/*.ontology.yaml`, `data/ontologies/domains/SOURCE.md` | the curated domain ontologies, written for this example (ADR-0019) | this repository's licence |
+| `data/samples/domains/**/*.md`, `data/samples/studio/**/*.md` | synthetic documents written for this example; the studio ones narrate their package's synthetic sample data, with its names and identifiers | this repository's licence |
 | `data/samples/ccg/*.md` | 27 synthetic documents written for this example from create-context-graph's document templates; the people, organisations, identifiers, events and sites are fictional, the cities and regions real | this repository's licence |
 | `data/ontologies/index.json`, `data/samples/samples.json` | the picker's lists (`build.mjs`, this repository) | this repository's licence |
 | the page's modules (`app.js`, `worker.js`, …), `assets/lib-<sha8>/` (`lib/replay.mjs`, `lib/relate_wasm.mjs`, `lib/ogs.mjs`), `queries/` | this repository; `split.js`, `names.js` and parts of `pipeline.js` port edgextract's rules; `ogs.js` carries the spec's schema | this repository's licence; the ports keep edgextract's attribution |
@@ -183,6 +186,24 @@ Not shipped:
   - `regenerator-runtime` (MIT, Facebook);
   - `safe-buffer` (MIT, Feross Aboukhadijeh);
   - lodash (MIT).
+
+## Neo4j's solution packages (`data/ontologies/studio/`)
+
+- **What:** 13 packages of Neo4j's studio-agent-use-cases: each package's Ontology Graph Spec
+  document (`ONTOLOGY.json`), its queries (`QUERIES.md`), its description (`human_description.md`)
+  and, for the four that draw on FIBO, its source notice (`NOTICE.md`), verbatim. The page ships
+  each document with this repository's overlay applied (`data/ontologies/ogs/studio/`, made by
+  `harness/convert.mjs`), and the description and notice beside it.
+- **Source:** [neo4j/studio-agent-use-cases](https://github.com/neo4j/studio-agent-use-cases), commit
+  `b76f767e85c5853b7d70eb2bb3b10879d0e394a9`, vendored by `harness/vendor-studio.mjs`, which checks
+  every file against `manifest.json`. [`data/ontologies/studio/SOURCE.md`](data/ontologies/studio/SOURCE.md)
+  has the details. Three packages are written against the specification's 1.0.0, whose schema
+  (`data/ontology-spec/ontology-graph-spec-1.0.0.schema.json`, in the repository only) the harness
+  pins against 1.1.0's.
+- **Licence:** the repository has no licence file; the packages are used with Neo4j's permission,
+  confirmed by the repository owner on 2026-11-26 (ADR-0020). The FIBO-derived parts are MIT, from
+  the EDM Council, and their `NOTICE.md` lists the FIBO files and their copyright notices. The
+  overlays (`*.overlay.yaml`) are this repository's.
 
 ## The Ontology Graph Specification 1.1 schema (`data/ontology-spec/`)
 

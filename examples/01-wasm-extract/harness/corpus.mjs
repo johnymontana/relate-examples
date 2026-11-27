@@ -175,8 +175,14 @@ export function goldKeys(o, gold) {
  */
 export function scoreProperties(attributes, g, docKey) {
   const best = new Map();
+  /** KIND:NAME of an alias -> KIND:NAME of its gold entity (g.alias is keyed NAME|KIND) */
+  const canonical = (/** @type {string} */ e) => {
+    const i = e.indexOf(':');
+    const hit = g.alias.get(`${e.slice(i + 1)}|${e.slice(0, i)}`);
+    return hit ? `${e.slice(0, i)}:${hit.split('|')[0]}` : e;
+  };
   for (const a of attributes.filter((x) => x.doc === docKey && x.band === 'keep' && x.entity).sort((x, y) => y.p - x.p || (x.key < y.key ? -1 : 1))) {
-    const k = `${a.entity}|${a.prop}`;
+    const k = `${canonical(a.entity)}|${a.prop}`;
     if (!best.has(k)) best.set(k, a.value);
   }
   const gold = new Map(g.properties.map((p) => [`${p.entity}|${p.prop}`, p.value]));
@@ -209,7 +215,7 @@ export function scoreProperties(attributes, g, docKey) {
  * @param {ReturnType<typeof goldKeys>} g
  */
 export function breakdown(row, g) {
-  const fix = (r, mapKey) => {
+  const fix = (r, mapKey, goldKeys) => {
     const missed = new Set(r.missed);
     let tp = Number(r.tp);
     let dup = 0;
@@ -220,7 +226,8 @@ export function breakdown(row, g) {
       else if (missed.has(m)) {
         missed.delete(m);
         tp += 1;
-      } else dup += 1;
+      } else if (goldKeys.has(m)) dup += 1; // a second name for a gold entity (or fact) already found
+      else fp.push(k); // named by an alias, but no gold entity (or fact) is what it maps to
     }
     const p = tp + fp.length > 0 ? tp / (tp + fp.length) : 0;
     const gold = tp + missed.size;
@@ -235,8 +242,8 @@ export function breakdown(row, g) {
     const b = kinds.map((kind) => g.alias.get(`${t}|${kind}`)).find(Boolean)?.split('|')[0] ?? t;
     return `${a}|${b}|${rel}`;
   };
-  const entities = fix(row.entities, entKey);
-  const relations = fix(row.relations, relKey);
+  const entities = fix(row.entities, entKey, new Set(g.entities.map((e) => `${e.name}|${e.type}`)));
+  const relations = fix(row.relations, relKey, new Set(g.relations.map((r) => `${r.src}|${r.tgt}|${r.rel}`)));
   /** @type {Record<string, {gold: number, found: number}>} */
   const byHow = {};
   for (const [k, how] of g.how) {
@@ -291,7 +298,7 @@ export function lintDocument(o, doc) {
   }
   const units = splitSentences(doc.text).map((s) => s.text);
   const names = (e) => [e.name, ...(e.aliases ?? [])];
-  const together = (a, b) => units.some((u) => names(a).some((x) => u.includes(x)) && names(b).some((y) => u.includes(y)));
+  const together = (a, b) => units.some((u) => names(a).some((x) => hasName(u, x)) && names(b).some((y) => hasName(u, y)));
   const legal = (type, a, b) => {
     const l = o.relations.find((r) => r.id === type);
     return Boolean(l) && l.pairs.some(([s, t]) => (s === a && t === b) || (l.symmetric && s === b && t === a));
@@ -374,13 +381,30 @@ export function lintCoverage(o, docs) {
 
 // ---- the ontology bar (D20) ------------------------------------------------------------------------
 
-const sentences = (s) => (String(s ?? '').match(/[^.!?]+[.!?]+/g) ?? []).length;
+const sentences = (s) => (String(s ?? '').trim().match(/[\s\S]+?[.!?]+(?=\s|$)/g) ?? []).length;
+
+/**
+ * Whether a text names `name` as a whole: not inside a longer word or a longer dotted number, so
+ * "MIFIDPRU 4" is not named by "MIFIDPRU 4.12", nor "Ward" by "Wardle".
+ * @param {string} text @param {string} name
+ */
+export function hasName(text, name) {
+  if (!name) return false;
+  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // a plural ("HG40 gear pumps") still names it
+  return new RegExp(`(?<![\\p{L}\\p{N}])${esc}(?:e?s)?(?![\\p{L}\\p{N}]|[.,]\\p{N})`, 'u').test(text);
+}
 const wordCount = (s) => (String(s ?? '').match(/\S+/g) ?? []).length;
 
 /** The labels and types a query names (`:Label`, `:TYPE`), blanking strings and comments first. @param {string} cypher */
 export function namesIn(cypher) {
   const q = cypher.replace(/'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "''");
-  return new Set([...q.matchAll(/:\s*`?([\p{L}_][\p{L}\p{N}_]*)`?/gu)].map((m) => m[1]));
+  const out = new Set([...q.matchAll(/:\s*`?([\p{L}_][\p{L}\p{N}_]*)`?/gu)].map((m) => m[1]));
+  // the later types of an alternative ([:BIRDIED|BOGEYED], [:A|:B]) have a | before them, not a colon
+  for (const m of q.matchAll(/\[[^\]]*?:[^\]]*\]/gu)) {
+    for (const t of m[0].matchAll(/\|\s*:?\s*`?([\p{L}_][\p{L}\p{N}_]*)`?/gu)) out.add(t[1]);
+  }
+  return out;
 }
 
 /**
@@ -487,6 +511,17 @@ export function goldGraph(db, cl, o, docs) {
   cl.exec(db, `UNWIND $rows AS r MERGE (e:_Entity {key: r.key})
 SET e.kind = r.kind, e.norm = r.norm, e.name = r.name, e.display = r.name, e.docs = r.docs, e.mentions = 1, e.generation = 1
 SET e += r.props`, { rows });
+  const CAST = { INTEGER: 'toInteger(r.v)', FLOAT: 'toFloat(r.v)', DATE: 'date(r.v)', BOOLEAN: 'r.v', STRING: 'r.v' };
+  for (const d of docs) {
+    const g = goldKeys(o, d.gold);
+    for (const pv of g.properties) {
+      const [kind] = pv.entity.split(':');
+      const a = o.types.find((x) => x.id === kind)?.attributes?.find((x) => x.prop === pv.prop);
+      if (!a || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(a.prop) || !Object.hasOwn(CAST, a.type) || !ents.has(pv.entity)) continue;
+      cl.exec(db, `UNWIND [$row] AS r MATCH (e:_Entity {key: r.key}) SET e.\`${a.prop}\` = ${CAST[/** @type {keyof typeof CAST} */ (a.type)]}`,
+        { row: { key: pv.entity, v: pv.value } });
+    }
+  }
   for (const t of o.types) {
     cl.exec(db, 'MATCH (e:_Entity) WHERE e.kind = $k SET e:$($k)', { k: t.id });
     for (const l of t.implied) cl.exec(db, 'MATCH (e:_Entity) WHERE e.kind = $k SET e:$($l)', { k: t.id, l });

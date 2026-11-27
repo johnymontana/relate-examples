@@ -220,7 +220,7 @@ Entity or Claim without touching anything internal.
 ```
 # ontology (D15): the document is the source of truth; the rest is derived from it, in document order
 (:_Ontology {id, version, title, format, spec, doc, sha, converted_from, source_sha, graph_type})
-(:_Kind {key, id, description, color, aliases, implied, pole, origin, ord, keep, drop, cut_init, cut_src})-[:_IN]->(:_Ontology)
+(:_Kind {key, id, description, color, aliases, implied, pole, origin, ord, keep, drop, cut_init, cut_src, keyprop, keypattern, attrs, attr_types})-[:_IN]->(:_Ontology)
 (:_LinkType {key, id, phrase, description, symmetric, pairs, typed, untyped_reason, ord, keep, drop, cut_init, cut_src})-[:_DOMAIN|_RANGE]->(:_Kind)
 (:_Alias {name, ord})-[:_OF]->(:_Kind)                               the gazetteer (an edgextract:gazetteer extension)
 
@@ -228,17 +228,20 @@ Entity or Claim without touching anything internal.
 (:_Document {id: sha256(text), title, chars})
 (:_Section {key, n, doc, complete})-[:_OF]->(:_Document)              complete = true written last (D9)
 (:_Sentence {key, idx, doc, start, end, text, heading})-[:_IN]->(:_Section)
-(:_Inference {key, model, rev, weights, build, floor, schema, parts})<-[:_INFERRED]-(:_Sentence)
+(:_Inference {key, model, rev, weights, build, floor, schema, parts, task})<-[:_INFERRED]-(:_Sentence)   task 'values': the second call (D27)
 (:_InferencePart {key, n, text})-[:_OF]->(:_Inference)               the raw model JSON, in parts of at most 16,000 characters
 (:_Mention {key, doc, sentence, start, end, text, label, name, p, source, band, rule})-[:_IN]->(:_Sentence)
 (:_Claim {key, doc, sentence, rel, p, band, rule, ...})-[:_EVIDENCE]->(:_Sentence)
 (:_Claim)-[:_HEAD]->(:_Mention), -[:_TAIL]->(:_Mention)              written by the gate
+(:_Attribute {key, doc, sentence, kind, prop, text, start, end, p, valid, value, why, anchor, entity, via, band, rule})-[:_IN]->(:_Sentence)
+                                                                     a value read from the text (D27)
 (:_Run {id, doc, model, rev, floor, sections, sentences, inferences, hits, status, ts})-[:_READ]->(:_Section)
 (:_Verdict {key, target, kind, value, ts, seq})-[:_ON]->(:_Claim|:_Mention)
 
 # the extracted knowledge graph (D16)
 (:_Entity:Person {key: 'Person:DANA_WHITLOCK', kind, norm, name, display, docs, mentions, generation})<-[:_OF]-(:_Mention)
 (:_Entity:Person)-[:WORKS_FOR {p, claims, sentences, docs, generation}]->(:_Entity:Organization)
+(:_Attribute)-[:_OF]->(:_Entity)                                     a kept value, written onto the entity as its declared type
 
 # scoring only
 (:_Gold {key, kind: 'doc'|'entity'|'relation', doc, title, src, rel, tgt})
@@ -282,6 +285,7 @@ complete sections only. It rewrites every mention's and claim's `band` (`keep`, 
 | 5 | `band`, `hedged` (claims) | The band per link; then **the hedge cap**: a kept claim whose sentence holds a hedge or negation cue (`store.HEDGE_CUES`: not, never, may, might, unclear, whether, …) before its later end goes to review. |
 | 6 | `ambiguous`, `reversed` | One link per ordered pair per sentence: weaker links go to review (the best one too when another scored within the relation margin), and so do A→B and B→A of a one-way link. |
 | 7 | `verdict` (claims) | Claim verdicts override the band, the hedge cap, rule 3's cap and rule 6, never rule 3's join or rule 4. |
+| 8 | `unparsed`, `unanchored`, `end-in-review`, `band`, `hedged`, `other-value` | Values read from the text (D27): a value that does not parse as its property's type drops; it joins a live mention of its kind in its sentence that the model's anchor names, else the sentence's only entity of that kind, else drops; joined to a mention in review it waits; then the band (keep 0.50, drop 0.30) and the hedge cap as for claims; one value per entity and property, the best kept one, a different kept value to review. |
 
 The Review tab and the graph's side panel explain each item by its rule (`app.js` `explain`).
 
@@ -292,6 +296,7 @@ The Review tab and the graph's side panel explain each item by its rule (`app.js
 | Entity keep / drop | 0.50 / 0.30 | 0.50 / 0.30 |
 | Relation keep / drop | 0.35 / 0.20 | 0.50 / 0.20 |
 | Type, relation, pole margin | 0.05, 0.05, 0.25 | the same |
+| Value keep / drop (rule 8) | 0.50 / 0.30 | the same |
 
 They were calibrated on a 0.05 grid on the bundled samples, which are written in short declarative
 sentences, and checked on six held-out documents written the same way (`score.txt` has the grids).
@@ -323,6 +328,30 @@ On the samples this schema at the defaults scores entity F1 0.950 and relation F
 0.663 and 0.191 for asking each kind by its id with a "<subtype> (<pole type>)" description and
 each link as a bare phrase, with cutoffs of 0.85/0.70
 (`score.txt` compares the two, with a paired bootstrap).
+
+## Values read from the text
+
+An ontology can mark node properties to be read from text (`relate-examples` `extract: true` on the
+property, D27, ADR-0021): a claim's amount and incident date, a trade's amount, date and side, an
+account's type. For each kind with such properties, the model is asked a second time, with
+structures alone (one per kind: an anchor field named for the kind, then a field per property, a
+choice field for a vocabulary), and only for sentences that could hold a value: a digit when a
+property is a number or a date, a word of a property's vocabulary otherwise (`pipeline.valueCue`).
+The first call is the one an ontology without extracted properties makes, cache key included: asked
+together, the structures changed the model's entities and relations (G12).
+
+- **Typed, never trusted as text.** `web/values.js` parses each value by its property's declared
+  type: amounts with currency symbols and thousands separators, `£1.2m`, percentages as fractions
+  (`parse: PERCENT`), full dates in the common written forms (never `01/09/2024`, whose order cannot
+  be told, nor a month without a day), a vocabulary's value case-insensitively, a pattern on the
+  whole text. `parse: MONEY` refuses a percentage where an amount is declared. A value that does not
+  parse is kept in the trace with its reason and never published.
+- **Joined by the mentions.** The model reads values well and anchors them poorly (G12), so rule 8
+  joins a value to the entity the sentence names, not to the model's anchor alone.
+- **Published typed**, one per entity and property: a DATE through `date()`, a FLOAT through
+  `toFloat()`, with `(:_Attribute)-[:_OF]->(:_Entity)` as the evidence. The graph tab's side panel
+  lists an entity's values with the sentence each was read in; the Ontology tab marks the
+  properties a kind reads.
 
 ## The samples and what they score
 

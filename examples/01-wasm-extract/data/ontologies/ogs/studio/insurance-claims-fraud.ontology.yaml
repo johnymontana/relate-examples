@@ -235,11 +235,11 @@ nodes:
             parameters:
               - name: minClaims
                 type: INTEGER
-                description: Number of claims a professional must exceed to be flagged on volume. Integer. Start at twice the portfolio's median claims per professional, then raise it until the result is reviewable by hand. minTotal - Total amountClaimed, in whole currency units, a professional must exceed to be flagged on value. Integer. Start at twice the portfolio's median total per professional, and tune it the same way.
+                description: Number of claims a professional must exceed to be flagged on volume. Integer. Start at twice the portfolio's median claims per professional, then raise it until the result is reviewable by hand.
                 example: 1
               - name: minTotal
                 type: INTEGER
-                description: ''
+                description: Total amountClaimed, in whole currency units, a professional must exceed to be flagged on value. Integer. Start at twice the portfolio's median total per professional, and tune it the same way.
                 example: 50000
             category: query
             teaches: A professional above either threshold is returned. The starting points use the median because it is not pulled up by the outliers being looked for, as a high percentile can be when outliers are more than a few percent of professionals; the factor of two has no strong prior behind it. Compute the medians with percentileCont(…, 0.5) over the per-professional counts and totals, and read Medical professionals ranked by total claim value to keep each threshold between the bulk of professionals and the outliers. Thresholds set too low flag every busy professional. totalAmount assumes a single-currency portfolio. A busy clinic and a fraudulent one look alike from the outside, so an outlier is a lead for review.

@@ -262,6 +262,31 @@ export function modelRequests(o, text, opts = {}) {
   ]);
 }
 
+/**
+ * The model's answer for one sentence with every span inside the sentence: gliner-rs reads a unit that
+ * has no final punctuation with a full stop after it, and a span can end on that stop, one code point
+ * past the text (an entity '.', a tail ending in 'Chair).'). Such an end is moved back to the text's
+ * end, and a span left empty is dropped (an entity; a relation with an empty end; a structure field).
+ * The run's plain-JS gate calls it too, so both read the same spans.
+ * @param {{entities: any[], relations: any[], structures?: any[]}} out @param {string} text
+ */
+export function clampToSentence(out, text) {
+  const n = Array.from(text).length;
+  const fix = (/** @type {any} */ x) => (x && x.end !== null && x.end > n ? { ...x, end: n } : x);
+  const ok = (/** @type {any} */ x) => x && x.start !== null && x.end !== null && x.start < x.end;
+  const entities = out.entities.map(fix).filter(ok);
+  const relations = out.relations.map((r) => ({ ...r, head: fix(r.head), tail: fix(r.tail) })).filter((r) => ok(r.head) && ok(r.tail));
+  const structures = (out.structures ?? []).map((st) => ({
+    ...st,
+    instances: st.instances.map((/** @type {any} */ inst) => Object.fromEntries(Object.entries(inst).map(([k, v]) => {
+      if (!v || v.start === null || v.end === null) return [k, v];
+      const w = fix(v);
+      return [k, w.start < w.end ? w : null];
+    }))),
+  }));
+  return { ...out, entities, relations, structures };
+}
+
 /** store.kindWordsOf: each kind's label words, for its mentions' names. */
 export const kindWordsOf = store.kindWordsOf;
 
@@ -323,7 +348,7 @@ export async function extractDocument(job) {
           c.hits++;
         }
         w.inferred.push({ sentence: skey, inference: ckey });
-        const out = normalize(raw, schema);
+        const out = clampToSentence(normalize(raw, schema), s.text);
         // D27: the second call, for the values (an inference of its own, task 'values', cached the same way)
         /** @type {import('./gliner.js').StructureResult[]} */
         let structures = [];
@@ -341,7 +366,7 @@ export async function extractDocument(job) {
             c.hits++;
           }
           w.inferred.push({ sentence: skey, inference: vkey });
-          structures = normalize(vraw, valueSchema).structures;
+          structures = clampToSentence(normalize(vraw, valueSchema), s.text).structures;
         }
         const slice = (x, y) => s.text.slice(utf16Index(s.text, x), utf16Index(s.text, y));
         const mentions = new Map();

@@ -2694,7 +2694,7 @@ function toolCard(t) {
   if (t.question && t.description) card.append(h('p', { class: 'about', text: t.description }));
   card.append(h('p', { class: 'hint', text: `On the ${t.anchor.kind} ${anchorName(t)} (${t.anchor.kind === 'node' ? 'nodes' : 'relationships'}/${t.anchor.key} in the document).` }));
   if (t.teaches) card.append(h('p', { class: 'hint tool-teaches', 'data-testid': 'tool-teaches', text: `Cypher: ${t.teaches}` }));
-  if ((t.requires ?? []).length) card.append(h('p', { class: 'hint', text: `Needs ${andList(t.requires.map((/** @type {string} */ r) => (r === 'write' ? 'a write (the console is read-only)' : r.toUpperCase())))}: not runnable on this page.` }));
+  if ((t.requires ?? []).length) card.append(h('p', { class: 'hint', text: `Needs ${andList(t.requires.map((/** @type {string} */ r) => (r === 'write' ? 'a write (the console is read-only)' : r === 'index' ? 'an index the package\'s setup creates' : r.toUpperCase())))}: not runnable on this page.` }));
   card.append(h('p', { class: 'tool-compat', 'data-testid': 'tool-compat', text: note.text }));
   if (t.type !== 'canonicalQuery' || typeof t.cypher !== 'string' || !t.cypher.trim()) {
     card.append(h('p', { class: 'hint', 'data-testid': 'tool-url', text: t.url ? `URL: ${t.url}` : 'No query and no URL.' }),

@@ -494,7 +494,7 @@ RETURN s.key AS key, s.doc AS doc, s.start AS start, s.text AS text, i.key AS in
   const claims = [];
   for (const s of sentences) {
     const raw = store.readInference(db, cl, s.inference);
-    const out = normalize(raw, schema);
+    const out = pipeline.clampToSentence(normalize(raw, schema), s.text);
     const cp = Array.from(s.text);
     for (const e of out.entities) {
       const text = cp.slice(e.start, e.end).join('');
@@ -640,6 +640,13 @@ RETURN s.key AS key, s.doc AS doc, s.start AS start, s.text AS text, i.key AS in
     const ms = (bySentence.get(sk) ?? []).filter(anchorOk);
     let x = ms.filter((y) => y.start <= a && b <= y.end).sort(order)[0] ?? null;
     if (!x && on('span-join')) x = ms.filter((y) => keys.includes(`${y.label}|${y.name}`)).sort(order)[0] ?? null;
+    // then the mentions inside the end, when they all name one entity (the longest first)
+    if (!x && on('span-join')) {
+      const ins = ms.filter((y) => y.name !== '' && a <= y.start && y.end <= b);
+      if (new Set(ins.map((y) => `${y.label}|${y.name}`)).size === 1) {
+        x = ins.sort((y, z) => rank(y) - rank(z) || (z.end - z.start) - (y.end - y.start) || z.p - y.p || cmp(y.label, z.label) || cmp(y.key, z.key))[0];
+      }
+    }
     return x && on('span-join') && isRejected(x) ? null : x;
   };
   for (const c of claims) {
@@ -691,7 +698,7 @@ RETURN s.key AS key, s.doc AS doc, s.start AS start, s.text AS text, i.key AS in
     for (const c of claims) {
       if (c.band !== 'keep') continue;
       const upto = Array.from(c.stext).slice(0, Math.max(c.he, c.te) - c.sstart).join('');
-      const hit = cues.find(([, re]) => re.test(upto));
+      const hit = cues.find(([, re, whole]) => re.test(whole ? c.stext : upto));
       if (hit) { set(c, 'review', 'hedged'); c.cue = hit[0]; }
     }
   }
@@ -755,8 +762,13 @@ RETURN a.key AS key, a.sentence AS sentence, a.kind AS kind, a.prop AS prop, a.a
       const cues = store.hedgeCueRegExps();
       for (const a of attrs) {
         if (a.band !== 'keep') continue;
-        const upto = Array.from(a.stext).slice(0, Math.max(a.end, a.aend ?? -Infinity) - a.sstart).join('');
-        const hit = cues.find(([, re]) => re.test(upto));
+        // the sentence without the value's own text: before it, then (to the anchor's end) after it
+        const cp = Array.from(a.stext);
+        const before = cp.slice(0, a.start - a.sstart).join('');
+        const after = cp.slice(a.end - a.sstart);
+        const upto = `${before} ${a.aend !== null && a.aend > a.end ? after.slice(0, a.aend - a.end).join('') : ''}`;
+        const rest = `${before} ${after.join('')}`;
+        const hit = cues.find(([, re, whole]) => re.test(whole ? rest : upto));
         if (hit) { set(a, 'review', 'hedged'); a.cue = hit[0]; }
       }
     }

@@ -160,6 +160,7 @@ export const HEDGE_CUES = Object.freeze([
   ['may', 'may', false, true], ['might', 'might', true, true], ['could', 'could', true, true], ['possibly', 'possibl[ey]', true, true],
   ['perhaps', 'perhaps', true, true], ['probably', 'probabl[ey]', true, true], ['likely', '(?:un)?likely', true, true],
   ['reportedly', 'reportedly', true, true], ['allegedly', 'alleg(?:e|es|ed|edly)', true, true], ['supposedly', 'supposedly', true, true],
+  ['claims that', 'claim(?:s|ed)?\\s+that', true, true],
   ['apparently', 'apparently', true, true], ['rumoured', 'rumou?r(?:ed|s)?', true, true], ['unconfirmed', 'unconfirmed', true, true],
   ['unverified', 'unverified', true, true], ['suspected', 'suspected', true, true], ['unclear', 'unclear', true, true],
   ['uncertain', 'uncertain', true, true], ['whether', 'whether', true, true], ['believed', 'believed', true, true],
@@ -167,6 +168,18 @@ export const HEDGE_CUES = Object.freeze([
   // what has not happened yet, or holds only on a condition (D23's future and conditional distractors)
   ['expected', '(?:is|are|was|were|be)\\s+expected', true, true], ['would', 'would', true, true], ['proposed', 'proposed', true, true],
   ['planned', 'planned', true, true], ['pending', 'pending', true, true],
+  // a scheduled future ("is due to lead"; not "due to the rain"), a condition, and a claim reported from a source
+  ['due to', '(?:is|are|was|were)\\s+due\\s+to', true, true], ['if', 'if', true, true], ['unless', 'unless', true, true],
+  ['according to', 'according\\s+to', true, true],
+  // what an earlier version said ("An earlier draft of the timeline said that …"; the correction follows it)
+  ['an earlier version said', '(?:earlier|earliest|first|previous|initial|early|interim|original|older)\\s+(?:draft|version|note|notice|issue|report|release|timeline|entry|edition|statement)[^.;]{0,80}?\\s(?:said|stated|recorded|reported|listed|showed|gave|claimed|named)', true, true],
+  // "will" before a verb ("will be implemented", "will not open"), lower case only, and not "will of" (a testator's will)
+  ['will', 'will\\s+(?:not\\s+)?(?:[a-np-z][a-z]*|o(?:[a-eg-z][a-z]*)?)', false, true],
+  // retractions, anywhere in the sentence (they follow the claim they take back: "…; that was wrong")
+  ['was wrong', '(?:was|were|is|are|proved|has\\s+proved)\\s+(?:wrong|incorrect|mistaken|untrue)', true, true, true],
+  ['an error', '(?:in\\s+error|an?\\s+(?:transcription|clerical|typing|data-entry|filing|recording)\\s+error)', true, true, true],
+  ['corrected', '(?:has|have|had)\\s+(?:since\\s+)?been\\s+corrected|(?:was|were)\\s+corrected', true, true, true],
+  ['retracted', 'retracted|misfiled|misattributed', true, true, true],
 ].map((c) => Object.freeze(c)));
 
 /**
@@ -176,11 +189,17 @@ export const HEDGE_CUES = Object.freeze([
  */
 export function hedgeCuePatterns() {
   const one = (body, ci) => (ci ? `(?i:${body})` : body);
-  const left = HEDGE_CUES.filter((c) => c[3]).map(([, body, ci]) => one(body, ci)).join('|');
-  const free = HEDGE_CUES.filter((c) => !c[3]).map(([, body, ci]) => one(body, ci)).join('|');
+  const anyOf = (list) => {
+    const left = list.filter((c) => c[3]).map(([, body, ci]) => one(body, ci)).join('|');
+    const free = list.filter((c) => !c[3]).map(([, body, ci]) => one(body, ci)).join('|');
+    const alts = [left ? `(?:^|${NOT_WORD})(?:${left})` : '', free ? `(?:${free})` : ''].filter(Boolean).join('|');
+    return alts ? `(?s).*(?:${alts})(?:${NOT_WORD}|$).*` : '(?!)';
+  };
   return {
-    any: `(?s).*(?:(?:^|${NOT_WORD})(?:${left})|(?:${free}))(?:${NOT_WORD}|$).*`,
-    cues: HEDGE_CUES.map(([cue, body, ci, l]) => ({ cue, re: `(?s${ci ? 'i' : ''}).*${l ? `(?:^|${NOT_WORD})` : ''}(?:${body})(?:${NOT_WORD}|$).*` })),
+    // before the later end (the text the cap reads), and anywhere in the sentence (c[4]: retractions)
+    any: anyOf(HEDGE_CUES.filter((c) => !c[4])),
+    whole: anyOf(HEDGE_CUES.filter((c) => c[4])),
+    cues: HEDGE_CUES.map(([cue, body, ci, l, w]) => ({ cue, whole: Boolean(w), re: `(?s${ci ? 'i' : ''}).*${l ? `(?:^|${NOT_WORD})` : ''}(?:${body})(?:${NOT_WORD}|$).*` })),
   };
 }
 
@@ -189,7 +208,8 @@ export function hedgeCuePatterns() {
  * @returns {Array<[string, RegExp]>}
  */
 export function hedgeCueRegExps() {
-  return HEDGE_CUES.map(([cue, body, ci, l]) => [cue, new RegExp(`${l ? `(?:^|${NOT_WORD})` : ''}(?:${body})(?:${NOT_WORD}|$)`, ci ? 'iu' : 'u')]);
+  // [cue, regexp, whole]: whole, the cue is looked for in the whole sentence (a retraction), else before the later end
+  return HEDGE_CUES.map(([cue, body, ci, l, w]) => [cue, new RegExp(`${l ? `(?:^|${NOT_WORD})` : ''}(?:${body})(?:${NOT_WORD}|$)`, ci ? 'iu' : 'u'), Boolean(w)]);
 }
 
 /** Inference JSON is stored in parts of at most this many characters (D7: a chunk size that keeps each property small). */
@@ -946,7 +966,10 @@ RETURN count(m) AS n`, { final: FINAL_MENTION_RULES });
   //    out: "the Claims Notes Corpus", "by Tomas Ferreira", "account ACC-2207") joins, in the same
   //    order, a mention of its sentence whose 'KIND|NAME' is one the end would have as a mention of that
   //    kind (hkeys, tkeys: claimEndKeys). A rejected mention that contains the end still blocks it.
-  //    (Off: any banded mention, smallest first, no name join and no cap.)
+  //    Last, an end that carries words around one entity ("by Aled Pritchard, the returns specialist",
+  //    "owned by Tom Ashworth") joins the mentions inside it when they all name that one entity (the
+  //    longest, kept first); an end around two entities ("Arjun Mehta and Priya Raman") joins neither.
+  //    (Off: any banded mention, smallest first, no name join, no join inside and no cap.)
   const rejected = "(x.band = 'drop' AND x.rule = 'verdict' AND x.prior IN ['keep', 'review'])";
   const anchor = on('span-join') ? `(x.band IN ['keep', 'review'] OR ${rejected})` : 'x.band IS NOT NULL AND NOT x.rule IN $final';
   const first = on('span-join') ? "CASE WHEN x.band = 'keep' OR (x.band = 'drop' AND x.prior = 'keep') THEN 0 ELSE 1 END ASC, " : '';
@@ -958,15 +981,23 @@ WITH c, s, head(collect(x)) AS hx
 OPTIONAL MATCH (x:_Mention)-[:_IN]->(s) WHERE hx IS NULL AND $names AND c.hkeys IS NOT NULL AND (x.label + '|' + x.name) IN c.hkeys AND ${anchor}
 WITH c, s, hx, x ORDER BY ${first}x.end - x.start ASC, x.p DESC, x.label ASC, x.key ASC
 WITH c, s, hx, head(collect(x)) AS nx
-WITH c, s, coalesce(hx, nx) AS hx
+OPTIONAL MATCH (x:_Mention)-[:_IN]->(s) WHERE hx IS NULL AND nx IS NULL AND $names AND x.name <> '' AND ${anchor}
+  AND coalesce(c.hjs, c.hs) <= x.start AND x.end <= coalesce(c.hje, c.he)
+WITH c, s, hx, nx, x ORDER BY ${first}x.end - x.start DESC, x.p DESC, x.label ASC, x.key ASC
+WITH c, s, hx, nx, collect(x) AS ins, collect(DISTINCT x.label + '|' + x.name) AS inn
+WITH c, s, coalesce(hx, nx, CASE WHEN size(inn) = 1 THEN ins[0] ELSE null END) AS hx
 WITH c, s, ${joined('hx')} AS hm
 OPTIONAL MATCH (x:_Mention)-[:_IN]->(s) WHERE ${anchor} AND x.start <= coalesce(c.tjs, c.ts) AND coalesce(c.tje, c.te) <= x.end
 WITH c, s, hm, x ORDER BY ${first}x.end - x.start ASC, x.p DESC, x.label ASC, x.key ASC
 WITH c, s, hm, head(collect(x)) AS tx
 OPTIONAL MATCH (x:_Mention)-[:_IN]->(s) WHERE tx IS NULL AND $names AND c.tkeys IS NOT NULL AND (x.label + '|' + x.name) IN c.tkeys AND ${anchor}
-WITH c, hm, tx, x ORDER BY ${first}x.end - x.start ASC, x.p DESC, x.label ASC, x.key ASC
-WITH c, hm, tx, head(collect(x)) AS nx
-WITH c, hm, coalesce(tx, nx) AS tx
+WITH c, s, hm, tx, x ORDER BY ${first}x.end - x.start ASC, x.p DESC, x.label ASC, x.key ASC
+WITH c, s, hm, tx, head(collect(x)) AS nx
+OPTIONAL MATCH (x:_Mention)-[:_IN]->(s) WHERE tx IS NULL AND nx IS NULL AND $names AND x.name <> '' AND ${anchor}
+  AND coalesce(c.tjs, c.ts) <= x.start AND x.end <= coalesce(c.tje, c.te)
+WITH c, s, hm, tx, nx, x ORDER BY ${first}x.end - x.start DESC, x.p DESC, x.label ASC, x.key ASC
+WITH c, hm, tx, nx, collect(x) AS ins, collect(DISTINCT x.label + '|' + x.name) AS inn
+WITH c, hm, coalesce(tx, nx, CASE WHEN size(inn) = 1 THEN ins[0] ELSE null END) AS tx
 WITH c, hm, ${joined('tx')} AS tm
 SET c.hm = hm.key, c.tm = tm.key, c.hk = hm.label, c.tk = tm.label, c.hn = hm.name, c.tn = tm.name,
     c.head = hm.label + ':' + hm.name, c.tail = tm.label + ':' + tm.name,
@@ -1034,13 +1065,13 @@ SET c.band = 'keep', c.rule = 'floor' RETURN count(c) AS n`);
   }
   if (on('hedge')) {
     const hp = hedgeCuePatterns();
-    add('hedge', `MATCH (c:_Claim)-[:_EVIDENCE]->(s:_Sentence) WHERE c.band = 'keep' AND $any IS NOT NULL AND $cues IS NOT NULL
-WITH c, substring(s.text, 0, CASE WHEN c.he > c.te THEN c.he ELSE c.te END - s.start) AS upto
-WHERE upto =~ $any
-WITH c, [x IN $cues WHERE upto =~ x.re | x.cue] AS hits
+    add('hedge', `MATCH (c:_Claim)-[:_EVIDENCE]->(s:_Sentence) WHERE c.band = 'keep' AND $any IS NOT NULL AND $whole IS NOT NULL AND $cues IS NOT NULL
+WITH c, s, substring(s.text, 0, CASE WHEN c.he > c.te THEN c.he ELSE c.te END - s.start) AS upto
+WHERE upto =~ $any OR s.text =~ $whole
+WITH c, [x IN $cues WHERE (CASE WHEN x.whole THEN s.text ELSE upto END) =~ x.re | x.cue] AS hits
 WHERE size(hits) > 0
 SET c.band = 'review', c.rule = 'hedged', c.cue = hits[0]
-RETURN count(c) AS n`, { any: hp.any, cues: hp.cues });
+RETURN count(c) AS n`, { any: hp.any, whole: hp.whole, cues: hp.cues });
   }
   if (on('span-join')) {
     add('span-join', `MATCH (c:_Claim) WHERE c.band = 'keep'
@@ -1113,13 +1144,15 @@ SET a.band = CASE WHEN a.p >= toFloat($keep) THEN 'keep' WHEN a.p <= toFloat($dr
 RETURN count(a) AS n`, { keep: attrKeep, drop: attrDrop });
     if (on('hedge')) {
       const hp = hedgeCuePatterns();
-      add('attributes', `MATCH (a:_Attribute)-[:_IN]->(s:_Sentence) WHERE a.band = 'keep' AND $any IS NOT NULL AND $cues IS NOT NULL
-WITH a, substring(s.text, 0, CASE WHEN a.aend IS NOT NULL AND a.aend > a.end THEN a.aend ELSE a.end END - s.start) AS upto
-WHERE upto =~ $any
-WITH a, [x IN $cues WHERE upto =~ x.re | x.cue] AS hits
+      add('attributes', `MATCH (a:_Attribute)-[:_IN]->(s:_Sentence) WHERE a.band = 'keep' AND $any IS NOT NULL AND $whole IS NOT NULL AND $cues IS NOT NULL
+WITH a, substring(s.text, 0, a.start - s.start) AS before, substring(s.text, a.end - s.start) AS after
+WITH a, before + ' ' + after AS rest,
+     before + ' ' + CASE WHEN a.aend IS NOT NULL AND a.aend > a.end THEN substring(after, 0, a.aend - a.end) ELSE '' END AS upto
+WHERE upto =~ $any OR rest =~ $whole
+WITH a, [x IN $cues WHERE (CASE WHEN x.whole THEN rest ELSE upto END) =~ x.re | x.cue] AS hits
 WHERE size(hits) > 0
 SET a.band = 'review', a.rule = 'hedged', a.cue = hits[0]
-RETURN count(a) AS n`, { any: hp.any, cues: hp.cues });
+RETURN count(a) AS n`, { any: hp.any, whole: hp.whole, cues: hp.cues });
     }
     add('attributes', `MATCH (a:_Attribute) WHERE a.band = 'keep' AND a.entity IS NOT NULL
 WITH a ORDER BY a.p DESC, a.key ASC

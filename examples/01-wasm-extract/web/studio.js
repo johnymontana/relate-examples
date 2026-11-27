@@ -31,7 +31,9 @@ import { EXTENSIONS, OntologyError, SPEC_1_0_URL, fromSpec10, isMap, isSpec10, n
 export const ANNOTATION_FIELDS = Object.freeze(['name', 'description', 'params', 'prerequisites', 'returns', 'usage', 'tags', 'sample']);
 
 /** What a tool calls that the page's engine does not have, by the names its Cypher uses. */
-const REQUIRES = Object.freeze([['gds', /\bgds\./u], ['apoc', /\bapoc\./u]]);
+// A query that calls a full-text or vector index by name needs the index the package's SETUP.md creates, which the
+// page's store never has ('index').
+const REQUIRES = Object.freeze([['gds', /\bgds\./u], ['apoc', /\bapoc\./u], ['index', /\bdb\.index\.(?:fulltext|vector)\.query/u]]);
 /** A clause that writes: the console's read-only lease refuses such a tool when it reaches the write (R15). */
 const WRITES = /\b(?:CREATE|MERGE|SET|DELETE|REMOVE|DETACH)\b/u;
 /** A schema statement only (the package's constraints for its import): the page's store has its own (R16). */
@@ -90,10 +92,17 @@ export function parseParams(text) {
   const t = (text ?? '').trim();
   if (t === '' || /^none\b/i.test(t)) return [];
   const out = [];
+  // A parameter's description runs on in lines indented deeper than the parameter lines: a `name - text`
+  // line starts a parameter unless it is indented as deep as the block's continuation lines.
+  const indent = (/** @type {string} */ l) => /^\s*/.exec(l)[0].length;
+  let cont = Infinity;
   for (const line of t.split('\n')) {
     const e = /^\s*\$?([A-Za-z_][A-Za-z0-9_]*)\s+-\s+(.*)$/.exec(line);
-    if (e && (out.length === 0 || !/^\s{6,}/.test(line))) out.push({ name: e[1], description: e[2].trim() });
-    else if (out.length) out[out.length - 1].description = `${out[out.length - 1].description} ${line.trim()}`.trim();
+    if (e && (out.length === 0 || indent(line) < cont)) out.push({ name: e[1], description: e[2].trim() });
+    else if (out.length) {
+      if (line.trim() !== '') cont = Math.min(cont, indent(line));
+      out[out.length - 1].description = `${out[out.length - 1].description} ${line.trim()}`.trim();
+    }
   }
   return out;
 }
@@ -106,7 +115,7 @@ export const slug = (s) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCa
  * (convert.js paramBindings), else INTEGER for one used as a LIMIT, SKIP or a range bound in
  * `range(…)`, else STRING. @param {string} cypher @param {string} name @param {Map<string, any>} nodesByLabel
  */
-function paramType(cypher, name, nodesByLabel) {
+function paramType(cypher, name, nodesByLabel, description = '') {
   for (const b of paramBindings(cypher).filter((x) => x.param === name)) {
     for (const l of b.labels) {
       const p = nodesByLabel.get(l)?.properties?.[b.props[0]];
@@ -114,6 +123,9 @@ function paramType(cypher, name, nodesByLabel) {
     }
   }
   if (new RegExp(String.raw`\b(?:LIMIT|SKIP)\s+\$${name}\b`, 'u').test(cypher)) return 'INTEGER';
+  // what the package's own description says it is ("… Integer. Start at 12", "… Float.")
+  if (/\bInteger\b/.test(description)) return 'INTEGER';
+  if (/\bFloat\b/.test(description)) return 'FLOAT';
   return 'STRING';
 }
 
@@ -161,12 +173,21 @@ export function fromStudioPackage({ ontology, queries, overlay, source }) {
       if (p.pattern !== undefined) throw new OntologyError(`${where}: ${prop} already has a pattern`);
       p.pattern = pattern;
     }
-    // D27: the properties the model reads values for (extract, its ask, and parse: DATE for a STRING that holds dates).
+    // D27: the properties the model reads values for (extract, its ask, and parse: DATE for a STRING that holds dates),
+    // and a vocabulary (one_of) for a package STRING whose values are a short closed set the package did not declare.
     for (const [prop, x] of Object.entries(o.properties ?? {})) {
-      onlyKnown(x, ['extract', 'ask', 'parse'], `${where}.properties.${prop}`);
+      onlyKnown(x, ['extract', 'ask', 'parse', 'one_of'], `${where}.properties.${prop}`);
       const p = n.properties?.[prop];
       if (!isMap(p)) throw new OntologyError(`${where}: the node has no property ${prop}`);
-      custom(p)[EXTENSIONS.repo] = { ...x };
+      const { one_of: oneOf, ...repo } = x;
+      if (oneOf !== undefined) {
+        if (p.one_of !== undefined) throw new OntologyError(`${where}: ${prop} already has a vocabulary (one_of)`);
+        if (p.type !== 'STRING' || !Array.isArray(oneOf) || oneOf.length < 2 || oneOf.some((v) => typeof v !== 'string' || v.trim() === '')) {
+          throw new OntologyError(`${where}.properties.${prop}.one_of: two or more text values, on a STRING property`);
+        }
+        p.one_of = [...oneOf];
+      }
+      if (Object.keys(repo).length) custom(p)[EXTENSIONS.repo] = repo;
     }
   }
   for (const [key, o] of Object.entries(ov.relationships ?? {})) {
@@ -201,7 +222,7 @@ export function fromStudioPackage({ ontology, queries, overlay, source }) {
       const d = declared.find((x) => x.name === p);
       const ex = fix.args?.[p];
       const exType = typeof ex === 'number' ? (Number.isInteger(ex) ? 'INTEGER' : 'FLOAT') : typeof ex === 'boolean' ? 'BOOLEAN' : null;
-      const out = { name: p, type: exType ?? paramType(qd.cypher, p, nodesByLabel), description: d?.description ?? '' };
+      const out = { name: p, type: exType ?? paramType(qd.cypher, p, nodesByLabel, d?.description ?? ''), description: d?.description ?? '' };
       if (fix.args && Object.hasOwn(fix.args, p)) out.example = fix.args[p];
       return out;
     });
@@ -274,7 +295,10 @@ export function stripStudio(converted, overlay, upstream) {
     const o = overlay?.nodes?.[key] ?? {};
     if (o.colour !== undefined) delete n.extensions.display.colour;
     for (const prop of Object.keys(o.pattern ?? {})) delete n.properties[prop].pattern;
-    for (const prop of Object.keys(o.properties ?? {})) tidy(n.properties[prop], upstream.nodes?.[key]?.properties?.[prop]);
+    for (const [prop, x] of Object.entries(o.properties ?? {})) {
+      if (isMap(x) && x.one_of !== undefined) delete n.properties[prop].one_of;
+      tidy(n.properties[prop], upstream.nodes?.[key]?.properties?.[prop]);
+    }
     tidy(n, upstream.nodes?.[key]);
   }
   for (const [key, r] of Object.entries(doc.relationships ?? {})) tidy(r, upstream.relationships?.[key]);

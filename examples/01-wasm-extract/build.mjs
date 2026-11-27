@@ -89,7 +89,7 @@ const OGS_SDK_RUNTIME = [
 
 /** The page's modules, in web/; every other web/*.js is an error (a module build.mjs forgot). */
 const WEB_MODULES = ['app.js', 'console.js', 'convert.js', 'export.js', 'gliner.js', 'graphview.js', 'markdown.js', 'models.js', 'names.js',
-  'ogs.js', 'ontology.js', 'opfs.js', 'pipeline.js', 'split.js', 'store.js', 'studio.js', 'tar.js', 'tonvl.js', 'worker.js'];
+  'ogs.js', 'ontology.js', 'opfs.js', 'pipeline.js', 'split.js', 'store.js', 'studio.js', 'tar.js', 'tonvl.js', 'values.js', 'worker.js'];
 const WEB_STATIC = ['index.html', 'style.css', 'favicon.svg'];
 /** The esbuild outputs of `npm run vendor` and their metafiles (the bundled npm packages are read from these). */
 const VENDOR_BUNDLES = ['nvl.js', 'HierarchicalLayout.worker.js'];

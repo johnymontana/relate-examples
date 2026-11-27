@@ -429,8 +429,8 @@ relationships:
     description: >-
       The advisor works for the firm; one employer per advisor in this ontology, many advisors per firm.
     aliases: [works for, is a partner at, is a director of]
-    from: {node: Advisor}
-    to: {node: Firm, count: 1}
+    from: {node: Advisor, count: 1}
+    to: {node: Firm}
     extensions:
       custom:
         relate-examples: {phrase: works for}
@@ -439,8 +439,8 @@ relationships:
     description: >-
       The account is held and administered at the firm; one firm per account, many accounts per firm.
     aliases: [is custodied at, is booked at]
-    from: {node: Account}
-    to: {node: Firm, count: 1}
+    from: {node: Account, count: 1}
+    to: {node: Firm}
     extensions:
       custom:
         relate-examples: {phrase: is held at}
@@ -459,8 +459,8 @@ relationships:
     description: >-
       The security was issued by the issuer; one issuer per security, many securities per issuer.
     aliases: [is a bond of, is a share of]
-    from: {node: Security}
-    to: {node: Issuer, count: 1}
+    from: {node: Security, count: 1}
+    to: {node: Issuer}
     extensions:
       custom:
         relate-examples: {phrase: was issued by}
@@ -470,8 +470,8 @@ relationships:
       The transaction was executed in the account; one account per transaction, many transactions per
       account.
     aliases: [was booked to, was placed in]
-    from: {node: Transaction}
-    to: {node: Account, count: 1}
+    from: {node: Transaction, count: 1}
+    to: {node: Account}
     extensions:
       custom:
         relate-examples: {phrase: was executed in}
@@ -480,8 +480,8 @@ relationships:
     description: >-
       The transaction bought or sold the security; a trade involves one security, a security many trades.
     aliases: [bought, sold, traded]
-    from: {node: Transaction}
-    to: {node: Security, count: 1}
+    from: {node: Transaction, count: 1}
+    to: {node: Security}
     extensions:
       custom:
         relate-examples: {phrase: traded}

@@ -431,10 +431,11 @@ for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology d
     const cues = ['It cost £12.', 'It is gold.', 'Nothing here.'].map((t) => valueCue(t, o));
     say(`which sentences get the second call: ${JSON.stringify(cues)} ("It cost £12.", "It is gold.", "Nothing here.")`);
     pin('the second call only where a value can be', canonJson(cues) === '[true,true,false]', '[true, true, false]', canonJson(cues));
-    const parses = [['£410,000', 'money'], ['12.7%', 'money'], ['12.7%', null], ['9 Jan 2024', 'DATE'], ['01/09/2024', 'DATE'], ['January 2025', 'DATE']]
+    const parses = [['£410,000', 'money'], ['12.7%', 'money'], ['12.7%', 'percent'], ['12.7%', null], ['150 kW', null], ['12 m', null], ['£1.2m', null],
+      ['9 Jan 2024', 'DATE'], ['01/09/2024', 'DATE'], ['January 2025', 'DATE']]
       .map(([t, f]) => parseValue(t, f === 'DATE' ? { type: 'DATE' } : { type: 'FLOAT', form: f }));
     say(`values: ${parses.map((p) => (p.ok ? JSON.stringify(p.value) : `refused (${p.why})`)).join('; ')}`);
-    pin('values parse as web/values.js says', canonJson(parses.map((p) => (p.ok ? p.value : null))) === canonJson([410000, null, 0.127, '2024-01-09', null, null]), 'as designed', 'different');
+    pin('values parse as web/values.js says', canonJson(parses.map((p) => (p.ok ? p.value : null))) === canonJson([410000, null, 0.127, null, 150, 12, 1200000, '2024-01-09', null, null]), 'as designed', 'different');
     const twin = base();
     twin.nodes.B.properties.Amount = { type: 'FLOAT', extensions: { custom: { 'relate-examples': { extract: true } } } };
     twin.nodes.B.properties.amount = { type: 'FLOAT', extensions: { custom: { 'relate-examples': { extract: true } } } };

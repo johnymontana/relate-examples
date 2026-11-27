@@ -13,9 +13,12 @@
  * What each type takes:
  *   INTEGER  digits with thousands separators (`,`, a thin or plain space, `'`), a sign, a currency symbol
  *            or code before or after (£ $ € ¥ GBP USD EUR ...), a whole number of minor units (28,449.00);
- *            k/m/bn after a number multiply it (1.2m -> 1200000)
- *   FLOAT    the same with a decimal point; a trailing % divides by 100 (a fraction, as the ontologies declare ratios)
- *   form     'money' (relate-examples parse: MONEY) refuses a percentage; 'percent' (parse: PERCENT) needs one
+ *            thousand, million, billion (bn, mn) after a number multiply it, and so do k and m after an
+ *            amount of money (£1.2m -> 1200000; 12 m is twelve of a unit); a unit after a number that is
+ *            not money is dropped (150 kW -> 150, 77.0 kWh -> 77)
+ *   FLOAT    the same with a decimal point
+ *   form     a percentage (12.7%) is read only where the property declares one: 'percent' (relate-examples
+ *            parse: PERCENT) needs it and stores the fraction (0.127); 'money' (parse: MONEY) is an amount
  *   DATE     ISO 2024-01-09; 9 January 2024, 9 Jan 2024, 9th January 2024; January 9, 2024 and Jan 9 2024; not
  *            01/09/2024 (day and month order cannot be told) and not a date without a year
  *   BOOLEAN  yes, no, true, false
@@ -29,17 +32,23 @@ export const EXTRACTABLE_TYPES = Object.freeze(['STRING', 'INTEGER', 'FLOAT', 'D
 const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
 const CURRENCY = /^(?:[£$€¥₹₩₣]|(?:GBP|USD|EUR|JPY|CHF|CAD|AUD|INR|CNY|SEK|NOK|DKK)\s*)|(?:\s*(?:GBP|USD|EUR|JPY|CHF|CAD|AUD|INR|CNY|SEK|NOK|DKK)|[£$€¥])$/giu;
 
-/** A number written in text, or null. @param {string} raw @param {boolean} integer */
-function parseNumber(raw, integer) {
+/** A number written in text, or null. @param {string} raw @param {boolean} integer @param {string|null} [form] */
+function parseNumber(raw, integer, form = null) {
   let s = raw.trim().replace(/[−‒–]/gu, '-');
+  const written = s;
   s = s.replace(CURRENCY, '').trim();
+  const money = s !== written || form === 'money';
   let scale = 1;
   const pct = /%$/.test(s);
   if (pct) s = s.slice(0, -1).trim();
-  const mult = /^(.*?)\s*(k|thousand|m|mn|million|bn|billion)$/iu.exec(s);
+  const mult = /^(.*?\d)\s*(thousand|mn|million|bn|billion)$/iu.exec(s) ?? (money ? /^(.*?\d)\s*(k|m)$/iu.exec(s) : null);
   if (mult) {
     s = mult[1];
     scale = /^k|thousand/i.test(mult[2]) ? 1e3 : /^(?:m|mn|million)$/i.test(mult[2]) ? 1e6 : 1e9;
+  } else if (!money && !pct) {
+    // a unit after a quantity: letters, and the signs units are written with (kW, kWh, km/h, °C, m², bbl/d)
+    const unit = /^(.*?\d)\s*([\p{L}°µ²³][\p{L}°µ²³]*(?:\/[\p{L}²³]+)?)$/u.exec(s);
+    if (unit) s = unit[1];
   }
   s = s.replace(/^[-+]?/, (x) => x).replace(/(?<=\d)[,  ' ](?=\d{3}\b)/gu, '');
   if (!/^[-+]?\d+(?:\.\d+)?$/u.test(s)) return null;
@@ -92,7 +101,8 @@ export function parseValue(text, prop) {
       const pct = /%\s*$/u.test(raw);
       if (prop.form === 'money' && pct) return { ok: false, why: 'a percentage, not an amount' };
       if (prop.form === 'percent' && !pct) return { ok: false, why: 'not a percentage' };
-      const n = parseNumber(raw, prop.type === 'INTEGER');
+      if (prop.form !== 'percent' && pct) return { ok: false, why: 'a percentage, and the property is not one (parse: PERCENT)' };
+      const n = parseNumber(raw, prop.type === 'INTEGER', prop.form ?? null);
       if (n === null) return { ok: false, why: `not ${prop.type === 'INTEGER' ? 'a whole number' : 'a number'}` };
       value = n;
       break;
