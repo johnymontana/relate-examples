@@ -29,8 +29,9 @@ v4: accept it again
 verdicts on it, oldest first: v1 accept, v3 reject, v4 accept
 
 ## a verdict on a mention: rejecting a kept name unanchors the claims that joined it (rule 3)
-mention "Rebalancing Decision" (Decision) 0.756, keep by band: 2 claims join it; unanchored claims in the document: 40
-v5 (mention, reject): the mention is drop by verdict; 0 claims join it; unanchored claims: 40
+the target: the lowest-scoring kept model mention whose rejection unanchors a claim (2 of 31 joined kept mentions tried on a copy)
+mention "Trim Decision" (Decision) 0.769, keep by band: 1 claims join it; unanchored claims in the document: 40
+v5 (mention, reject): the mention is drop by verdict; 0 claims join it; unanchored claims: 41
   published generation 9: 31 entities, 17 relationships
 
 ## the rule invariant holds with verdicts in the store

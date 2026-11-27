@@ -37,11 +37,12 @@ breakdowns. Only after that do the other 38 domains follow, and they can be auth
 
 ---
 
-## Status (2026-11-27, paused)
+## Status (2026-11-27)
 
 Local commits on `ex01-ontologies`, never pushed: `b0c2a2a` (the two slices and properties from
-text), `8162d3f` (harness fixes, ADRs, browser tests), then the corpus landing (all 40 domains, the
-recalibrated defaults and the fixes below).
+text), `8162d3f` (harness fixes, ADRs, browser tests), then `9295945` (all 40 domains, the
+recalibrated defaults), then the full run recorded (the browser and native sections on the
+curated corpus, the screenshot).
 
 | Phase | State | Notes |
 |---|---|---|
@@ -52,36 +53,57 @@ recalibrated defaults and the fixes below).
 | 4 The corpus | done | 49 documents (40 primary, 9 companions) and 12 held out, gold v2, lint clean. |
 | 5 Scoring and calibration | done | Precision-first (D23): entity keep 0.70, relation keep 0.20/0.15. base-v1 not recalibrated. |
 | 6 Tools | mostly | Curated tools return rows for 292 of 386; packages' for 28 of 133 (written for their CSV data); 1 error (loans-and-mortgages `default-contagion-…`, `IN` on a non-list). "Every tool returns rows" is not met. |
-| 7 The page | fixed, not yet re-verified | The first full browser run (2026-11-27) found five problems, all fixed: curated stores shown as "own document" (compare by sha, not YAML text); the sample's size question never answered by the test; `refreshNames` ignoring the `proper` rule on reopen (now `store.nameOfMention`, with a Node check that reopening changes nothing); the side panel showing a tool's example while asking for a value; the migration offer requiring `convertedFrom` (earlier builds' stores carry `format`). |
+| 7 The page | done | The full browser run passes end to end on the curated corpus (2026-11-27). The first one found five problems, all fixed: curated stores shown as "own document" (compare by sha, not YAML text); the sample's size question never answered by the test; `refreshNames` ignoring the `proper` rule on reopen (now `store.nameOfMention`, with a Node check that reopening changes nothing); the side panel showing a tool's example while asking for a value; the migration offer requiring `convertedFrom` (earlier builds' stores carry `format`). |
 | 8 Harness and CI | done, over budget | Inference cache (D24), engine pool, CI cache. A full `./run.sh` takes about an hour (target was 25 minutes): subset the grids or the ablations. |
 | 9a Reconcile with records | not started | Waits on 02's loader in `lib/`. |
 | 9b Properties from text | done | D27, ADR-0021: values P 0.918 R 0.642. |
 | 9c Aliases into one entity | not started | |
-| 10 Records | mostly | ADR-0019 to 0021, NOTES D20-D27 and G12, README, THIRD_PARTY, `site.json`, AGENTS.md, CI. The screenshot is not retaken. |
+| 10 Records | mostly | ADR-0019 to 0021, NOTES D20-D27 and G12, README, THIRD_PARTY, `site.json`, AGENTS.md, CI, the screenshot (the curated Financial Services graph). |
 
 **Scores at the defaults** (dev, 49 documents): entities P 0.903 R 0.800; relations P 0.917
 R 0.221 (lists 53 of 531, tables 7 of 441); values P 0.918 R 0.642; 3 of 246 distractors kept.
 Held out: entities P 0.868 R 0.728, relations P 0.944 R 0.233, 0 of 36 distractors kept.
 
-**`expected/` state.** probes, model, ontology, extract, gate, audit, review, score and
-`graph.cypher` are recorded from this code, each diff read and classified (the corpus, the new
-defaults, rule 3's inside join, the "says" cue, the wider SDK checks). Since that run, two harness
-lines changed (`extract.txt`: the reopen check; `gate.txt`: the Pine Clinic case named as the inside
-join), so the next `./run.sh` shows those two. **`browser.txt` and `native.txt` are still the
-create-context-graph build's**: the browser section has not passed end to end on the curated corpus.
+**`expected/` state.** Every file is recorded from this code by one full `./run.sh --update`
+(exit 0), each diff read and classified. `browser.txt` and `native.txt` now run on the curated
+Financial Services and Software Engineering ontologies (D20): their kinds, links, tools and counts;
+values read from text (D27: a click on TX-4471 shows its amount, side and trade date; the 16th
+UNIQUE constraint is `_Attribute`'s key; sentences that could state a value take a second model
+call, so the crash test's resume asks 24 calls, not 12); the new migration section (D20) and the
+reset on the Financial Services store it empties. `extract.txt` gains the reopen check, `gate.txt`
+names the Pine Clinic case as the inside join, and `review.txt` records the new mention-reject
+target.
 
-**Next, in order:**
-1. `./run.sh --update` (about an hour; `caffeinate -i`). Read `git diff expected/browser.txt
-   expected/native.txt` and the two harness lines above; fix any browser failure and rerun.
-2. Retake `screenshot.png` (`./run.sh --site`, then `node harness/drive.mjs --smoke --screenshot
-   screenshot.png --base-url …`).
-3. `review.txt`'s mention-reject case no longer shows unanchoring (the two claims rejoin another
-   mention of the same decision): pick a target whose claims have no other mention.
-4. Bring the run under budget (Phase 8).
-5. Record the known limits in README/NOTES: names.js gives no name to "A-" and all-digit
-   identifiers; split.js and "Ltd."; one ask per legal pair for multi-pair links; rule 2b; base-v1
-   uncalibrated.
-6. Before each commit: the two name searches, `uv run pytest -q`, `node harness/convert.mjs --check`.
+**Done this pass:** the full run recorded; `screenshot.png` retaken; `review.txt`'s
+mention-reject case picks the lowest-scoring kept mention whose rejection unanchors a claim, tried on
+a copy of the store; the known limits are in README ("Known limits of the rules") and NOTES (D22,
+D26), each checked with a repro ("Ltd." does not split, being a listed abbreviation; "Plc.", "Corp."
+and "GmbH." do).
+
+**Before each commit:** the two name searches, `uv run pytest -q`, `node harness/convert.mjs --check`.
+
+**Deferred to a later pass** (agreed 2026-11-27; each changes scope or `score.txt`, so each is a
+decision, not a fix):
+- **The run's budget** (Phase 8). A full `./run.sh` takes about an hour against the 25-minute
+  target, which CI pays on every push to `main`. Likely route: the per-setting grids and the
+  "how the model is asked" comparison on a fixed subset of documents (as the floor invariant
+  already uses one), with `score.txt` saying which. The dev and held-out scores stay on everything.
+- **Tools that find nothing** (Phase 6, "Done means"). Curated tools return rows for 292 of 386 on
+  their stores: revise the tools (or their documents) that a reader would expect to answer. The
+  packages' queries (28 of 133) are verbatim and written for their CSV data: restate the goal for
+  them (their notes already say what each can do on an extracted graph) rather than edit them.
+  One package query errors (loans-and-mortgages `default-contagion-through-borrowers-and-guarantors`,
+  `IN` on a non-list): report it upstream or note it.
+- **The tools' notes that say "no rows" wrongly** (with the item above). `web/console.js`
+  `toolCompat` predicts empty for 157 tools, and 78 of them return rows (`audit.txt`, "misses").
+  Its property lists predate D27 and the bookkeeping labels: it treats every property outside
+  `ENTITY_PROPERTIES` as never written, so a key the extractor now reads from text (`accountId`,
+  `isin`, a course code) and a `_Claim`'s own fields (`band`, `htext`, `rel`, `p`, `rule`: every
+  curated `claims-waiting-about-a-name`) are reported as never written, and the page shows that
+  note. Fix: take the ontology's extracted properties and each bookkeeping label's fields into
+  account, then re-record `audit.txt` and `browser.txt`.
+- **9a** (reconcile the gold with the packages' records; waits on 02's loader in `lib/`) and **9c**
+  (aliases into one entity).
 
 ---
 

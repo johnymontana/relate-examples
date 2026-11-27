@@ -5536,6 +5536,7 @@ fixtures: entities Account 2, Decision 1, Event 1, Location 1, Organization 7, P
 
 ## a second pass over the same stores: every section re-applied, every sentence from the cache (D7, D9)
 61 distinct documents: 0 inferences, 5189 cache hits; bands and the typed graph unchanged: yes
+each store reopened as a reload reopens it: its dump unchanged: yes (41 stores)
 
 ## stop, a crash mid-section, and resume (D9), on a fresh financial-services store with sections of about 120 bytes (its sample)
 stop after the first section: status stopped, 1 of 26 sections written, 2 inferences

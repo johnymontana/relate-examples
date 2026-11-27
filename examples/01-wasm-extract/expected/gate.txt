@@ -260,7 +260,7 @@ rule 5's hedge cap (a cue from the sentence's start to the end of the later span
   "Ivy Roe was treated at Oak Clinic, not at home." (after both spans): TREATED_AT 0.900 keep by band;
   "In May, Jon Bly was treated at Fen Clinic." ("may" and "no" are cues in lower case only): TREATED_AT 0.900 keep by band
 rule 3's name join (no mention contains the end; one of its sentence has its canonical name): "Tod Fry" -[TREATED_AT]-> "the Ash Clinic" -> Clinic:ASH: keep by band;
-  "Wes Pell" -[TREATED_AT]-> "at the Birch Clinic" -> Clinic:BIRCH: keep by band (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> "the Pine Clinic ward" -> Clinic:PINE: keep by band
+  "Wes Pell" -[TREATED_AT]-> "at the Birch Clinic" -> Clinic:BIRCH: keep by band (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> "the Pine Clinic ward" -> Clinic:PINE: keep by band (no name, but the end holds a mention of one entity: the inside join)
   "by Zed Pry" -[REFERRED]-> "Dov Kim" (Zed Pry: Person 0.600 dropped by one-kind, Patient 0.450 review by pole-specific): head Patient:ZED_PRY, review by end-in-review
 rule 2b, one kind per name in the store: "Rae Holm": Patient 0.900 (key Patient:RAE_HOLM) keep by band, Person 0.950 (key Person:RAE_HOLM) review by other-kind (kept as Patient);
   its claims: VISITED keep by band, WORKS_FOR review by end-in-review

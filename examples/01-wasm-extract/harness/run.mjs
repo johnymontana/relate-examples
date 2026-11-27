@@ -1808,10 +1808,32 @@ if (FULL) {
   v();
   v('## a verdict on a mention: rejecting a kept name unanchors the claims that joined it (rule 3)');
   const mentions = store.readGate(s.db, cl).mentions.filter((m) => m.doc === id);
-  const target = mentions.filter((m) => m.band === 'keep' && m.source === 'model').sort((a, b) => a.p - b.p || cmp(a.key, b.key))[0] ??
-    mentions.filter((m) => m.band === 'keep').sort((a, b) => cmp(a.key, b.key))[0];
-  const joined = () => cl.exec(s.db, `MATCH (c:_Claim)-[:_HEAD|_TAIL]->(m:_Mention {key: $k}) WHERE $k IS NOT NULL RETURN count(DISTINCT c) AS n`, { k: target.key }).rows[0].n;
+  const joinedTo = (/** @type {any} */ db, /** @type {string} */ k) =>
+    cl.exec(db, `MATCH (c:_Claim)-[:_HEAD|_TAIL]->(m:_Mention {key: $k}) WHERE $k IS NOT NULL RETURN count(DISTINCT c) AS n`, { k }).rows[0].n;
+  const unanchoredIn = (/** @type {any} */ db) => store.readGate(db, cl).claims.filter((c) => c.doc === id && c.rule === 'unanchored').length;
+  // The target: the lowest-scoring kept model mention whose rejection leaves a claim unanchored, tried on a copy of
+  // the store (dumpStore loaded into a fresh database). A claim whose sentence holds another mention of the same
+  // entity rejoins it (rule 3's name or inside join) and stays anchored, so the lowest-scoring one may show nothing.
+  const candidates = mentions.filter((m) => m.band === 'keep' && m.source === 'model' && joinedTo(s.db, m.key) > 0)
+    .sort((a, b) => a.p - b.p || cmp(a.key, b.key));
+  const baseUnanchored = unanchoredIn(s.db);
+  let tried = 0;
+  const unanchors = (/** @type {any} */ m) => {
+    tried++;
+    const t = freshDb();
+    try {
+      replay.load(t, replay.parse(store.dumpStore(s.db)));
+      store.addVerdict(t, cl, { target: m.key, value: 'reject' });
+      store.gate(t, cl);
+      return unanchoredIn(t) > baseUnanchored;
+    } finally {
+      t.free();
+    }
+  };
+  const target = candidates.find(unanchors) ?? candidates[0] ?? mentions.filter((m) => m.band === 'keep').sort((a, b) => cmp(a.key, b.key))[0];
+  const joined = () => joinedTo(s.db, target.key);
   const unanchored = () => claimsOf().filter((c) => c.rule === 'unanchored').length;
+  v(`the target: the lowest-scoring kept model mention whose rejection unanchors a claim (${tried} of ${candidates.length} joined kept mentions tried on a copy)`);
   v(`mention ${JSON.stringify(target.text)} (${target.label}) ${f3(target.p)}, ${target.band} by ${target.rule}: ${joined()} claims join it; unanchored claims in the document: ${unanchored()}`);
   const v5 = store.addVerdict(s.db, cl, { target: target.key, value: 'reject' });
   store.gate(s.db, cl);

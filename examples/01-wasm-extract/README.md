@@ -696,6 +696,28 @@ edge sets (`model.txt`), and gives the same answers in Node and Chromium (`brows
   and 2 to 19 links), plus a second, smaller call for a sentence that may state a value (D27); about
   680 MB of WASM memory; a warm load reads and hashes 304 MB from Cache Storage.
 
+### Known limits of the rules
+
+These are this example's own rules (`web/names.js`, `web/split.js`, the gate, `web/ontology.js`),
+not the model's or the engine's.
+
+- **Some identifiers get no name** (D26). `entityName` drops the articles a, an and the, so
+  "A-00724" and "A-7" are left with an all-digit token, which is opaque, and have no canonical
+  name; a bare number such as "15502307" is opaque too. Such a mention drops by rule `no-name`
+  and never reaches review. "B-00724" and "ACC-2207" are fine.
+- **The sentence splitter knows 22 abbreviations** (`ABBREVIATIONS` in `web/split.js`, E2).
+  "Ltd.", "Inc." and "Co." do not end a sentence; "Plc.", "Corp.", "GmbH." and "Pty." do. "Solenne
+  Photovoltaics Plc. in Gateshead employs Rhys Penhallow." becomes two sentences, and a relation
+  across the split is never asked, because the model reads one sentence at a time.
+- **A link with many legal pairs makes a long question** (D22). It is asked once per pair, joined
+  by " or " (see "What the model is asked"): a link legal for 25 kind pairs is 776 characters of
+  the 2,000. The budget shortens kind descriptions only; a link's ask is never cut, so a link with
+  many pairs leaves less room for the kinds' descriptions.
+- **Rule 2b keeps one kind per name** (the gate). For example, "Mercury" kept as a Planet and as a
+  Company keeps one of them; the other's mentions go to review as `other-kind`. The gate cannot
+  tell one thing the model typed two ways from two things that share a name. Accepting the mention
+  in the Review tab keeps both.
+
 ## Relate behaviours
 
 [NOTES.md](NOTES.md) lists every Relate 1.3.0 behaviour this example depends on or pins (R1-R24),
