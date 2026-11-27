@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // @ts-check
-// The bundled ontologies as Ontology Graph Spec 1.1 documents (web/convert.js, web/ogs.js):
-// data/ontologies/ogs/ccg/<domain>.ontology.yaml from create-context-graph's 27 domain files (with
-// _base.yaml). The originals stay where they are (data/ontologies/ccg/) for provenance; the page and
-// the harnesses load the documents.
+// The solution packages as the page's Ontology Graph Spec 1.1 documents (web/studio.js, web/ogs.js):
+// data/ontologies/ogs/studio/<package>.ontology.yaml from each vendored package and its overlay
+// (data/ontologies/studio/, D21). ccgConversions() converts create-context-graph's 27 domain files
+// (data/ontologies/ccg/, with _base.yaml) in memory, as the editor converts a pasted one, for the
+// harness's fixtures and format checks; they are no longer written (ADR-0019).
 //   node harness/convert.mjs           write data/ontologies/ogs/ (only files that changed)
 //   node harness/convert.mjs --check   write nothing; exit 1 naming every committed document that is
 //                                      not byte for byte a fresh conversion of its original, and any file

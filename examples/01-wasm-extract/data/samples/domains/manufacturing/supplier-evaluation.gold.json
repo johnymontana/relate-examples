@@ -1,0 +1,48 @@
+{
+  "entities": [
+    {"name": "Brackenfold Diecasting Ltd", "type": "Supplier", "aliases": ["Brackenfold"]},
+    {"name": "Calder Bridge Plant", "type": "Plant"},
+    {"name": "Tom Ashworth", "type": "Engineer"},
+    {"name": "Rachel Okonkwo", "type": "Engineer"},
+    {"name": "30418-02", "type": "Part", "aliases": ["HG40 pump body"]},
+    {"name": "30419-01", "type": "Part", "aliases": ["HG40 rear cover"]},
+    {"name": "30463-01", "type": "Part", "aliases": ["HG63 pump body"]},
+    {"name": "NCR-2026-0233", "type": "Nonconformance"},
+    {"name": "NCR-2026-0412", "type": "Nonconformance"},
+    {"name": "L26-0611", "type": "Lot"},
+    {"name": "L26-0917", "type": "Lot"},
+    {"name": "L26-1030", "type": "Lot"},
+    {"name": "DC-104", "type": "Machine"},
+    {"name": "DC-102", "type": "Machine"},
+    {"name": "CA-1193", "type": "CorrectiveAction"},
+    {"name": "CA-1195", "type": "CorrectiveAction"},
+    {"name": "Fenmoor Tractors Ltd", "type": "Customer"}
+  ],
+  "relations": [
+    {"source": "Tom Ashworth", "target": "Calder Bridge Plant", "type": "BASED_AT", "how": "apposition"},
+    {"source": "Brackenfold Diecasting Ltd", "target": "30418-02", "type": "SUPPLIES", "how": "list"},
+    {"source": "Brackenfold Diecasting Ltd", "target": "30419-01", "type": "SUPPLIES", "how": "list"},
+    {"source": "NCR-2026-0233", "target": "L26-0611", "type": "FOUND_IN", "how": "table"},
+    {"source": "NCR-2026-0412", "target": "L26-0917", "type": "FOUND_IN", "how": "table"},
+    {"source": "L26-0611", "target": "30419-01", "type": "OF_PART", "how": "table"},
+    {"source": "L26-0917", "target": "30418-02", "type": "OF_PART", "how": "table"},
+    {"source": "NCR-2026-0233", "target": "Brackenfold Diecasting Ltd", "type": "ATTRIBUTED_TO", "how": "passive"},
+    {"source": "NCR-2026-0412", "target": "Brackenfold Diecasting Ltd", "type": "ATTRIBUTED_TO", "how": "alias"},
+    {"source": "NCR-2026-0412", "target": "Fenmoor Tractors Ltd", "type": "REPORTED_BY", "how": "passive"},
+    {"source": "L26-0917", "target": "Brackenfold Diecasting Ltd", "type": "DELIVERED_BY", "how": "alias"},
+    {"source": "L26-0917", "target": "DC-104", "type": "PROCESSED_ON", "how": "passive"},
+    {"source": "CA-1193", "target": "Tom Ashworth", "type": "OWNED_BY", "how": "apposition"},
+    {"source": "CA-1193", "target": "DC-104", "type": "IMPLEMENTED_ON", "how": "plain"},
+    {"source": "L26-1030", "target": "DC-102", "type": "PROCESSED_ON", "how": "passive"}
+  ],
+  "distractors": [
+    {"source": "L26-1030", "target": "DC-104", "type": "PROCESSED_ON", "family": "negation"},
+    {"source": "CA-1195", "target": "Rachel Okonkwo", "type": "OWNED_BY", "family": "future"},
+    {"source": "Brackenfold Diecasting Ltd", "target": "30463-01", "type": "SUPPLIES", "family": "conditional"}
+  ],
+  "properties": [
+    {"entity": "NCR-2026-0233", "property": "raisedOn", "text": "12 May 2026", "value": "2026-05-12", "how": "table"},
+    {"entity": "NCR-2026-0412", "property": "raisedOn", "text": "14 Oct 2026", "value": "2026-10-14", "how": "table"},
+    {"entity": "CA-1195", "property": "status", "text": "open", "value": "open", "how": "plain"}
+  ]
+}

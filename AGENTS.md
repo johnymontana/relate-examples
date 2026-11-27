@@ -16,8 +16,11 @@ There are three examples, each with a `README.md` that describes it as built and
 lists every behaviour it depends on or pins (each row with a minimal repro) plus the design ids the
 code cites. Read both before changing an example.
 - `examples/01-wasm-extract/`: markdown to a knowledge graph in a browser tab. GLiNER2.5 through
-  gliner-rs WASM, Relate's WASM build in OPFS, NVL, and a read-only Cypher console. Rows `R1`…`R24`;
-  design ids D, E, G, O, V, X, Y.
+  gliner-rs WASM, Relate's WASM build in OPFS, NVL, and a read-only Cypher console. It bundles 27
+  curated domain ontologies (`data/ontologies/domains/`, ADR-0019) and 13 of Neo4j's solution packages,
+  vendored verbatim with an overlay each (`data/ontologies/studio/`, ADR-0020), with 49 synthetic
+  documents and 12 held-out ones (`data/samples/`), and reads entities, relations and property values
+  (ADR-0021). Rows `R1`…`R24`; design ids D, E, G, O, V, X, Y.
 - `examples/02-wasm-text2cypher/`: ontology-grounded Text2Cypher in a browser tab. WebLLM (Qwen3.5)
   on WebGPU, or canned reference queries; Relate's WASM build in memory under a graph type derived
   from the ontology. Rows `P1`…`P9`; ids Y, W, D.
@@ -73,11 +76,14 @@ scripts/fetch-gliner.sh small|base [--check|--pin]  # GLiNER2.5 weights → .cac
 (cd examples/03-wasm-agent-memory && ONNXRUNTIME_NODE_INSTALL=skip npm ci --omit=peer)
 
 uv run pytest -q                                    # lib/tests; testpaths = examples + lib/tests, so run from the root
-examples/01-wasm-extract/run.sh                     # offline, ~8-10 min, diffed against expected/ (caffeinate -i on a laptop)
+examples/01-wasm-extract/run.sh                     # offline, ~1 h (the corpus and its grids), diffed against expected/ (caffeinate -i on a laptop)
 examples/01-wasm-extract/run.sh --update            # rewrite expected/ (only after reading the diff)
 examples/01-wasm-extract/run.sh --site              # dist/ served as Pages serves it, on EX01_PORT (default 8701)
 examples/01-wasm-extract/run.sh --serve             # development server from web/ (?models=local: weights from .cache/gliner)
-node examples/01-wasm-extract/harness/convert.mjs [--check]   # regenerate (or compare) the bundled ontologies
+node examples/01-wasm-extract/harness/convert.mjs [--check|--only <package>]   # regenerate (or compare) the solution packages' documents
+node examples/01-wasm-extract/harness/domain.mjs <id> [--lint|--show]   # one ontology: its bar, its documents' lint, extraction, scores, tools
+node examples/01-wasm-extract/harness/vendor-studio.mjs --check  # the vendored packages against their manifest
+node examples/01-wasm-extract/harness/corpus.mjs --merge        # domains' entries.json into data/samples/samples.json
 examples/02-wasm-text2cypher/run.sh                 # offline, ~1 min: Node, Chromium (canned mode), native
 examples/02-wasm-text2cypher/run.sh --site          # dist/ served as Pages serves it, on EX02_PORT (default 8702)
 examples/02-wasm-text2cypher/run.sh --llm-eval      # local only: both models in the system Chrome (WebGPU), never diffed

@@ -1,0 +1,115 @@
+# What example 01 adds to Neo4j's patient-journey package (web/studio.js, D21). The package's own
+# files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), a pattern for the one identifier the documents
+# state in full, the properties whose values the model reads (D27), and example arguments for the
+# package's queries, in the words of this example's documents.
+package: patient-journey
+card:
+  title: Patient Journey
+  category: Healthcare & Life Sciences
+  description: Map longitudinal care pathways and discover comorbidities across a connected clinical graph.
+industry: Healthcare & Life Sciences
+nodes:
+  Patient:
+    colour: "#2563eb"
+    proper: true
+    ask: the person receiving care whose record the document summarises, named by full name or by Mr or Ms and surname, such as Andrew Krajcik or Mr Krajcik; never a doctor or other clinician
+  # The package keys encounters, patients, clinicians and organisations by UUIDs, which name nothing
+  # (names.js: an opaque id has no entity name). The documents cite an encounter by the first eight
+  # characters of its record ID, as the summaries say, so the full ID never becomes its key.
+  Encounter:
+    colour: "#d97706"
+    proper: true
+    ask: one episode of care, a visit, attendance or admission, cited as encounter and its eight-character hexadecimal reference, such as encounter 039551b6; the episode, not a medicine, a clinician or a place
+    # The package gives `type` no vocabulary (one_of) and an overlay cannot add one, so the model reads
+    # it as free text and every sentence goes to the values call; the ask names the package's five
+    # classes, which the documents write as "classed as wellness" and in a Class column.
+    properties:
+      type:
+        extract: true
+        ask: the class the record gives the encounter, one of wellness, ambulatory, emergency, inpatient or outpatient
+  Observation:
+    colour: "#0891b2"
+    proper: true
+    propose: true
+    ask: one measurement or test result recorded at an encounter, such as a blood pressure reading, cited by its result ID such as obs-n001985
+    # Both forms of result ID in the package's observations.csv: obs-n001985 and obs-512815bc-001.
+    pattern:
+      id: "^obs-(?:n[0-9]{6}|[0-9a-f]{8}-[0-9]{3})$"
+    # A value and its unit are separate properties in the package; asking for both keeps the unit
+    # out of the value ("158", "mmHg", not "158 mmHg").
+    properties:
+      description:
+        extract: true
+        ask: what the result measured, such as systolic blood pressure, diastolic blood pressure or body weight
+      value:
+        extract: true
+        ask: the measured result as a bare number, such as 158 or 81.2, without the unit after it
+      units:
+        extract: true
+        ask: the unit the result is measured in, such as mmHg or kg
+  # Conditions are written in lower case (hypertension): not proper.
+  Condition:
+    colour: "#dc2626"
+    ask: a diagnosed disease, disorder or clinical finding, such as hypertension or coronary heart disease; the condition itself, not the drug that treats it or the reading that suggests it
+  # Drugs are written by their lower-case non-proprietary names (lisinopril) as often as by the
+  # record's display name: not proper.
+  Drug:
+    colour: "#7c3aed"
+    ask: a prescribed medicine, named by its non-proprietary name such as lisinopril or by its record name with strength and form such as Clopidogrel 75 MG Oral Tablet; the medicine, never a code or an encounter reference
+  Provider:
+    colour: "#059669"
+    proper: true
+    ask: a doctor or other clinician who attended encounters, named by full name, often with Dr, such as Dr Wilton Pollich; the clinician treating the patient, not the patient or the organisation
+  Speciality:
+    colour: "#65a30d"
+    proper: true
+    ask: a clinician's field of practice as the record names it, such as General Practice or Cardiology
+  Organisation:
+    colour: "#db2777"
+    proper: true
+    ask: a healthcare organisation or practice that clinicians work at, named such as Milford Regional Medical Center or by a practice code such as PCP1477
+relationships:
+  hasEncounter:
+    phrase: was seen at
+  next:
+    phrase: was followed by
+  hasObservation:
+    phrase: recorded
+  diagnosed:
+    phrase: diagnosed
+  prescribed:
+    phrase: prescribed
+  attendedBy:
+    phrase: was attended by
+  hasSpeciality:
+    phrase: is listed under
+  belongsTo:
+    phrase: works at
+# Andrew Krajcik's record ID and the SNOMED CT codes are the ones the care summary states; Wilton
+# Pollich's provider ID is his row in the package's providers.csv.
+tools:
+  patient-s-prescribed-drugs:
+    args: {patientId: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93}
+  patient-s-diagnosed-conditions:
+    args: {patientId: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93}
+  comorbidities-of-other-patients-who-share-a-condition-with-a-given-patient:
+    args: {patientId: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93}
+  single-patient-chronological-pathway-via-the-next-chain:
+    args: {patientId: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93}
+  patient-journey-subgraph:
+    args: {patientId: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93}
+  comorbidities-associated-with-a-condition:
+    args: {conditionCode: "53741008"}
+  shared-condition-patient-cluster:
+    args: {conditionCode: "59621000", limit: 50}
+  comorbidity-network:
+    args: {limit: 50}
+  care-network-around-a-condition:
+    args: {conditionCode: "53741008", limit: 50}
+  drug-co-prescription-network:
+    args: {limit: 50}
+  provider-workload:
+    args: {providerId: e2edaa6b-9fea-3a37-8581-df6a8b8f64f5}

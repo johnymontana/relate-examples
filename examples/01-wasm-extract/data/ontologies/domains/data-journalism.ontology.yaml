@@ -1,0 +1,612 @@
+# Data Journalism: example 01's curated ontology for fact-check and investigations documents (D20).
+# Written for this repository from create-context-graph's data-journalism.yaml at 707b168
+# (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, and the people and bodies are named for
+# what a newsroom calls them (Journalist, Editor, Source, Subject).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: data-journalism
+name: Data Journalism
+description: >-
+  Data journalism as a newsroom's fact-check and investigations desks write about it: the public
+  claims the desk checks and the subjects who make them, the datasets and records a check rests on
+  and the sources that supplied them, the stories that publish or repeat a claim and the corrections
+  they needed, the investigations that run over many stories, and the journalists and editors who do
+  the work. It answers who made a claim and who checked it, which data support or contradict it and
+  where those data came from, which of the newsroom's stories repeated a claim the data contradict and
+  whether a correction followed, who leads an investigation and whom it examines, and what the source
+  text says about each fact. Ratings, dates and counts are properties, not links. The newsroom itself,
+  its audience, legal review and source protection are out of scope, and an unnamed source is never
+  an entity.
+nodes:
+  Journalist:
+    label: Journalist
+    description: >-
+      A reporter, data reporter or fact-checker at the newsroom who reports, writes or checks stories,
+      named in full ("Renata Szabo, data desk"). Journalists do the reporting; editors edit and approve
+      it, and sources are outside the newsroom.
+    aliases: [reporter, data reporter, fact-checker, correspondent, investigations reporter]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The journalist's full name, as the byline gives it."}
+      role: {type: STRING, one_of: [reporter, data reporter, fact-checker, investigations reporter], description: "The journalist's job at the newsroom."}
+      beat: {type: STRING, description: "The beat or desk the journalist works on (city hall, data)."}
+    extensions:
+      display: {x: 200, y: 100, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a reporter or fact-checker employed by the newsroom, whose byline or check it is, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: journalist-workload
+            category: aggregation
+            question: How many claims has each journalist checked, how many stories written and how many datasets obtained?
+            description: Per journalist, the claims they checked, the stories they wrote and the datasets they obtained.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each claim is counted once per story.
+            cypher: |-
+              MATCH (j:Journalist)
+              OPTIONAL MATCH (c:Claim)-[:CHECKED_BY]->(j)
+              OPTIONAL MATCH (st:Story)-[:WRITTEN_BY]->(j)
+              OPTIONAL MATCH (d:Dataset)-[:OBTAINED_BY]->(j)
+              RETURN j.name AS journalist, count(DISTINCT c) AS claims_checked, count(DISTINCT st) AS stories,
+                     count(DISTINCT d) AS datasets_obtained
+              ORDER BY claims_checked DESC, stories DESC, journalist
+  Editor:
+    label: Editor
+    description: >-
+      An editor at the newsroom who edits stories before they run or issues corrections after (a metro
+      editor, a standards editor), named in full. Editors are journalists by trade, but this ontology
+      keeps them apart because they approve the work rather than report it.
+    aliases: [desk editor, standards editor, metro editor, managing editor, copy editor]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The editor's full name."}
+      role: {type: STRING, one_of: [metro editor, standards editor, managing editor, data editor, copy editor], description: "The editor's job at the newsroom."}
+    extensions:
+      display: {x: 400, y: -80, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "an editor on the newsroom's own staff who edits stories or issues corrections, such as a metro editor or standards editor, named in full", proper: true}
+  Source:
+    label: Source
+    description: >-
+      A person or body outside the newsroom that gave it information or data: an official, a
+      spokesperson, an expert or a department that released records, named in full ("Nadia Kowalczyk,
+      the city's chief data officer"). A source supplies the facts; a subject is who the facts are about.
+    aliases: [spokesperson, expert, official, records custodian, press office, informant]
+    properties:
+      name: {type: STRING, key: true, description: "The source's full name, or the body's."}
+      sourceType: {type: STRING, one_of: [official, spokesperson, expert, agency, whistleblower], description: "What kind of source it is."}
+      affiliation: {type: STRING, description: "The body the source works for or speaks from, as the text gives it."}
+      onRecord: {type: BOOLEAN, description: "Whether the source may be named and quoted."}
+      lastContact: {type: DATE, description: "The date the newsroom last heard from the source."}
+    extensions:
+      display: {x: -360, y: 340, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a spokesperson, press secretary, official, engineer or other expert who gave the newsroom information, or a city department that released records", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: who-speaks-for-a-subject
+            category: lookup
+            question: Who speaks for this subject, and which stories quoted them?
+            description: The sources that speak for a subject whose name holds the text, with the stories that quote each one.
+            teaches: A spokesperson is a source with a link to the subject; following QUOTES backwards finds where the newsroom used them.
+            cypher: |-
+              MATCH (src:Source)-[:SPEAKS_FOR]->(s:Subject) WHERE toLower(s.name) CONTAINS toLower($subject)
+              OPTIONAL MATCH (st:Story)-[:QUOTES]->(src)
+              RETURN s.name AS subject, src.name AS spokesperson, collect(DISTINCT st.name) AS quoted_in
+              ORDER BY spokesperson
+            parameters:
+              - {name: subject, type: STRING, description: "Part of the subject's name.", example: Graham Whitlow}
+          - type: canonicalQuery
+            name: source-reliance
+            category: aggregation
+            question: Which sources does the newsroom lean on most, for data and for quotes?
+            description: Per source, the datasets it provided and the stories that quote it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (src:Source)
+              OPTIONAL MATCH (d:Dataset)-[:PROVIDED_BY]->(src)
+              OPTIONAL MATCH (st:Story)-[:QUOTES]->(src)
+              RETURN src.name AS source, count(DISTINCT d) AS datasets, count(DISTINCT st) AS stories_quoting
+              ORDER BY datasets DESC, stories_quoting DESC, source
+  Subject:
+    label: Subject
+    description: >-
+      A person or organization the newsroom reports on: the politician whose claims it checks, or the
+      company or public body it investigates ("Mayor Graham Whitlow", "Ridgeline Paving"). The reporting
+      examines a subject, where a source feeds it.
+    aliases: [claimant, speaker, public figure, target]
+    properties:
+      name: {type: STRING, key: true, description: "The subject's full name, or the body's."}
+      subjectType: {type: STRING, one_of: [elected official, public body, company, person], description: "What kind of subject it is."}
+      office: {type: STRING, description: "The office a public figure holds (mayor)."}
+    extensions:
+      display: {x: -360, y: -60, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a politician, public official, company or agency whose claims or conduct the newsroom reports on, such as a mayor or a contractor", proper: true}
+  Story:
+    label: Story
+    description: >-
+      A news article the newsroom published or is preparing, named by its headline, usually in quotation
+      marks ("Pothole repairs double in a year, city says"). A story carries claims and quotes sources; an
+      investigation is the project several stories belong to.
+    aliases: [article, piece, news story, report, headline]
+    reference: https://schema.org/NewsArticle
+    properties:
+      name: {type: STRING, key: true, description: "The headline as published."}
+      slug: {type: STRING, pattern: "^[a-z0-9]+(-[a-z0-9]+)*$", description: "The story's URL slug, lower-case words joined by hyphens (pothole-repairs-double)."}
+      status: {type: STRING, one_of: [pitched, reporting, editing, published, corrected, retracted], description: "Where the story stands."}
+      publishedOn: {type: DATE, description: "The date the story first ran."}
+    extensions:
+      display: {x: 180, y: -220, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a news article the newsroom published or is preparing, named by its headline in quotation marks", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: contradicted-claims-that-ran
+            category: path
+            question: Which claims the data contradict appeared in our stories, who wrote and edited those stories, and were they corrected?
+            description: Every claim a dataset contradicts that appeared in a story, with the story's writers, editors and corrections.
+            teaches: Chain the evidence to the publication in one pattern, then fan out with OPTIONAL MATCH so a story with no correction still shows.
+            cypher: |-
+              MATCH (d:Dataset)-[:CONTRADICTS]->(c:Claim)-[:APPEARED_IN]->(st:Story)
+              OPTIONAL MATCH (st)-[:WRITTEN_BY]->(j:Journalist)
+              OPTIONAL MATCH (st)-[:EDITED_BY]->(e:Editor)
+              OPTIONAL MATCH (x:Correction)-[:CORRECTS]->(st)
+              RETURN st.name AS story, c.name AS claim, collect(DISTINCT d.name) AS contradicted_by,
+                     collect(DISTINCT j.name) AS written_by, collect(DISTINCT e.name) AS edited_by,
+                     collect(DISTINCT x.name) AS corrections
+              ORDER BY story, claim
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Keisha Montgomery}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: "Pothole repairs double in a year, city says"}
+  Claim:
+    label: Claim
+    description: >-
+      A checkable statement of fact made in public, which the fact-check desk tracks under a number
+      (FC-26-0195) and quotes in full ("Every pothole reported to 311 was fixed within 72 hours"). A claim
+      is what gets checked; a story is where it was published or repeated.
+    aliases: [statement, assertion, talking point, quote]
+    reference: https://schema.org/Claim
+    properties:
+      claimId: {type: STRING, key: true, pattern: "^FC-[0-9]{2}-[0-9]{4}$", description: "The desk's tracker number: FC-, the year's last two digits and four digits (FC-26-0195)."}
+      name: {type: STRING, description: "The claim as a document names it."}
+      statement: {type: STRING, description: "The words of the claim, quoted exactly."}
+      rating: {type: STRING, one_of: [accurate, mostly accurate, misleading, "false", unproven], description: "The desk's verdict.", extensions: {custom: {relate-examples: {extract: true, ask: "the desk's verdict on the claim, one of accurate, mostly accurate, misleading, false or unproven"}}}}
+      madeOn: {type: DATE, description: "The date the claim was first made."}
+      venue: {type: STRING, description: "Where the claim was made (a budget briefing, a speech, a post)."}
+    extensions:
+      display: {x: -80, y: -60, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a public statement of fact the fact-check desk is checking, identified by a tracker number such as FC-26-0193 or quoted in full", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-claim
+            category: lookup
+            question: Who made this claim, and who checked it?
+            description: The claim whose tracker number is the text, or whose name holds it, with its maker and its checkers.
+            teaches: The key property (claimId) is filled from the name when the text gives the number, so an exact match works; CONTAINS covers the rest.
+            cypher: |-
+              MATCH (c:Claim) WHERE c.claimId = $claim OR toLower(c.name) CONTAINS toLower($claim)
+              OPTIONAL MATCH (c)-[:MADE_BY]->(s:Subject)
+              OPTIONAL MATCH (c)-[:CHECKED_BY]->(j:Journalist)
+              RETURN c.name AS claim, c.claimId AS number, collect(DISTINCT s.name) AS made_by,
+                     collect(DISTINCT j.name) AS checked_by
+              ORDER BY claim
+            parameters:
+              - {name: claim, type: STRING, description: "A tracker number, or part of the claim's name.", example: FC-26-0195}
+          - type: canonicalQuery
+            name: evidence-for-and-against
+            category: neighbourhood
+            question: For each claim, what does it rest on, and which datasets support or contradict it?
+            description: Each claim with the records its maker cites and the datasets that bear it out or show it wrong.
+            teaches: Three OPTIONAL MATCHes around one node collect its whole neighborhood; DISTINCT stops the lists repeating.
+            cypher: |-
+              MATCH (c:Claim)
+              OPTIONAL MATCH (c)-[:BASED_ON]->(r:Record)
+              OPTIONAL MATCH (pro:Dataset)-[:SUPPORTS]->(c)
+              OPTIONAL MATCH (con:Dataset)-[:CONTRADICTS]->(c)
+              RETURN c.name AS claim, collect(DISTINCT r.name) AS rests_on, collect(DISTINCT pro.name) AS supported_by,
+                     collect(DISTINCT con.name) AS contradicted_by
+              ORDER BY claim
+  Dataset:
+    label: Dataset
+    description: >-
+      A structured collection of data the newsroom analyzed (a database export, a log, a ledger or a
+      spreadsheet), named by its title ("the DPW Work Order Database"). A dataset holds many records; a record
+      is one document or entry.
+    aliases: [data set, database, data, spreadsheet, log, extract]
+    reference: https://schema.org/Dataset
+    properties:
+      name: {type: STRING, key: true, description: "The dataset's title."}
+      obtainedVia: {type: STRING, one_of: [public records request, open data portal, leak, scrape, partnership], description: "How the newsroom got the data."}
+      rowCount: {type: INTEGER, description: "The number of rows or entries in the copy the newsroom holds.", extensions: {custom: {relate-examples: {extract: true, ask: "the total number of rows the whole dataset holds, such as 118,604, never a count of jobs, reports or events counted in it"}}}}
+      coverage: {type: STRING, description: "The period the data cover, as an ISO 8601 interval (2022-01-01/2025-12-31)."}
+      receivedOn: {type: DATE, description: "The date the newsroom received the data.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the newsroom received the dataset, such as October 16, 2026"}}}}
+    extensions:
+      display: {x: -80, y: 200, colour: "#059669"}
+      custom:
+        relate-examples: {ask: "a named body of data the newsroom analyzed, such as a log, ledger, archive, database export or spreadsheet, named by its title", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: contradicted-claims-and-their-data
+            category: path
+            question: Which of this subject's claims do the data contradict, and where did those data come from?
+            description: The chain subject, claim, contradicting dataset, with the source that provided each dataset and the journalist who obtained it.
+            teaches: A pattern can run against the arrows (<-) and still read as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (s:Subject)<-[:MADE_BY]-(c:Claim)<-[:CONTRADICTS]-(d:Dataset)
+              WHERE toLower(s.name) CONTAINS toLower($subject)
+              OPTIONAL MATCH (d)-[:PROVIDED_BY]->(src:Source)
+              OPTIONAL MATCH (d)-[:OBTAINED_BY]->(j:Journalist)
+              RETURN s.name AS subject, c.name AS claim, d.name AS dataset, collect(DISTINCT src.name) AS provided_by,
+                     collect(DISTINCT j.name) AS obtained_by
+              ORDER BY claim, dataset
+            parameters:
+              - {name: subject, type: STRING, description: "Part of the subject's name.", example: Whitlow}
+          - type: canonicalQuery
+            name: what-the-data-were-read-as-saying
+            category: evidence
+            question: Which sentences did the extraction read as saying where data came from or what they show, whether kept or still waiting for a verdict?
+            description: Every claim about a dataset's provider, its obtainer, its entries or its verdict on a claim, kept or in review, with the sentence it was read from.
+            teaches: The trace keeps every claim the model made, published or not; _Claim links to its _Sentence through _EVIDENCE, so the audit covers what waits as well as what was kept.
+            cypher: |-
+              MATCH (c:_Claim)-[:_EVIDENCE]->(s:_Sentence)
+              WHERE c.band IN ['keep', 'review'] AND c.rel IN ['PROVIDED_BY', 'OBTAINED_BY', 'LISTED_IN', 'SUPPORTS', 'CONTRADICTS']
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, c.band AS band, round(c.p * 1000) / 1000 AS score,
+                     s.text AS evidence
+              ORDER BY link, head, tail
+  Record:
+    label: Record
+    description: >-
+      A single document or entry the reporting rests on (a report, contract, invoice, filing or work
+      order), named by its title or reference number ("Contract PW-24-117", "WO-25-031877"). A record
+      stands alone or sits in a dataset as one of its entries.
+    aliases: [document, public record, filing, contract, work order, annual report]
+    reference: https://schema.org/DigitalDocument
+    properties:
+      name: {type: STRING, key: true, description: "The record's title or number, as the text gives it."}
+      reference: {type: STRING, pattern: "^[A-Z]{2}-[0-9]{2}-[0-9]{3,6}$", description: "The record's reference number: two letters, the year's last two digits and three to six digits (PW-24-117)."}
+      recordType: {type: STRING, one_of: [report, contract, invoice, work order, filing, minutes, email], description: "What kind of record it is."}
+      dated: {type: DATE, description: "The date on the record."}
+      custodian: {type: STRING, description: "The office that keeps the record."}
+    extensions:
+      display: {x: -300, y: 160, colour: "#65a30d"}
+      custom:
+        relate-examples: {ask: "a single document used as evidence, such as an annual report, a contract, an invoice or a filing, named by its title or reference number", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-a-record-backs
+            category: lookup
+            question: Which claims rest on this record, and which dataset holds it?
+            description: The records whose name holds the text, with the dataset each is an entry in and the claims that cite it.
+            teaches: A lookup by part of a name finds "Contract PW-24-117" from its number alone.
+            cypher: |-
+              MATCH (r:Record) WHERE toLower(r.name) CONTAINS toLower($record)
+              OPTIONAL MATCH (r)-[:LISTED_IN]->(d:Dataset)
+              OPTIONAL MATCH (c:Claim)-[:BASED_ON]->(r)
+              RETURN r.name AS record, collect(DISTINCT d.name) AS listed_in, collect(DISTINCT c.name) AS claims_resting_on_it
+              ORDER BY record
+            parameters:
+              - {name: record, type: STRING, description: "Part of the record's title or number.", example: PW-24-117}
+  Correction:
+    label: Correction
+    description: >-
+      A correction the newsroom appended to a published story, logged under a number (C-26-041) and
+      issued by an editor. A correction amends a story; a retraction withdraws it and is the story's
+      status, not a correction.
+    aliases: [clarification, editor's note, erratum, correction notice]
+    reference: https://schema.org/CorrectionComment
+    properties:
+      correctionId: {type: STRING, key: true, pattern: "^C-[0-9]{2}-[0-9]{3}$", description: "The corrections log number: C-, the year's last two digits and three digits (C-26-041)."}
+      name: {type: STRING, description: "The correction as a document names it."}
+      reason: {type: STRING, one_of: [factual error, misquote, missing context, data error, attribution], description: "Why the story needed correcting."}
+      issuedOn: {type: DATE, description: "The date the correction was appended.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the correction was appended to the story, such as November 18, 2026"}}}}
+      wording: {type: STRING, description: "The text of the correction as readers see it."}
+    extensions:
+      display: {x: 400, y: -340, colour: "#e11d48"}
+      custom:
+        relate-examples: {ask: "a correction the newsroom issued to a published story, identified by a log number such as C-26-041", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: corrections-log
+            category: neighbourhood
+            question: Which stories has each correction amended, who issued it, and who wrote the story?
+            description: Each correction with the story it corrects, the editor who issued it and the story's writers.
+            teaches: One hop out from the correction and one more from its story; collect keeps one row per correction.
+            cypher: |-
+              MATCH (x:Correction)
+              OPTIONAL MATCH (x)-[:CORRECTS]->(st:Story)
+              OPTIONAL MATCH (x)-[:ISSUED_BY]->(e:Editor)
+              OPTIONAL MATCH (st)-[:WRITTEN_BY]->(j:Journalist)
+              RETURN x.name AS correction, x.correctionId AS number, collect(DISTINCT st.name) AS stories,
+                     collect(DISTINCT e.name) AS issued_by, collect(DISTINCT j.name) AS story_by
+              ORDER BY correction
+          - type: canonicalQuery
+            name: whose-claim-forced-a-correction
+            category: path
+            question: Whose claims ran in a story that later needed a correction?
+            description: The chain correction, story, claim, subject, for every claim that appeared in a corrected story.
+            teaches: A four-node pattern with arrows both ways reads left to right as the newsroom would tell it.
+            cypher: |-
+              MATCH (x:Correction)-[:CORRECTS]->(st:Story)<-[:APPEARED_IN]-(c:Claim)-[:MADE_BY]->(s:Subject)
+              RETURN x.name AS correction, st.name AS story, c.name AS claim, s.name AS made_by
+              ORDER BY correction, claim
+  Investigation:
+    label: Investigation
+    description: >-
+      A named investigative project the newsroom runs over months and several stories ("the Paved Over
+      investigation"), led by one journalist. An investigation examines subjects; its stories are what
+      readers see.
+    aliases: [project, probe, investigative series, inquiry]
+    properties:
+      name: {type: STRING, key: true, description: "The project's name."}
+      status: {type: STRING, one_of: [active, paused, published, closed], description: "Where the project stands."}
+      startedOn: {type: DATE, description: "The date the project began."}
+    extensions:
+      display: {x: -280, y: -280, colour: "#b45309"}
+      custom:
+        relate-examples: {ask: "a named investigative project the newsroom runs across several stories, such as the Paved Over investigation", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: investigation-at-a-glance
+            category: neighbourhood
+            question: Who leads this investigation, whom does it examine, and which stories has it produced?
+            description: The investigation whose name holds the text, with its lead, its subjects and its stories.
+            teaches: Three independent neighborhoods of one node come back as three collected lists.
+            cypher: |-
+              MATCH (i:Investigation) WHERE toLower(i.name) CONTAINS toLower($investigation)
+              OPTIONAL MATCH (i)-[:LED_BY]->(lead:Journalist)
+              OPTIONAL MATCH (i)-[:INVESTIGATES]->(s:Subject)
+              OPTIONAL MATCH (st:Story)-[:PART_OF]->(i)
+              RETURN i.name AS investigation, collect(DISTINCT lead.name) AS led_by, collect(DISTINCT s.name) AS subjects,
+                     collect(DISTINCT st.name) AS stories
+              ORDER BY investigation
+            parameters:
+              - {name: investigation, type: STRING, description: "Part of the investigation's name.", example: Paved Over}
+relationships:
+  claimMadeBySubject:
+    type: MADE_BY
+    description: >-
+      The subject made the claim in public, read from the claim to the person or body who said it; one
+      maker per claim in this ontology, many claims per subject.
+    aliases: [said, stated, claimed, made]
+    from: {node: Claim}
+    to: {node: Subject, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was made by}
+  claimCheckedByJournalist:
+    type: CHECKED_BY
+    description: >-
+      The journalist checked the claim for the fact-check desk; one or more checkers per claim, many
+      claims per journalist.
+    aliases: [was fact-checked by, was verified by, was rated by]
+    from: {node: Claim}
+    to: {node: Journalist, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was checked by}
+  claimAppearedInStory:
+    type: APPEARED_IN
+    description: >-
+      The claim was published or repeated in the story, whether or not the story checked it; many to
+      many.
+    aliases: [was repeated in, ran in, was published in]
+    from: {node: Claim}
+    to: {node: Story}
+    extensions:
+      custom:
+        relate-examples: {phrase: appeared in}
+  claimBasedOnRecord:
+    type: BASED_ON
+    description: >-
+      The claim rests on the record, as its maker cites it; a claim may rest on several records, and a
+      record may underpin many claims.
+    aliases: [rests on, comes from, cites]
+    from: {node: Claim}
+    to: {node: Record}
+    extensions:
+      custom:
+        relate-examples: {phrase: is based on}
+  datasetSupportsClaim:
+    type: SUPPORTS
+    description: >-
+      The desk's analysis of the dataset bears the claim out; a claim may be supported by several
+      datasets, and a dataset may support many claims.
+    aliases: [bears out, confirms, backs up]
+    from: {node: Dataset}
+    to: {node: Claim}
+    extensions:
+      custom:
+        relate-examples: {phrase: supports}
+  datasetContradictsClaim:
+    type: CONTRADICTS
+    description: >-
+      The desk's analysis of the dataset shows the claim to be wrong or misleading; a claim may be
+      contradicted by several datasets, and a dataset may contradict many claims.
+    aliases: [refutes, undercuts, disproves]
+    from: {node: Dataset}
+    to: {node: Claim}
+    extensions:
+      custom:
+        relate-examples: {phrase: contradicts}
+  datasetProvidedBySource:
+    type: PROVIDED_BY
+    description: >-
+      The source released or supplied the dataset to the newsroom; one provider per dataset in this
+      ontology, many datasets per source.
+    aliases: [was released by, was supplied by, came from]
+    from: {node: Dataset}
+    to: {node: Source, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was provided by}
+  datasetObtainedByJournalist:
+    type: OBTAINED_BY
+    description: >-
+      The journalist obtained the dataset for the newsroom, by records request, download or leak; usually
+      one journalist per dataset, many datasets per journalist.
+    aliases: [was requested by, was acquired by, was filed for by]
+    from: {node: Dataset}
+    to: {node: Journalist}
+    extensions:
+      custom:
+        relate-examples: {phrase: was obtained by}
+  recordListedInDataset:
+    type: LISTED_IN
+    description: >-
+      The record is one entry or document of the dataset; a record sits in at most one dataset, and a
+      dataset holds many records.
+    aliases: [is a row in, is one entry of, is filed in]
+    from: {node: Record}
+    to: {node: Dataset, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is an entry in}
+  storyWrittenByJournalist:
+    type: WRITTEN_BY
+    description: >-
+      The journalist wrote or reported the story and carries its byline; one or more journalists per
+      story, many stories per journalist.
+    aliases: [was reported by, ran under the byline of, wrote]
+    from: {node: Story}
+    to: {node: Journalist, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was written by}
+  storyEditedByEditor:
+    type: EDITED_BY
+    description: >-
+      The editor edited the story before it ran; usually one editor per story, many stories per editor.
+    aliases: [was signed off by, was handled by]
+    from: {node: Story}
+    to: {node: Editor}
+    extensions:
+      custom:
+        relate-examples: {phrase: was edited by}
+  storyQuotesSource:
+    type: QUOTES
+    description: >-
+      The story quotes or cites the source by name; a story quotes many sources, and a source may be
+      quoted in many stories.
+    aliases: [cites, interviews, relies on]
+    from: {node: Story}
+    to: {node: Source}
+    extensions:
+      custom:
+        relate-examples: {phrase: quotes}
+  storyPartOfInvestigation:
+    type: PART_OF
+    description: >-
+      The story was published as part of the investigation; a story belongs to at most one investigation,
+      and an investigation produces many stories.
+    aliases: [belongs to, is an installment of, came out of]
+    from: {node: Story}
+    to: {node: Investigation, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is part of}
+  correctionCorrectsStory:
+    type: CORRECTS
+    description: >-
+      The correction was appended to the story and amends it; one story per correction, and a story may
+      carry several corrections.
+    aliases: [was appended to, amends, fixes]
+    from: {node: Correction}
+    to: {node: Story, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: corrects}
+  correctionIssuedByEditor:
+    type: ISSUED_BY
+    description: >-
+      The editor issued or approved the correction; one editor per correction, many corrections per
+      editor.
+    aliases: [was approved by, was signed by]
+    from: {node: Correction}
+    to: {node: Editor, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was issued by}
+  investigationLedByJournalist:
+    type: LED_BY
+    description: >-
+      The journalist leads the investigation; one lead per investigation, and a journalist may lead
+      several.
+    aliases: [is run by, is headed by, leads]
+    from: {node: Investigation}
+    to: {node: Journalist, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is led by}
+  investigationInvestigatesSubject:
+    type: INVESTIGATES
+    description: >-
+      The investigation examines the subject's conduct; an investigation may examine several subjects,
+      and a subject may face several investigations.
+    aliases: [examines, looks into, scrutinizes]
+    from: {node: Investigation}
+    to: {node: Subject}
+    extensions:
+      custom:
+        relate-examples: {phrase: investigates}
+  sourceSpeaksForSubject:
+    type: SPEAKS_FOR
+    description: >-
+      The source speaks for the subject as its spokesperson, press secretary or lawyer; a subject may
+      have several spokespeople, and a source may speak for several subjects.
+    aliases: [represents, is the spokesperson for, is press secretary to]
+    from: {node: Source}
+    to: {node: Subject}
+    extensions:
+      custom:
+        relate-examples: {phrase: speaks for}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Media
+      card:
+        title: Data Journalism
+        description: Follow a public claim from the person who made it to the data that test it, the stories that repeated it and the corrections that followed.
+      source:
+        derived_from: create-context-graph's data-journalism.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; the people and bodies became Journalist, Editor,
+          Source and Subject, and Record was added for the single documents a check rests on; Source,
+          Story, Dataset, Claim, Correction and Investigation keep their meaning with new descriptions and
+          properties; Claim-to-Claim CONTRADICTS became Dataset-to-Claim CONTRADICTS beside SUPPORTS, the
+          links were renamed for their meaning and given cardinalities, and the tools were written anew
+          for an extracted graph.

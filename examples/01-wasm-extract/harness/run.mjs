@@ -22,10 +22,11 @@
 //                the evidence for the defaults (how the model is asked, cutoff and margin grids,
 //                scores of true and false facts)
 //   graph.cypher exportCypher of the Financial Services sample's typed graph and of the fixtures' store
-// The stores: every create-context-graph domain with a sample (data/samples/ccg/, its gold beside it),
-// each ontology the Ontology Graph Spec 1.1 document the page loads (data/ontologies/ogs/ccg/), and one
-// more with Financial Services' ontology for the harness's fixtures (harness/fixtures.mjs: the edge
-// cases edgextract's golden set covered, written for that domain).
+// The stores: one per bundled ontology with documents (data/samples/samples.json: the curated domains and
+// the solution packages, gold beside each document), each under the document the page loads, a fresh one
+// per held-out document (data/samples/heldout/), and one more with create-context-graph's Financial Services
+// (converted in memory) for the harness's fixtures (harness/fixtures.mjs: the edge cases edgextract's golden
+// set covered, written for that domain).
 // gliner-rs runs on a pool of worker threads first (harness/infer.mjs): every question this run asks the
 // model is asked once up front, and the pipeline's model calls are answered from those answers.
 // Exit 0 when everything holds; 1 when an audit finds rows, an engine refusal is not the pinned one,
@@ -126,7 +127,14 @@ const realModel = loadModel({
   ...Object.fromEntries(Object.entries(MODEL_FILES).map(([arg, f]) => [arg, readFileSync(join(MODEL_DIR, f))])),
 });
 note(`${M.name} loaded in ${Math.round(performance.now() - t)} ms, ${memoryBytes(realModel) >> 20} MiB of WASM memory`);
-const freshDb = () => new mod.RelateDb();
+// The stores are spread over a pool of engine instances, round-robin in creation order: a WASM instance's memory
+// never shrinks (R13), and the 40 ontologies' stores, each re-gated for every value of score.txt's grids, outgrew
+// one instance's 4 GiB and trapped (R14). Where a store lives changes nothing it holds.
+const POOL = Number(process.env.EX01_ENGINE_POOL ?? 8);
+const engines = [mod];
+for (let i = 1; i < POOL; i++) engines.push(await cl.loadNode(VER, { fresh: true }));
+let engineNext = 0;
+const freshDb = () => new engines[engineNext++ % engines.length].RelateDb();
 
 // ---- data ------------------------------------------------------------------------------------------
 // The bundled ontologies as the page loads them (harness/corpus.mjs loadOntologies): the curated documents
@@ -403,6 +411,16 @@ const unchanged = [...stores].every(([oid, s]) => gateFingerprint(s.db) === befo
 say(`${seen.size} distinct documents: ${secondInferences} inferences, ${secondHits} cache hits; bands and the typed graph unchanged: ${unchanged ? 'yes' : 'NO'}`);
 if (secondInferences !== 0) fail(`the second pass ran ${secondInferences} inferences`);
 if (!unchanged) fail('the second pass changed the gate or the typed graph');
+// Reopening a store, as the worker does on a reload (store.openStore: the stored cutoffs, refreshNames), writes
+// nothing on a store this build extracted: the browser section compares a reloaded store with Node's, so a rule
+// that names a mention one way at extraction and another on reopen would show only there otherwise.
+const reopenDiffers = [...stores].filter(([oid, s]) => {
+  const was = store.dumpStore(s.db);
+  store.openStore(s.db, cl, ontologies.get(oid), {}, { model: WHICH });
+  return store.dumpStore(s.db) !== was;
+}).map(([oid]) => oid);
+say(`each store reopened as a reload reopens it: its dump unchanged: ${reopenDiffers.length ? `NO (${reopenDiffers.join(', ')})` : `yes (${stores.size} stores)`}`);
+if (reopenDiffers.length) fail(`reopening a store changed it: ${reopenDiffers.join(', ')}`);
 note(`second pass done (${secs()})`);
 
 /** Everything the gate and publish decide, as one string (Run nodes and timestamps left out). */
@@ -882,8 +900,8 @@ const SCRIPTED = {
     'Ivy Roe was': { ents: [['Ivy Roe', 'Patient', 0.9], ['Oak Clinic', 'Clinic', 0.9]], rels: [['TREATED_AT', 'Ivy Roe', 0.9, 'Oak Clinic', 0.9]] },
     'Jon Bly was': { ents: [['Jon Bly', 'Patient', 0.9], ['Fen Clinic', 'Clinic', 0.9]], rels: [['TREATED_AT', 'Jon Bly', 0.9, 'Fen Clinic', 0.9]] },
     // rule 3's name join: no mention contains the tail "the Ash Clinic", whose canonical name is the mention "Ash Clinic"'s
-    // (joined), nor "at the Birch Clinic" (a leading preposition dropped: joined); "the Pine Clinic ward" names no mention
-    // (unanchored)
+    // (joined), nor "at the Birch Clinic" (a leading preposition dropped: joined); "the Pine Clinic ward" names no mention,
+    // but holds one, of one entity, so the inside join takes it (joined)
     'Tod Fry was': { ents: [['Tod Fry', 'Patient', 0.9], ['Ash Clinic', 'Clinic', 0.9]], rels: [['TREATED_AT', 'Tod Fry', 0.9, 'the Ash Clinic', 0.9]] },
     'Wes Pell was': { ents: [['Wes Pell', 'Patient', 0.9], ['Birch Clinic', 'Clinic', 0.9]], rels: [['TREATED_AT', 'Wes Pell', 0.9, 'at the Birch Clinic', 0.9]] },
     // and the name join takes the mention rule 2 left in review ("Zed Pry" Patient, pole-specific at 0.45), never the
@@ -1107,7 +1125,7 @@ RETURN c.rel AS rel, c.hs - s.start AS hs, c.he - s.start AS he, c.ts - s.start 
   g(`  "In May, Jon Bly was treated at Fen Clinic." ("may" and "no" are cues in lower case only): ${hedgeOf('Jon Bly')}`);
   const joinOf = (head) => sg.claims.filter((c) => c.htext === head).map((c) => `${JSON.stringify(c.ttext)} -> ${c.tail ?? 'nothing'}: ${c.band} by ${c.rule}`).join(', ');
   g(`rule 3's name join (no mention contains the end; one of its sentence has its canonical name): "Tod Fry" -[TREATED_AT]-> ${joinOf('Tod Fry')};`);
-  g(`  "Wes Pell" -[TREATED_AT]-> ${joinOf('Wes Pell')} (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> ${joinOf('Uma Lee')}`);
+  g(`  "Wes Pell" -[TREATED_AT]-> ${joinOf('Wes Pell')} (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> ${joinOf('Uma Lee')} (no name, but the end holds a mention of one entity: the inside join)`);
   const zed = sg.claims.find((c) => c.htext === 'by Zed Pry');
   g(`  "by Zed Pry" -[REFERRED]-> "Dov Kim" (Zed Pry: Person ${f3(mOf('Zed Pry', 'Person').p)} dropped by one-kind, Patient ${f3(mOf('Zed Pry', 'Patient').p)} ` +
     `${mOf('Zed Pry', 'Patient').band} by ${mOf('Zed Pry', 'Patient').rule}): head ${zed.head ?? 'nothing'}, ${zed.band} by ${zed.rule}`);

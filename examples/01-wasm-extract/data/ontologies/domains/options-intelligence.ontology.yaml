@@ -1,0 +1,566 @@
+# Options Intelligence: example 01's curated ontology for pre-market briefs, dealer-positioning notes
+# and trade reviews on an options desk (D20). Written for this repository from create-context-graph's
+# options-intelligence.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the
+# page: the inherited POLE+O base (Person, Organization, Location, Event, Object) is gone, the person
+# who trades became Trader on a Desk, Underlying became Ticker and KeyLevel became PriceLevel (what a
+# desk also calls them, and the labels the model reads best: "underlying" drew tickers into Desk, and
+# "key level" left most walls and flips under the keep cutoff), and ExposureLevel folded into
+# PriceLevel (a document names the walls and flips that dealer exposure creates, and states the
+# exposure figures as numbers).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Regimes
+# and strategies are named in lower case, so they are not proper. Every link says its direction and
+# cardinality and carries the phrase the model reads. The tools are the ontology's competency
+# questions, written for the graph the page extracts: entities carry name, display, key and their key
+# property; relationships carry p, claims, sentences and docs, and the trace (_Sentence, _Claim) holds
+# the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: options-intelligence
+name: Options Intelligence
+description: >-
+  Options market intelligence as a derivatives desk writes it before and after the session: the desks
+  and traders who run the book, the underlyings they cover, the dealer-positioning regime each
+  underlying is in and the key levels (call walls, put walls, gamma flips) that dealer gamma creates,
+  the scheduled releases and unscheduled moves that shift underlyings and flip regimes, the options
+  contracts listed on each underlying, and the trades that buy and sell them under a named strategy,
+  struck at a level or placed ahead of an event. It answers which regime an underlying is in and what
+  pushed it there, which strategies suit that regime and which desk runs them, which trades are
+  exposed to the day's event, which trades sit at a level the underlying has broken, and what the
+  source text says about each fact. Prices, Greeks, open interest and exposure figures are properties
+  a document states, not kinds; positioning over time, order routing and the firm's own structure are
+  out of scope.
+nodes:
+  Desk:
+    label: Desk
+    description: >-
+      A team of traders inside a bank or trading firm, named with the word desk ("the Index Volatility
+      desk", "the Single Stock Derivatives desk"). A desk covers tickers and runs strategies; the
+      people on it are traders, and the tickers it trades are never desks.
+    aliases: [trading desk, derivatives desk, volatility desk, trading team]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The desk's name as the documents write it, with or without the word desk."}
+      coverage: {type: STRING, one_of: [index options, single-stock options, ETF options, volatility], description: "What the desk trades."}
+      city: {type: STRING, description: "The city the desk sits in."}
+    extensions:
+      display: {x: -360, y: -180, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a team of traders at a bank, named with the word desk", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: desk-book
+            category: aggregation
+            question: How many traders, trades, strategies and underlyings does each desk have?
+            description: Per desk, the traders on it, the trades they placed, the strategies it runs and the underlyings it covers.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each trade is counted once per strategy and underlying.
+            cypher: |-
+              MATCH (d:Desk)
+              OPTIONAL MATCH (tr:Trader)-[:WORKS_ON]->(d)
+              OPTIONAL MATCH (tr)-[:PLACED]->(t:Trade)
+              OPTIONAL MATCH (d)-[:RUNS]->(s:Strategy)
+              OPTIONAL MATCH (d)-[:COVERS]->(u:Ticker)
+              RETURN d.name AS desk, count(DISTINCT tr) AS traders, count(DISTINCT t) AS trades,
+                     count(DISTINCT s) AS strategies, count(DISTINCT u) AS underlyings
+              ORDER BY trades DESC, desk
+  Trader:
+    label: Trader
+    description: >-
+      A person on a desk who trades options, runs a book or writes the desk's strategy, named in full
+      and often with a role ("Marcus Feld, a trader on the Index Volatility desk"). A trader places
+      trades; the desk is the unit they sit on.
+    aliases: [options trader, desk head, strategist, portfolio manager, risk taker]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The trader's full name."}
+      role: {type: STRING, one_of: [trader, desk head, strategist, risk manager], description: "The person's role on the desk."}
+    extensions:
+      display: {x: -360, y: 60, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a person on a trading desk who trades options, runs a book or writes the desk's strategy, named in full, such as a trader, desk head or strategist", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: trader-activity
+            category: neighbourhood
+            question: Which desk is each trader on, and which trades and strategies are theirs?
+            description: Each trader with their desk, the trades they placed and the strategies those trades use.
+            teaches: A neighbourhood two hops out (trader, trade, strategy) still comes back as one row per trader when each hop is collected.
+            cypher: |-
+              MATCH (tr:Trader)
+              OPTIONAL MATCH (tr)-[:WORKS_ON]->(d:Desk)
+              OPTIONAL MATCH (tr)-[:PLACED]->(t:Trade)
+              OPTIONAL MATCH (t)-[:USES]->(s:Strategy)
+              RETURN tr.name AS trader, collect(DISTINCT d.name) AS desk, collect(DISTINCT t.name) AS trades,
+                     collect(DISTINCT s.name) AS strategies
+              ORDER BY trader
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Marcus Feld}
+  Ticker:
+    label: Ticker
+    description: >-
+      The underlying an option is written on (an index, a stock or an exchange-traded fund), named by
+      its ticker ("SPX", "NDX", "CVNX") and sometimes by the index or company name. A ticker is what
+      moves; the options contracts listed on it are a separate kind.
+    aliases: [underlying, underlying asset, symbol, name, single stock, index]
+    properties:
+      symbol: {type: STRING, key: true, pattern: "^[A-Z]{1,5}$", description: "The ticker or index symbol, one to five capital letters (SPX)."}
+      name: {type: STRING, description: "The underlying as a document names it, by ticker or by name."}
+      assetClass: {type: STRING, one_of: [index, equity, ETF], description: "What kind of underlying it is."}
+      spot: {type: FLOAT, description: "The last price, in index points or dollars."}
+      previousClose: {type: FLOAT, description: "The previous session's closing price."}
+    extensions:
+      display: {x: 140, y: -20, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "an index or stock, named by its ticker such as SPX, NDX or CVNX, whose price moves and on which options are listed", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-ticker
+            category: lookup
+            question: What is this ticker, and what does the store connect to it?
+            description: Finds tickers whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (u:Ticker) WHERE toLower(u.name) CONTAINS toLower($ticker)
+              OPTIONAL MATCH (u)-[r]-(x:_Entity)
+              RETURN u.name AS ticker, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY ticker, link, other
+            parameters:
+              - {name: ticker, type: STRING, description: "Part of the ticker or of the underlying's name.", example: SPX}
+          - type: canonicalQuery
+            name: ticker-positioning
+            category: neighbourhood
+            question: Where does each ticker stand, with its regime, its key levels, the levels it has broken and the desks that cover it?
+            description: Each ticker with its regime, its key levels, the levels it broke and the desks that cover it.
+            teaches: Four independent neighbourhoods of one node come back as four collected lists; DISTINCT stops each list repeating once per row of the others.
+            cypher: |-
+              MATCH (u:Ticker)
+              OPTIONAL MATCH (u)-[:IN_REGIME]->(g:Regime)
+              OPTIONAL MATCH (u)-[:HAS_LEVEL]->(l:PriceLevel)
+              OPTIONAL MATCH (u)-[:BROKE]->(b:PriceLevel)
+              OPTIONAL MATCH (d:Desk)-[:COVERS]->(u)
+              RETURN u.name AS ticker, collect(DISTINCT g.name) AS regime, collect(DISTINCT l.name) AS levels,
+                     collect(DISTINCT b.name) AS broken, collect(DISTINCT d.name) AS covered_by
+              ORDER BY ticker
+  OptionsContract:
+    label: OptionsContract
+    description: >-
+      A listed call or put on one underlying with one expiry and strike, identified by its OCC symbol
+      (SPXW261112C06800000) or written as underlying, expiry, strike and C or P ("SPX 12 Nov 6800C").
+      A contract is the instrument; a trade is the ticket that buys or sells it.
+    aliases: [option, options contract, call, put, strike, leg]
+    reference: https://schema.org/FinancialProduct
+    properties:
+      occSymbol: {type: STRING, key: true, pattern: "^[A-Z]{1,6}[0-9]{6}[CP][0-9]{8}$", description: "The OCC option symbol without padding: root, expiry as YYMMDD, C or P, and the strike times 1,000 in eight digits (SPXW261112C06800000)."}
+      name: {type: STRING, description: "The contract as a document writes it."}
+      optionType: {type: STRING, one_of: [call, put], description: "Whether the contract is a call or a put."}
+      strike: {type: FLOAT, description: "The strike price, in index points or dollars."}
+      expiry: {type: DATE, description: "The expiration date."}
+      openInterest: {type: INTEGER, description: "Contracts open at the previous close."}
+      impliedVolatility: {type: FLOAT, description: "Implied volatility at the previous close, as a fraction (0.094)."}
+      delta: {type: FLOAT, description: "The contract's delta, from -1 to 1."}
+    extensions:
+      display: {x: 140, y: 220, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a listed call or put option contract, named by its OCC symbol such as SPXW261112C06800000 or by underlying, expiry, strike and C or P, such as SPX 12 Nov 6800C", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: contract-by-symbol
+            category: lookup
+            question: Which contract has this OCC symbol, what is it written on, and which trades hold it?
+            description: The contract whose OCC symbol is the parameter, with its underlying and the trades that bought or sold it.
+            teaches: An identifier the text states is the entity's key property (occSymbol, from its name or an alias), so an exact match finds it.
+            cypher: |-
+              MATCH (c:OptionsContract) WHERE c.occSymbol = $symbol
+              OPTIONAL MATCH (c)-[:WRITTEN_ON]->(u:Ticker)
+              OPTIONAL MATCH (t:Trade)-[:EXECUTES]->(c)
+              RETURN c.occSymbol AS contract, collect(DISTINCT u.name) AS underlying, collect(DISTINCT t.name) AS trades
+            parameters:
+              - {name: symbol, type: STRING, description: "An OCC option symbol without padding.", example: SPXW261112C06800000}
+  PriceLevel:
+    label: PriceLevel
+    description: >-
+      A key level on one ticker that options positioning creates, named by its price and kind ("the
+      6,800 call wall", "the 6,700 gamma flip"). Dealer gamma at the strike makes it act as support,
+      resistance or the boundary between regimes; a bare price is not a level, and the regime itself
+      is a separate kind.
+    aliases: [key level, level, call wall, put wall, gamma flip, zero-gamma level, max pain]
+    properties:
+      name: {type: STRING, key: true, description: "The level as the documents write it, price and kind."}
+      price: {type: FLOAT, description: "The level's price, in index points or dollars."}
+      levelType: {type: STRING, one_of: [call wall, put wall, gamma flip, max pain, support, resistance], description: "What the level is."}
+      source: {type: STRING, one_of: [gamma exposure, delta exposure, open interest, volume], description: "What positioning the level is read from."}
+      netGamma: {type: FLOAT, description: "Dealers' net gamma at the strike, in billions of dollars per 1% move (3.1)."}
+    extensions:
+      display: {x: 380, y: -120, colour: "#10b981"}
+      custom:
+        relate-examples: {ask: "a price level that options positioning creates on an underlying, named by its price and kind, such as the 6,800 call wall, the 6,600 put wall or the 6,700 gamma flip", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: trades-at-a-level
+            category: path
+            question: Which trades are struck at a ticker's key levels, and has the ticker broken the level?
+            description: The chain ticker, level, trade, for every trade struck at a level, with whether the text says the ticker broke it.
+            teaches: Two links into one middle node (HAS_LEVEL and STRUCK_AT both end at the level) join a ticker to the trades that depend on it; OPTIONAL MATCH adds a third link without losing rows.
+            cypher: |-
+              MATCH (u:Ticker)-[:HAS_LEVEL]->(l:PriceLevel)<-[:STRUCK_AT]-(t:Trade)
+              OPTIONAL MATCH (u)-[b:BROKE]->(l)
+              RETURN u.name AS ticker, l.name AS level, collect(DISTINCT t.name) AS trades, count(b) > 0 AS broken
+              ORDER BY ticker, level
+  Regime:
+    label: Regime
+    description: >-
+      The dealer-positioning or volatility regime a ticker is in, named by its classification in lower
+      case ("the positive-gamma regime", "the negative-gamma regime"). Several tickers can share a
+      regime; the level that separates two regimes is a price level.
+    aliases: [gamma regime, market regime, volatility regime, dealer positioning]
+    properties:
+      name: {type: STRING, key: true, description: "The regime as the documents name it."}
+      classification: {type: STRING, one_of: [positive gamma, negative gamma, transition, neutral], description: "The regime's classification by dealers' net gamma."}
+      netGex: {type: FLOAT, description: "Dealers' net gamma exposure when the regime was read, in billions of dollars per 1% move."}
+      since: {type: DATE, description: "The session the regime began."}
+    extensions:
+      display: {x: 140, y: -260, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "the dealer-gamma or volatility regime an index or stock is in, in lower case, such as the positive-gamma regime or the negative-gamma regime"}
+        tools:
+          - type: canonicalQuery
+            name: strategies-for-the-regime
+            category: path
+            question: Which strategies suit the regime each ticker is in now, and which desks run them?
+            description: The chain ticker, regime, strategy, with the desks that run each strategy.
+            teaches: Two links into one middle node (IN_REGIME and SUITS both end at the regime) join tickers to strategies that never touch them.
+            cypher: |-
+              MATCH (u:Ticker)-[:IN_REGIME]->(g:Regime)<-[:SUITS]-(s:Strategy)
+              OPTIONAL MATCH (d:Desk)-[:RUNS]->(s)
+              RETURN u.name AS ticker, g.name AS regime, s.name AS strategy, collect(DISTINCT d.name) AS run_by
+              ORDER BY ticker, strategy
+          - type: canonicalQuery
+            name: which-sentences-set-the-regime
+            category: evidence
+            question: Which sentences put each ticker in its regime?
+            description: Every IN_REGIME fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (u:Ticker)-[r:IN_REGIME]->(g:Regime)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN u.name AS ticker, g.name AS regime, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY ticker, regime
+  MarketEvent:
+    label: MarketEvent
+    description: >-
+      A scheduled release (a CPI print, a jobs report, an earnings report, an expiration) or an
+      unscheduled move (a sell-off, a volatility spike) that moves a ticker, named with its period or
+      date ("the October CPI release", "the 10 November chip sell-off"). An event happens once; the
+      regime it pushes a ticker into is a state that lasts.
+    aliases: [catalyst, macro event, data release, print, earnings, expiration]
+    reference: https://schema.org/Event
+    properties:
+      name: {type: STRING, key: true, description: "The event as the documents name it."}
+      eventType: {type: STRING, one_of: [CPI, PPI, jobs report, FOMC, earnings, expiration, sell-off, volatility spike], description: "What kind of event it is."}
+      scheduledAt: {type: ZONED DATETIME, description: "When the event is due or happened, ISO 8601 with offset."}
+      impact: {type: STRING, one_of: [high, medium, low], description: "How much the desk expects it to move options prices."}
+    extensions:
+      display: {x: 380, y: 120, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "a scheduled release or unscheduled market move that moves options prices, such as the October CPI release, an earnings report or a sell-off, named with its date or period", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-moved-the-regime
+            category: path
+            question: Which events pushed which underlyings into the regime they are in?
+            description: Each event that triggered a regime, with the underlyings it moved that are in that regime.
+            teaches: A triangle (event to regime, event to underlying, underlying to regime) is two patterns sharing their ends; OPTIONAL MATCH keeps an event whose underlying the text leaves out.
+            cypher: |-
+              MATCH (e:MarketEvent)-[:TRIGGERED]->(g:Regime)
+              OPTIONAL MATCH (e)-[:IMPACTS]->(u:Ticker)-[:IN_REGIME]->(g)
+              RETURN e.name AS event, g.name AS regime, collect(DISTINCT u.name) AS underlyings
+              ORDER BY event
+          - type: canonicalQuery
+            name: exposure-to-an-event
+            category: path
+            question: Which trades are exposed to this event through the underlyings it moves, and who placed them?
+            description: The chain event, underlying, contract, trade, with each trade's trader and whether it was placed ahead of the event.
+            teaches: A four-hop pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (e:MarketEvent)-[:IMPACTS]->(u:Ticker)<-[:WRITTEN_ON]-(c:OptionsContract)<-[:EXECUTES]-(t:Trade)
+              WHERE toLower(e.name) CONTAINS toLower($event)
+              OPTIONAL MATCH (tr:Trader)-[:PLACED]->(t)
+              OPTIONAL MATCH (t)-[pf:POSITIONED_FOR]->(e)
+              RETURN e.name AS event, u.name AS underlying, t.name AS trade, collect(DISTINCT c.name) AS contracts,
+                     collect(DISTINCT tr.name) AS placed_by, count(pf) > 0 AS placed_ahead_of_it
+              ORDER BY underlying, trade
+            parameters:
+              - {name: event, type: STRING, description: "Part of the event's name.", example: CPI}
+  Strategy:
+    label: Strategy
+    description: >-
+      An options strategy or structure a trade follows, named in lower case ("iron condor", "put
+      spread", "long straddle"). A strategy is the playbook entry; each trade is one use of it.
+    aliases: [structure, options strategy, setup, play]
+    properties:
+      name: {type: STRING, key: true, description: "The strategy as the documents name it."}
+      strategyType: {type: STRING, one_of: [neutral, directional, volatility, hedge], description: "What the strategy is a bet on."}
+      legs: {type: INTEGER, description: "How many contracts the structure combines."}
+      maxLoss: {type: FLOAT, description: "The most one unit of the structure can lose, in dollars."}
+    extensions:
+      display: {x: -120, y: -260, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "an options strategy, a common noun such as iron condor, put spread, long straddle or calendar spread"}
+        tools:
+          - type: canonicalQuery
+            name: strategy-usage
+            category: aggregation
+            question: How often does the book use each strategy, and in which regimes does it work best?
+            description: Per strategy, the trades that use it and the regimes it suits.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (s:Strategy)
+              OPTIONAL MATCH (t:Trade)-[:USES]->(s)
+              OPTIONAL MATCH (s)-[:SUITS]->(g:Regime)
+              RETURN s.name AS strategy, count(DISTINCT t) AS trades, collect(DISTINCT g.name) AS suits
+              ORDER BY trades DESC, strategy
+  Trade:
+    label: Trade
+    description: >-
+      A ticket on a desk's book that bought or sold one or more contracts, identified by its ticket
+      number (TKT-58213). One trader places it and it follows one strategy; a brief may name a ticket
+      the desk plans to place, which is a trade all the same.
+    aliases: [ticket, position, order, fill]
+    reference: https://schema.org/TradeAction
+    properties:
+      ticketId: {type: STRING, key: true, pattern: "^TKT-[0-9]{5}$", description: "The ticket number, TKT- and five digits."}
+      name: {type: STRING, description: "The trade as a document names it."}
+      direction: {type: STRING, one_of: [buy to open, sell to open, buy to close, sell to close], description: "What the ticket did."}
+      quantity: {type: INTEGER, description: "Contracts, or units of the structure, traded.", extensions: {custom: {relate-examples: {extract: true, ask: "the number of contracts or lots the ticket traded, such as 50 lots, never a strike or a level"}}}}
+      premium: {type: FLOAT, description: "The price paid or received per unit, in dollars.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the price per unit the ticket paid or received, such as a credit of $4.10 or a debit of $10.95"}}}}
+      executedAt: {type: ZONED DATETIME, description: "When the ticket was filled, ISO 8601 with offset."}
+      markPnl: {type: FLOAT, description: "Profit or loss at the last mark, in dollars.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the profit or loss on the ticket at the last mark, such as up $41,900 or a loss of $6,200"}}}}
+    extensions:
+      display: {x: -120, y: 120, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a ticket on a desk's book, identified by a ticket number such as TKT-58213", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: trade-by-ticket
+            category: lookup
+            question: Which trade has this ticket number, who placed it, and what does it hold?
+            description: The trade whose ticket is the parameter, with its trader, strategy, contracts, the levels it is struck at and the events it was placed for.
+            teaches: The key property (ticketId) is filled from the entity's name when the text gives the identifier, so an exact match works here.
+            cypher: |-
+              MATCH (t:Trade) WHERE t.ticketId = $ticket
+              OPTIONAL MATCH (tr:Trader)-[:PLACED]->(t)
+              OPTIONAL MATCH (t)-[:USES]->(s:Strategy)
+              OPTIONAL MATCH (t)-[:EXECUTES]->(c:OptionsContract)
+              OPTIONAL MATCH (t)-[:STRUCK_AT]->(l:PriceLevel)
+              OPTIONAL MATCH (t)-[:POSITIONED_FOR]->(e:MarketEvent)
+              RETURN t.ticketId AS ticket, collect(DISTINCT tr.name) AS placed_by, collect(DISTINCT s.name) AS strategy,
+                     collect(DISTINCT c.name) AS contracts, collect(DISTINCT l.name) AS levels, collect(DISTINCT e.name) AS events
+            parameters:
+              - {name: ticket, type: STRING, description: "A ticket number, TKT- and five digits.", example: TKT-58207}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: TKT-58207}
+relationships:
+  traderWorksOnDesk:
+    type: WORKS_ON
+    description: >-
+      The trader sits on the desk and trades for it; at most one desk per trader in this ontology, many
+      traders per desk.
+    aliases: [sits on, trades for, is a trader on, is the strategist on]
+    from: {node: Trader, max_count: 1}
+    to: {node: Desk}
+    extensions:
+      custom:
+        relate-examples: {phrase: works on}
+  deskCoversTicker:
+    type: COVERS
+    description: >-
+      The desk makes markets in and runs risk on options on the underlying; a desk covers many
+      underlyings, and an underlying may be covered by more than one desk.
+    aliases: [trades, makes markets in, is responsible for]
+    from: {node: Desk}
+    to: {node: Ticker}
+    extensions:
+      custom:
+        relate-examples: {phrase: trades}
+  deskRunsStrategy:
+    type: RUNS
+    description: >-
+      The desk runs the strategy as part of its playbook; many to many.
+    aliases: [trades, uses, has a book in]
+    from: {node: Desk}
+    to: {node: Strategy}
+    extensions:
+      custom:
+        relate-examples: {phrase: has a book in}
+  contractWrittenOnTicker:
+    type: WRITTEN_ON
+    description: >-
+      The options contract is listed on the underlying; exactly one underlying per contract, many
+      contracts per underlying.
+    aliases: [is an option on, is listed on, references]
+    from: {node: OptionsContract, count: 1}
+    to: {node: Ticker}
+    extensions:
+      custom:
+        relate-examples: {phrase: is an option on}
+  tickerInRegime:
+    type: IN_REGIME
+    description: >-
+      The underlying is in the regime at the time the document describes; at most one current regime
+      per underlying, many underlyings per regime.
+    aliases: [sits in, has flipped into, trades in]
+    from: {node: Ticker, max_count: 1}
+    to: {node: Regime}
+    extensions:
+      custom:
+        relate-examples: {phrase: is in}
+  tickerHasLevel:
+    type: HAS_LEVEL
+    description: >-
+      The key level is on the underlying's price, read from options positioning in it; exactly one
+      underlying per level, many levels per underlying.
+    aliases: [has a level at, has its call wall at, has its put wall at, has its gamma flip at]
+    from: {node: Ticker}
+    to: {node: PriceLevel, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: has a level at}
+  tickerBrokeLevel:
+    type: BROKE
+    description: >-
+      The underlying's price went through the key level, up or down, in the period the document
+      describes; an underlying may break several levels, a level is broken by its own underlying.
+    aliases: [broke through, broke below, broke above, took out, lost]
+    from: {node: Ticker}
+    to: {node: PriceLevel, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: broke through}
+  traderPlacedTrade:
+    type: PLACED
+    description: >-
+      The trader placed the trade; exactly one trader per trade, many trades per trader.
+    aliases: [bought, sold, opened, put on, executed]
+    from: {node: Trader}
+    to: {node: Trade, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: bought or placed}
+  tradeExecutesContract:
+    type: EXECUTES
+    description: >-
+      The trade bought or sold the contract, as one of its legs; a spread or condor trades several
+      contracts, and a contract may be traded by many tickets.
+    aliases: [bought, sold, is long, is short, has a leg in]
+    from: {node: Trade}
+    to: {node: OptionsContract}
+    extensions:
+      custom:
+        relate-examples: {phrase: has a leg in}
+  tradeUsesStrategy:
+    type: USES
+    description: >-
+      The trade follows the strategy; at most one strategy per trade, many trades per strategy.
+    aliases: [is a, follows, is structured as]
+    from: {node: Trade, max_count: 1}
+    to: {node: Strategy}
+    extensions:
+      custom:
+        relate-examples: {phrase: follows}
+  tradePositionedForEvent:
+    type: POSITIONED_FOR
+    description: >-
+      The trade was placed ahead of the event, to trade or hedge its outcome; a trade may be placed for
+      several events, an event draws many trades.
+    aliases: [was placed ahead of, hedges, is a bet on, is positioned for]
+    from: {node: Trade}
+    to: {node: MarketEvent}
+    extensions:
+      custom:
+        relate-examples: {phrase: was placed ahead of}
+  tradeStruckAtLevel:
+    type: STRUCK_AT
+    description: >-
+      A leg of the trade is struck at the key level, so the trade depends on the level holding or
+      breaking; a trade may be struck at more than one level, many trades per level.
+    aliases: [has its short strike at, sells, is anchored at, targets]
+    from: {node: Trade}
+    to: {node: PriceLevel}
+    extensions:
+      custom:
+        relate-examples: {phrase: has a strike at}
+  strategySuitsRegime:
+    type: SUITS
+    description: >-
+      The strategy works best in the regime, by the desk's playbook; many to many.
+    aliases: [works best in, is optimal in, fits, is made for]
+    from: {node: Strategy}
+    to: {node: Regime}
+    extensions:
+      custom:
+        relate-examples: {phrase: works best in}
+  eventImpactsTicker:
+    type: IMPACTS
+    description: >-
+      The event moved, or is the scheduled risk to, the underlying; an event may move many
+      underlyings, an underlying is moved by many events.
+    aliases: [moves, hits, drives, took]
+    from: {node: MarketEvent}
+    to: {node: Ticker}
+    extensions:
+      custom:
+        relate-examples: {phrase: hits}
+  eventTriggeredRegime:
+    type: TRIGGERED
+    description: >-
+      The event pushed the market into the regime: it began with the event; a regime is triggered by
+      one event at a time, and an event may trigger more than one.
+    aliases: [flipped into, pushed into, started, caused the flip to]
+    from: {node: MarketEvent}
+    to: {node: Regime}
+    extensions:
+      custom:
+        relate-examples: {phrase: pushed the market into}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Financial Services
+      card:
+        title: Options Intelligence
+        description: Follow underlyings into their dealer-gamma regimes and key levels, and the desk's trades through to the events and levels they depend on.
+      source:
+        derived_from: create-context-graph's options-intelligence.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; the person who trades became Trader, with the
+          Desk they sit on; Underlying became Ticker and KeyLevel became PriceLevel; ExposureLevel folded
+          into PriceLevel, whose exposure figures are properties; OptionsContract, Regime, MarketEvent, Strategy and Trade keep their
+          meaning with new descriptions and properties; the regime-to-regime links went, since a regime here is a
+          classification several underlyings share; the links were renamed for their meaning and given
+          cardinalities; the tools were written anew for an extracted graph.

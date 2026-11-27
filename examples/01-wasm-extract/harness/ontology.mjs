@@ -7,8 +7,8 @@
 // reproducing, or a parity mismatch nobody explained, prints `PIN: <row> ...` on stderr and
 // exits 1 after printing everything else.
 //
-// Sections: the Ontology Graph Spec 1.1 (data/ontology-spec/: the vendored schema; the 27 bundled documents in
-// data/ontologies/ogs/ccg/ equal to a fresh conversion of their originals, read back losslessly; property types and
+// Sections: the Ontology Graph Spec 1.1 (data/ontology-spec/: the vendored schema; create-context-graph's 27 files
+// converted in memory as the editor converts them, read back losslessly; property types and
 // tool placement; ajv and web/ogs.js agreeing on every document and on tampered ones; the rules ogs.js adds);
 // create-context-graph's 27 domains (their documents, converted from data/ontologies/ccg/ with _base.yaml: counts with
 // the base, typed and untyped links with the reason, the graph type read back, the stored document
@@ -189,9 +189,9 @@ const UNIQUES = ONTOLOGY_CONSTRAINTS.map((s) => /CONSTRAINT (\S+)/.exec(s)[1]).s
 
 say(`# Ontologies in Relate WASM ${VER} (harness/ontology.mjs)`);
 say('Every ontology is an Ontology Graph Spec 1.1 document (web/ogs.js): parsed by web/ontology.js, kept in an in-memory');
-say('store by applyOntology (the D8 layer and a CIP-176 graph type, D15) and read back. The 27 bundled ones are converted');
-say('(web/convert.js) from create-context-graph\'s domain files (data/ontologies/ccg/); the page and the harnesses load the');
-say('converted documents (data/ontologies/ogs/ccg/), and a create-context-graph file is converted on load. edgextract 0.1.0 (npm,');
+say('store by applyOntology (the D8 layer and a CIP-176 graph type, D15) and read back. The bundled ones are the curated domains');
+say('(data/ontologies/domains/) and the solution packages with their overlays (data/ontologies/ogs/studio/); create-context-graph\'s');
+say('domain files (data/ontologies/ccg/) are converted (web/convert.js) as the editor converts a pasted one. edgextract 0.1.0 (npm,');
 say('its own WASM) is the parity oracle for the ported splitter and names.');
 say('The example\'s own labels and relationship types all start with _ (_Entity, _Claim, _IN, ...); an ontology id may not.');
 
@@ -311,6 +311,13 @@ const CONVERTED = ccgConversions();
 section('the bundled ontologies: the curated documents (data/ontologies/domains/, D20) and Neo4j\'s solution packages (D21)');
 const BUNDLED = corpusOntologies();
 for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology does not load: ${why}`);
+// The documents the SDK and the two schema validators are run on below: the bundled ones as their files hold them, then
+// create-context-graph's converted as the editor converts a pasted one.
+const VALIDATED = [
+  ...[...BUNDLED].map(([, b]) => ({ file: b.file, text: readFileSync(join(EX, b.file), 'utf8'), o: b.o })),
+  ...CONVERTED,
+];
+const VALIDATED_WHAT = `the ${BUNDLED.size} bundled documents and create-context-graph's ${CONVERTED.length} converted`;
 {
   sub('the vendored packages (data/ontologies/studio/<package>/, harness/vendor-studio.mjs)');
   const m = vendoredManifest();
@@ -463,16 +470,16 @@ for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology d
   /** @type {Map<string, number>} 'set code' -> count */
   const counts = new Map();
   let decoded = 0;
-  for (const c of CONVERTED) {
+  for (const c of VALIDATED) {
     const text = c.text;
     const v = ogs.validate(parseDocument(text), VALIDATION_SETS);
     if (!v.issues.some((i) => i.set === 'decode' || i.set === 'core')) decoded++;
     else pins.push(`PIN: ${c.file}: the SDK refuses it (${v.issues.filter((i) => i.set === 'decode' || i.set === 'core').map((i) => i.message).join('; ')})`);
     for (const i of v.issues) counts.set(`${i.set} ${i.code}`, (counts.get(`${i.set} ${i.code}`) ?? 0) + 1);
   }
-  say(`decoded, with no core issue: ${decoded} of ${CONVERTED.length}`);
+  say(`${VALIDATED_WHAT}: decoded, with no core issue: ${decoded} of ${VALIDATED.length}`);
   say(`the other validation sets (informational: the page checks core): ${counts.size ? [...counts].sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0)).map(([k, n]) => `${k} ${n}`).join(', ') : 'no issues'}`);
-  pin('the SDK accepts every bundled document', decoded === CONVERTED.length, 'all', `${decoded} decoded`);
+  pin('the SDK accepts every bundled document', decoded === VALIDATED.length, 'all', `${decoded} decoded`);
   // Y1: the SDK's own YAML decoder misreads plain YAML: a plain <…> scalar, and a plain URL before a single-quoted
   // scalar (and more: js-yaml's output of the bundled documents fails in it at other places too)
   const tryYaml = (t) => { try { sdk.GraphSpec.Yaml.decodeFromString(t); return 'decoded'; } catch (e) { return `refused: ${String(e?.message ?? e).split('\n')[0]}`; } };
@@ -482,10 +489,10 @@ for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology d
   const url = tryYaml(`schema: ${SCHEMA_ID}\nversion: '1'\nid: y\nnodes:\n  a:\n    label: A\n`);
   const urlQuoted = tryYaml(`schema: "${SCHEMA_ID}"\nversion: '1'\nid: y\nnodes:\n  a:\n    label: A\n`);
   const viaJson = (() => { try { ogs.decode(parseDocument(`${q}LIST<STRING>\n`)); return 'decoded'; } catch (e) { return describe(e); } })();
-  const bundled = CONVERTED.filter((c) => tryYaml(c.text) === 'decoded').length;
+  const bundled = VALIDATED.filter((c) => tryYaml(c.text) === 'decoded').length;
   say(`Y1: through the SDK's YAML decoder: type: LIST<STRING> -> ${plain}; quoted -> ${quoted}`);
   say(`    schema: <a plain URL> then version: '1' -> ${url}; the URL quoted -> ${urlQuoted}`);
-  say(`    the bundled documents (js-yaml's YAML) -> ${bundled} of ${CONVERTED.length} decoded; through js-yaml and GraphSpec.Json (lib/ogs.mjs) -> ${viaJson}, and all ${decoded} above`);
+  say(`    ${VALIDATED_WHAT} -> ${bundled} of ${VALIDATED.length} decoded; through js-yaml and GraphSpec.Json (lib/ogs.mjs) -> ${viaJson}, and all ${decoded} above`);
   pin('Y1 (the SDK\'s YAML decoder misreads plain YAML)', plain.startsWith("refused: Neo4jType does not contain element with name ''") && quoted === 'decoded' &&
     url.startsWith('refused: Top-level decoder') && urlQuoted === 'decoded' && viaJson === 'decoded', 'plain refused, quoted and JSON decoded', `${plain} / ${quoted} / ${url} / ${urlQuoted} / ${viaJson}`);
   // Y2: the decoder is lenient where the schema is strict
@@ -503,7 +510,7 @@ for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology d
   const draft = parseDocument(draftText);
   const converted = fromDraft(draft);
   const sameDoc = toCanonicalJson(converted) === toCanonicalJson(fin.doc);
-  say(`financial-services as the last draft build bundled it: isDraft ${isDraft(draft)}; fromDraft gives the bundled document: ${sameDoc ? 'yes' : 'NO'}`);
+  say(`financial-services as the last draft build bundled it: isDraft ${isDraft(draft)}; fromDraft gives create-context-graph's converted document (no longer bundled: D20): ${sameDoc ? 'yes' : 'NO'}`);
   const pasted = parseOntology(draftText);
   say(`pasted into the page (parseOntology): converted from ${pasted.convertedFrom}; the same kinds, links, asks and sha as the bundled one: ${canonJson(modelSchema(pasted)) === canonJson(modelSchema(fin)) && pasted.sha === fin.sha ? 'yes' : 'NO'}`);
   const genericDraft = parseDocument(readFileSync(join(DRAFT_FIXTURES, 'edge-cases.draft.ontology.yaml'), 'utf8'));
@@ -620,7 +627,7 @@ for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology d
   say('mode (strictTypes off) and strictNumbers. A document the schema accepts goes to the SDK (decode, Validations.core), and one');
   say('the SDK accepts to the rules web/ogs.js adds, which neither can say.');
   let agree = 0;
-  for (const c of CONVERTED) {
+  for (const c of VALIDATED) {
     const doc = parseDocument(c.text);
     const v = bothValidate(doc);
     const spec = validateSpec(doc);
@@ -628,7 +635,7 @@ for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology d
     if (v.same && v.ajv.length === 0 && spec.length === 0 && rules.length === 0) agree++;
     else pins.push(`PIN: ${c.file}: ajv ${v.ajv.join(', ') || 'valid'}, ogs.js ${v.ogs.join(', ') || 'valid'}, SDK ${spec.map((r) => r.keyword).join(', ') || 'valid'}, rules ${rules.map((r) => r.message).join('; ') || 'none'}`);
   }
-  say(`the ${CONVERTED.length} bundled documents: valid for both validators and the SDK, no rule broken: ${agree} of ${CONVERTED.length}`);
+  say(`${VALIDATED_WHAT}: valid for both validators and the SDK, no rule broken: ${agree} of ${VALIDATED.length}`);
   const base = () => structuredClone(CONVERTED.find((c) => c.o.id === 'financial-services').o.doc);
   const small = () => ({
     schema: SCHEMA_ID, version: '2', id: 'staff', name: 'Staff',
@@ -714,7 +721,7 @@ for (const [, why] of BUNDLED.errors ?? []) pins.push(`PIN: a bundled ontology d
     say(`${name}: ${v.same ? '' : 'MISMATCH '}${what}`);
   }
   say(`=> the two validators report the same errors on ${schemaAgree} of ${CASES.length} documents; ${asDesigned} of ${CASES.length} refused (or accepted) where designed`);
-  say(`ajv and web/ogs.js agree on all ${CONVERTED.length + CASES.length} documents: ${schemaAgree === CASES.length && agree === CONVERTED.length ? 'yes' : 'NO'}`);
+  say(`ajv and web/ogs.js agree on all ${VALIDATED.length + CASES.length} documents: ${schemaAgree === CASES.length && agree === VALIDATED.length ? 'yes' : 'NO'}`);
   // What parseOntology tells the person who wrote it, for one of each.
   const tell = (text) => { try { parseOntology(text); return 'accepted'; } catch (e) { return describe(e); } };
   say(`parseOntology on the bad type token: ${tell(JSON.stringify(CASES.find((c) => c[0].startsWith('a bad type token'))[1]))}`);
@@ -743,7 +750,7 @@ const typedLine = (o, gt) => `typed (${gt.typed.length}): ${gt.typed.map((id) =>
   return `${id} (${r.pairs[0][0]} -> ${r.pairs[0][1]})`;
 }).join(', ') || 'none'}`;
 section(`create-context-graph's domains (data/ontologies/ccg/, neo4j-labs/create-context-graph 707b168): ${ccgFiles.length}, each inheriting _base.yaml`);
-say('Each is loaded as the page loads it, its document (data/ontologies/ogs/ccg/), converted from the file and _base.yaml.');
+say('Each is loaded as the editor loads a pasted one, converted from the file and _base.yaml.');
 say('Labels and relationship types are the files\' own, verbatim. _base.yaml is merged as ontology.py _merge_base does: the');
 say('base\'s entity types and relationships first, unless the domain declares that label or relationship type itself. Entries');
 say('sharing a relationship type are one link with several legal (source, target) pairs, which is what the gate checks; a link');

@@ -1,0 +1,1452 @@
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
+id: business-entities
+name: 'Business Entities: Ownership and Control'
+description: 'A pragmatic reading of the FIBO Business Entities (BE) domain for ownership and control analysis: people, legal entities and trusts; who owns what share of whom, who sits on which boards and holds which offices, who settles, manages and benefits from each trust; where entities are incorporated and registered; and the direct and ultimate parents entities report. Answers effective and ultimate beneficial ownership through layered and multi-path chains, control without ownership, trust look-through, collective ownership by a household, circular ownership, offshore layering, shared registered addresses, stale reported parents, and how two seemingly unrelated companies are connected. Adapted from FIBO (Financial Industry Business Ontology), Business Entities (BE) domain, https://github.com/edmcouncil/fibo, Copyright (c) 2013-2026 EDM Council, Inc. (also EDM Association dba EDM Council, Inc.) and Copyright (c) 2013-2025 Object Management Group, Inc., used under the MIT License (https://opensource.org/licenses/MIT). A simplification for demonstration, not FIBO itself, and not endorsed by the EDM Council.'
+nodes:
+  Person:
+    label: Person
+    properties:
+      personId:
+        type: STRING
+        key: true
+        description: Identifier of the person, unique within the dataset and stable across loads. e.g. `P-0039`.
+      name:
+        type: STRING
+        description: 'Full name of the person as recorded in the source register. Not unique: two people can share a name, so match on personId. e.g. `Femke Fischer`.'
+      nationality:
+        type: STRING
+        description: Nationality (country of citizenship) as an ISO 3166-1 alpha-2 country code; one nationality per person. e.g. `FR`.
+        pattern: ^[A-Z]{2}$
+      isPoliticallyExposed:
+        type: BOOLEAN
+        description: Whether the person is a politically exposed person (PEP) — someone entrusted with a prominent public function, or a close family member or associate of one — as determined by the user's own screening. A screening flag added for the demo, not a FIBO concept. e.g. `false`.
+    extensions:
+      display:
+        x: -110
+        'y': 0
+        colour: '#2563eb'
+      custom:
+        relate-examples:
+          ask: a natural person who owns, directs, settles or benefits from companies and trusts, named by full name, such as Hugo Mensah; a human being, never a company or a trust
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: ultimate-beneficial-owners
+            question: Ultimate beneficial owners
+            description: Finds the natural persons whose effective ownership of an entity reaches a threshold, summing every distinct chain from the person to the entity — direct holdings and holdings through any number of intermediate companies.
+            cypher: |-
+              MATCH path = (p:Person)-[:OWNS*1..6]->(:LegalEntity {entityId: $entityId})
+              WHERE all(n IN nodes(path) WHERE single(m IN nodes(path) WHERE m = n))
+              WITH p, collect(path) AS chains,
+                   sum(reduce(x = 100.0, r IN relationships(path) | x * r.percentage / 100.0)) AS effectivePct
+              WHERE effectivePct >= $minPct
+              RETURN p.personId AS personId, p.name AS name, p.nationality AS nationality,
+                     p.isPoliticallyExposed AS politicallyExposed, round(effectivePct, 2) AS effectivePct,
+                     size(chains) AS chains,
+                     [c IN chains | [n IN nodes(c)[1..-1] | n.name]] AS via
+              ORDER BY effectivePct DESC
+            parameters:
+              - name: entityId
+                type: STRING
+                description: LegalEntity.entityId of the entity examined.
+                example: E-0218
+              - name: minPct
+                type: INTEGER
+                description: Minimum effective ownership, in percent. Start at 25, the threshold many beneficial-ownership regimes use; lower it to see who sits just below.
+                example: 25
+            category: query
+            teaches: 'Ownership only: trusts are handled by Trust look-through, and people who control without owning by Control without ownership — a full beneficial-ownership answer reads all three. A person can pass the threshold only through the sum of several chains each below it, which a chain-by- chain review misses. Chains are limited to six hops.'
+            returns: 'One row per qualifying person: personId, name, nationality, politicallyExposed, effectivePct (summed over chains), chains (how many), and via (each chain''s intermediate entities, nearest the person first; an empty list is a direct holding). Ordered by effectivePct descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - beneficial ownership
+              - UBO
+              - KYC
+              - effective ownership
+            upstream:
+              file: QUERIES.md
+              heading: Ultimate beneficial owners
+              sample: 'Bundled sample data only: $entityId = ''E-0275'' (Kestrelwerk Komponenten GmbH), $minPct = 25 returns 2 rows — Niklas Brunner 30.0 (1 chain) and Maarten Visser 27.0 (2 chains: 15.0 direct plus 12.0 through Dommelstroom Beheer B.V.).'
+          - type: canonicalQuery
+            name: collective-ownership-by-household
+            question: Collective ownership by household
+            description: Searches the whole portfolio for entities where people sharing a residential address each hold effective ownership below the threshold but together reach it — a stake split across a household so that no one appears as a beneficial owner.
+            cypher: |-
+              MATCH path = (p:Person)-[:OWNS*1..6]->(e:LegalEntity)
+              WHERE all(n IN nodes(path) WHERE single(m IN nodes(path) WHERE m = n))
+              WITH p, e, sum(reduce(x = 100.0, r IN relationships(path) | x * r.percentage / 100.0)) AS effectivePct
+              WHERE effectivePct < $minPct
+              MATCH (p)-[:RESIDES_AT]->(home:Address)
+              WITH e, home, sum(effectivePct) AS combinedPct, count(p) AS people,
+                   collect(p.name + ' (' + toString(round(effectivePct, 2)) + '%)') AS members
+              WHERE people >= 2 AND combinedPct >= $minPct
+              RETURN e.entityId AS entityId, e.name AS name,
+                     home.street + ', ' + home.city AS sharedAddress, members,
+                     round(combinedPct, 2) AS combinedPct
+              ORDER BY combinedPct DESC
+            parameters:
+              - name: minPct
+                type: INTEGER
+                description: Effective-ownership threshold, in percent. Each member is below it and the household's combined stake reaches it. Start at the threshold used for Ultimate beneficial owners (25).
+                example: 25
+            category: query
+            teaches: 'Portfolio-wide: it computes every person''s effective ownership of every entity, so on a large graph anchor it to one entity or a list of entities. A shared address is a lead, not proof of a family or of acting in concert; flats in one building and care homes share addresses too, so check the address before drawing conclusions.'
+            returns: 'One row per entity and shared address: entityId, name, sharedAddress, members as "name (effectivePct%)", and combinedPct. Ordered by combinedPct descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - beneficial ownership
+              - household
+              - structuring
+              - address
+            upstream:
+              file: QUERIES.md
+              heading: Collective ownership by household
+              sample: 'Bundled sample data only: $minPct = 25 returns 1 row — Bramblefinch Bakeries Ltd, 14 Orchard Lane, Bristol: Margaret (12.0), Colin (11.0, through Hartigan Holdings Ltd) and Owen Hartigan (9.0), combined 32.0.'
+          - type: canonicalQuery
+            name: offshore-layering
+            question: Offshore layering
+            description: Searches the whole portfolio for ownership chains that run from a person through companies in several offshore financial centres before reaching an entity incorporated onshore.
+            cypher: |-
+              MATCH path = (p:Person)-[:OWNS*2..6]->(e:LegalEntity)
+              WHERE all(n IN nodes(path) WHERE single(m IN nodes(path) WHERE m = n))
+                AND EXISTS { (e)-[:INCORPORATED_IN]->(:Jurisdiction {isOffshoreCentre: false}) }
+              WITH p, e, path,
+                   [n IN nodes(path)[1..-1] | [(n)-[:INCORPORATED_IN]->(j:Jurisdiction) | j][0]] AS layerJurisdictions
+              WITH p, e, path, layerJurisdictions,
+                   size([j IN layerJurisdictions WHERE j.isOffshoreCentre]) AS offshoreLayers
+              WHERE offshoreLayers >= $minOffshoreLayers
+              RETURN p.name AS person, p.isPoliticallyExposed AS politicallyExposed, e.name AS entity,
+                     [i IN range(1, length(path) - 1) | nodes(path)[i].name + ' (' + layerJurisdictions[i - 1].jurisdictionId + ')'] AS chain,
+                     offshoreLayers,
+                     round(reduce(x = 100.0, r IN relationships(path) | x * r.percentage / 100.0), 2) AS effectivePct
+              ORDER BY offshoreLayers DESC, effectivePct DESC
+            parameters:
+              - name: minOffshoreLayers
+                type: INTEGER
+                description: 'Minimum number of intermediate companies incorporated in a jurisdiction whose isOffshoreCentre is true. Start at 2: one offshore holding company is common in private wealth planning, while each further layer adds opacity with little ordinary purpose.'
+                example: 2
+            category: query
+            teaches: 'Chains of two to six OWNS links starting at a person; chains starting at a trust are reached through Trust look-through instead. A chain is a lead for enhanced due diligence, not evidence of wrongdoing: structured finance and some fund structures use offshore layers for lawful reasons.'
+            returns: 'One row per chain: person, politicallyExposed, entity (the onshore entity at the end), chain (intermediate companies as "name (jurisdictionId)", person''s end first), offshoreLayers, and effectivePct along the chain. Ordered by offshoreLayers, then effectivePct, descending.'
+            prerequisites: Jurisdiction.isOffshoreCentre set according to the user's own policy; the query is only as good as that flag.
+            tags:
+              - offshore
+              - layering
+              - AML
+              - jurisdiction
+              - chain
+            upstream:
+              file: QUERIES.md
+              heading: Offshore layering
+              sample: 'Bundled sample data only: $minOffshoreLayers = 2 returns 2 rows, both ending at Larkspur Freight Ltd — Rodrigo Valente (politically exposed) through VG, KY and JE (3 layers, 33.6), and Gareth Holloway through KY and JE (2 layers, 22.4).'
+          - type: canonicalQuery
+            name: node-key-constraints
+            question: Node-key constraints
+            cypher: |-
+              CREATE CONSTRAINT person_personId_key IF NOT EXISTS FOR (n:Person) REQUIRE n.personId IS NODE KEY;
+              CREATE CONSTRAINT legal_entity_entityId_key IF NOT EXISTS FOR (n:LegalEntity) REQUIRE n.entityId IS NODE KEY;
+              CREATE CONSTRAINT trust_trustId_key IF NOT EXISTS FOR (n:Trust) REQUIRE n.trustId IS NODE KEY;
+              CREATE CONSTRAINT jurisdiction_jurisdictionId_key IF NOT EXISTS FOR (n:Jurisdiction) REQUIRE n.jurisdictionId IS NODE KEY;
+              CREATE CONSTRAINT address_addressId_key IF NOT EXISTS FOR (n:Address) REQUIRE n.addressId IS NODE KEY;
+            parameters: []
+            category: setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Node-key constraints
+              sample: ''
+    description: A natural person who owns, directs, manages, settles or benefits from business entities and trusts. Owner, director, officer, trustor, trustee and beneficiary are roles a person plays, carried by relationships rather than separate labels, so one person's whole position across every entity and trust is a single node.
+    aliases:
+      - Natural person
+      - Individual
+  LegalEntity:
+    label: LegalEntity
+    properties:
+      entityId:
+        type: STRING
+        key: true
+        description: Identifier of the legal entity, unique within the dataset and stable across loads. Distinct from the LEI, which not every entity has. e.g. `E-0039`.
+      name:
+        type: STRING
+        description: Registered legal name of the entity, including its legal-form suffix (Ltd, plc, GmbH, LLC, LP). e.g. `Verrano Capital Inc.`.
+      legalForm:
+        type: STRING
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the legal form the text gives the company, such as a private limited company, a privately held company or a publicly held company
+        description: 'Legal form of the entity, using FIBO business-entity class labels: publicly held company (shares traded publicly), privately held company (shares held by a small group), private limited company, limited liability company, joint stock company, general partnership, limited partnership, limited liability partnership, joint venture, not-for-profit corporation or cooperative society. e.g. `publicly held company`.'
+        reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/LEIEntities/EntityLegalForm
+        one_of:
+          - publicly held company
+          - privately held company
+          - private limited company
+          - limited liability company
+          - joint stock company
+          - general partnership
+          - limited partnership
+          - limited liability partnership
+          - joint venture
+          - not-for-profit corporation
+          - cooperative society
+      lei:
+        type: STRING
+        description: 'ISO 17442 Legal Entity Identifier: 18 alphanumeric characters and two check digits. Empty when the entity has no LEI; only LEI-registered entities report direct and ultimate parents. e.g. `XND600DZSSU9A4FSZZ59`.'
+        reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/LEIEntities/LegalEntityIdentifier
+        pattern: ^[A-Z0-9]{18}[0-9]{2}$
+      registrationNumber:
+        type: STRING
+        description: Identifier allocated by the registration authority of the jurisdiction of incorporation (company number, file number, HRB number); its format depends on that registry. e.g. `7293664`.
+      status:
+        type: STRING
+        description: 'Registration status: active when the entity is legally registered and operating, inactive when it has been dissolved, struck off or otherwise ceased to operate. e.g. `active`.'
+        one_of:
+          - active
+          - inactive
+      incorporationDate:
+        type: ZONED DATETIME
+        description: Date of incorporation or registration as stated in the filing documents. Only the calendar date carries meaning; the time is always midnight UTC. e.g. `1981-08-24T00:00:00Z`.
+        reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/CorporateBodies/hasDateOfIncorporation
+    extensions:
+      display:
+        x: 55
+        'y': 0
+        colour: '#d97706'
+      custom:
+        relate-examples:
+          ask: a company, partnership or LLC named by its registered name with its legal-form suffix, such as Driftwood Asset Management Ltd, Wealdmoor Group plc or Bayview Trustees Ltd, trust companies included; never a trust whose name ends in Trust
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: entity-overview
+            question: Entity overview
+            description: 'Gathers what the reference ontology holds about one legal entity into a single row: identity and legal form, jurisdiction of incorporation, registered address, direct owners with percentage and interest type, directors, officers, direct holdings, and reported parents.'
+            cypher: |-
+              MATCH (e:LegalEntity {entityId: $entityId})
+              OPTIONAL MATCH (e)-[:INCORPORATED_IN]->(j:Jurisdiction)
+              OPTIONAL MATCH (e)-[:REGISTERED_AT]->(a:Address)
+              OPTIONAL MATCH (e)-[:DIRECTLY_CONSOLIDATED_BY]->(dp:LegalEntity)
+              OPTIONAL MATCH (e)-[:ULTIMATELY_CONSOLIDATED_BY]->(up:LegalEntity)
+              RETURN e.entityId AS entityId, e.name AS name, e.legalForm AS legalForm, e.status AS status,
+                     e.lei AS lei, e.registrationNumber AS registrationNumber,
+                     date(e.incorporationDate) AS incorporationDate, j.name AS jurisdiction,
+                     a.street + ', ' + a.city + ', ' + a.countryCode AS registeredAddress,
+                     COLLECT { MATCH (o)-[r:OWNS]->(e)
+                               RETURN o.name + ' (' + toString(r.percentage) + '%, ' + r.interestType + ')' } AS directOwners,
+                     COLLECT { MATCH (p:Person)-[d:DIRECTOR_OF]->(e) RETURN p.name + ' (' + d.role + ')' } AS directors,
+                     COLLECT { MATCH (p:Person)-[o:OFFICER_OF]->(e) RETURN p.name + ' (' + o.title + ')' } AS officers,
+                     COUNT { (e)-[:OWNS]->(:LegalEntity) } AS directHoldings,
+                     dp.name AS reportedDirectParent, up.name AS reportedUltimateParent
+            parameters:
+              - name: entityId
+                type: STRING
+                description: LegalEntity.entityId of the entity to describe.
+                example: E-0218
+            category: query
+            teaches: The starting point for any question about one entity. It shows one hop only; use Ownership structure for the chain above it and Ultimate beneficial owners for who stands at the top.
+            returns: 'One row: entity fields, jurisdiction, registeredAddress, directOwners as "name (percentage%, interestType)", directors as "name (role)", officers as "name (title)", directHoldings (entities it owns directly), and reportedDirectParent / reportedUltimateParent (null when not reported). No row when the entityId does not exist.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - entity
+              - lookup
+              - overview
+            upstream:
+              file: QUERIES.md
+              heading: Entity overview
+              sample: 'Bundled sample data only: $entityId = ''E-0218'' (Larkspur Freight Ltd) returns 1 row — private limited company, United Kingdom; owners Saint Ouen Investments Ltd (80.0%), Daniel Kershaw (12.0%), Takumi Lehmann (8.0%); directors Daniel Kershaw and Niamh Halvorsen; officer Daniel Kershaw (chief executive officer); no reported parents.'
+          - type: canonicalQuery
+            name: ownership-structure
+            question: Ownership structure
+            description: Draws every ownership chain above one entity — people, trusts and intermediate holding companies — and, for any trust in those chains, the people and companies standing behind it as trustor, trustee or beneficiary.
+            cypher: |-
+              MATCH path = (owner)-[:OWNS*1..6]->(:LegalEntity {entityId: $entityId})
+              WHERE all(n IN nodes(path) WHERE single(m IN nodes(path) WHERE m = n))
+              RETURN path
+              UNION
+              MATCH (:LegalEntity {entityId: $entityId})<-[:OWNS*1..6]-(t:Trust)
+              MATCH path = (t)<-[:TRUSTOR_OF|TRUSTEE_OF|BENEFICIARY_OF]-()
+              RETURN path
+            parameters:
+              - name: entityId
+                type: STRING
+                description: LegalEntity.entityId of the entity to draw.
+                example: E-0218
+            category: picture
+            teaches: 'Visual, not tabular: the picture that shows why a register of direct shareholders is not the answer. Chains are limited to six hops and to paths that visit each entity once. A widely held entity draws many chains; read Entity overview first to see how many direct owners it has.'
+            returns: 'Paths for Browser or Bloom to draw, one per row: each OWNS chain ending at the entity, and each trust''s TRUSTOR_OF / TRUSTEE_OF / BENEFICIARY_OF link. UNION removes duplicates.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - visualisation
+              - ownership
+              - chain
+              - trust
+            upstream:
+              file: QUERIES.md
+              heading: Ownership structure
+              sample: 'Bundled sample data only: $entityId = ''E-0218'' (Larkspur Freight Ltd) returns 8 paths, the longest running Rodrigo Valente → Ashgrove Ventures Ltd (VG) → Blue Lantern Holdings Ltd (KY) → Saint Ouen Investments Ltd (JE) → Larkspur Freight Ltd; no trusts.'
+          - type: canonicalQuery
+            name: corporate-group
+            question: Corporate group
+            description: Lists every entity a parent controls through a chain of majority stakes, at any depth, with the depth, the parent's effective ownership, the intermediate holding companies, and where each is incorporated.
+            cypher: |-
+              MATCH path = (:LegalEntity {entityId: $entityId})-[:OWNS*1..8]->(sub:LegalEntity)
+              WHERE all(r IN relationships(path) WHERE r.percentage > $controlPct)
+                AND all(n IN nodes(path) WHERE single(m IN nodes(path) WHERE m = n))
+              OPTIONAL MATCH (sub)-[:INCORPORATED_IN]->(j:Jurisdiction)
+              RETURN sub.entityId AS entityId, sub.name AS name, length(path) AS depth,
+                     round(reduce(x = 100.0, r IN relationships(path) | x * r.percentage / 100.0), 2) AS effectivePct,
+                     [n IN nodes(path)[1..-1] | n.name] AS via,
+                     j.jurisdictionId AS jurisdiction, j.isOffshoreCentre AS offshore
+              ORDER BY depth, name
+            parameters:
+              - name: entityId
+                type: STRING
+                description: LegalEntity.entityId of the parent at the top.
+                example: E-0216
+              - name: controlPct
+                type: INTEGER
+                description: OWNS.percentage each link must exceed. Start at 50, a majority stake; lower it to include significant minority holdings.
+                example: 50
+            category: query
+            teaches: Follows OWNS downward up to eight hops — deep enough for most groups; raise the bound if the deepest rows sit at the limit. Control here is ownership-based; a fund controlled through a general partner interest appears only from the fund downward.
+            returns: 'One row per controlled entity: entityId, name, depth (1 = directly owned), effectivePct (product of the percentages down the chain), via (intermediate entities, top first), jurisdiction, offshore (the jurisdiction''s isOffshoreCentre flag). Ordered by depth, then name.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - group
+              - subsidiary
+              - hierarchy
+              - control
+            upstream:
+              file: QUERIES.md
+              heading: Corporate group
+              sample: 'Bundled sample data only: $entityId = ''E-0176'' (Wealdmoor Group plc), $controlPct = 50 returns 12 rows to depth 4, including the acquired Fenmarsh Industries Ltd and its subsidiaries, two of them in KY.'
+          - type: canonicalQuery
+            name: control-without-ownership
+            question: Control without ownership
+            description: Finds the people who control an entity through a board seat, an office, or a controlling stake in any entity on the chain of control above it, yet whose own effective ownership of it is below the threshold — the senior managers of a subsidiary's parents, or the partners who run a fund's general partner.
+            cypher: |-
+              MATCH chain = (c:LegalEntity)-[:OWNS*0..5]->(:LegalEntity {entityId: $entityId})
+              WHERE all(r IN relationships(chain) WHERE r.percentage > $controlPct OR r.interestType = 'general partner interest')
+                AND all(n IN nodes(chain) WHERE single(m IN nodes(chain) WHERE m = n))
+              MATCH (p:Person)-[seat:DIRECTOR_OF|OFFICER_OF|OWNS]->(c)
+              WHERE type(seat) <> 'OWNS' OR seat.percentage > $controlPct OR seat.interestType = 'general partner interest'
+              WITH p, min(length(chain)) AS levelsAbove,
+                   collect(DISTINCT CASE type(seat)
+                     WHEN 'DIRECTOR_OF' THEN seat.role + ' of ' + c.name
+                     WHEN 'OFFICER_OF' THEN seat.title + ' of ' + c.name
+                     ELSE seat.interestType + ' ' + toString(seat.percentage) + '% of ' + c.name END) AS controlRoutes
+              CALL {
+                WITH p
+                OPTIONAL MATCH own = (p)-[:OWNS*1..6]->(:LegalEntity {entityId: $entityId})
+                WHERE all(n IN nodes(own) WHERE single(m IN nodes(own) WHERE m = n))
+                RETURN sum(reduce(x = 100.0, r IN relationships(own) | x * r.percentage / 100.0)) AS effectivePct
+              }
+              WITH p, levelsAbove, controlRoutes, effectivePct
+              WHERE effectivePct < $minPct
+              RETURN p.personId AS personId, p.name AS name, controlRoutes, levelsAbove,
+                     round(effectivePct, 2) AS effectivePct
+              ORDER BY levelsAbove DESC, name
+            parameters:
+              - name: entityId
+                type: STRING
+                description: LegalEntity.entityId of the entity examined.
+                example: E-0218
+              - name: controlPct
+                type: INTEGER
+                description: OWNS.percentage above which a stake controls. Start at 50, a majority stake. A general partner interest controls whatever its percentage.
+                example: 50
+              - name: minPct
+                type: INTEGER
+                description: Effective ownership at or above which a person is already a beneficial owner by ownership and is left out. Use the Ultimate beneficial owners threshold (25).
+                example: 25
+            category: query
+            teaches: The chain of control is walked up to five entities above. Every director and officer of every controlling parent is returned, so a large group's subsidiary lists the parent's whole board — read the routes rather than the count. Where no one passes the ownership threshold, many regimes fall back to a senior managing official, and this list is where to find one.
+            returns: 'One row per person: personId, name, controlRoutes (each seat as "role or title of entity", or "interestType percentage% of entity" for a controlling stake), levelsAbove (0 = a seat on the entity itself; higher = further up the chain), and effectivePct. Ordered by levelsAbove descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - control
+              - beneficial ownership
+              - directors
+              - general partner
+            upstream:
+              file: QUERIES.md
+              heading: Control without ownership
+              sample: 'Bundled sample data only: $entityId = ''E-0313'' (Calderbrook Precision Engineering Ltd), $controlPct = 50, $minPct = 25 returns 3 rows — Jonathan Whitlock (managing member and 100.0% member of Ironwell Capital GP LLC, two levels above, effectivePct 1.0), then Rebecca Ashworth and James Jansen (seats on the entity itself, 0.0).'
+          - type: canonicalQuery
+            name: circular-ownership
+            question: Circular ownership
+            description: Finds chains of corporate ownership that return to where they started — A owns B owns C owns A, or two companies holding each other's shares — anywhere in the portfolio.
+            cypher: |-
+              MATCH path = (e:LegalEntity)-[:OWNS*2..6]->(e)
+              WHERE all(n IN nodes(path)[1..] WHERE single(m IN nodes(path)[1..] WHERE m = n))
+                AND all(n IN nodes(path)[1..-1] WHERE n.entityId > e.entityId)
+              RETURN [n IN nodes(path)[..-1] | n.name] AS cycle, length(path) AS entities,
+                     [r IN relationships(path) | r.percentage] AS percentages,
+                     round(reduce(x = 100.0, r IN relationships(path) | x * r.percentage / 100.0), 2) AS selfOwnershipPct
+              ORDER BY entities DESC
+            parameters: []
+            category: query
+            teaches: Cycles of two to six entities. Each cycle is reported once, from its lowest entityId. Cross-shareholdings between listed companies are lawful in many markets; circular ownership in a private structure obscures who owns it and inflates apparent capital, so review the private ones first.
+            returns: 'One row per cycle: cycle (entity names in ownership order, starting from the lowest entityId), entities (cycle length), percentages (each link in order), and selfOwnershipPct (the product round the cycle — the share of itself the first entity holds through the loop).'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - circular ownership
+              - cycle
+              - cross-shareholding
+              - structure
+            upstream:
+              file: QUERIES.md
+              heading: Circular ownership
+              sample: 'Bundled sample data only: returns 2 rows — Ventaglio Holding S.p.A. → Ventaglio Tessuti S.r.l. → Ventaglio Logistica S.r.l. (40.0, 35.0, 30.0; 4.2), and Hoshikawa Industries K.K. ⇄ Minatogawa Electric K.K. (8.0, 6.0; 0.48).'
+          - type: canonicalQuery
+            name: reported-versus-ownership-derived-parent
+            question: Reported versus ownership-derived parent
+            description: 'Compares the ultimate parent each entity reports with the top of its chain of majority ownership, and lists every disagreement: a reported parent that differs from the ownership chain, a reported parent with no majority owner behind it, and an LEI-registered entity with a majority corporate owner that reports no parent at all.'
+            cypher: |-
+              MATCH (e:LegalEntity)
+              WHERE EXISTS { (e)-[:ULTIMATELY_CONSOLIDATED_BY]->(:LegalEntity) }
+                 OR (coalesce(e.lei, '') <> ''
+                     AND EXISTS { (:LegalEntity)-[r:OWNS]->(e) WHERE r.percentage > $controlPct })
+              OPTIONAL MATCH (e)-[:ULTIMATELY_CONSOLIDATED_BY]->(reported:LegalEntity)
+              OPTIONAL MATCH chain = (top:LegalEntity)-[:OWNS*1..8]->(e)
+              WHERE all(r IN relationships(chain) WHERE r.percentage > $controlPct)
+                AND all(n IN nodes(chain) WHERE single(m IN nodes(chain) WHERE m = n))
+                AND NOT EXISTS { (:LegalEntity)-[o:OWNS]->(top) WHERE o.percentage > $controlPct }
+              WITH e, reported, top
+              WHERE reported IS NULL OR top IS NULL OR reported <> top
+              RETURN e.entityId AS entityId, e.name AS name,
+                     reported.name AS reportedUltimateParent, top.name AS ownershipUltimateParent,
+                     CASE WHEN reported IS NULL THEN 'not reported'
+                          WHEN top IS NULL THEN 'no majority owner'
+                          ELSE 'differs' END AS issue
+              ORDER BY issue, name
+            parameters:
+              - name: controlPct
+                type: INTEGER
+                description: OWNS.percentage each link must exceed to count as consolidating control. Start at 50, a majority stake.
+                example: 50
+            category: query
+            teaches: Reported parents follow accounting consolidation, which usually but not always tracks majority ownership, and they go stale after acquisitions and disposals. Each row is a record to check against filings, not a finding. The ownership chain is followed up to eight hops.
+            returns: 'One row per disagreement: entityId, name, reportedUltimateParent, ownershipUltimateParent, and issue — ''differs'', ''no majority owner'' or ''not reported''. Ordered by issue, then name.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - LEI
+              - consolidation
+              - ultimate parent
+              - data quality
+            upstream:
+              file: QUERIES.md
+              heading: Reported versus ownership-derived parent
+              sample: 'Bundled sample data only: $controlPct = 50 returns 9 rows — 5 ''differs'' (Fenmarsh Industries Ltd''s subsidiaries, which still report it although Wealdmoor Group plc owns it), 1 ''no majority owner'' (Eichenfeld Medizintechnik GmbH), and 3 ''not reported'' (Fenmarsh Industries Ltd, Larkspur Freight Ltd, Lavandière Iberia S.L.).'
+          - type: canonicalQuery
+            name: how-two-entities-are-connected
+            question: How two entities are connected
+            description: Finds the shortest connections between two legal entities through ownership, board seats, offices, trust roles and shared addresses, in either direction — the link between a buyer and a supplier, or between two counterparties that should be independent.
+            cypher: |-
+              MATCH (a:LegalEntity {entityId: $fromEntityId}), (b:LegalEntity {entityId: $toEntityId})
+              MATCH path = allShortestPaths((a)-[:OWNS|DIRECTOR_OF|OFFICER_OF|TRUSTOR_OF|TRUSTEE_OF|BENEFICIARY_OF|REGISTERED_AT|RESIDES_AT*..8]-(b))
+              RETURN path, length(path) AS hops,
+                     [n IN nodes(path) | coalesce(n.name, n.street + ', ' + n.city)] AS via
+            parameters:
+              - name: fromEntityId
+                type: STRING
+                description: LegalEntity.entityId of the first entity.
+                example: E-0168
+              - name: toEntityId
+                type: STRING
+                description: LegalEntity.entityId of the second entity.
+                example: E-0218
+            category: query
+            teaches: All shortest paths up to eight hops, ignoring direction. INCORPORATED_IN and ESTABLISHED_IN are left out because a shared jurisdiction connects almost everything. A short path through a person who is an officer of one entity and an owner of the other is a conflict of interest to check; a path through a formation agent's address or a trust company is usually not meaningful on its own.
+            returns: 'One row per shortest path: the path (for Browser or Bloom to draw), hops, and via (every node''s name, or street and city for an address, in order).'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - connection
+              - shortest path
+              - conflict of interest
+              - related party
+            upstream:
+              file: QUERIES.md
+              heading: How two entities are connected
+              sample: 'Bundled sample data only: $fromEntityId = ''E-0168'' (Pellingham Retail Group plc), $toEntityId = ''E-0218'' (Larkspur Freight Ltd) returns 2 paths of 4 hops, one through each of Gareth Holloway''s seats at Pellingham (executive director, chief financial officer): he owns 40.0% of Blue Lantern Holdings Ltd, which owns Saint Ouen Investments Ltd, which owns Larkspur Freight Ltd.'
+    description: 'A business entity with legal personality, formed and administered under commercial law to engage in business: a company, limited liability company, partnership, joint venture or not-for-profit corporation. FIBO''s legal-form class hierarchy is carried as the legalForm property. Owners, directors, officers, parents and subsidiaries are all reached through relationships, so a corporate group is a connected tree of these nodes.'
+    aliases:
+      - Company
+      - Business entity
+      - Legal person
+      - Organisation
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/LegalPersons/BusinessEntity
+  Trust:
+    label: Trust
+    properties:
+      trustId:
+        type: STRING
+        key: true
+        description: Identifier of the trust, unique within the dataset and stable across loads. e.g. `T-005`.
+      name:
+        type: STRING
+        description: Name of the trust as stated in its trust agreement. e.g. `Smit Education Trust`.
+      trustType:
+        type: STRING
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the kind of trust the text says it is, such as an irrevocable trust, a revocable trust or a testamentary trust
+        description: 'Kind of trust, using FIBO trust class labels: revocable trust (the trustor can revoke or amend it), irrevocable trust (cannot be modified except in limited legal circumstances) or testamentary trust (an irrevocable trust created under a will). e.g. `irrevocable trust`.'
+        one_of:
+          - revocable trust
+          - irrevocable trust
+          - testamentary trust
+      establishedDate:
+        type: ZONED DATETIME
+        description: Date the trust was established. Only the calendar date carries meaning; the time is always midnight UTC. e.g. `2009-07-03T00:00:00Z`.
+    extensions:
+      display:
+        x: -30
+        'y': -95
+        colour: '#059669'
+      custom:
+        relate-examples:
+          ask: a trust or settlement, named by a name that ends in Trust, such as Ashworth Education Trust; the arrangement that holds the assets, never a trust company or another company whose name ends in Ltd
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: trust-look-through
+            question: Trust look-through
+            description: 'Finds every trust in the ownership chains above an entity, with its effective ownership, governing law, and the parties behind it: trustors, trustees (people or trust companies), beneficiaries, and the directors of any corporate trustee.'
+            cypher: |-
+              MATCH path = (t:Trust)-[:OWNS*1..6]->(:LegalEntity {entityId: $entityId})
+              WHERE all(n IN nodes(path) WHERE single(m IN nodes(path) WHERE m = n))
+              WITH t, sum(reduce(x = 100.0, r IN relationships(path) | x * r.percentage / 100.0)) AS effectivePct
+              OPTIONAL MATCH (t)-[:ESTABLISHED_IN]->(j:Jurisdiction)
+              RETURN t.trustId AS trustId, t.name AS name, t.trustType AS trustType, j.name AS governingLaw,
+                     round(effectivePct, 2) AS effectivePct,
+                     COLLECT { MATCH (p:Person)-[:TRUSTOR_OF]->(t) RETURN p.name } AS trustors,
+                     COLLECT { MATCH (x)-[:TRUSTEE_OF]->(t) RETURN x.name } AS trustees,
+                     COLLECT { MATCH (p:Person)-[:BENEFICIARY_OF]->(t) RETURN p.name } AS beneficiaries,
+                     COLLECT { MATCH (tc:LegalEntity)-[:TRUSTEE_OF]->(t)
+                               MATCH (d:Person)-[:DIRECTOR_OF]->(tc)
+                               RETURN d.name + ' (' + tc.name + ')' } AS corporateTrusteeDirectors
+              ORDER BY effectivePct DESC
+            parameters:
+              - name: entityId
+                type: STRING
+                description: LegalEntity.entityId of the entity examined.
+                example: E-0283
+            category: query
+            teaches: 'No threshold is applied: many beneficial-ownership regimes treat a trust''s trustor, trustees and beneficiaries as beneficial owners whatever the percentage held. A professional trust company is trustee of many unrelated trusts, so read its directors as the people administering the trust, not owning it. Chains are limited to six hops.'
+            returns: 'One row per trust: trustId, name, trustType, governingLaw, effectivePct (summed over chains), trustors, trustees, beneficiaries, and corporateTrusteeDirectors as "name (trust company)".'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - trust
+              - beneficial ownership
+              - look-through
+              - KYC
+            upstream:
+              file: QUERIES.md
+              heading: Trust look-through
+              sample: 'Bundled sample data only: $entityId = ''E-0283'' (Coastway Hotels Ltd) returns 1 row — Calloway Family Trust (irrevocable trust, Jersey), 45.0 through Calloway Holdings Ltd; trustor Edmund Calloway; trustee Saltmarsh Trust Company Ltd (directors Priya Kapoor, Mateo Nyberg); beneficiaries Harriet and Thomas Calloway.'
+    description: A fiduciary arrangement in which a trustor gives a trustee the right to hold title to and manage assets for the benefit of one or more beneficiaries. A trust can own shares in legal entities; who stands behind it is found through its trustor, trustee and beneficiary relationships rather than through ownership.
+    aliases:
+      - Settlement
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/Trusts/Trusts/Trust
+  Jurisdiction:
+    label: Jurisdiction
+    properties:
+      jurisdictionId:
+        type: STRING
+        key: true
+        description: 'Code of the jurisdiction: an ISO 3166-1 alpha-2 country code, or an ISO 3166-2 subdivision code where company law is set below the national level. e.g. `US-DE`.'
+        pattern: ^[A-Z]{2}(-[A-Z0-9]{1,3})?$
+      name:
+        type: STRING
+        description: Name of the jurisdiction in English. e.g. `Delaware, United States`.
+      isOffshoreCentre:
+        type: BOOLEAN
+        description: Whether the user's compliance policy treats the jurisdiction as an offshore financial centre for layering analysis. A policy flag set by the user, not a legal classification and not a FIBO concept; lists differ between institutions. e.g. `false`.
+    extensions:
+      display:
+        x: 165
+        'y': -90
+        colour: '#7c3aed'
+      custom:
+        relate-examples:
+          ask: a country or territory with its own company register, such as Delaware, Luxembourg, Bermuda or the Isle of Man; the place a company is incorporated or a trust established, never a city
+          proper: true
+    description: 'A legal jurisdiction under whose law entities are incorporated and trusts are governed: a country, or a state or territory with its own company law (Delaware, Jersey, the Cayman Islands).'
+    aliases:
+      - Country of incorporation
+      - Legal jurisdiction
+  Address:
+    label: Address
+    properties:
+      addressId:
+        type: STRING
+        key: true
+        description: Identifier of the address, unique within the dataset; one per distinct postal address after standardisation. e.g. `A-0039`.
+      street:
+        type: STRING
+        description: Street line of the address, including any building or suite name. e.g. `27 Market Place`.
+      city:
+        type: STRING
+        description: City or town. e.g. `Leeds`.
+      postalCode:
+        type: STRING
+        description: Postal code in the local format; empty where the country uses none. e.g. `SH12 7ZT`.
+      countryCode:
+        type: STRING
+        description: Country of the address as an ISO 3166-1 alpha-2 code. e.g. `GB`.
+        pattern: ^[A-Z]{2}$
+    extensions:
+      display:
+        x: -30
+        'y': 100
+        colour: '#db2777'
+      custom:
+        relate-examples:
+          ask: 'a postal address of a registered office or a home: a street address or a named building, with its town, such as 27 Market Place, Leeds or Takamaka House, Victoria; never a town or country alone'
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: shared-registered-addresses
+            question: Shared registered addresses
+            description: 'Finds registered addresses used by many legal entities and shows who directs them: the jurisdictions involved, the number of distinct directors, and the directors who hold the most seats among those entities.'
+            cypher: |-
+              MATCH (a:Address)<-[:REGISTERED_AT]-(e:LegalEntity)
+              WITH a, collect(e) AS entities
+              WHERE size(entities) >= $minEntities
+              CALL {
+                WITH entities
+                UNWIND entities AS e
+                MATCH (d:Person)-[:DIRECTOR_OF]->(e)
+                WITH d, count(e) AS seatsHere
+                ORDER BY seatsHere DESC, d.name
+                RETURN count(d) AS directors, collect(d.name + ' (' + toString(seatsHere) + ')')[..3] AS busiestDirectors
+              }
+              RETURN a.addressId AS addressId, a.street + ', ' + a.city + ', ' + a.countryCode AS address,
+                     size(entities) AS entities,
+                     COLLECT { UNWIND entities AS x MATCH (x)-[:INCORPORATED_IN]->(j:Jurisdiction)
+                               RETURN DISTINCT j.jurisdictionId } AS jurisdictions,
+                     directors, busiestDirectors
+              ORDER BY entities DESC
+            parameters:
+              - name: minEntities
+                type: INTEGER
+                description: Minimum number of entities registered at the address. Start at 10 and lower it until the result is no longer dominated by ordinary group headquarters.
+                example: 10
+            category: query
+            teaches: Formation agents, virtual offices and group headquarters all host many entities; what separates them is who sits on the boards. Many unrelated entities sharing a handful of directors points to nominee directors and shelf companies. Addresses must be standardised so that one building is one Address node.
+            returns: 'One row per address: addressId, address, entities (count), jurisdictions (of incorporation), directors (distinct), and busiestDirectors as "name (seats here)", top three. Ordered by entities descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - address
+              - formation agent
+              - nominee director
+              - shell company
+            upstream:
+              file: QUERIES.md
+              heading: Shared registered addresses
+              sample: 'Bundled sample data only: $minEntities = 10 returns 3 rows — Coralstone Chambers, Road Town (24 entities, VG, 3 directors, Andreas Christodoulou on 19); Takamaka House, Victoria (14, SC, Marie-Claire Pillay on 11); Seagrape Place, George Town (11, KY, Desmond Ellery on 10).'
+    description: A postal address used as an entity's registered address or a person's residential address. One node per distinct address, so every entity and person at the same address meet at one node.
+    aliases:
+      - Registered office
+      - Location
+relationships:
+  personOwns:
+    type: OWNS
+    from:
+      node: Person
+    to:
+      node: LegalEntity
+    properties:
+      percentage:
+        type: FLOAT
+        description: 'Share of the owned entity''s equity held directly by this owner, in percent (0–100): shares for a company, membership interest for an LLC, share of partnership capital for a partnership. Economic ownership, not voting rights. Effective (indirect) ownership is the product of percentages along a chain. e.g. `50.0`.'
+      interestType:
+        type: STRING
+        description: 'Kind of ownership interest, following FIBO''s owner roles: shares (shareholder), membership interest (limited liability company member), general partner interest (manages the partnership and controls it whatever its percentage) or limited partner interest (no part in management). e.g. `shares`.'
+        one_of:
+          - shares
+          - membership interest
+          - general partner interest
+          - limited partner interest
+    extensions:
+      custom:
+        relate-examples:
+          phrase: owns
+    description: 'A person directly holds an ownership interest in a legal entity. A person may own interests in many entities and an entity may have many owners; the percentages of all an entity''s owners sum to at most 100. Expected on every OWNS relationship: percentage and interestType.'
+    aliases:
+      - Shareholding
+      - Holds equity in
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/OwnershipAndControl/OwnershipParties/hasOwningEntity
+  entityOwns:
+    type: OWNS
+    from:
+      node: LegalEntity
+    to:
+      node: LegalEntity
+    properties:
+      percentage:
+        type: FLOAT
+        must_exist: true
+        description: 'Share of the owned entity''s equity held directly by this owner, in percent (0–100): shares for a company, membership interest for an LLC, share of partnership capital for a partnership. Economic ownership, not voting rights. Effective (indirect) ownership is the product of percentages along a chain. e.g. `100.0`.'
+        reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/LEIEntities/hasOwnershipPercentage
+      interestType:
+        type: STRING
+        must_exist: true
+        description: 'Kind of ownership interest, following FIBO''s owner roles: shares (shareholder), membership interest (limited liability company member), general partner interest (manages the partnership and controls it whatever its percentage) or limited partner interest (no part in management). e.g. `shares`.'
+        one_of:
+          - shares
+          - membership interest
+          - general partner interest
+          - limited partner interest
+    extensions:
+      custom:
+        relate-examples:
+          phrase: owns
+    description: A legal entity directly holds an ownership interest in another legal entity — a parent in its subsidiary, a holding company in an operating company, a fund in a portfolio company. An entity may own many entities and be owned by many. Chains of these relationships form corporate groups and the layers between a person and an entity they ultimately own; a chain that returns to its start is circular ownership.
+    aliases:
+      - Parent of
+      - Shareholding
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/OwnershipAndControl/OwnershipParties/hasOwningEntity
+  trustOwns:
+    type: OWNS
+    from:
+      node: Trust
+    to:
+      node: LegalEntity
+    properties:
+      percentage:
+        type: FLOAT
+        description: 'Share of the owned entity''s equity held directly by this owner, in percent (0–100): shares for a company, membership interest for an LLC, share of partnership capital for a partnership. Economic ownership, not voting rights. Effective (indirect) ownership is the product of percentages along a chain. e.g. `100.0`.'
+      interestType:
+        type: STRING
+        description: 'Kind of ownership interest, following FIBO''s owner roles: shares (shareholder), membership interest (limited liability company member), general partner interest (manages the partnership and controls it whatever its percentage) or limited partner interest (no part in management). e.g. `shares`.'
+        one_of:
+          - shares
+          - membership interest
+          - general partner interest
+          - limited partner interest
+    extensions:
+      custom:
+        relate-examples:
+          phrase: owns
+    description: 'A trust (through its trustees) holds an ownership interest in a legal entity. A trust may own interests in many entities. Ownership analysis stops at the trust: the people behind it are its trustors, trustees and beneficiaries. Expected on every OWNS relationship: percentage and interestType.'
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/OwnershipAndControl/OwnershipParties/hasOwningEntity
+  directorOf:
+    type: DIRECTOR_OF
+    from:
+      node: Person
+    to:
+      node: LegalEntity
+    properties:
+      role:
+        type: STRING
+        must_exist: true
+        description: 'Kind of board seat, using FIBO labels without ''board member'': executive director (also employed by the entity) or non-executive director (no executive responsibilities). e.g. `executive director`.'
+        one_of:
+          - executive director
+          - non-executive director
+      appointedDate:
+        type: ZONED DATETIME
+        description: Date the director was appointed. Only the calendar date carries meaning; the time is always midnight UTC. e.g. `2021-07-16T00:00:00Z`.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is on the board of
+    description: A person sits on the board of directors of a legal entity, with fiduciary responsibility for it. A person may hold many directorships and an entity may have many directors. Board seats confer control without any ownership.
+    aliases:
+      - Board member of
+      - Board seat
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/OwnershipAndControl/Executives/isDirectorOf
+  officerOf:
+    type: OFFICER_OF
+    from:
+      node: Person
+    to:
+      node: LegalEntity
+    properties:
+      title:
+        type: STRING
+        must_exist: true
+        description: 'Office held, using FIBO labels: chief executive officer, chief financial officer, company secretary, or managing member (the member who runs a limited liability company day to day). e.g. `chief financial officer`.'
+        one_of:
+          - chief executive officer
+          - chief financial officer
+          - company secretary
+          - managing member
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is an officer of
+    description: A person holds an executive office in a legal entity with authority to act on its behalf. A person may hold several offices, in one entity or many, and an entity may have many officers; each office held is its own relationship.
+    aliases:
+      - Executive of
+      - Senior managing official of
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/OwnershipAndControl/Executives/isOfficerOf
+  trustorOf:
+    type: TRUSTOR_OF
+    from:
+      node: Person
+    to:
+      node: Trust
+      min_count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is the settlor of
+    description: A person established the trust and placed assets under its trustees' management. Every trust has at least one trustor; a person may establish many trusts.
+    aliases:
+      - Settlor of
+      - Grantor of
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/Trusts/Trusts/Trustor
+  beneficiaryOf:
+    type: BENEFICIARY_OF
+    from:
+      node: Person
+    to:
+      node: Trust
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is a beneficiary of
+    description: A person is a beneficiary for whose benefit the trust holds its assets. A trust may have many beneficiaries and a person may benefit from many trusts.
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/Trusts/Trusts/TrustBeneficiary
+  personTrusteeOf:
+    type: TRUSTEE_OF
+    from:
+      node: Person
+    to:
+      node: Trust
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is trustee of
+    description: A person acts as trustee, holding and managing the trust's assets for its beneficiaries. A trust may have several trustees, individual or corporate; a person may be trustee of many trusts.
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/Trusts/Trusts/isTrusteeOf
+  entityTrusteeOf:
+    type: TRUSTEE_OF
+    from:
+      node: LegalEntity
+    to:
+      node: Trust
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is trustee of
+    description: A legal entity — typically a professional trust company — acts as corporate trustee of the trust. A trust company may be trustee of many trusts, and a trust may have several trustees.
+    aliases:
+      - Corporate trustee of
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/Trusts/Trusts/isTrusteeOf
+  incorporatedIn:
+    type: INCORPORATED_IN
+    from:
+      node: LegalEntity
+      count: 1
+    to:
+      node: Jurisdiction
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is incorporated in
+    description: The legal entity is incorporated or registered under the law of the jurisdiction. Every legal entity has exactly one; a jurisdiction has many entities.
+    aliases:
+      - Jurisdiction of incorporation
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/CorporateBodies/isIncorporatedIn
+  establishedIn:
+    type: ESTABLISHED_IN
+    from:
+      node: Trust
+      count: 1
+    to:
+      node: Jurisdiction
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was established in
+    description: The trust is governed by the law of the jurisdiction. Every trust has exactly one governing law; a jurisdiction has many trusts.
+    aliases:
+      - Governing law
+  registeredAt:
+    type: REGISTERED_AT
+    from:
+      node: LegalEntity
+      count: 1
+    to:
+      node: Address
+    extensions:
+      custom:
+        relate-examples:
+          phrase: has its registered office at
+    description: The legal entity's registered address — officially recorded with the registration authority and where legal papers may be served. Every entity has exactly one; an address may be the registered address of many entities, as it is for a formation agent or a group headquarters.
+    aliases:
+      - Registered office
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/FormalBusinessOrganizations/hasRegisteredAddress
+  residesAt:
+    type: RESIDES_AT
+    from:
+      node: Person
+      max_count: 1
+    to:
+      node: Address
+    extensions:
+      custom:
+        relate-examples:
+          phrase: lives at
+    description: The person's residential address. A person has at most one recorded; many people may share an address, as members of one household do.
+    aliases:
+      - Home address
+  directlyConsolidatedBy:
+    type: DIRECTLY_CONSOLIDATED_BY
+    from:
+      node: LegalEntity
+      max_count: 1
+    to:
+      node: LegalEntity
+    extensions:
+      custom:
+        relate-examples:
+          phrase: reports as its direct parent
+    description: The entity reports this entity as its direct accounting consolidating parent — the closest entity that fully consolidates it — as in LEI Level 2 relationship records. A reported fact, not derived from ownership. An entity reports at most one; a parent may be reported by many.
+    aliases:
+      - Direct parent
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/LEIEntities/isDirectlyConsolidatedBy
+  ultimatelyConsolidatedBy:
+    type: ULTIMATELY_CONSOLIDATED_BY
+    from:
+      node: LegalEntity
+      max_count: 1
+    to:
+      node: LegalEntity
+    extensions:
+      custom:
+        relate-examples:
+          phrase: reports as its ultimate parent
+    description: The entity reports this entity as its ultimate accounting consolidating parent — the most distant entity that fully consolidates it — as in LEI Level 2 relationship records. A reported fact that can go stale after an acquisition or disposal; ownership chains show the current position. An entity reports at most one; a parent may be reported by many.
+    aliases:
+      - Ultimate parent
+      - Global ultimate parent
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/LEIEntities/isUltimatelyConsolidatedBy
+extensions:
+  data_source_tables:
+    jurisdictions.csv:
+      source: local
+      columns:
+        - name: jurisdictionId
+          type: string
+        - name: name
+          type: string
+        - name: isOffshoreCentre
+          type: string
+    addresses.csv:
+      source: local
+      columns:
+        - name: addressId
+          type: string
+        - name: street
+          type: string
+        - name: city
+          type: string
+        - name: postalCode
+          type: string
+        - name: countryCode
+          type: string
+    persons.csv:
+      source: local
+      columns:
+        - name: personId
+          type: string
+        - name: name
+          type: string
+        - name: nationality
+          type: string
+        - name: isPoliticallyExposed
+          type: string
+        - name: addressId
+          type: string
+    legal_entities.csv:
+      source: local
+      columns:
+        - name: entityId
+          type: string
+        - name: name
+          type: string
+        - name: legalForm
+          type: string
+        - name: lei
+          type: string
+        - name: registrationNumber
+          type: string
+        - name: status
+          type: string
+        - name: incorporationDate
+          type: string
+        - name: jurisdictionId
+          type: string
+        - name: addressId
+          type: string
+    trusts.csv:
+      source: local
+      columns:
+        - name: trustId
+          type: string
+        - name: name
+          type: string
+        - name: trustType
+          type: string
+        - name: establishedDate
+          type: string
+        - name: jurisdictionId
+          type: string
+    person_ownership.csv:
+      source: local
+      columns:
+        - name: personId
+          type: string
+        - name: entityId
+          type: string
+        - name: percentage
+          type: string
+        - name: interestType
+          type: string
+    entity_ownership.csv:
+      source: local
+      columns:
+        - name: ownerEntityId
+          type: string
+        - name: entityId
+          type: string
+        - name: percentage
+          type: string
+        - name: interestType
+          type: string
+    trust_ownership.csv:
+      source: local
+      columns:
+        - name: trustId
+          type: string
+        - name: entityId
+          type: string
+        - name: percentage
+          type: string
+        - name: interestType
+          type: string
+    directorships.csv:
+      source: local
+      columns:
+        - name: personId
+          type: string
+        - name: entityId
+          type: string
+        - name: role
+          type: string
+        - name: appointedDate
+          type: string
+    officers.csv:
+      source: local
+      columns:
+        - name: personId
+          type: string
+        - name: entityId
+          type: string
+        - name: title
+          type: string
+    trustors.csv:
+      source: local
+      columns:
+        - name: personId
+          type: string
+        - name: trustId
+          type: string
+    trust_beneficiaries.csv:
+      source: local
+      columns:
+        - name: personId
+          type: string
+        - name: trustId
+          type: string
+    person_trustees.csv:
+      source: local
+      columns:
+        - name: personId
+          type: string
+        - name: trustId
+          type: string
+    entity_trustees.csv:
+      source: local
+      columns:
+        - name: entityId
+          type: string
+        - name: trustId
+          type: string
+    direct_parents.csv:
+      source: local
+      columns:
+        - name: entityId
+          type: string
+        - name: parentEntityId
+          type: string
+    ultimate_parents.csv:
+      source: local
+      columns:
+        - name: entityId
+          type: string
+        - name: parentEntityId
+          type: string
+  data_source_mappings:
+    mapping0:
+      - type: NODE
+        node: Jurisdiction
+        table: jurisdictions.csv
+        mode: MERGE
+        key:
+          - jurisdictionId
+        properties:
+          jurisdictionId:
+            column: jurisdictionId
+          name:
+            column: name
+          isOffshoreCentre:
+            column: isOffshoreCentre
+      - type: NODE
+        node: Address
+        table: addresses.csv
+        mode: MERGE
+        key:
+          - addressId
+        properties:
+          addressId:
+            column: addressId
+          street:
+            column: street
+          city:
+            column: city
+          postalCode:
+            column: postalCode
+          countryCode:
+            column: countryCode
+      - type: NODE
+        node: Person
+        table: persons.csv
+        mode: MERGE
+        key:
+          - personId
+        properties:
+          personId:
+            column: personId
+          name:
+            column: name
+          nationality:
+            column: nationality
+          isPoliticallyExposed:
+            column: isPoliticallyExposed
+      - type: NODE
+        node: LegalEntity
+        table: legal_entities.csv
+        mode: MERGE
+        key:
+          - entityId
+        properties:
+          entityId:
+            column: entityId
+          name:
+            column: name
+          legalForm:
+            column: legalForm
+          lei:
+            column: lei
+          registrationNumber:
+            column: registrationNumber
+          status:
+            column: status
+          incorporationDate:
+            column: incorporationDate
+      - type: NODE
+        node: Trust
+        table: trusts.csv
+        mode: MERGE
+        key:
+          - trustId
+        properties:
+          trustId:
+            column: trustId
+          name:
+            column: name
+          trustType:
+            column: trustType
+          establishedDate:
+            column: establishedDate
+      - type: RELATIONSHIP
+        relationship: residesAt
+        table: persons.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Person
+          properties:
+            personId:
+              column: personId
+        to_node:
+          label: Address
+          properties:
+            addressId:
+              column: addressId
+      - type: RELATIONSHIP
+        relationship: incorporatedIn
+        table: legal_entities.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        to_node:
+          label: Jurisdiction
+          properties:
+            jurisdictionId:
+              column: jurisdictionId
+      - type: RELATIONSHIP
+        relationship: registeredAt
+        table: legal_entities.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        to_node:
+          label: Address
+          properties:
+            addressId:
+              column: addressId
+      - type: RELATIONSHIP
+        relationship: establishedIn
+        table: trusts.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Trust
+          properties:
+            trustId:
+              column: trustId
+        to_node:
+          label: Jurisdiction
+          properties:
+            jurisdictionId:
+              column: jurisdictionId
+      - type: RELATIONSHIP
+        relationship: personOwns
+        table: person_ownership.csv
+        mode: MERGE
+        key:
+          - interestType
+        from_node:
+          label: Person
+          properties:
+            personId:
+              column: personId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        properties:
+          percentage:
+            column: percentage
+          interestType:
+            column: interestType
+      - type: RELATIONSHIP
+        relationship: entityOwns
+        table: entity_ownership.csv
+        mode: MERGE
+        key:
+          - interestType
+        from_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: ownerEntityId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        properties:
+          percentage:
+            column: percentage
+          interestType:
+            column: interestType
+      - type: RELATIONSHIP
+        relationship: trustOwns
+        table: trust_ownership.csv
+        mode: MERGE
+        key:
+          - interestType
+        from_node:
+          label: Trust
+          properties:
+            trustId:
+              column: trustId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        properties:
+          percentage:
+            column: percentage
+          interestType:
+            column: interestType
+      - type: RELATIONSHIP
+        relationship: directorOf
+        table: directorships.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Person
+          properties:
+            personId:
+              column: personId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        properties:
+          role:
+            column: role
+          appointedDate:
+            column: appointedDate
+      - type: RELATIONSHIP
+        relationship: officerOf
+        table: officers.csv
+        mode: MERGE
+        key:
+          - title
+        from_node:
+          label: Person
+          properties:
+            personId:
+              column: personId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        properties:
+          title:
+            column: title
+      - type: RELATIONSHIP
+        relationship: trustorOf
+        table: trustors.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Person
+          properties:
+            personId:
+              column: personId
+        to_node:
+          label: Trust
+          properties:
+            trustId:
+              column: trustId
+      - type: RELATIONSHIP
+        relationship: beneficiaryOf
+        table: trust_beneficiaries.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Person
+          properties:
+            personId:
+              column: personId
+        to_node:
+          label: Trust
+          properties:
+            trustId:
+              column: trustId
+      - type: RELATIONSHIP
+        relationship: personTrusteeOf
+        table: person_trustees.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Person
+          properties:
+            personId:
+              column: personId
+        to_node:
+          label: Trust
+          properties:
+            trustId:
+              column: trustId
+      - type: RELATIONSHIP
+        relationship: entityTrusteeOf
+        table: entity_trustees.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        to_node:
+          label: Trust
+          properties:
+            trustId:
+              column: trustId
+      - type: RELATIONSHIP
+        relationship: directlyConsolidatedBy
+        table: direct_parents.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: parentEntityId
+      - type: RELATIONSHIP
+        relationship: ultimatelyConsolidatedBy
+        table: ultimate_parents.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: parentEntityId
+  custom:
+    relate-examples:
+      family: studio
+      source:
+        repository: neo4j/studio-agent-use-cases
+        commit: b76f767e85c5853b7d70eb2bb3b10879d0e394a9
+        package: business-entities
+        files:
+          - ONTOLOGY.json
+          - QUERIES.md
+          - human_description.md
+          - NOTICE.md
+      card:
+        title: 'Business Entities: Ownership and Control'
+        category: Financial Services
+        description: Built on the EDM Council's FIBO Business Entities ontology, trace ownership and control through layers of companies, trusts and boards to find the real owners, hidden links and circular structures a register of direct shareholders misses.
+      industry: Financial Services
+      about: data/ontologies/studio/business-entities/human_description.md

@@ -54,6 +54,10 @@ the run. No `.env` and no network beyond the downloads below.
    builds; on a hit it only re-checks the cached build.
 5. **The GLiNER2.5-small-v1 weights** (`scripts/fetch-gliner.sh small`), cached in `.cache/gliner`
    keyed on `ci/gliner2.5-*.sha256`; every file is re-hashed on each run.
+   Then example 01's inference cache (`.cache/ex01-infer`, D24): the harness's model answers, one
+   file per call named by its request, restored from the newest earlier run (`restore-keys`) and
+   saved after this one, so a run asks the model only for what changed; `harness/run.mjs` asks every
+   33rd cached answer again and fails on any difference, so a stale entry cannot pass unseen.
 6. **Example 01's npm packages** (`npm ci --omit=peer`, which installs `@relate/relate-wasm`
    pinned with its integrity in `package-lock.json`) and the NVL vendor bundle (`npm run vendor`).
 7. **Playwright's Chromium**, the download cached, its system libraries installed on every run.

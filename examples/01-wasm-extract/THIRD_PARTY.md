@@ -14,12 +14,11 @@ Shipped in `dist/` (what the GitHub Pages site serves for this example):
 | `assets/js-yaml-4.3.2/`: `js-yaml.js`, `LICENSE.txt` | js-yaml 4.3.2 | MIT |
 | `assets/ontology-graph-spec-0.13.0/`: `ontology-graph-spec.js`, `LICENSE.txt`, `THIRD_PARTY.txt` | the Ontology Graph Spec SDK 0.13.0 (npm `@neo4j/ontology-graph-spec`), bundled into one module with the Kotlin libraries compiled into it (listed in `THIRD_PARTY.txt`) | Apache-2.0, the Kotlin libraries Apache-2.0 |
 | `data/LICENSE-edgextract.txt`, `data/SOURCE.md` | edgextract's licence, for the approach and the rules the page's modules port (below) | Apache-2.0 |
-| `data/ontologies/ogs/ccg/*.ontology.yaml`, `data/ontologies/ogs/SOURCE.md`, `data/ontologies/ccg/_base.yaml`, `data/ontologies/ccg/LICENSE-create-context-graph.txt`, `data/ontologies/ccg/SOURCE.md` | create-context-graph's domain ontologies, converted to Ontology Graph Spec 1.1, and their base, verbatim | Apache-2.0 |
+| `data/ontologies/ccg/_base.yaml`, `data/ontologies/ccg/LICENSE-create-context-graph.txt`, `data/ontologies/ccg/SOURCE.md` | create-context-graph's POLE+O base, verbatim, for a create-context-graph file pasted or loaded into the page | Apache-2.0 |
 | `data/ontology-spec/`: `ontology-graph-spec.schema.json`, `LICENSE-graph-spec.txt`, `SOURCE.md` | the Neo4j Ontology Graph Specification 1.1.0's JSON Schema, verbatim (also carried in `ogs.js`) | Apache-2.0 |
-| `data/ontologies/ogs/studio/*.ontology.yaml`, `data/ontologies/studio/<package>/human_description.md` and `NOTICE.md`, `data/ontologies/studio/SOURCE.md`, `data/ontologies/studio/manifest.json` | Neo4j's solution packages from studio-agent-use-cases at `b76f767`, each with this repository's overlay applied (below) | used with Neo4j's permission (confirmed by the repository owner on 2026-11-26); the parts drawn from FIBO MIT (EDM Council), with their notices in `NOTICE.md`; the overlays this repository's licence |
+| `data/ontologies/ogs/studio/*.ontology.yaml`, `data/ontologies/ogs/SOURCE.md`, `data/ontologies/studio/<package>/human_description.md` and `NOTICE.md`, `data/ontologies/studio/SOURCE.md`, `data/ontologies/studio/manifest.json` | Neo4j's solution packages from studio-agent-use-cases at `b76f767`, each with this repository's overlay applied (below) | used with Neo4j's permission (confirmed by the repository owner on 2026-11-26); the parts drawn from FIBO MIT (EDM Council), with their notices in `NOTICE.md`; the overlays this repository's licence |
 | `data/ontologies/domains/*.ontology.yaml`, `data/ontologies/domains/SOURCE.md` | the curated domain ontologies, written for this example (ADR-0019) | this repository's licence |
 | `data/samples/domains/**/*.md`, `data/samples/studio/**/*.md` | synthetic documents written for this example; the studio ones narrate their package's synthetic sample data, with its names and identifiers | this repository's licence |
-| `data/samples/ccg/*.md` | 27 synthetic documents written for this example from create-context-graph's document templates; the people, organisations, identifiers, events and sites are fictional, the cities and regions real | this repository's licence |
 | `data/ontologies/index.json`, `data/samples/samples.json` | the picker's lists (`build.mjs`, this repository) | this repository's licence |
 | the page's modules (`app.js`, `worker.js`, …), `assets/lib-<sha8>/` (`lib/replay.mjs`, `lib/relate_wasm.mjs`, `lib/ogs.mjs`), `queries/` | this repository; `split.js`, `names.js` and parts of `pipeline.js` port edgextract's rules; `ogs.js` carries the spec's schema | this repository's licence; the ports keep edgextract's attribution |
 
@@ -27,8 +26,10 @@ Not shipped:
 - the GLiNER2.5 weights, which the page fetches from the Hugging Face Hub;
 - the harness's fixtures (`harness/fixtures.mjs`), edge cases written for this example after edgextract's golden set, and
   `harness/fixtures/*.draft.ontology.yaml`, two documents as the last draft-format build of this example had them;
-- the create-context-graph samples' gold files and distractors (`data/samples/ccg/*.gold.json`,
-  `distractors.json`), which only the Node harness reads;
+- the documents' gold files (`data/samples/**/*.gold.json`) and the held-out documents
+  (`data/samples/heldout/`), which only the Node harness reads;
+- create-context-graph's 27 domain files (`data/ontologies/ccg/<domain>.yaml`), which the harness
+  converts in memory for its fixtures and checks;
 - `data/reference/`;
 - the development tools.
 
@@ -62,9 +63,9 @@ Not shipped:
   create-context-graph's `ontology.py` `_merge_base` does (a reimplementation, not a copy), and
   converts each file to an Ontology Graph Spec 1.1 document that carries all of it: properties,
   agent tools, document templates, decision traces, demo scenarios, the system prompt and the
-  visualization settings. `dist/` ships the 27 converted documents
-  (`data/ontologies/ogs/ccg/`, derived works under the same licence) and `_base.yaml` (for a
-  file pasted or loaded into the page), not the 27 originals.
+  visualization settings. The page no longer bundles them (ADR-0019): `dist/` ships only
+  `_base.yaml` (for a create-context-graph file pasted or loaded into the page), and the harness
+  converts the 27 in memory for its fixtures and the format checks.
 - **Source:** [neo4j-labs/create-context-graph](https://github.com/neo4j-labs/create-context-graph),
   `src/create_context_graph/domains/`, at commit `707b168d9509cbf1b919b82940285d1df4c6810d`
   (`707b168`, 2026-09-04). [`data/ontologies/ccg/SOURCE.md`](data/ontologies/ccg/SOURCE.md) maps
@@ -74,23 +75,18 @@ Not shipped:
   "Copyright 2026 Neo4j Labs" after its terms and conditions. That `LICENSE`, copied unchanged from the commit, travels with the
   files as `data/ontologies/ccg/LICENSE-create-context-graph.txt`, in the repo and in `dist/`.
 
-## The create-context-graph samples (`data/samples/ccg/`)
+## The documents (`data/samples/domains/`, `data/samples/studio/`, `data/samples/heldout/`)
 
-- **What:** 27 short markdown documents, one per domain, each with its gold labels
-  (`<domain>.gold.json`, edgextract's golden-label format: `{entities: [{name, type}],
-  relations: [{source, target, type}]}`), and `distractors.json`, the one hedged or negated
-  claim per document that the gold leaves out on purpose.
-- **Source:** written for this example, each from one of create-context-graph's document
-  templates for its domain (the template's id is in the document's front matter, `template:`;
-  its prompt is in the domain's YAML under `document_templates`). They are **synthetic**: the
-  people, organisations, identifiers and events in them are fictional, and so are the sites they
-  are set at (a reserve, a hotel, a well), while the cities and regions they mention are real
-  (Edinburgh, Norwich, Porto, the Douro Valley, Laikipia, …). No text is copied from
-  create-context-graph. Each front matter marks it `synthetic: true`, with a note (its "every name
-  is fictional" means those people, organisations, identifiers, events and sites, not the cities
-  and regions).
-- **Licence:** this repository's. The templates they follow are create-context-graph's
-  (Apache-2.0, above).
+- **What:** 49 markdown documents (a primary for each of the 40 ontologies, 9 companions) and 12
+  held-out ones, each with its gold labels (`.gold.json`, gold v2: entities with aliases, relations
+  with how the text states them, distractors by family, property values).
+- **Source:** written for this example, in the genre a practitioner would read (a compliance memo,
+  a discharge summary, a penetration-test report). They are **synthetic**: every person,
+  organisation, account, identifier and event is fictional; places, public authorities and public
+  scientific, medical and regulatory vocabulary are real. The solution packages' documents use their
+  package's own synthetic sample data (names and identifiers), so their facts agree with its
+  records. Each front matter marks it `synthetic: true`, with a note on what it was written from.
+- **Licence:** this repository's.
 
 ## GLiNER2.5 weights
 

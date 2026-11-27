@@ -1,0 +1,95 @@
+# What example 01 adds to Neo4j's ev-route-planning package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for the site codes and fleet numbers the
+# documents state, the properties the model reads values for (D27), and example arguments for the
+# package's queries, taken from the records this example's charging plan narrates (the package's
+# sample data: EV-013 from Paris to Marseille).
+package: ev-route-planning
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: EV Route Planning
+  category: Manufacturing
+  description: Plan electric vehicle routes across logistics networks with battery, charging and time constraints modeled as a connected graph.
+industry: Manufacturing
+nodes:
+  Geo:
+    colour: "#2563eb"
+    proper: true
+    ask: a city, town or depot on the road network, named by its place name, such as Paris, Lyon or Chalon-sur-Saone; never a charging site code, a road number such as A7, a region or an operator
+  # A site's code is its name, its key: the pattern documents the code, and proposes nothing (D26 needs a key other than name).
+  # The cue is short: the longer one (CS- then a road number or a city and two digits) left the sites in the
+  # plan's table rows at 0.16 to 0.32, under the drop line, and this one lifts them to 0.37 to 0.60.
+  ChargingStation:
+    colour: "#059669"
+    proper: true
+    ask: a charging site, named by its site code, such as CS-A7-01 or CS-LYON-02
+    pattern:
+      name: "^CS-[A-Z0-9]+-[0-9]{2}$"
+    # D27: the site's power, the car's battery and its charging limit, as the plan's tables (units in the
+    # headers) and its prose give them. A value is a number: web/values.js reads "150" and not "150 kW", so
+    # each ask gives a bare number as its example. Not current_soc_percent: the package keeps it from 0 to
+    # 100, and a value read from "95%" is a fraction.
+    properties:
+      power_kw:
+        extract: true
+        ask: the most power the charging site can deliver in kW, a number such as 300, never a percentage or the lower power a car draws there
+  Car:
+    colour: "#d97706"
+    proper: true
+    propose: true
+    ask: an electric vehicle in the fleet, a car, van or truck named by its fleet number, EV- and three digits, such as EV-013; not its model name
+    pattern:
+      id: "^EV-[0-9]{3}$"
+    properties:
+      battery_capacity_kwh:
+        extract: true
+        ask: the size of the vehicle battery in kWh, a number such as 77.0, never a percentage or the energy left to spend on a run
+      max_charge_power_kw:
+        extract: true
+        ask: the most charging power the vehicle itself can accept in kW, a number such as 150, never a percentage
+relationships:
+  # The three ROAD links read as one phrase (the model is asked one relation per type), so the model reads
+  # "geo leads to geo or geo leads to charging station or charging station leads to geo". ROAD is stored
+  # once per segment and traversed undirected, so the phrase reads either way round. On the plan's
+  # sentences "leads to" scores the true segments higher than "has a road to", "connects to", "joins",
+  # "runs to" or "is linked by road to", but no phrase lifts them past about 0.3, under small-v1's keep line.
+  geoRoadGeo:
+    phrase: leads to
+  geoRoadChargingStation:
+    phrase: leads to
+  chargingStationRoadGeo:
+    phrase: leads to
+  # A charge option is a self-loop on its site: no sentence names its two ends apart, and the gate drops self-loops.
+  charge:
+    extract: false
+tools:
+  # The plan's run: EV-013 from Paris to Marseille, leaving at 06:00 with a 10 per cent floor, a 100 per cent
+  # ceiling, a 900-minute shift and the 1.35 corridor; CS-A7-01 and Lyon are its last stop and its middle.
+  vehicle-range-one-vehicle-s-usable-range-from-telemetry:
+    args: {carId: EV-013, reserveSoc: 10}
+  charging-station-detail-one-station-its-charge-tiers-and-the-roads-that-reach-it:
+    args: {stationName: CS-A7-01}
+  charging-options-near-a-city-stations-within-two-road-hops-by-depth:
+    args: {cityName: Lyon}
+  fleet-composition-and-reach:
+    args: {reserveSoc: 10, requiredRangeKm: 800}
+  inline-corridor-stations-sites-with-no-bypass:
+    args: {limit: 50}
+  corridor-preview-how-hard-the-spatial-prune-bites-before-paying-for-traversal:
+    args: {sourceName: Paris, targetName: Marseille, detourRatio: 1.35}
+  lane-feasibility-across-the-fleet-which-vehicles-can-serve-this-lane-today:
+    args: {sourceName: Paris, targetName: Marseille, detourRatio: 1.35, minSoc: 10, maxSoc: 100, maxMins: 900, departureHour: 6}
+  location-ego-network-everything-one-hop-from-a-city:
+    args: {cityName: Lyon}
+  fewest-hop-route-between-two-locations:
+    args: {sourceName: Paris, targetName: Marseille}
+  least-distance-routes-ranked-by-driving-distance-not-hop-count:
+    args: {sourceName: Paris, targetName: Marseille, limit: 5}
+  charging-catchment-of-a-city-the-paths-out-to-reachable-stations:
+    args: {cityName: Lyon, limit: 50}
+  feasible-routes-under-battery-and-time-constraints:
+    args: {carId: EV-013, sourceName: Paris, targetName: Marseille, detourRatio: 1.35, minSoc: 10, maxSoc: 100, maxMins: 900, departureHour: 6, limit: 50}
+  best-route-scored-one-recommendation-with-the-numbers-behind-it:
+    args: {carId: EV-013, sourceName: Paris, targetName: Marseille, detourRatio: 1.35, minSoc: 10, maxSoc: 100, maxMins: 900, departureHour: 6}

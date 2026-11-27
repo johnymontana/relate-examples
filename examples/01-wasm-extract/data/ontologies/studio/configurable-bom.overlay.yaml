@@ -1,0 +1,105 @@
+# What example 01 adds to Neo4j's configurable-bom package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for identifiers the documents state, and
+# example arguments for the package's queries, in the words of this example's documents.
+package: configurable-bom
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: Configurable Bill of Materials
+  category: Manufacturing
+  description: Resolve a single buildable product variant from a configurable bill of materials by applying constraints, scoring the options that remain, and rolling up cost and weight.
+industry: Manufacturing
+nodes:
+  # Every kind is named by its catalog number (MB1, A-WHEEL-29, CG-RIM-29, P-RIM-29-ALLOY), and each
+  # numbering scheme has its own prefix, so each pattern proposes its identifiers. The cues are short:
+  # longer ones (what a kind is not, several examples) cut the small model's relation scores by about a
+  # third on this document's sentences, and the patterns already decide the kinds.
+  Product:
+    colour: "#2563eb"
+    proper: true
+    propose: true
+    ask: a configurable end product, such as MB1
+    pattern:
+      productId: "^MB[0-9]+$"
+  Assembly:
+    colour: "#d97706"
+    proper: true
+    propose: true
+    ask: a sub-assembly of a product, such as A-WHEEL-29
+    pattern:
+      assemblyId: "^A-[A-Z]{3,}(?:-[0-9A-Z]+)*$"
+  ConfigGroup:
+    colour: "#7c3aed"
+    proper: true
+    propose: true
+    ask: a choice between interchangeable options, such as CG-RIM-29
+    pattern:
+      configGroupId: "^CG-[A-Z]{3,}(?:-[0-9A-Z]+)*$"
+  Part:
+    colour: "#059669"
+    proper: true
+    propose: true
+    ask: a single component part, such as P-HUB
+    pattern:
+      partId: "^P-[A-Z]{3,}(?:-[0-9A-Z]+)*$"
+    properties:
+      cost:
+        extract: true
+        parse: MONEY
+        ask: the purchase cost of one unit of the part, an amount such as 40.00 EUR
+      weight:
+        extract: true
+        ask: the mass of one unit of the part in kilograms, such as 0.48 kg
+      material:
+        one_of: [Alloy, Carbon, Aluminum, Steel]
+        extract: true
+        ask: the material a sentence says the part is made from, such as an alloy or carbon rim, not a word inside a part number
+relationships:
+  # The three REQUIRES links read as one phrase, and so do the two HAS_OPTION links (the model is
+  # asked one relation per type). "includes" scores HAS_PART higher than "contains" or "uses", and
+  # "offers" HAS_OPTION higher than "has option".
+  productRequiresAssembly:
+    phrase: requires
+  productRequiresConfigGroup:
+    phrase: requires
+  assemblyRequiresConfigGroup:
+    phrase: requires
+  assemblyHasPart:
+    phrase: includes
+  configGroupHasOptionPart:
+    phrase: offers
+  configGroupHasOptionAssembly:
+    phrase: offers
+tools:
+  # MB1 and V-275-TRAIL, the variant ECN-0147 resolves with the 27.5-inch wheel: the package's V-WELL
+  # constraints with wheelSize 27.5.
+  explore-the-configurable-structure-of-a-product:
+    args: {productId: MB1}
+  resolve-a-variant-against-constraints:
+    args:
+      productId: MB1
+      idVariant: V-275-TRAIL
+      constraints:
+        - {category: wheelset, properties: [{name: wheelSize, allowList: ["27.5"]}]}
+        - {category: gearing, properties: [{name: gearSystem, allowList: ["9-Speed"]}]}
+        - {category: shifter, properties: [{name: gearSystem, allowList: ["9-Speed"]}]}
+        - {category: derailleur, properties: [{name: gearSystem, allowList: ["9-Speed"]}]}
+        - {category: rim, properties: [{name: material, allowList: [Alloy]}]}
+        - {category: tire, properties: [{name: pattern, allowList: [Trail]}]}
+        - {category: frame-material, properties: [{name: material, allowList: [Aluminum]}]}
+        - {category: finish, properties: [{name: color, allowList: [Black]}]}
+        - {category: caliper, properties: [{name: brakeType, allowList: [Hydraulic Disc]}]}
+  show-a-resolved-bill-of-materials:
+    args: {idVariant: V-275-TRAIL}
+  prune-undecided-decisions-by-scoring:
+    args: {idVariant: V-275-TRAIL, scoring: [{field: cost, factor: -1.0}, {field: weight, factor: -50.0}], maxIterations: 10}
+  remove-resolved-links-detached-from-the-product:
+    args: {idVariant: V-275-TRAIL}
+  roll-up-weight-and-cost-of-a-resolved-variant:
+    args: {idVariant: V-275-TRAIL}
+  find-configuration-decisions-the-constraints-could-not-satisfy:
+    args: {productId: MB1, idVariant: V-275-TRAIL}
+  clear-a-resolved-variant:
+    args: {idVariant: V-275-TRAIL}

@@ -679,7 +679,7 @@ async function loadData() {
   state.ontologies = await Promise.all(index.groups.flatMap((g) => g.files.map(async (file) => {
     const yaml = await text(`data/ontologies/${file}`);
     const o = parseOntology(yaml, { bases: state.bases });
-    return { file, group: g.id, yaml, id: o.id, title: o.title || o.id, format: o.format, meta: o.meta, about: o.about, doc: o.doc };
+    return { file, group: g.id, yaml, sha: o.sha, id: o.id, title: o.title || o.id, format: o.format, meta: o.meta, about: o.about, doc: o.doc };
   })));
   state.samples = JSON.parse(await text('data/samples/samples.json'));
   const qfiles = /** @type {string[]} */ (JSON.parse(await text('queries/index.json')));
@@ -865,17 +865,22 @@ function applyStore(r) {
   state.stats = r.stats;
   setBody({ store: r.name });
   const o = r.stats.ontology;
+  // Compared by the document's digest (ontology.js sha), not its text: a store keeps ogs.js toYaml(doc),
+  // and a curated domain's file has its own layout and comments.
   const bundled = state.ontologies.find((x) => x.id === o.id);
-  $('#domain-select').value = bundled && bundled.yaml === o.yaml ? bundled.file : '';
+  $('#domain-select').value = bundled && bundled.sha === o.sha ? bundled.file : '';
   if (!$('#domain-select').value) ensureCustomOption(o.id);
   // A store whose document has a bundled ontology's id but differs from it (an earlier build's conversion,
   // such as one with the icon and size in display, or an edit): say so, and offer the bundled one,
   // re-applied as the picker applies it (one re-gate; verdicts and the cutoffs you moved stay).
-  state.staleBundled = bundled && bundled.yaml !== o.yaml ? bundled : null;
+  state.staleBundled = bundled && bundled.sha !== o.sha ? bundled : null;
   // A store an earlier build made under create-context-graph's version of a domain this build curates (D20,
   // ADR-0019): the kinds changed (no POLE+O), so its facts cannot carry over. The page offers to empty the
   // store and use the curated version, or to keep the old one; never a rebuild from candidates of other kinds.
-  const migrate = Boolean(state.staleBundled && o.convertedFrom === 'create-context-graph' && state.staleBundled.about?.family === 'domains');
+  // A create-context-graph document: the conversion earlier builds bundled (format create-context-graph, read as a
+  // document, so convertedFrom null), or a create-context-graph file converted on load.
+  const ccg = o.format === 'create-context-graph' || o.convertedFrom === 'create-context-graph';
+  const migrate = Boolean(state.staleBundled && ccg && state.staleBundled.about?.family === 'domains');
   $('#ontology-stale').hidden = !state.staleBundled;
   $('#ontology-stale').dataset.migrate = migrate ? '1' : '0';
   $('#ontology-reapply').hidden = migrate;
@@ -917,7 +922,7 @@ const formatName = (f) => (f === 'create-context-graph' ? "create-context-graph'
  * @param {any} o  stats.ontology
  */
 function renderOntologyAbout(o) {
-  const bundled = state.ontologies.find((x) => x.id === o.id && x.yaml === o.yaml);
+  const bundled = state.ontologies.find((x) => x.id === o.id && x.sha === o.sha);
   const about = bundled?.about;
   const commit = String(about?.source?.commit ?? '').slice(0, 7);
   const source = !bundled ? `this store's own Ontology Graph Spec 1.1 document${o.convertedFrom ? `, converted from ${formatName(o.convertedFrom)}` : ''}`
@@ -1799,7 +1804,7 @@ async function runExtract(job, plan = null) {
       await refreshAll();
     } else {
       const d = r.gate?.doc;
-      Object.assign(status.dataset, { inferences: String(c.inferences), hits: String(c.hits), skipped: String(c.skipped) });
+      Object.assign(status.dataset, { inferences: String(c.inferences), hits: String(c.hits), skipped: String(c.skipped), sections: String(c.sections) });
       status.textContent = `Read ${plural(c.sentences, 'sentence')}${c.sections > 1 ? ` in ${c.sections} sections` : ''}${c.skipped ? ` (${c.skipped} already complete)` : ''}: ` +
         `${c.inferences} asked of the model, ${c.hits} from the cache.` +
         (d ? ` Candidate relationships: ${d.claims.keep} kept, ${d.claims.review} to review, ${d.claims.drop} dropped.` : '');
@@ -2647,7 +2652,7 @@ function renderTools(o) {
     $('#tools-about').textContent = `The ${o.title} document has no tools. An Ontology Graph Spec 1.1 document can give a node or a relationship tools (example queries for agents); create-context-graph's domains bring theirs.`;
     return;
   }
-  const fam = state.ontologies.find((x) => x.id === o.id && x.yaml === o.yaml)?.about?.family;
+  const fam = state.ontologies.find((x) => x.id === o.id && x.sha === o.sha)?.about?.family;
   const written = fam === 'domains' ? 'This curated ontology\'s tools were written for the graph this page extracts: each answers a question about it, many with the sentences behind the facts.'
     : fam === 'studio' ? 'This solution package\'s queries were written for its own sample data, loaded in full: on an extracted graph, where an entity has a name (and its identifier when the text gives one), each says what it can do here. Those that need GDS, APOC or a write cannot run on this page.'
       : 'Each says what it can do on an extracted graph, where an entity has a name (and key, kind, display, docs).';
@@ -2866,7 +2871,8 @@ function sideTools(side, sel) {
 /**
  * The side panel's button: the console tab, the tool's card open, its inputs back at their start
  * (default, suggested value or empty) with the entity's name in the parameter that takes it, then Run;
- * or, when the plan does not run, the card asking for the parameters that have no value.
+ * or, when the plan does not run, the card asking for the parameters that have no value, emptied: the
+ * example a curated tool's card starts with (D22) names another entity than the one clicked.
  * @param {any} t @param {ReturnType<typeof prefillPlan>} plan
  */
 async function runToolFromSide(t, plan) {
@@ -2877,7 +2883,7 @@ async function runToolFromSide(t, plan) {
   /** @type {HTMLDetailsElement} */ (card).open = true;
   for (const el of /** @type {NodeListOf<HTMLInputElement>} */ (card.querySelectorAll('[data-name]'))) {
     const k = el.dataset.name ?? '';
-    el.value = Object.hasOwn(plan.fill, k) ? plan.fill[k] : el.dataset.initial ?? '';
+    el.value = Object.hasOwn(plan.fill, k) ? plan.fill[k] : plan.run || !plan.missing.includes(k) ? el.dataset.initial ?? '' : '';
   }
   card.scrollIntoView({ block: 'nearest' });
   if (plan.run) {

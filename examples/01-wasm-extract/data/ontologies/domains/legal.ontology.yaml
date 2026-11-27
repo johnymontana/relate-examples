@@ -1,0 +1,638 @@
+# Legal: example 01's curated ontology for commercial litigation documents (D20). Written for this
+# repository from create-context-graph's legal.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/),
+# which it replaces in the page: the inherited POLE+O base (Person, Organization, Location, Event,
+# Object) is gone, and the people and organisations are named for the part they play in a dispute
+# (Party, Counsel, LawFirm, Judge, Court).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: legal
+name: Legal
+description: >-
+  Commercial litigation as a law firm's disputes team writes about it: the parties to a claim and the
+  side each is on, the solicitors, barristers and chambers who act for them, the court and the judge
+  the claim is before, the statements of case and applications each party files, the hearings that
+  decide them, and the contract the dispute arises under, down to its clauses and the statutes that
+  control them. It answers who acts for whom and who is on the other side, what a filing relies on,
+  what each hearing will decide and who appears at it, which cases turn on a clause that a statute
+  controls, and what the source text says about each fact. Costs, time recording, deadlines and the
+  money claimed are out of scope, and so are the facts of the underlying commercial dispute: a document
+  states them, the extractor does not keep them.
+nodes:
+  Party:
+    label: Party
+    description: >-
+      A company or person that brings a claim, defends one, or signs a contract, named in full with any
+      legal suffix ("Halden Logistics Ltd") or by a short name after that ("Halden"). A party is the
+      client or the opponent, never one of the lawyers or firms acting in the case.
+    aliases: [litigant, claimant, defendant, applicant, respondent, counterparty, contracting party]
+    properties:
+      name: {type: STRING, key: true, description: "The party's name as the documents write it."}
+      partyType: {type: STRING, one_of: [company, individual, partnership, public body], description: "What kind of legal person the party is."}
+      companyNumber: {type: STRING, pattern: "^([0-9]{8}|SC[0-9]{6})$", description: "A company's Companies House registration number, eight digits or SC and six."}
+    extensions:
+      display: {x: -360, y: -20, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a company or business that sues, is sued or signs a contract, named with Ltd or plc or by a short name", proper: true}
+  Counsel:
+    label: Counsel
+    description: >-
+      A lawyer acting in a dispute: a solicitor at a law firm, a barrister or King's Counsel at
+      chambers, or an in-house lawyer, named as a person ("Fiona Adeyemi KC", "Rachel Imrie, a
+      partner"). Counsel act for parties; judges decide between them.
+    aliases: [lawyer, solicitor, barrister, advocate, attorney, KC, partner, associate]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The lawyer's full name, with KC where the text gives it."}
+      role: {type: STRING, one_of: [partner, senior associate, associate, trainee solicitor, barrister, King's Counsel, in-house counsel], description: "The lawyer's position."}
+      sraNumber: {type: STRING, pattern: "^[0-9]{6}$", description: "A solicitor's Solicitors Regulation Authority number, six digits."}
+    extensions:
+      display: {x: -120, y: -280, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a lawyer named as a person: a solicitor, partner or associate at a law firm, or a barrister or KC at chambers", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: opposing-counsel
+            category: path
+            question: Who is on the other side from this lawyer, and which lawyers act for them?
+            description: The chain counsel, client, case, opposing party, opposing counsel, for every lawyer whose name holds the text.
+            teaches: A pattern can come back into the same case from the other side; p <> q keeps a party from being its own opponent.
+            cypher: |-
+              MATCH (a:Counsel)-[:REPRESENTS]->(p:Party)-[:CLAIMANT_IN|DEFENDANT_IN]->(c:Case)<-[:CLAIMANT_IN|DEFENDANT_IN]-(q:Party)<-[:REPRESENTS]-(b:Counsel)
+              WHERE toLower(a.name) CONTAINS toLower($counsel) AND p <> q
+              RETURN a.name AS counsel, p.name AS client, c.name AS case_name, q.name AS opponent, b.name AS opposing_counsel
+              ORDER BY case_name, opposing_counsel
+            parameters:
+              - {name: counsel, type: STRING, description: "Part of the lawyer's name.", example: Adeyemi}
+  LawFirm:
+    label: LawFirm
+    description: >-
+      A firm of solicitors or a set of barristers' chambers that lawyers work at and that is instructed
+      for a party, usually named with LLP or Chambers ("Pembury Lane LLP", "Fenner Court Chambers"). A
+      law firm acts for a party; it is never a party to the dispute itself.
+    aliases: [firm, solicitors, chambers, set, practice, legal adviser]
+    reference: https://schema.org/LegalService
+    properties:
+      name: {type: STRING, key: true, description: "The firm's or chambers' name."}
+      firmType: {type: STRING, one_of: [solicitors, barristers' chambers, in-house legal team], description: "What kind of practice it is."}
+      city: {type: STRING, description: "The city of the office or chambers named in the documents."}
+    extensions:
+      display: {x: -360, y: -240, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "solicitors or barristers' chambers acting for a client, with a name ending in LLP or Chambers", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: firms-lawyers-and-clients
+            category: neighbourhood
+            question: Which lawyers work at each firm or chambers, and which parties does it act for?
+            description: Each firm with its lawyers and the parties it acts for.
+            teaches: Two independent neighbourhoods of one node come back as two collected lists.
+            cypher: |-
+              MATCH (f:LawFirm)
+              OPTIONAL MATCH (l:Counsel)-[:MEMBER_OF]->(f)
+              OPTIONAL MATCH (f)-[:ACTS_FOR]->(p:Party)
+              RETURN f.name AS firm, collect(DISTINCT l.name) AS lawyers, collect(DISTINCT p.name) AS clients
+              ORDER BY firm
+          - type: canonicalQuery
+            name: firm-caseload
+            category: aggregation
+            question: How many clients, cases and lawyers does each firm have in the documents?
+            description: Per firm, the parties it acts for, the cases those parties are in, and the lawyers who work there.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each case is counted once per lawyer.
+            cypher: |-
+              MATCH (f:LawFirm)
+              OPTIONAL MATCH (f)-[:ACTS_FOR]->(p:Party)
+              OPTIONAL MATCH (p)-[:CLAIMANT_IN|DEFENDANT_IN]->(c:Case)
+              OPTIONAL MATCH (l:Counsel)-[:MEMBER_OF]->(f)
+              RETURN f.name AS firm, count(DISTINCT p) AS clients, count(DISTINCT c) AS cases, count(DISTINCT l) AS lawyers
+              ORDER BY cases DESC, clients DESC, firm
+  Judge:
+    label: Judge
+    description: >-
+      A judge or master who manages a case or hears its applications, named with a judicial title
+      ("Mrs Justice Penhallow", "HHJ Marsh") or in the law-report form ("Penhallow J"). Judges decide;
+      counsel argue before them.
+    aliases: [justice, master, recorder, district judge, assigned judge]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The judge's name with the title the text gives."}
+      title: {type: STRING, one_of: [Mr Justice, Mrs Justice, Ms Justice, His Honour Judge, Her Honour Judge, Master, District Judge], description: "The judicial title."}
+    extensions:
+      display: {x: 300, y: -280, colour: "#b91c1c"}
+      custom:
+        relate-examples: {ask: "a judge who hears or manages a case, such as Mrs Justice Smith, Mr Justice Smith, HHJ Smith or Smith J", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: judge-docket
+            category: aggregation
+            question: How many cases and hearings is each judge responsible for, and in which courts?
+            description: Per judge, the cases assigned to them, the hearings before them, and the courts those cases proceed in.
+            teaches: collect() and count() can sit in one aggregating RETURN; ORDER BY then uses only the projected names.
+            cypher: |-
+              MATCH (j:Judge)
+              OPTIONAL MATCH (c:Case)-[:ASSIGNED_TO]->(j)
+              OPTIONAL MATCH (h:Hearing)-[:PRESIDED_BY]->(j)
+              OPTIONAL MATCH (c)-[:HEARD_IN]->(ct:Court)
+              RETURN j.name AS judge, count(DISTINCT c) AS cases, count(DISTINCT h) AS hearings, collect(DISTINCT ct.name) AS courts
+              ORDER BY hearings DESC, cases DESC, judge
+  Court:
+    label: Court
+    description: >-
+      A court or tribunal that a case proceeds in, named in full or by its initials ("the Technology
+      and Construction Court", "the TCC", "the Court of Appeal"). A court is the institution; the judge
+      is the person sitting in it.
+    aliases: [tribunal, list, division, bench]
+    reference: https://schema.org/GovernmentOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The court's name."}
+      jurisdiction: {type: STRING, description: "The legal system the court belongs to (England and Wales)."}
+      level: {type: STRING, one_of: [first instance, appellate, final appeal], description: "Where the court sits in the hierarchy."}
+    extensions:
+      display: {x: 400, y: -60, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a court or tribunal a case proceeds in, such as the High Court, the Commercial Court or the Court of Appeal", proper: true}
+  Case:
+    label: Case
+    description: >-
+      A claim before a court, named by its parties in the form "A v B" ("Halden v Corvane") or by its
+      claim number (HT-2026-000184). A case arises from a dispute; a hearing is one day in it.
+    aliases: [claim, action, proceedings, litigation, matter, lawsuit]
+    properties:
+      caseNumber: {type: STRING, key: true, pattern: "^[A-Z]{2}-[0-9]{4}-[0-9]{6}$", description: "The claim number the court gave, two letters for the list, the year and six digits (HT-2026-000184)."}
+      name: {type: STRING, description: "The case as the documents name it, usually its short title."}
+      status: {type: STRING, one_of: [pre-action, pleadings, disclosure, trial, judgment, appeal, settled, discontinued], description: "The stage the case has reached."}
+      practiceArea: {type: STRING, one_of: [commercial, technology, construction, employment, intellectual property, insolvency], description: "The kind of dispute."}
+      issuedOn: {type: DATE, description: "The date the claim form was issued."}
+    extensions:
+      display: {x: 60, y: -60, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a court case or claim, named by its parties as A v B or by a claim number such as HT-2026-000184", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-case
+            category: lookup
+            question: Which case is this, and what does the store connect to it?
+            description: Finds cases whose name holds the text or whose claim number is the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS; the claim number, when the text gives it, matches exactly.
+            cypher: |-
+              MATCH (c:Case) WHERE toLower(c.name) CONTAINS toLower($name) OR c.caseNumber = $name
+              OPTIONAL MATCH (c)-[r]-(x:_Entity)
+              RETURN c.name AS case_name, c.caseNumber AS number, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY case_name, link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of the case's name, or its claim number.", example: Corvane}
+          - type: canonicalQuery
+            name: who-is-on-each-side
+            category: neighbourhood
+            question: Who are the claimants and defendants in this case, and who acts for each of them?
+            description: Each party to the case with its side, the firms that act for it and the lawyers who represent it.
+            teaches: Matching two relationship types at once (CLAIMANT_IN|DEFENDANT_IN) and reading type(r) back tells the sides apart.
+            cypher: |-
+              MATCH (p:Party)-[r:CLAIMANT_IN|DEFENDANT_IN]->(c:Case) WHERE toLower(c.name) CONTAINS toLower($name)
+              OPTIONAL MATCH (f:LawFirm)-[:ACTS_FOR]->(p)
+              OPTIONAL MATCH (l:Counsel)-[:REPRESENTS]->(p)
+              RETURN c.name AS case_name, type(r) AS side, p.name AS party,
+                     collect(DISTINCT f.name) AS firms, collect(DISTINCT l.name) AS counsel
+              ORDER BY case_name, side, party
+            parameters:
+              - {name: name, type: STRING, description: "Part of the case's name.", example: Halden v Corvane}
+          - type: canonicalQuery
+            name: who-is-sued-and-why
+            category: evidence
+            question: Which sentences say who brought each case and who defends it?
+            description: Every CLAIMANT_IN and DEFENDANT_IN fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (p:Party)-[r]->(c:Case) WHERE type(r) IN ['CLAIMANT_IN', 'DEFENDANT_IN']
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN c.name AS case_name, type(r) AS side, p.name AS party, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY case_name, side, party
+          - type: canonicalQuery
+            name: facts-in-more-than-one-document
+            category: cross-document
+            question: Which facts do two or more documents both state?
+            description: Every extracted relationship whose evidence spans more than one document, with the documents' titles.
+            teaches: A relationship's docs list holds every document that supports it; size() over it finds the corroborated facts.
+            cypher: |-
+              MATCH (a:_Entity)-[r]->(b:_Entity) WHERE size(r.docs) > 1
+              MATCH (d:_Document) WHERE d.id IN r.docs
+              RETURN a.name AS source, type(r) AS link, b.name AS target, collect(d.title) AS documents
+              ORDER BY link, source, target
+  Filing:
+    label: Filing
+    description: >-
+      A statement of case, application, witness statement or other document a party files or serves
+      in a case, named as the documents name it ("the Particulars of Claim", "the Defence and
+      Counterclaim", "the SJ Application"). A filing is a document; the hearing that decides it is not.
+    aliases: [pleading, statement of case, application, application notice, witness statement, skeleton argument, submission]
+    reference: https://schema.org/DigitalDocument
+    properties:
+      name: {type: STRING, key: true, description: "The filing as the documents name it."}
+      filingType: {type: STRING, one_of: [claim form, particulars of claim, defence, counterclaim, reply, application, witness statement, expert report, skeleton argument], description: "What kind of document it is."}
+      filedOn: {type: DATE, description: "The date it was filed, issued or served.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the document was issued, filed or served, such as 15 July 2026"}}}}
+    extensions:
+      display: {x: 40, y: 200, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a pleading or application filed in court, such as a claim form, particulars of claim, defence, counterclaim, reply, application or witness statement", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-each-filing-relies-on
+            category: neighbourhood
+            question: Who filed each document, in which case, and which clauses and statutes does it rely on?
+            description: Every filing with its party, its case, the contract clauses it invokes and the statutes it cites.
+            teaches: OPTIONAL MATCH on each side keeps a filing whose case or authorities the text leaves out.
+            cypher: |-
+              MATCH (f:Filing)-[:FILED_BY]->(p:Party)
+              OPTIONAL MATCH (f)-[:FILED_IN]->(c:Case)
+              OPTIONAL MATCH (f)-[:INVOKES]->(cl:Clause)
+              OPTIONAL MATCH (f)-[:CITES]->(s:Statute)
+              RETURN p.name AS party, f.name AS filing, collect(DISTINCT c.name) AS cases,
+                     collect(DISTINCT cl.name) AS clauses, collect(DISTINCT s.name) AS statutes
+              ORDER BY party, filing
+  Hearing:
+    label: Hearing
+    description: >-
+      A hearing listed in a case (a case management conference, an application hearing, a pre-trial
+      review or the trial), named as the documents name it ("the CMC", "the SJ Hearing"). A hearing
+      decides filings; it is not one.
+    aliases: [listing, case management conference, CMC, application hearing, pre-trial review, trial]
+    reference: https://schema.org/Event
+    properties:
+      name: {type: STRING, key: true, description: "The hearing as the documents name it."}
+      hearingType: {type: STRING, one_of: [case management conference, application hearing, pre-trial review, trial, costs hearing], description: "What kind of hearing it is."}
+      listedFor: {type: DATE, description: "The date the hearing is listed for.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the hearing is listed for, such as 9 December 2026"}}}}
+      estimate: {type: STRING, description: "The time estimate, in days or hours as listed (one day)."}
+    extensions:
+      display: {x: 300, y: 160, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "a hearing listed before a judge, such as a CMC, a pre-trial review, an application hearing or the trial", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: hearing-brief
+            category: neighbourhood
+            question: For each hearing, which case is it in, who is it before, who appears, and what will it decide?
+            description: Each hearing with its case, its judge, the lawyers who appear at it and the filings it will determine.
+            teaches: Four OPTIONAL MATCHes around one node answer a briefing question in one row per hearing.
+            cypher: |-
+              MATCH (h:Hearing)
+              OPTIONAL MATCH (h)-[:LISTED_IN]->(c:Case)
+              OPTIONAL MATCH (h)-[:PRESIDED_BY]->(j:Judge)
+              OPTIONAL MATCH (l:Counsel)-[:APPEARS_AT]->(h)
+              OPTIONAL MATCH (h)-[:DETERMINES]->(f:Filing)
+              RETURN h.name AS hearing, collect(DISTINCT c.name) AS cases, collect(DISTINCT j.name) AS judges,
+                     collect(DISTINCT l.name) AS counsel, collect(DISTINCT f.name) AS business
+              ORDER BY hearing
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Corvane}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Integration Subcontract}
+  Contract:
+    label: Contract
+    description: >-
+      An agreement between parties that a dispute arises under, named by its title or defined term
+      ("the Master Services Agreement", "the MSA", "the Integration Subcontract"). A contract is made of
+      clauses; a filing about it is not part of it.
+    aliases: [agreement, subcontract, licence, deed, variation, change note, terms]
+    properties:
+      name: {type: STRING, key: true, description: "The contract's title or defined term."}
+      contractType: {type: STRING, one_of: [master services agreement, statement of work, subcontract, supply agreement, licence, variation], description: "What kind of agreement it is."}
+      signedOn: {type: DATE, description: "The date of the agreement.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the agreement was signed or is dated (not a go-live or delivery date), such as 12 March 2024"}}}}
+      governingLaw: {type: STRING, description: "The law the contract chooses (English law)."}
+      value: {type: FLOAT, description: "The contract price or fees, in pounds sterling.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the price or fees the agreement fixes, a sum of money such as £2.4 million"}}}}
+    extensions:
+      display: {x: -300, y: 220, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "an agreement between parties, such as a master services agreement, subcontract or supply agreement, named by its title", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: contract-parties-and-disputes
+            category: path
+            question: Who signed this contract, which cases arise under it, and who is on each side of them?
+            description: The chain party, contract, case for every contract whose name holds the text, with the case's claimants and defendants.
+            teaches: A party can reach a case two ways, by signing the contract it arises under and by being a party to it; OPTIONAL MATCH keeps a contract no case arises under.
+            cypher: |-
+              MATCH (p:Party)-[:SIGNED]->(k:Contract) WHERE toLower(k.name) CONTAINS toLower($contract)
+              OPTIONAL MATCH (c:Case)-[:ARISES_UNDER]->(k)
+              OPTIONAL MATCH (cl:Party)-[:CLAIMANT_IN]->(c)
+              OPTIONAL MATCH (df:Party)-[:DEFENDANT_IN]->(c)
+              RETURN k.name AS contract, collect(DISTINCT p.name) AS signed_by, collect(DISTINCT c.name) AS cases,
+                     collect(DISTINCT cl.name) AS claimants, collect(DISTINCT df.name) AS defendants
+              ORDER BY contract
+            parameters:
+              - {name: contract, type: STRING, description: "Part of the contract's name.", example: Master Services}
+  Clause:
+    label: Clause
+    description: >-
+      A numbered clause or term of a contract, written with its number ("clause 9", "clause 22") and
+      sometimes its heading ("the limitation of liability clause"). A clause belongs to one contract;
+      a statute may control it.
+    aliases: [term, provision, condition, article, section of the agreement]
+    properties:
+      name: {type: STRING, key: true, description: "The clause as the documents write it, with its number."}
+      number: {type: STRING, pattern: "^[0-9]+(\\.[0-9]+)*$", description: "The clause number, digits separated by dots."}
+      heading: {type: STRING, description: "The clause's heading in the contract (Limitation of liability)."}
+      clauseType: {type: STRING, one_of: [acceptance, limitation of liability, exclusion, termination, payment, dispute resolution, arbitration, governing law], description: "What the clause deals with."}
+    extensions:
+      display: {x: -180, y: 380, colour: "#14b8a6"}
+      custom:
+        relate-examples: {ask: "a numbered clause or term of a contract, written with its number, such as clause 9 or clause 14.2", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: cases-turning-on-a-statute
+            category: path
+            question: Which cases turn on a contract clause that this statute controls, and which filings rely on that clause?
+            description: The chain statute, clause, contract, case, for every statute whose name holds the text, with the filings that invoke the clause.
+            teaches: A four-node chain reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (s:Statute)<-[:SUBJECT_TO]-(cl:Clause)-[:PART_OF]->(k:Contract)<-[:ARISES_UNDER]-(c:Case)
+              WHERE toLower(s.name) CONTAINS toLower($statute)
+              OPTIONAL MATCH (f:Filing)-[:INVOKES]->(cl)
+              RETURN s.name AS statute, cl.name AS clause, k.name AS contract, c.name AS case_name, collect(DISTINCT f.name) AS relied_on_by
+              ORDER BY case_name, clause
+            parameters:
+              - {name: statute, type: STRING, description: "Part of the statute's name.", example: Unfair Contract Terms}
+  Statute:
+    label: Statute
+    description: >-
+      An Act of Parliament or other legislation a filing cites or a clause is subject to, named by its
+      short title and year ("the Unfair Contract Terms Act 1977") or by its initials ("UCTA"). A statute
+      is the law itself; the clause it controls is a term of a contract.
+    aliases: [Act, legislation, enactment, statutory provision, regulation]
+    reference: https://schema.org/Legislation
+    properties:
+      name: {type: STRING, key: true, description: "The statute's short title with its year."}
+      citation: {type: STRING, pattern: "^[0-9]{4} c\\. [0-9]+$", description: "The chapter citation (1977 c. 50)."}
+      jurisdiction: {type: STRING, description: "Where the statute applies (England and Wales)."}
+    extensions:
+      display: {x: 120, y: 380, colour: "#10b981"}
+      custom:
+        relate-examples: {ask: "an Act of Parliament or other legislation, named by its title and year, such as the Sale of Goods Act 1979", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: statutes-in-play
+            category: aggregation
+            question: Which statutes do the filings cite, and which clauses are subject to each?
+            description: Per statute, the filings that cite it and the clauses it controls.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (s:Statute)
+              OPTIONAL MATCH (f:Filing)-[:CITES]->(s)
+              OPTIONAL MATCH (cl:Clause)-[:SUBJECT_TO]->(s)
+              RETURN s.name AS statute, count(DISTINCT f) AS cited_by, collect(DISTINCT cl.name) AS clauses
+              ORDER BY cited_by DESC, statute
+relationships:
+  counselRepresentsParty:
+    type: REPRESENTS
+    description: >-
+      The lawyer represents the party in the dispute, as its solicitor or its barrister; a party may
+      have several lawyers, and a lawyer may represent several parties.
+    aliases: [acts for, appears for, is counsel for, is instructed for, is leading counsel for]
+    from: {node: Counsel}
+    to: {node: Party}
+    extensions:
+      custom:
+        relate-examples: {phrase: represents}
+  firmActsForParty:
+    type: ACTS_FOR
+    description: >-
+      The law firm or chambers is instructed by and acts for the party; usually one firm of solicitors
+      per party in a case, and a firm acts for many parties.
+    aliases: [is instructed by, is on the record for, is retained by, represents]
+    from: {node: LawFirm}
+    to: {node: Party}
+    extensions:
+      custom:
+        relate-examples: {phrase: acts for}
+  counselMemberOfFirm:
+    type: MEMBER_OF
+    description: >-
+      The lawyer works at the firm or is a member of the chambers; one firm per lawyer in this
+      ontology, many lawyers per firm.
+    aliases: [is a partner at, is an associate at, is a member of, practises from, of]
+    from: {node: Counsel, max_count: 1}
+    to: {node: LawFirm}
+    extensions:
+      custom:
+        relate-examples: {phrase: works at}
+  partyClaimantInCase:
+    type: CLAIMANT_IN
+    description: >-
+      The party brought the case as a claimant; a case has one or more claimants, and a party may be
+      the claimant in several cases.
+    aliases: [brought, sued in, issued, is the plaintiff in, is the applicant in]
+    from: {node: Party}
+    to: {node: Case, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is the claimant in}
+  partyDefendantInCase:
+    type: DEFENDANT_IN
+    description: >-
+      The party defends the case; a case has one or more defendants, including any joined later, and
+      a party may defend several cases.
+    aliases: [defends, was sued in, is the respondent in, is a Part 20 defendant in]
+    from: {node: Party}
+    to: {node: Case, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is the defendant in}
+  caseHeardInCourt:
+    type: HEARD_IN
+    description: >-
+      The case is proceeding in the court; one court per case at a time in this ontology, many cases
+      per court.
+    aliases: [was issued in, is before, is pending in, was transferred to]
+    from: {node: Case, count: 1}
+    to: {node: Court}
+    extensions:
+      custom:
+        relate-examples: {phrase: is proceeding in}
+  caseAssignedToJudge:
+    type: ASSIGNED_TO
+    description: >-
+      The case is assigned to the judge who manages it; usually one assigned judge per case, many cases
+      per judge.
+    aliases: [is managed by, was allocated to, is docketed to]
+    from: {node: Case, max_count: 1}
+    to: {node: Judge}
+    extensions:
+      custom:
+        relate-examples: {phrase: is assigned to}
+  filingInCase:
+    type: FILED_IN
+    description: >-
+      The filing was filed, issued or served in the case; one case per filing, many filings per case.
+    aliases: [was served in, was issued in, was lodged in, was issued under]
+    from: {node: Filing, count: 1}
+    to: {node: Case}
+    extensions:
+      custom:
+        relate-examples: {phrase: was filed in}
+  filingByParty:
+    type: FILED_BY
+    description: >-
+      The party filed or served the filing, or the application is the party's; usually one party per
+      filing, many filings per party.
+    aliases: [was served by, was issued by, was made by, is the application of]
+    from: {node: Filing}
+    to: {node: Party}
+    extensions:
+      custom:
+        relate-examples: {phrase: was filed by}
+  filingCitesStatute:
+    type: CITES
+    description: >-
+      The filing cites the statute as authority for what it says; many to many.
+    aliases: [pleads, relies on the Act, invokes the statute, refers to]
+    from: {node: Filing}
+    to: {node: Statute}
+    extensions:
+      custom:
+        relate-examples: {phrase: cites}
+  filingInvokesClause:
+    type: INVOKES
+    description: >-
+      The filing relies on the contract clause for its case; many to many: one defence may invoke several
+      clauses, and one clause many filings.
+    aliases: [relies on, pleads, invokes, is founded on]
+    from: {node: Filing}
+    to: {node: Clause}
+    extensions:
+      custom:
+        relate-examples: {phrase: relies on}
+  hearingListedInCase:
+    type: LISTED_IN
+    description: >-
+      The hearing is listed in the case; one case per hearing, many hearings per case.
+    aliases: [is fixed in, is a hearing in, is set down in]
+    from: {node: Hearing, count: 1}
+    to: {node: Case}
+    extensions:
+      custom:
+        relate-examples: {phrase: is listed in}
+  hearingPresidedByJudge:
+    type: PRESIDED_BY
+    description: >-
+      The hearing is before the judge, who hears it; one judge per hearing in this ontology, many
+      hearings per judge.
+    aliases: [is listed before, will be heard by, was heard by, is in front of]
+    from: {node: Hearing, max_count: 1}
+    to: {node: Judge}
+    extensions:
+      custom:
+        relate-examples: {phrase: is before}
+  counselAppearsAtHearing:
+    type: APPEARS_AT
+    description: >-
+      The lawyer appears at the hearing as an advocate; a hearing has one or more advocates for each
+      side, and a lawyer appears at many hearings.
+    aliases: [will appear at, attended, argued at, will attend, is briefed for]
+    from: {node: Counsel}
+    to: {node: Hearing}
+    extensions:
+      custom:
+        relate-examples: {phrase: appears at}
+  hearingDeterminesFiling:
+    type: DETERMINES
+    description: >-
+      The hearing will decide the application or other filing; a hearing may determine several
+      applications, an application is usually determined at one hearing.
+    aliases: [will hear, will decide, is to dispose of, considers]
+    from: {node: Hearing}
+    to: {node: Filing}
+    extensions:
+      custom:
+        relate-examples: {phrase: will determine}
+  partySignedContract:
+    type: SIGNED
+    description: >-
+      The party signed the contract and is a party to it; a contract has two or more parties, and a
+      party signs many contracts.
+    aliases: [is a party to, entered into, agreed, contracted under]
+    from: {node: Party}
+    to: {node: Contract, min_count: 2}
+    extensions:
+      custom:
+        relate-examples: {phrase: signed}
+  caseArisesUnderContract:
+    type: ARISES_UNDER
+    description: >-
+      The case is a dispute under the contract; a case usually arises under one contract, a contract
+      may give rise to several cases.
+    aliases: [concerns, is about, relates to, is a dispute under]
+    from: {node: Case}
+    to: {node: Contract}
+    extensions:
+      custom:
+        relate-examples: {phrase: arises under}
+  clausePartOfContract:
+    type: PART_OF
+    description: >-
+      The clause is a term of the contract; exactly one contract per clause in this ontology, many
+      clauses per contract.
+    aliases: [of, is a clause of, is a term of, appears in]
+    from: {node: Clause, count: 1}
+    to: {node: Contract}
+    extensions:
+      custom:
+        relate-examples: {phrase: is part of}
+  clauseSubjectToStatute:
+    type: SUBJECT_TO
+    description: >-
+      The statute controls the clause: the clause is valid or effective only as far as the statute
+      allows (an exclusion clause tested for reasonableness, say); many to many.
+    aliases: [is controlled by, must satisfy, is tested under, is governed by]
+    from: {node: Clause}
+    to: {node: Statute}
+    extensions:
+      custom:
+        relate-examples: {phrase: is subject to}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Legal
+      card:
+        title: Legal
+        description: Follow a commercial dispute from the contract and its clauses through the filings, the hearings and the lawyers on each side.
+      source:
+        derived_from: create-context-graph's legal.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Party, Counsel and Judge, and
+          Organization became Party, LawFirm and Court; Location (with the hearing's HELD_AT) and the
+          contract-to-contract SUPERSEDES link were dropped; Matter was folded into Case, which now
+          carries the claim number; Clause and the side a party is on (CLAIMANT_IN, DEFENDANT_IN) are
+          new; Case, Contract, Filing, Hearing and Statute keep their meaning with new descriptions and
+          properties; the links were renamed for their meaning and given cardinalities; the tools were
+          written anew for an extracted graph.

@@ -210,13 +210,15 @@ fi
 diffed+=(model.txt)
 
 # ---- ontology: every bundled ontology, its graph type, the D15 canary -> out/ontology.txt ---
-# web/ontology.js, split.js and names.js on the WASM bundle (in memory): create-context-graph's 27
-# domains with _base.yaml (data/ontologies/ccg/), three of them through the gate and publish without
-# the model, the id rule (no leading _), a generic document (harness/fixtures.mjs), edgextract's YAML
-# refused and the stores earlier builds made for its ontologies, the example's limits, and the ported
-# splitter and names checked against edgextract 0.1.0's own WASM (the dev dependency). A pin that stops
-# reproducing, a parity mismatch, or the canary finding db.ontology.* prints `PIN: ...` on stderr and
-# fails the run.
+# web/ontology.js, split.js and names.js on the WASM bundle (in memory): the 40 bundled ontologies (the
+# curated domains, data/ontologies/domains/, and the solution packages with their overlays,
+# data/ontologies/ogs/studio/) against ajv, the SDK and each one's bar; the vendored packages against
+# their manifest; create-context-graph's 27 domains with _base.yaml (data/ontologies/ccg/), converted
+# as the editor converts a pasted one, three of them through the gate and publish without the model;
+# the id rule (no leading _), a generic document (harness/fixtures.mjs), edgextract's YAML refused and
+# the stores earlier builds made for its ontologies, the example's limits, and the ported splitter and
+# names checked against edgextract 0.1.0's own WASM (the dev dependency). A pin that stops reproducing,
+# a parity mismatch, or the canary finding db.ontology.* prints `PIN: ...` on stderr and fails the run.
 if ! node harness/ontology.mjs "$ver" > out/ontology.txt 2> out/ontology.err; then
   grep -h '^PIN:' out/ontology.err >&2 || tail -n 20 out/ontology.err >&2
   echo "FAIL: harness/ontology.mjs (stderr in out/ontology.err)" >&2
@@ -226,10 +228,11 @@ diffed+=(ontology.txt)
 
 # ---- the pipeline in Node: extract, gate, audit, review, score -> out/{extract,gate,audit,review,score}.txt, graph.cypher
 # web/pipeline.js and web/store.js on the real model (small-v1) and the WASM bundle, one in-memory store
-# per ontology (D14): create-context-graph's 27 synthetic samples, one per domain, and the harness's
-# fixtures (harness/fixtures.mjs: edge cases, in a store of their own); the floor and rule invariants; the
-# audits (queries/audit-*.cypher); verdicts; P/R/F1 against the samples' gold (per domain, with the
-# distractor check) and phase C's grids; the typed graph exported as Cypher. gliner-rs answers every question first on a
+# per ontology (D14): the 49 documents of the 40 bundled ontologies (data/samples/samples.json), and the
+# harness's fixtures (harness/fixtures.mjs: edge cases, in a store of their own); the floor and rule
+# invariants; the audits (queries/audit-*.cypher); verdicts; P/R/F1 against the gold (per ontology and
+# document, entities, relations and property values, with the distractors by family), the 12 held-out
+# documents, and the grids that set the defaults (D23); the typed graph exported as Cypher. gliner-rs answers every question first on a
 # pool of worker threads (harness/infer.mjs; EX01_INFER_THREADS overrides the count, at most 6 by default).
 # An audit with rows or a refusal that is not the pinned one prints `run.mjs: FAIL: ...` on stderr and
 # fails the run.

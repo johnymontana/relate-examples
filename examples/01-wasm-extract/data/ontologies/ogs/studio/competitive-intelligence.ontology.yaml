@@ -1,0 +1,1112 @@
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
+id: competitive-intelligence
+name: Life Sciences Competitive Intelligence
+description: 'Pharmaceutical and biotech competitive intelligence: which companies are developing which drugs, against which protein targets, for which diseases, how far each programme has got in clinical trials, and where companies'' patent filings claim the same targets and diseases.'
+nodes:
+  Company:
+    label: Company
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Identifier of the company, stable across its programmes and patents. e.g. `CO-021`.
+      name:
+        type: STRING
+        must_exist: true
+        description: Registered company name.
+      country:
+        type: STRING
+        description: Country of the company's headquarters, as an ISO 3166-1 alpha-2 code. e.g. `SE`.
+        pattern: ^[A-Z]{2}$
+      market_cap:
+        type: INTEGER
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              parse: MONEY
+              ask: the company's market capitalisation or market value in US dollars, a sum such as $905 million or $1.84 billion
+        description: 'Market capitalisation in whole US dollars at a single point in time: a snapshot that dates quickly, so compare companies only within one snapshot. Also called market capitalisation. e.g. `1840000000`.'
+        aliases:
+          - Market capitalisation
+      focus:
+        type: STRING
+        description: Therapeutic areas the company works in, as a list of area names separated by ' / ' (for example Neuroscience, Oncology, Immunology, Metabolic disease). Open-ended, not a closed set. e.g. `Metabolic disease / Neuroscience / Oncology`.
+    extensions:
+      display:
+        x: 0
+        'y': 0
+        colour: '#2563eb'
+      custom:
+        relate-examples:
+          ask: a pharmaceutical or biotechnology company that develops drugs or owns patents, named by its company name, such as Ulverston Bio or Merrowby Pharma; not a registry, regulator or committee
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: graph-census-node-counts-by-label
+            question: Graph census — node counts by label
+            description: Counts the nodes under each label, to confirm an import loaded every part of the reference ontology before any analysis runs.
+            cypher: |-
+              MATCH (n)
+              WITH labels(n)[0] AS label, count(*) AS nodes
+              RETURN label, nodes
+              ORDER BY nodes DESC, label;
+            parameters: []
+            category: query
+            teaches: Run first after an import. A label with no row did not load; check its source table before running anything that traverses it.
+            returns: 'One row per label: label and nodes, largest first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - census
+              - import-check
+            upstream:
+              file: QUERIES.md
+              heading: Graph census — node counts by label
+              sample: 'Bundled sample data only: returns 7 rows — ClinicalTrial 324, Drug 147, Patent 120, Company 40, Protein 16, Disease 8, Phase 4.'
+          - type: canonicalQuery
+            name: company-therapeutic-focus
+            question: Company therapeutic focus
+            description: Shows which diseases one company's pipeline addresses, with how many of its drugs per disease are approved, active or discontinued. A drug counts towards every disease it has been trialled in.
+            cypher: |-
+              MATCH (c:Company {id: $companyId})-[:IN_PIPELINE]->(d:Drug)-[:TREATS]->(dis:Disease)
+              RETURN c.name AS company, dis.name AS disease,
+                     count(DISTINCT d) AS drugs,
+                     count(DISTINCT CASE WHEN d.status = 'Approved' THEN d END) AS approved,
+                     count(DISTINCT CASE WHEN d.status = 'Active' THEN d END) AS active,
+                     count(DISTINCT CASE WHEN d.status = 'Discontinued' THEN d END) AS discontinued
+              ORDER BY drugs DESC, disease;
+            parameters:
+              - name: companyId
+                type: STRING
+                description: Company.id of the company. Look it up by name first if the user gives a name.
+                example: CO-021
+            category: query
+            teaches: The baseline view of a competitor. Read discontinued counts as exits from an area, not as current focus.
+            returns: 'One row per disease: company, disease, drugs, and the approved, active and discontinued counts among them, most drugs first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - company
+              - portfolio
+              - focus
+            upstream:
+              file: QUERIES.md
+              heading: Company therapeutic focus
+              sample: 'Bundled sample data only: $companyId = ''CO-001'' (Aldermoor Therapeutics) returns 2 rows — Alzheimer''s Disease with 1 active drug, Non-Small Cell Lung Cancer with 1 discontinued drug.'
+          - type: canonicalQuery
+            name: acquisition-target-screening
+            question: Acquisition target screening
+            description: Finds companies below a market-capitalisation ceiling that hold active drugs still in early clinical development, as candidates for acquisition or partnership before late-stage data reprices them.
+            cypher: |-
+              MATCH (c:Company)
+              WHERE c.market_cap < $maxMarketCapUsd
+              MATCH (c)-[:IN_PIPELINE]->(d:Drug {status: 'Active'})-[:INVESTIGATED_IN]->(:ClinicalTrial)-[:HAS_PHASE]->(ph:Phase)
+              WITH c, d, max(ph.number) AS drugPhase
+              WHERE drugPhase <= $maxPhase
+              MATCH (d)-[:TARGETS]->(p:Protein)
+              WITH c, count(DISTINCT d) AS earlyAssets, max(drugPhase) AS highestPhase, count(DISTINCT p) AS targets
+              RETURN c.id AS companyId, c.name AS company, c.market_cap / 1000000 AS marketCapMillionsUsd,
+                     earlyAssets, highestPhase, targets
+              ORDER BY highestPhase DESC, earlyAssets DESC, marketCapMillionsUsd, company;
+            parameters:
+              - name: maxMarketCapUsd
+                type: INTEGER
+                description: Market capitalisation ceiling in whole US dollars. Start at 2000000000, the conventional upper bound of a small-cap company, and raise towards 10000000000 to include mid-caps.
+                example: 2000000000
+              - name: maxPhase
+                type: INTEGER
+                description: 'Highest phase a drug may have reached to count as early. Start at 2: through Phase 2 an asset is unproven at scale and cheapest to buy.'
+                example: 2
+            category: query
+            teaches: 'Only Active drugs count: approved and discontinued ones do not. A company also holding later-stage assets still qualifies through its early ones, so check the company''s focus before treating it as an early-stage play.'
+            returns: 'One row per company: companyId, company, marketCapMillionsUsd, earlyAssets (active drugs whose highest phase is at most maxPhase), highestPhase among them and targets (distinct proteins they address), most advanced and broadest first.'
+            prerequisites: Company.market_cap is a point-in-time snapshot; confirm its date before acting on the screen.
+            tags:
+              - business-development
+              - acquisition
+              - screening
+            upstream:
+              file: QUERIES.md
+              heading: Acquisition target screening
+              sample: 'Bundled sample data only: $maxMarketCapUsd = 2000000000, $maxPhase = 2 returns 14 rows, Foxhollow Bio first with 4 early assets; it includes Fenwick Life Sciences and Glenhollow Bio (both with BACE1 assets) and excludes Ivelmont Therapeutics, Juniper Ridge Bio and Kestrel Molecular.'
+          - type: canonicalQuery
+            name: patent-overlap-between-companies
+            question: Patent overlap between companies
+            description: 'Finds pairs of companies that each hold patents claiming the same protein target for the same disease: direct IP competition, a possible dispute, or a sign that differentiation is needed. A patent the two companies own jointly is collaboration, not competition, and is not counted.'
+            cypher: |-
+              MATCH (c1:Company)<-[:HAS_OWNER]-(p1:Patent)-[:TARGETS]->(prot:Protein)
+              MATCH (p1)-[:TREATS]->(dis:Disease)
+              MATCH (c2:Company)<-[:HAS_OWNER]-(p2:Patent)-[:TARGETS]->(prot)
+              MATCH (p2)-[:TREATS]->(dis)
+              WHERE c1.id < c2.id AND p1 <> p2
+                AND NOT (p1)-[:HAS_OWNER]->(c2) AND NOT (p2)-[:HAS_OWNER]->(c1)
+              WITH c1, c2, prot, dis, count(DISTINCT p1) AS patents1, count(DISTINCT p2) AS patents2
+              WHERE patents1 >= $minPatentsEach AND patents2 >= $minPatentsEach
+              RETURN c1.name AS company1, c2.name AS company2, prot.name AS target, dis.name AS disease,
+                     patents1, patents2, patents1 + patents2 AS overlap
+              ORDER BY overlap DESC, company1, company2, target;
+            parameters:
+              - name: minPatentsEach
+                type: INTEGER
+                description: 'Minimum filings each company must hold on the shared target and disease. Start at 2: a single filing can be defensive or licensed in, while two or more show a deliberate patent estate.'
+                example: 1
+            category: query
+            teaches: Counts include pending, expired and abandoned filings; add a filter on Patent.status to restrict to patents in force. Lower minPatentsEach to 1 to see every touch point.
+            returns: 'One row per company pair, target and disease: company1, company2, target, disease, patents1 and patents2 (each company''s filings there) and overlap (their sum), largest overlap first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - patent
+              - competition
+              - ip
+            upstream:
+              file: QUERIES.md
+              heading: Patent overlap between companies
+              sample: 'Bundled sample data only: $minPatentsEach = 2 returns 24 rows; the largest overlaps (7) are Brightwater Biosciences with Calderra Pharma and with Harrowgate Pharma on BACE1 in Alzheimer''s Disease, and Ulverston Bio with Corvane Biologics on GBA1 in Parkinson''s Disease.'
+          - type: canonicalQuery
+            name: patents-without-a-pipeline-programme
+            question: Patents without a pipeline programme
+            description: Finds companies patenting a protein target that none of their pipeline drugs address. Patents ahead of any trial signal strategic intent not yet visible in the clinic — an early programme, a planned licence, or a filing made to block competitors.
+            cypher: |-
+              MATCH (c:Company)<-[:HAS_OWNER]-(pat:Patent)-[:TARGETS]->(prot:Protein)
+              WHERE NOT EXISTS { (c)-[:IN_PIPELINE]->(:Drug)-[:TARGETS]->(prot) }
+              WITH c, prot, count(DISTINCT pat) AS patents, max(pat.filing_date) AS latest
+              WHERE patents >= $minPatents
+              RETURN c.name AS company, prot.name AS target, patents, date(latest) AS latestFiling
+              ORDER BY patents DESC, latestFiling DESC, company;
+            parameters:
+              - name: minPatents
+                type: INTEGER
+                description: 'Minimum filings on the target for a company to count. Start at 2: a single filing can be incidental, while two or more on one target show sustained interest.'
+                example: 2
+            category: query
+            teaches: 'Recent filings matter most: an estate whose latest filing is old may have been abandoned as a strategy even if granted patents remain.'
+            returns: 'One row per company and target: company, target, patents and latestFiling (date of the most recent filing), most filings first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - patent
+              - strategy
+              - early-signal
+            upstream:
+              file: QUERIES.md
+              heading: Patents without a pipeline programme
+              sample: 'Bundled sample data only: $minPatents = 2 returns 2 rows — Penhallow Therapeutics on TREM2 (3 filings) and Corvane Biologics on KRAS (2); Quillon Biosciences'' single GBA1 filing is excluded.'
+          - type: canonicalQuery
+            name: pipeline-and-patent-convergence-on-a-target
+            question: Pipeline and patent convergence on a target
+            description: 'Finds companies whose live clinical programme and own patent filings converge on the same protein target: the strongest signal of strategic commitment, since the company is both spending on trials and protecting the mechanism.'
+            cypher: |-
+              MATCH (c:Company)-[:IN_PIPELINE]->(d:Drug)-[:TARGETS]->(prot:Protein)
+              WHERE d.status <> 'Discontinued'
+              MATCH (d)-[:INVESTIGATED_IN]->(:ClinicalTrial)-[:HAS_PHASE]->(ph:Phase)
+              WITH c, d, prot, max(ph.number) AS drugPhase
+              WHERE drugPhase >= $minPhase
+              MATCH (c)<-[:HAS_OWNER]-(pat:Patent)-[:TARGETS]->(prot)
+              WITH c, prot, count(DISTINCT d) AS drugs, max(drugPhase) AS highestPhase, count(DISTINCT pat) AS patents
+              RETURN c.name AS company, prot.name AS target, drugs, highestPhase, patents
+              ORDER BY highestPhase DESC, patents DESC, company, target;
+            parameters:
+              - name: minPhase
+                type: INTEGER
+                description: Lowest phase a live drug must have reached to count. Start at 2, where a programme has moved into patients and committed real investment; raise to 3 for late-stage commitment only.
+                example: 1
+            category: query
+            teaches: Discontinued drugs are excluded, so a company that patents a target after its programme failed does not appear. A company with patents and an early programme below minPhase appears once minPhase is lowered.
+            returns: 'One row per company and target: company, target, drugs (live drugs at or beyond minPhase), highestPhase among them and patents (the company''s filings on the target), most advanced first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - pipeline
+              - patent
+              - convergence
+              - strategy
+            upstream:
+              file: QUERIES.md
+              heading: Pipeline and patent convergence on a target
+              sample: 'Bundled sample data only: $minPhase = 2 returns 31 rows, led by Hollinwood Pharma on PD-1 (Phase 4, 4 filings); Aldermoor Therapeutics on BACE1 (Phase 3, 2 filings) and Fenwick Life Sciences on BACE1 (Phase 2, 2 filings) are among them.'
+          - type: canonicalQuery
+            name: node-key-constraints
+            question: Node-key constraints
+            cypher: |-
+              CREATE CONSTRAINT id_Company_key IF NOT EXISTS FOR (n:Company) REQUIRE (n.id) IS NODE KEY;
+              CREATE CONSTRAINT id_Drug_key IF NOT EXISTS FOR (n:Drug) REQUIRE (n.id) IS NODE KEY;
+              CREATE CONSTRAINT name_Protein_key IF NOT EXISTS FOR (n:Protein) REQUIRE (n.name) IS NODE KEY;
+              CREATE CONSTRAINT name_Disease_key IF NOT EXISTS FOR (n:Disease) REQUIRE (n.name) IS NODE KEY;
+              CREATE CONSTRAINT nct_id_ClinicalTrial_key IF NOT EXISTS FOR (n:ClinicalTrial) REQUIRE (n.nct_id) IS NODE KEY;
+              CREATE CONSTRAINT name_Phase_key IF NOT EXISTS FOR (n:Phase) REQUIRE (n.name) IS NODE KEY;
+              CREATE CONSTRAINT id_Patent_key IF NOT EXISTS FOR (n:Patent) REQUIRE (n.id) IS NODE KEY;
+            parameters: []
+            category: setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Node-key constraints
+              sample: ''
+    description: 'A pharmaceutical or biotechnology company: the sponsor of clinical development programmes and the owner (assignee) of patents. The hub shared by the pipeline and patent views.'
+    aliases:
+      - Sponsor
+      - Assignee
+  Drug:
+    label: Drug
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: 'Identifier of the asset: the sponsor''s compound code. e.g. `UBL-5457`.'
+        pattern: ^[A-Z]{3}-[0-9]{2,4}$
+      name:
+        type: STRING
+        must_exist: true
+        description: 'Name used for the asset: its non-proprietary name once one is assigned, otherwise its compound code.'
+      mechanism:
+        type: STRING
+        description: 'Mechanism of action in words: the target and how the asset acts on it, for example an inhibitor, an agonist or a monoclonal antibody. Free text. e.g. `LRRK2 inhibitor`.'
+      administration:
+        type: STRING
+        description: Route of administration of the asset in its lead programme. e.g. `Oral`.
+        one_of:
+          - Oral
+          - Intravenous
+          - Subcutaneous
+          - Intrathecal
+          - Inhaled
+      status:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the development status of the asset as a whole, active, approved or discontinued, not the recruitment status of one of its trials
+        description: 'Development status of the asset as a whole, not of any one trial: Active (in clinical development and not yet approved), Approved (marketed for at least one indication), Discontinued (development stopped by the sponsor). e.g. `Active`.'
+        one_of:
+          - Active
+          - Approved
+          - Discontinued
+    extensions:
+      display:
+        x: 110
+        'y': 0
+        colour: '#dc2626'
+      custom:
+        relate-examples:
+          ask: a drug candidate or development asset, named by its sponsor's compound code, such as UBL-5457 or KME-058, or by its non-proprietary name; the molecule, not its mechanism or drug class
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: competitive-landscape-for-a-target
+            question: Competitive landscape for a target
+            description: Lists every company with a drug against one protein target, how far each drug has got (the highest clinical phase any of its trials reached), its development status, and its most recent trial. Answers who else is pursuing our target, and how far ahead or behind they are.
+            cypher: |-
+              MATCH (d:Drug)-[:TARGETS]->(:Protein {name: $proteinName})
+              MATCH (c:Company)-[:IN_PIPELINE]->(d)
+              MATCH (d)-[:INVESTIGATED_IN]->(t:ClinicalTrial)-[:HAS_PHASE]->(ph:Phase)
+              WITH c, d, max(ph.number) AS highestPhase, max(t.start_date) AS latestStart
+              MATCH (d)-[:INVESTIGATED_IN]->(latest:ClinicalTrial {start_date: latestStart})
+              RETURN c.name AS company, d.name AS drug, d.mechanism AS mechanism, d.status AS status,
+                     highestPhase, latest.nct_id AS latestTrial, latest.status AS latestTrialStatus,
+                     date(latest.start_date) AS latestTrialStart
+              ORDER BY highestPhase DESC, company, drug;
+            parameters:
+              - name: proteinName
+                type: STRING
+                description: 'Protein.name of the target. Look it up rather than guessing: sources name targets differently, and the UniProt accession on Protein is the reliable match.'
+                example: LRRK2
+            category: query
+            teaches: 'highestPhase counts a registered trial that has not started yet, so read it with latestTrialStatus. A discontinued drug that reached Phase 3 is still informative: the target attracted late-stage investment and then failed.'
+            returns: 'One row per company and drug: company, drug, mechanism, status, highestPhase (1–4), latestTrial (NCT number), latestTrialStatus and latestTrialStart, furthest-advanced first. A co-developed drug appears once per partner.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - pipeline
+              - competition
+              - target
+            upstream:
+              file: QUERIES.md
+              heading: Competitive landscape for a target
+              sample: 'Bundled sample data only: $proteinName = ''BACE1'' returns 8 rows for 7 drugs — 4 discontinued and 3 active; GBL-731 is co-developed by Glenhollow Bio and Harrowgate Pharma. Aldermoor Therapeutics'' ATL-2301 leads, with a Phase 3 trial not yet recruiting.'
+    description: 'A drug development asset or approved product: one molecule or biologic, which may be developed for several diseases through several clinical trials.'
+    aliases:
+      - Development asset
+      - Compound
+  Protein:
+    label: Protein
+    properties:
+      name:
+        type: STRING
+        key: true
+        description: Common name or gene symbol of the target, as pipeline and patent sources use it. Keep one name per protein; the UniProt accession is the unambiguous identifier. e.g. `JAK1`.
+      uniprot:
+        type: STRING
+        must_exist: true
+        description: UniProtKB accession of the human protein. e.g. `P23458`.
+        pattern: ^([OPQ][0-9][A-Z0-9]{3}[0-9]|[A-NR-Z][0-9]([A-Z][A-Z0-9]{2}[0-9]){1,2})$
+      function:
+        type: STRING
+        description: Short description of the protein's biological role.
+      type:
+        type: STRING
+        description: Target class of the protein, as drug discovery groups targets. e.g. `Kinase`.
+        one_of:
+          - Enzyme
+          - Receptor
+          - Kinase
+          - Immune checkpoint
+          - Peptide
+          - Structural protein
+          - Transcription factor
+    extensions:
+      display:
+        x: 240
+        'y': -65
+        colour: '#7c3aed'
+      custom:
+        relate-examples:
+          ask: a human protein pursued as a drug target, named by its gene symbol or common name, such as LRRK2 or GBA1; the target itself, not the drugs that act on it
+          proper: true
+    description: A human protein pursued as a drug target. Drugs and patents that act on the same target share one Protein node, which is what lets pipeline and patent activity be compared.
+    aliases:
+      - Target
+      - Drug target
+  Disease:
+    label: Disease
+    properties:
+      name:
+        type: STRING
+        key: true
+        description: Name of the disease. e.g. `Rheumatoid Arthritis`.
+      icd10:
+        type: STRING
+        description: 'ICD-10 code for the disease: a three-character category, optionally with a subcategory after a full stop. e.g. `M06`.'
+        pattern: ^[A-Z][0-9]{2}(\.[0-9A-Z]{1,4})?$
+      us_prevalence:
+        type: INTEGER
+        description: Approximate number of people in the United States living with the disease, at a single point in time. An order-of-magnitude figure for sizing, not an epidemiological estimate. e.g. `1500000`.
+      annual_market_usd:
+        type: INTEGER
+        description: Approximate annual US market for treatments of the disease, in whole US dollars, at a single point in time. An order-of-magnitude figure for sizing. e.g. `30000000000`.
+    extensions:
+      display:
+        x: 240
+        'y': 65
+        colour: '#059669'
+      custom:
+        relate-examples:
+          ask: a disease or indication that drugs are developed for and patents claim, such as Parkinson's disease
+        tools:
+          - type: canonicalQuery
+            name: disease-pipeline-intensity
+            question: Disease pipeline intensity
+            description: 'Measures how crowded one disease is: for every company with a trial in the disease, how many of its drugs have been trialled there, how many of those are still live (not discontinued), and the highest phase reached by a live drug and by any drug.'
+            cypher: |-
+              MATCH (:Disease {name: $diseaseName})<-[:FOR_DISEASE]-(t:ClinicalTrial)<-[:INVESTIGATED_IN]-(d:Drug)
+              MATCH (c:Company)-[:IN_PIPELINE]->(d)
+              MATCH (t)-[:HAS_PHASE]->(ph:Phase)
+              WITH c,
+                   count(DISTINCT d) AS assets,
+                   count(DISTINCT CASE WHEN d.status <> 'Discontinued' THEN d END) AS liveAssets,
+                   max(CASE WHEN d.status <> 'Discontinued' THEN ph.number END) AS highestLivePhase,
+                   max(ph.number) AS highestPhaseReached
+              RETURN c.name AS company, assets, liveAssets, highestLivePhase, highestPhaseReached
+              ORDER BY coalesce(highestLivePhase, 0) DESC, liveAssets DESC, company;
+            parameters:
+              - name: diseaseName
+                type: STRING
+                description: Disease.name exactly as stored.
+                example: Parkinson's disease
+            category: query
+            teaches: A company with assets but no live ones has left the disease; one whose highestPhaseReached exceeds its highestLivePhase has lost its lead programme. Counts are of drugs trialled in this disease only.
+            returns: 'One row per company: company, assets, liveAssets, highestLivePhase (null when every drug was discontinued) and highestPhaseReached, most advanced live programme first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - pipeline
+              - disease
+              - market-entry
+            upstream:
+              file: QUERIES.md
+              heading: Disease pipeline intensity
+              sample: 'Bundled sample data only: $diseaseName = "Alzheimer''s Disease" returns 25 rows; Ravensmere Pharma leads with a live Phase 4 programme, and Brightwater Biosciences is last with no live asset.'
+          - type: canonicalQuery
+            name: target-diversification-within-a-disease
+            question: Target diversification within a disease
+            description: Shows which protein targets companies are pursuing for one disease, how many companies and drugs each target has, and how many of those drugs were discontinued. Answers whether competitors are converging on one mechanism or spreading their bets.
+            cypher: |-
+              MATCH (:Disease {name: $diseaseName})<-[:FOR_DISEASE]-(:ClinicalTrial)<-[:INVESTIGATED_IN]-(d:Drug)-[:TARGETS]->(p:Protein)
+              MATCH (c:Company)-[:IN_PIPELINE]->(d)
+              WITH p, count(DISTINCT c) AS companies, count(DISTINCT d) AS drugs,
+                   count(DISTINCT CASE WHEN d.status = 'Discontinued' THEN d END) AS discontinued
+              RETURN p.name AS target, p.type AS targetClass, companies, drugs, discontinued
+              ORDER BY companies DESC, drugs DESC, target;
+            parameters:
+              - name: diseaseName
+                type: STRING
+                description: Disease.name exactly as stored.
+                example: Parkinson's disease
+            category: query
+            teaches: A target with many discontinued drugs is a crowded failure; one with few companies and no discontinuations may be white space. A bispecific drug counts under each of its targets.
+            returns: 'One row per target: target, targetClass, companies, drugs and discontinued, most-pursued first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - pipeline
+              - disease
+              - target
+              - white-space
+            upstream:
+              file: QUERIES.md
+              heading: Target diversification within a disease
+              sample: 'Bundled sample data only: $diseaseName = "Alzheimer''s Disease" returns 4 rows — TREM2 (12 companies), Amyloid-beta (8), BACE1 (8, of whose 7 drugs 4 were discontinued) and Tau (6).'
+          - type: canonicalQuery
+            name: failed-programmes-in-a-disease
+            question: Failed programmes in a disease
+            description: 'Lists every discontinued drug developed for one disease, with its target, mechanism, and its last trial: the phase, how that trial ended and the reason given. Learning from competitors'' failures avoids repeating them, and a sound mechanism stopped for business reasons can be an opportunity.'
+            cypher: |-
+              MATCH (:Disease {name: $diseaseName})<-[:TREATS]-(d:Drug {status: 'Discontinued'})
+              MATCH (d)-[:INVESTIGATED_IN]->(t:ClinicalTrial)
+              WITH d, max(t.start_date) AS lastStart
+              MATCH (d)-[:INVESTIGATED_IN]->(last:ClinicalTrial {start_date: lastStart})-[:HAS_PHASE]->(ph:Phase)
+              MATCH (c:Company)-[:IN_PIPELINE]->(d)
+              MATCH (d)-[:TARGETS]->(p:Protein)
+              RETURN c.name AS company, d.name AS drug, p.name AS target, d.mechanism AS mechanism,
+                     ph.name AS lastPhase, last.status AS lastTrialStatus, last.termination_reason AS reason,
+                     date(last.start_date) AS lastTrialStart
+              ORDER BY lastTrialStart DESC, company, drug, target;
+            parameters:
+              - name: diseaseName
+                type: STRING
+                description: Disease.name exactly as stored.
+                example: Parkinson's disease
+            category: query
+            teaches: Only drugs whose status is Discontinued appear; a live drug with a terminated trial does not. The last trial may be in another disease the drug was also tried in. A null reason means the sponsor stopped after a completed trial, which often signals a disappointing readout or a portfolio decision rather than a safety stop.
+            returns: 'One row per company, drug and target: company, drug, target, mechanism, lastPhase, lastTrialStatus, reason (the termination reason, null when the last trial ran to completion) and lastTrialStart, most recent first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - pipeline
+              - failure
+              - disease
+            upstream:
+              file: QUERIES.md
+              heading: Failed programmes in a disease
+              sample: 'Bundled sample data only: $diseaseName = "Alzheimer''s Disease" returns 14 rows, among them the BACE1 inhibitors BBR-118 (Phase 3, cognitive worsening versus placebo) and DBU-44 (Phase 3, liver enzyme elevations).'
+    description: A disease or indication that drugs are developed for and patents claim.
+    aliases:
+      - Indication
+      - Therapeutic area
+  ClinicalTrial:
+    label: ClinicalTrial
+    properties:
+      nct_id:
+        type: STRING
+        key: true
+        description: ClinicalTrials.gov registry identifier, also called the NCT number. e.g. `NCT99193561`.
+        aliases:
+          - NCT number
+        pattern: ^NCT[0-9]{8}$
+      title:
+        type: STRING
+        must_exist: true
+        description: Brief title of the study as registered.
+      status:
+        type: STRING
+        must_exist: true
+        description: Overall recruitment status of the study as ClinicalTrials.gov reports it. Terminated, Withdrawn and Suspended mean the study stopped or paused early (see termination_reason); a stopped trial does not by itself mean the drug was discontinued. e.g. `Completed`.
+        one_of:
+          - Not yet recruiting
+          - Recruiting
+          - Active, not recruiting
+          - Completed
+          - Terminated
+          - Withdrawn
+          - Suspended
+      start_date:
+        type: ZONED DATETIME
+        description: Actual start date of the study, or its anticipated start date while it is not yet recruiting. Stored as midnight UTC on that day; only the calendar date carries meaning. e.g. `2022-09-17T00:00:00Z`.
+      enrollment:
+        type: INTEGER
+        description: 'Number of participants: actual for completed or terminated studies, anticipated otherwise. e.g. `31`.'
+      termination_reason:
+        type: STRING
+        description: The sponsor's stated reason the study was terminated, withdrawn or suspended (ClinicalTrials.gov's 'why stopped'). Absent for studies that were not stopped. e.g. `Slow enrolment`.
+        aliases:
+          - Why stopped
+    extensions:
+      display:
+        x: 110
+        'y': 105
+        colour: '#d97706'
+      custom:
+        relate-examples:
+          ask: a registered clinical trial or study, named by its ClinicalTrials.gov NCT number, such as NCT99194862
+          proper: true
+          propose: true
+    description: A registered clinical trial of one drug in one disease at one phase, as listed on ClinicalTrials.gov.
+    aliases:
+      - Study
+      - Clinical study
+  Phase:
+    label: Phase
+    properties:
+      name:
+        type: STRING
+        key: true
+        description: Name of the phase. e.g. `Phase 2`.
+        one_of:
+          - Phase 1
+          - Phase 2
+          - Phase 3
+          - Phase 4
+      number:
+        type: INTEGER
+        must_exist: true
+        description: The phase as a number, 1 to 4, for ordering and comparison. e.g. `2`.
+    extensions:
+      display:
+        x: 240
+        'y': 145
+        colour: '#0891b2'
+      custom:
+        relate-examples:
+          ask: a clinical development phase, written Phase 1, Phase 2, Phase 3 or Phase 4; the stage, not the trial itself
+          proper: true
+    description: A clinical development phase, 1 to 4. Phase 4 is a post-approval study. A phase says how far a trial is in development, not how it ended.
+    aliases:
+      - Development stage
+  Patent:
+    label: Patent
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Publication number of the patent or application, with its country prefix and kind code. e.g. `EP9023189B1`.
+        aliases:
+          - Publication number
+        pattern: ^(?:US|EP|WO)[0-9]{7,8}[AB][0-9]$
+      title:
+        type: STRING
+        must_exist: true
+        description: Title of the patent as published.
+      filing_date:
+        type: ZONED DATETIME
+        description: Filing date of the application. Stored as midnight UTC on that day; only the calendar date carries meaning. e.g. `2025-03-28T00:00:00Z`.
+      status:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the legal status of the patent or application, granted, pending, expired or abandoned, not the status of a drug or a trial
+        description: 'Legal status of the filing: Pending (under examination), Granted (in force), Expired (term ended) or Abandoned (given up by the owner). e.g. `Pending`.'
+        one_of:
+          - Pending
+          - Granted
+          - Expired
+          - Abandoned
+    extensions:
+      display:
+        x: 0
+        'y': -105
+        colour: '#db2777'
+      custom:
+        relate-examples:
+          ask: a patent or published patent application, named by its publication number with a country prefix and kind code, such as US19352064B2 or EP9055721B1
+          proper: true
+          propose: true
+    description: A patent or published patent application claiming a drug target, mechanism or indication. Patents signal strategic intent, often years before clinical programmes appear.
+    aliases:
+      - Patent filing
+      - Patent application
+relationships:
+  inPipeline:
+    type: IN_PIPELINE
+    from:
+      node: Company
+    to:
+      node: Drug
+      min_count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: develops
+    description: Links a company to a drug in its development pipeline, as originator or co-developer. Every drug is in at least one company's pipeline, and a co-developed drug is in each partner's; a company may have many pipeline drugs or none.
+  targets:
+    type: TARGETS
+    from:
+      node: Drug
+      min_count: 1
+    to:
+      node: Protein
+    extensions:
+      custom:
+        relate-examples:
+          phrase: targets
+    description: Links a drug to a protein it is designed to act on. Every drug targets at least one protein, and a bispecific targets two; a protein may be targeted by many drugs or none.
+  treats:
+    type: TREATS
+    from:
+      node: Drug
+      min_count: 1
+    to:
+      node: Disease
+    extensions:
+      custom:
+        relate-examples:
+          phrase: treats
+    description: 'Links a drug to a disease it is developed for or approved in: a drug treats every disease it has been trialled in. Every drug treats at least one disease; a disease may have many drugs or none.'
+  investigatedIn:
+    type: INVESTIGATED_IN
+    from:
+      node: Drug
+      min_count: 1
+    to:
+      node: ClinicalTrial
+      count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is tested in
+    description: Links a drug to a clinical trial that studies it. Each trial investigates exactly one drug; every drug has one or more trials.
+  hasPhase:
+    type: HAS_PHASE
+    from:
+      node: ClinicalTrial
+      count: 1
+    to:
+      node: Phase
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is in
+    description: Links a clinical trial to its development phase. Each trial is in exactly one phase; a phase has many trials.
+  forDisease:
+    type: FOR_DISEASE
+    from:
+      node: ClinicalTrial
+      count: 1
+    to:
+      node: Disease
+    extensions:
+      custom:
+        relate-examples:
+          phrase: studies
+    description: Links a clinical trial to the disease it studies. Each trial studies exactly one disease; a disease may have many trials or none.
+  hasOwner:
+    type: HAS_OWNER
+    from:
+      node: Patent
+      min_count: 1
+    to:
+      node: Company
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is assigned to
+    description: Links a patent to a company that owns it, its assignee. Every patent has at least one owner, and a jointly owned patent has several; a company may own many patents or none.
+  patentTargets:
+    type: TARGETS
+    from:
+      node: Patent
+      min_count: 1
+    to:
+      node: Protein
+    extensions:
+      custom:
+        relate-examples:
+          phrase: targets
+    description: Links a patent to a protein its claims cover as a drug target. Every patent claims at least one target; a protein may be claimed by many patents or none. The same Protein nodes are targeted by drugs, so patents and pipelines meet here.
+  patentTreats:
+    type: TREATS
+    from:
+      node: Patent
+      min_count: 1
+    to:
+      node: Disease
+    extensions:
+      custom:
+        relate-examples:
+          phrase: treats
+    description: Links a patent to a disease its claims name as an indication. Every patent names at least one indication; a disease may be named by many patents or none.
+extensions:
+  data_source_tables:
+    companies.csv:
+      source: local
+      columns:
+        - name: id
+          type: string
+        - name: name
+          type: string
+        - name: country
+          type: string
+        - name: market_cap
+          type: string
+        - name: focus
+          type: string
+    company_drugs.csv:
+      source: local
+      columns:
+        - name: companyId
+          type: string
+        - name: drugId
+          type: string
+    diseases.csv:
+      source: local
+      columns:
+        - name: name
+          type: string
+        - name: icd10
+          type: string
+        - name: us_prevalence
+          type: string
+        - name: annual_market_usd
+          type: string
+    drug_targets.csv:
+      source: local
+      columns:
+        - name: drugId
+          type: string
+        - name: proteinName
+          type: string
+    drugs.csv:
+      source: local
+      columns:
+        - name: id
+          type: string
+        - name: name
+          type: string
+        - name: mechanism
+          type: string
+        - name: administration
+          type: string
+        - name: status
+          type: string
+    patent_indications.csv:
+      source: local
+      columns:
+        - name: patentId
+          type: string
+        - name: diseaseName
+          type: string
+    patent_owners.csv:
+      source: local
+      columns:
+        - name: patentId
+          type: string
+        - name: companyId
+          type: string
+    patent_targets.csv:
+      source: local
+      columns:
+        - name: patentId
+          type: string
+        - name: proteinName
+          type: string
+    patents.csv:
+      source: local
+      columns:
+        - name: id
+          type: string
+        - name: title
+          type: string
+        - name: filing_date
+          type: string
+        - name: status
+          type: string
+    phases.csv:
+      source: local
+      columns:
+        - name: name
+          type: string
+        - name: number
+          type: string
+    proteins.csv:
+      source: local
+      columns:
+        - name: name
+          type: string
+        - name: uniprot
+          type: string
+        - name: function
+          type: string
+        - name: type
+          type: string
+    trials.csv:
+      source: local
+      columns:
+        - name: nct_id
+          type: string
+        - name: title
+          type: string
+        - name: status
+          type: string
+        - name: start_date
+          type: string
+        - name: enrollment
+          type: string
+        - name: termination_reason
+          type: string
+        - name: drugId
+          type: string
+        - name: phaseName
+          type: string
+        - name: diseaseName
+          type: string
+  data_source_mappings:
+    mapping0:
+      - type: NODE
+        node: Company
+        table: companies.csv
+        mode: MERGE
+        key:
+          - id
+        properties:
+          id:
+            column: id
+          name:
+            column: name
+          country:
+            column: country
+          market_cap:
+            column: market_cap
+          focus:
+            column: focus
+      - type: NODE
+        node: Drug
+        table: drugs.csv
+        mode: MERGE
+        key:
+          - id
+        properties:
+          id:
+            column: id
+          name:
+            column: name
+          mechanism:
+            column: mechanism
+          administration:
+            column: administration
+          status:
+            column: status
+      - type: NODE
+        node: Protein
+        table: proteins.csv
+        mode: MERGE
+        key:
+          - name
+        properties:
+          name:
+            column: name
+          uniprot:
+            column: uniprot
+          function:
+            column: function
+          type:
+            column: type
+      - type: NODE
+        node: Disease
+        table: diseases.csv
+        mode: MERGE
+        key:
+          - name
+        properties:
+          name:
+            column: name
+          icd10:
+            column: icd10
+          us_prevalence:
+            column: us_prevalence
+          annual_market_usd:
+            column: annual_market_usd
+      - type: NODE
+        node: ClinicalTrial
+        table: trials.csv
+        mode: MERGE
+        key:
+          - nct_id
+        properties:
+          nct_id:
+            column: nct_id
+          title:
+            column: title
+          status:
+            column: status
+          start_date:
+            column: start_date
+          enrollment:
+            column: enrollment
+          termination_reason:
+            column: termination_reason
+      - type: NODE
+        node: Phase
+        table: phases.csv
+        mode: MERGE
+        key:
+          - name
+        properties:
+          name:
+            column: name
+          number:
+            column: number
+      - type: NODE
+        node: Patent
+        table: patents.csv
+        mode: MERGE
+        key:
+          - id
+        properties:
+          id:
+            column: id
+          title:
+            column: title
+          filing_date:
+            column: filing_date
+          status:
+            column: status
+      - type: RELATIONSHIP
+        relationship: inPipeline
+        table: company_drugs.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Company
+          properties:
+            id:
+              column: companyId
+        to_node:
+          label: Drug
+          properties:
+            id:
+              column: drugId
+      - type: RELATIONSHIP
+        relationship: targets
+        table: drug_targets.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Drug
+          properties:
+            id:
+              column: drugId
+        to_node:
+          label: Protein
+          properties:
+            name:
+              column: proteinName
+      - type: RELATIONSHIP
+        relationship: treats
+        table: trials.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Drug
+          properties:
+            id:
+              column: drugId
+        to_node:
+          label: Disease
+          properties:
+            name:
+              column: diseaseName
+      - type: RELATIONSHIP
+        relationship: investigatedIn
+        table: trials.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Drug
+          properties:
+            id:
+              column: drugId
+        to_node:
+          label: ClinicalTrial
+          properties:
+            nct_id:
+              column: nct_id
+      - type: RELATIONSHIP
+        relationship: hasPhase
+        table: trials.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: ClinicalTrial
+          properties:
+            nct_id:
+              column: nct_id
+        to_node:
+          label: Phase
+          properties:
+            name:
+              column: phaseName
+      - type: RELATIONSHIP
+        relationship: forDisease
+        table: trials.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: ClinicalTrial
+          properties:
+            nct_id:
+              column: nct_id
+        to_node:
+          label: Disease
+          properties:
+            name:
+              column: diseaseName
+      - type: RELATIONSHIP
+        relationship: hasOwner
+        table: patent_owners.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Patent
+          properties:
+            id:
+              column: patentId
+        to_node:
+          label: Company
+          properties:
+            id:
+              column: companyId
+      - type: RELATIONSHIP
+        relationship: patentTargets
+        table: patent_targets.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Patent
+          properties:
+            id:
+              column: patentId
+        to_node:
+          label: Protein
+          properties:
+            name:
+              column: proteinName
+      - type: RELATIONSHIP
+        relationship: patentTreats
+        table: patent_indications.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Patent
+          properties:
+            id:
+              column: patentId
+        to_node:
+          label: Disease
+          properties:
+            name:
+              column: diseaseName
+  custom:
+    relate-examples:
+      family: studio
+      source:
+        repository: neo4j/studio-agent-use-cases
+        commit: b76f767e85c5853b7d70eb2bb3b10879d0e394a9
+        package: competitive-intelligence
+        files:
+          - ONTOLOGY.json
+          - QUERIES.md
+          - human_description.md
+      card:
+        title: Life Sciences Competitive Intelligence
+        category: Healthcare & Life Sciences
+        description: Map competitors' drug pipelines and patent estates against shared targets and diseases to spot crowding, failures and acquisition candidates.
+      industry: Healthcare & Life Sciences
+      about: data/ontologies/studio/competitive-intelligence/human_description.md

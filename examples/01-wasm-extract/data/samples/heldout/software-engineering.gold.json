@@ -1,0 +1,45 @@
+{
+  "entities": [
+    {"name": "Camille Laurent", "type": "Engineer"},
+    {"name": "Jonah Whitfield", "type": "Engineer"},
+    {"name": "Amara Nwosu", "type": "Engineer"},
+    {"name": "Notifications team", "type": "Team"},
+    {"name": "notify-worker", "type": "Service"},
+    {"name": "notify-db", "type": "Service"},
+    {"name": "receipts-worker", "type": "Service"},
+    {"name": "pintail/notify", "type": "Repository"},
+    {"name": "mailgate", "type": "Library"},
+    {"name": "PR #731", "type": "PullRequest"},
+    {"name": "NOTIFY-96", "type": "Issue"},
+    {"name": "NOTIFY-101", "type": "Issue"},
+    {"name": "v2.8.0", "type": "Release"},
+    {"name": "INC-388", "type": "Incident"}
+  ],
+  "relations": [
+    {"source": "Camille Laurent", "target": "PR #731", "type": "AUTHORED", "how": "plain"},
+    {"source": "PR #731", "target": "pintail/notify", "type": "TARGETS", "how": "nominal"},
+    {"source": "PR #731", "target": "NOTIFY-96", "type": "FIXES", "how": "plain"},
+    {"source": "NOTIFY-96", "target": "INC-388", "type": "FOLLOWS_UP", "how": "apposition"},
+    {"source": "NOTIFY-96", "target": "Camille Laurent", "type": "ASSIGNED_TO", "how": "passive"},
+    {"source": "Camille Laurent", "target": "Notifications team", "type": "MEMBER_OF", "how": "plain"},
+    {"source": "Notifications team", "target": "notify-worker", "type": "OWNS", "how": "plain"},
+    {"source": "notify-worker", "target": "mailgate", "type": "USES", "how": "plain"},
+    {"source": "notify-worker", "target": "notify-db", "type": "DEPENDS_ON", "how": "plain"},
+    {"source": "INC-388", "target": "notify-worker", "type": "AFFECTED", "how": "plain"},
+    {"source": "PR #731", "target": "mailgate", "type": "UPGRADES", "how": "plain"},
+    {"source": "v2.8.0", "target": "notify-worker", "type": "VERSION_OF", "how": "apposition"},
+    {"source": "Jonah Whitfield", "target": "PR #731", "type": "REVIEWED", "how": "plain"},
+    {"source": "Amara Nwosu", "target": "PR #731", "type": "REVIEWED", "how": "plain"},
+    {"source": "receipts-worker", "target": "notify-worker", "type": "DEPENDS_ON", "how": "nominal"},
+    {"source": "Amara Nwosu", "target": "notify-worker", "type": "ON_CALL_FOR", "how": "coreference"}
+  ],
+  "distractors": [
+    {"source": "PR #731", "target": "NOTIFY-101", "type": "FIXES", "family": "negation"},
+    {"source": "receipts-worker", "target": "notify-db", "type": "DEPENDS_ON", "family": "hedge"},
+    {"source": "v2.8.0", "target": "PR #731", "type": "INCLUDES", "family": "future"}
+  ],
+  "properties": [
+    {"entity": "INC-388", "property": "severity", "text": "SEV-2", "value": "SEV-2", "how": "plain"},
+    {"entity": "NOTIFY-101", "property": "status", "text": "open", "value": "open", "how": "plain"}
+  ]
+}

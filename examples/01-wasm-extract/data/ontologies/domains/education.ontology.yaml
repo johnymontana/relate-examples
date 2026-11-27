@@ -1,0 +1,568 @@
+# Education: example 01's curated ontology for teaching, assessment and progression documents (D20).
+# Written for this repository from create-context-graph's education.yaml at 707b168 (Apache-2.0,
+# data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base (Person,
+# Organization, Location, Event, Object) is gone, and the parties are named for what a school or
+# university calls them (Student, Instructor, Department), with the programme a student enrols on and
+# the learning outcomes assessments measure added beside the original kinds.
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads; an endpoint's count,
+# min_count or max_count is the number of such relationships each node at that end has, as the
+# specification defines it. The tools are the ontology's competency questions, written for the graph
+# the page extracts: entities carry name, display, key and their key property; relationships carry p,
+# claims, sentences and docs, and the trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: education
+name: Education
+description: >-
+  Teaching and assessment in a university, college or school as its programme teams, examination
+  boards and student-support staff write about it: the students on a programme and the department that
+  offers it, the courses (modules) a programme is made of and the terms they are taught in, the staff
+  who teach, mark and tutor, the assessments that make up a course and the learning outcomes each one
+  assesses, and the work students submit. It answers who teaches a course and who tutors a student,
+  which courses a programme requires and which must come first, which assessments a student failed
+  and which learning outcomes that leaves undemonstrated, which later courses a failure blocks, who
+  submitted and who marked a piece of work, and what the source text says about each fact. Marks,
+  attendance and timetables stay in the text rather than the graph, and so do the institution's
+  governance, admissions and fees.
+nodes:
+  Student:
+    label: Student
+    description: >-
+      A person enrolled at the institution to study, named in full ("Callum Fairlie") and often beside
+      a student number (S2311095). Students are taught, tutored and assessed; the staff who teach them
+      are Instructors.
+    aliases: [learner, pupil, undergraduate, candidate, tutee]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The student's full name as the documents write it."}
+      studentId: {type: STRING, pattern: "^S[0-9]{7}$", description: "The student number, S and seven digits (S2311095)."}
+      stage: {type: INTEGER, description: "The year of the programme the student is in (2 for Stage 2)."}
+      mode: {type: STRING, one_of: [full-time, part-time], description: "The student's mode of study."}
+      status: {type: STRING, one_of: [active, interrupted, withdrawn, graduated], description: "The student's registration status."}
+    extensions:
+      display: {x: -340, y: 40, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a student enrolled on a programme at a university, college or school, named in full, such as Callum Fairlie; a learner, not a member of staff", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-student
+            category: lookup
+            question: Who is this student, and what does the store connect to them?
+            description: Finds students whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (s:Student) WHERE toLower(s.name) CONTAINS toLower($student)
+              OPTIONAL MATCH (s)-[r]-(x:_Entity)
+              RETURN s.name AS student, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY student, link, other
+            parameters:
+              - {name: student, type: STRING, description: "Part of the student's name.", example: Fairlie}
+          - type: canonicalQuery
+            name: student-record
+            category: neighbourhood
+            question: Which programme is this student on, who is their personal tutor, which courses do they take and which assessments did they fail?
+            description: One row per student whose name holds the text, with the programme, tutors, courses and failed assessments around them.
+            teaches: Several OPTIONAL MATCHes from one node, each collected with DISTINCT, give one row however many neighbours each side has.
+            cypher: |-
+              MATCH (s:Student) WHERE toLower(s.name) CONTAINS toLower($student)
+              OPTIONAL MATCH (s)-[:ENROLLED_ON]->(p:Programme)
+              OPTIONAL MATCH (t:Instructor)-[:ADVISES]->(s)
+              OPTIONAL MATCH (s)-[:TAKES]->(c:Course)
+              OPTIONAL MATCH (s)-[:FAILED]->(a:Assessment)
+              RETURN s.name AS student, collect(DISTINCT p.name) AS programmes, collect(DISTINCT t.name) AS personal_tutors,
+                     collect(DISTINCT c.name) AS courses, collect(DISTINCT a.name) AS failed
+              ORDER BY student
+            parameters:
+              - {name: student, type: STRING, description: "Part of the student's name.", example: Rhys Penhallow}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Callum Fairlie}
+  Instructor:
+    label: Instructor
+    description: >-
+      A member of staff who teaches or leads a course, marks students' work, tutors students or
+      examines a programme: a lecturer, module leader, personal tutor, programme director, graduate
+      teaching assistant or external examiner, usually named with a title ("Dr Hannah Leclerc").
+      Instructors are staff; the people they teach are Students.
+    aliases: [lecturer, teacher, tutor, module leader, professor, examiner, teaching assistant, faculty member]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The instructor's full name, without a title."}
+      title: {type: STRING, one_of: [Mr, Ms, Mx, Dr, Professor], description: "The title the documents give the instructor."}
+      role: {type: STRING, one_of: [lecturer, senior lecturer, professor, teaching fellow, graduate teaching assistant, external examiner], description: "The instructor's post."}
+    extensions:
+      display: {x: 120, y: -200, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a lecturer, professor, module leader, personal tutor, teaching assistant or examiner: a member of teaching staff, usually titled, such as Dr Hannah Leclerc", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: staff-load
+            category: aggregation
+            question: How many courses, tutees and marked submissions does each instructor have?
+            description: Per instructor, the courses they teach, the students they tutor and the submissions they marked.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each course is counted once per tutee.
+            cypher: |-
+              MATCH (i:Instructor)
+              OPTIONAL MATCH (i)-[:TEACHES]->(c:Course)
+              OPTIONAL MATCH (i)-[:ADVISES]->(s:Student)
+              OPTIONAL MATCH (sub:Submission)-[:MARKED_BY]->(i)
+              RETURN i.name AS instructor, count(DISTINCT c) AS courses, count(DISTINCT s) AS tutees, count(DISTINCT sub) AS marked
+              ORDER BY courses DESC, tutees DESC, instructor
+          - type: canonicalQuery
+            name: who-teaches-what-and-why
+            category: evidence
+            question: Which sentences say who teaches each course?
+            description: Every TEACHES fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (i:Instructor)-[r:TEACHES]->(c:Course)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN i.name AS instructor, c.name AS course, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY course, instructor
+  Department:
+    label: Department
+    description: >-
+      An academic department, school or faculty of the institution that employs teaching staff and
+      offers programmes, named in full ("the School of Biosciences"). A department is a unit of the
+      institution; the programme it offers is a Programme.
+    aliases: [school, faculty, academic unit, division]
+    reference: https://schema.org/EducationalOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The department's name."}
+      faculty: {type: STRING, description: "The faculty or college the department belongs to."}
+      code: {type: STRING, pattern: "^[A-Z]{2,5}$", description: "The department's short code, two to five capitals (BIO)."}
+    extensions:
+      display: {x: -120, y: -360, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "an academic department, school or faculty of a university or college, named in full, such as School of Biosciences or Department of Chemistry", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: department-portfolio
+            category: neighbourhood
+            question: Which programmes does each department offer, who directs them, and who works there?
+            description: Each department with the programmes it offers, their directors and the staff who work in it.
+            teaches: A neighbourhood two hops deep (department, programme, director) and one hop wide (staff) comes back as collected lists.
+            cypher: |-
+              MATCH (d:Department)
+              OPTIONAL MATCH (p:Programme)-[:OFFERED_BY]->(d)
+              OPTIONAL MATCH (dir:Instructor)-[:DIRECTS]->(p)
+              OPTIONAL MATCH (staff:Instructor)-[:MEMBER_OF]->(d)
+              RETURN d.name AS department, collect(DISTINCT p.name) AS programmes, collect(DISTINCT dir.name) AS directors,
+                     collect(DISTINCT staff.name) AS staff
+              ORDER BY department
+  Programme:
+    label: Programme
+    description: >-
+      A programme of study leading to an award, named by its award and subject ("BSc (Hons) Biomedical
+      Science"). Students enrol on a programme; the courses they take are its parts.
+    aliases: [program, degree, degree programme, course of study, major]
+    reference: https://schema.org/EducationalOccupationalProgram
+    properties:
+      name: {type: STRING, key: true, description: "The programme's name, with its award."}
+      award: {type: STRING, one_of: [BA (Hons), BSc (Hons), MSci, MA, MSc, MPhil, PhD, diploma, certificate], description: "The award the programme leads to."}
+      level: {type: STRING, one_of: [further education, undergraduate, postgraduate taught, postgraduate research], description: "The level of study."}
+      ucasCode: {type: STRING, pattern: "^[A-Z0-9]{4}$", description: "The UCAS course code of an undergraduate programme, four characters (B940)."}
+      durationYears: {type: INTEGER, description: "The programme's length in years of full-time study."}
+    extensions:
+      display: {x: -340, y: -200, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a whole degree or programme of study that students enrol on, named by its award and subject, such as BSc (Hons) Biomedical Science; not a single module", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: programme-structure
+            category: neighbourhood
+            question: Which courses make up this programme, who teaches each, and in which terms?
+            description: The courses that are part of each programme whose name holds the text, with their instructors and terms.
+            teaches: MATCH the part-of hop the question needs, then OPTIONAL MATCH what may be missing; one row per course.
+            cypher: |-
+              MATCH (c:Course)-[:PART_OF]->(p:Programme) WHERE toLower(p.name) CONTAINS toLower($programme)
+              OPTIONAL MATCH (i:Instructor)-[:TEACHES]->(c)
+              OPTIONAL MATCH (c)-[:TAUGHT_IN]->(t:Term)
+              RETURN p.name AS programme, c.name AS course, collect(DISTINCT i.name) AS taught_by, collect(DISTINCT t.name) AS terms
+              ORDER BY programme, course
+            parameters:
+              - {name: programme, type: STRING, description: "Part of the programme's name.", example: Biochemistry}
+  Course:
+    label: Course
+    description: >-
+      A unit of study taught and assessed on its own, called a module in UK universities, identified by
+      its code (BIO2041) and often followed by its title ("Cell Biology"). A course is part of a
+      programme; the programme is the whole award.
+    aliases: [module, unit, class, subject, paper]
+    reference: https://schema.org/Course
+    properties:
+      courseCode: {type: STRING, key: true, pattern: "^[A-Z]{3}[0-9]{4}$", description: "The course code, three capitals and four digits (BIO2041)."}
+      name: {type: STRING, description: "The course as a document names it."}
+      title: {type: STRING, description: "The course's title (Cell Biology)."}
+      credits: {type: INTEGER, description: "The course's credit value (20 UK credits stand for 200 hours of study).", extensions: {custom: {relate-examples: {extract: true, ask: "the credit value of a course, a whole number such as 20 credits"}}}}
+      level: {type: INTEGER, description: "The course's level in the qualifications framework, 3 to 8 (FHEQ level 5 for Stage 2)."}
+    extensions:
+      display: {x: 0, y: -40, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a single module or course within a degree, identified by a code such as BIO2041 and often followed by its title; not the degree programme itself", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: course-by-code
+            category: lookup
+            question: Which course has this code, how is it assessed, which programmes include it and who takes it?
+            description: The course whose code is the parameter, with its assessments, its programmes and its students.
+            teaches: The key property (courseCode) is filled from the entity's name when the text gives the code, so an exact match works here.
+            cypher: |-
+              MATCH (c:Course) WHERE c.courseCode = $code
+              OPTIONAL MATCH (a:Assessment)-[:COMPONENT_OF]->(c)
+              OPTIONAL MATCH (c)-[:PART_OF]->(p:Programme)
+              OPTIONAL MATCH (s:Student)-[:TAKES]->(c)
+              RETURN c.name AS course, c.courseCode AS code, collect(DISTINCT a.name) AS assessments,
+                     collect(DISTINCT p.name) AS programmes, collect(DISTINCT s.name) AS students
+            parameters:
+              - {name: code, type: STRING, description: "A course code.", example: BIO2041}
+          - type: canonicalQuery
+            name: prerequisite-chain
+            category: path
+            question: Which later courses does this course open, step by step?
+            description: The chain of PREREQUISITE_OF links forward from a course, up to four steps.
+            teaches: A bounded variable-length pattern (*1..4) walks a chain without risking an unbounded search.
+            cypher: |-
+              MATCH p = (c:Course)-[:PREREQUISITE_OF*1..4]->(:Course)
+              WHERE toLower(c.name) CONTAINS toLower($course)
+              RETURN c.name AS course, [n IN nodes(p) | n.name] AS chain, length(p) AS steps
+              ORDER BY steps
+            parameters:
+              - {name: course, type: STRING, description: "Part of the course's code or title.", example: BIO2041}
+  Term:
+    label: Term
+    description: >-
+      A teaching or assessment period of the academic year (a semester, term or reassessment period),
+      named as the calendar names it ("Semester 1", "the August reassessment period"). Courses are
+      taught in terms; an academic year (2025/26) is not itself a term.
+    aliases: [semester, trimester, academic term, session, assessment period]
+    properties:
+      name: {type: STRING, key: true, description: "The term as the documents name it."}
+      academicYear: {type: STRING, pattern: "^[0-9]{4}/[0-9]{2}$", description: "The academic year the term belongs to, as 2025/26."}
+      termType: {type: STRING, one_of: [semester, term, trimester, examination period, reassessment period], description: "What kind of period it is."}
+      startDate: {type: DATE, description: "The first day of the term."}
+      endDate: {type: DATE, description: "The last day of the term."}
+    extensions:
+      display: {x: 300, y: -40, colour: "#65a30d"}
+      custom:
+        relate-examples: {ask: "a semester, term or assessment period of an academic year, such as Semester 1 or the August reassessment period", proper: true}
+  Assessment:
+    label: Assessment
+    description: >-
+      An assessed component of a course (an examination, practical report, essay, project or
+      presentation), named by its course code and kind ("the BIO2041 practical report"). An assessment
+      is what is set; the work a student hands in for it is a Submission.
+    aliases: [component, exam, examination, coursework, assignment, test]
+    properties:
+      name: {type: STRING, key: true, description: "The assessment as the documents name it."}
+      assessmentType: {type: STRING, one_of: [examination, practical report, essay, project, presentation, test], description: "What kind of assessment it is."}
+      weight: {type: FLOAT, description: "The assessment's share of the course mark, as a fraction (0.40 for 40%).", extensions: {custom: {relate-examples: {extract: true, parse: PERCENT, ask: "the weighting of an assessment, the percentage of the module mark it carries, such as 40%, never a pass rate or a student mark"}}}}
+      passMark: {type: INTEGER, description: "The mark needed to pass, in percent (40)."}
+      dueDate: {type: DATE, description: "The submission deadline or examination date.", extensions: {custom: {relate-examples: {extract: true, ask: "the deadline of an assessment or the date it was sat, a full date such as 15 April 2026"}}}}
+    extensions:
+      display: {x: 0, y: 160, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "an assessed component of a course, such as an examination, practical report or project, named with its course code, such as the BIO2041 practical report", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: failures-by-course
+            category: aggregation
+            question: How many students failed an assessment of each course?
+            description: Per course, its assessments and the number of students who failed at least one of them.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (a:Assessment)-[:COMPONENT_OF]->(c:Course)
+              OPTIONAL MATCH (s:Student)-[:FAILED]->(a)
+              RETURN c.name AS course, count(DISTINCT a) AS assessments, count(DISTINCT s) AS students_failing
+              ORDER BY students_failing DESC, course
+          - type: canonicalQuery
+            name: progression-blocked-by-a-failure
+            category: path
+            question: Which later courses does a student's failed assessment block until it is passed?
+            description: The chain student, failed assessment, its course, and the course that course is a prerequisite for.
+            teaches: A three-hop pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (s:Student)-[:FAILED]->(a:Assessment)-[:COMPONENT_OF]->(c:Course)-[:PREREQUISITE_OF]->(later:Course)
+              RETURN s.name AS student, a.name AS failed, c.name AS course, later.name AS blocks
+              ORDER BY student, failed, blocks
+  Submission:
+    label: Submission
+    description: >-
+      A piece of work a student handed in for an assessment, identified by its submission number
+      (SUB-48213). One student submits it for one assessment, and one or more markers mark it.
+    aliases: [script, hand-in, coursework submission, entry, attempt]
+    properties:
+      submissionId: {type: STRING, key: true, pattern: "^SUB-[0-9]{5}$", description: "The submission number, SUB- and five digits."}
+      name: {type: STRING, description: "The submission as a document names it."}
+      submittedOn: {type: DATE, description: "The date the work was handed in.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the work was handed in, such as 14 April 2026"}}}}
+      mark: {type: INTEGER, description: "The confirmed mark, in percent."}
+      status: {type: STRING, one_of: [on time, late, capped, void], description: "The submission's standing after any penalty."}
+    extensions:
+      display: {x: -200, y: 320, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "a piece of work a student handed in for an assessment, identified by a submission number such as SUB-48213", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: submission-trail
+            category: path
+            question: Who submitted each piece of work, for which assessment of which course, and who marked it?
+            description: The chain student, submission, assessment, course for every submission, with its markers.
+            teaches: Match the chain the question needs, then OPTIONAL MATCH the side the text may leave out (the marker).
+            cypher: |-
+              MATCH (s:Student)<-[:SUBMITTED_BY]-(sub:Submission)-[:SUBMITTED_FOR]->(a:Assessment)-[:COMPONENT_OF]->(c:Course)
+              OPTIONAL MATCH (sub)-[:MARKED_BY]->(m:Instructor)
+              RETURN sub.name AS submission, s.name AS student, a.name AS assessment, c.name AS course, collect(DISTINCT m.name) AS markers
+              ORDER BY submission
+  LearningOutcome:
+    label: LearningOutcome
+    description: >-
+      A statement of what a student who passes a course can do, numbered within the course (LO4) and
+      often quoted ("design, run and interpret a controlled experiment"). Assessments assess outcomes;
+      an outcome no assessment covers cannot be shown.
+    aliases: [learning outcome, intended learning outcome, ILO, objective, competency]
+    properties:
+      code: {type: STRING, key: true, pattern: "^LO[0-9]{1,2}$", description: "The outcome's number within its course, LO and one or two digits (LO4)."}
+      name: {type: STRING, description: "The outcome as a document names it."}
+      statement: {type: STRING, description: "What the outcome says a student can do."}
+    extensions:
+      display: {x: 300, y: 200, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a learning outcome of a course, numbered such as LO4, that states what a student who passes can do", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: outcomes-not-yet-shown
+            category: path
+            question: Which learning outcomes has a student not yet shown, because they failed an assessment of them, and does any other assessment cover them?
+            description: Each student, failed assessment and outcome it assesses, with the number of other assessments of the same outcome (0 means only reassessment can show it).
+            teaches: An OPTIONAL MATCH with WHERE counts the alternatives without dropping the rows that have none.
+            cypher: |-
+              MATCH (s:Student)-[:FAILED]->(a:Assessment)-[:ASSESSES]->(lo:LearningOutcome)
+              OPTIONAL MATCH (other:Assessment)-[:ASSESSES]->(lo) WHERE other <> a
+              RETURN s.name AS student, a.name AS failed, lo.name AS outcome, count(DISTINCT other) AS other_assessments
+              ORDER BY student, outcome
+          - type: canonicalQuery
+            name: what-the-minutes-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: BIO2041}
+relationships:
+  studentEnrolledOnProgramme:
+    type: ENROLLED_ON
+    description: >-
+      The student is enrolled on the programme: at most one programme per student at a time in this
+      ontology, many students per programme.
+    aliases: [studies, is a student on, is registered on, is reading]
+    from: {node: Student, max_count: 1}
+    to: {node: Programme}
+    extensions:
+      custom:
+        relate-examples: {phrase: is enrolled on}
+  studentTakesCourse:
+    type: TAKES
+    description: >-
+      The student is registered on and takes the course in the year the document describes; many
+      students per course, many courses per student.
+    aliases: [is registered on, is taking, took, studies]
+    from: {node: Student}
+    to: {node: Course}
+    extensions:
+      custom:
+        relate-examples: {phrase: takes}
+  studentFailedAssessment:
+    type: FAILED
+    description: >-
+      The student failed the assessment at the attempt the document describes, with a mark below its
+      pass mark; many to many. A missed attempt with accepted extenuating circumstances is not a fail.
+    aliases: [did not pass, was referred in, scored below the pass mark in]
+    from: {node: Student}
+    to: {node: Assessment}
+    extensions:
+      custom:
+        relate-examples: {phrase: failed}
+  instructorAdvisesStudent:
+    type: ADVISES
+    description: >-
+      The instructor is the student's personal tutor or academic advisor: at most one tutor per student
+      at a time, many tutees per tutor.
+    aliases: [is personal tutor to, tutors, is the academic advisor of, supervises]
+    from: {node: Instructor}
+    to: {node: Student, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is the personal tutor of}
+  instructorTeachesCourse:
+    type: TEACHES
+    description: >-
+      The instructor leads or teaches on the course: a course has one module leader and may have other
+      teachers, and an instructor teaches several courses.
+    aliases: [leads, is module leader for, lectures on, convenes, teaches on]
+    from: {node: Instructor}
+    to: {node: Course}
+    extensions:
+      custom:
+        relate-examples: {phrase: teaches}
+  instructorMemberOfDepartment:
+    type: MEMBER_OF
+    description: >-
+      The instructor works in the department, whether employed there or heading it; one department per
+      instructor in this ontology, many staff per department.
+    aliases: [works in, is based in, belongs to, is head of]
+    from: {node: Instructor, max_count: 1}
+    to: {node: Department}
+    extensions:
+      custom:
+        relate-examples: {phrase: works in}
+  instructorDirectsProgramme:
+    type: DIRECTS
+    description: >-
+      The instructor is the programme's director or lead, answerable for its curriculum and students;
+      one director per programme, and an instructor seldom directs more than one.
+    aliases: [is programme director of, leads, runs]
+    from: {node: Instructor}
+    to: {node: Programme, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: directs}
+  programmeOfferedByDepartment:
+    type: OFFERED_BY
+    description: >-
+      The programme is offered and run by the department: one department per programme (a joint
+      programme names two), many programmes per department.
+    aliases: [is run by, is delivered by, belongs to]
+    from: {node: Programme, min_count: 1, max_count: 2}
+    to: {node: Department}
+    extensions:
+      custom:
+        relate-examples: {phrase: is offered by}
+  coursePartOfProgramme:
+    type: PART_OF
+    description: >-
+      The course is a core or optional part of the programme; a course may be shared by several
+      programmes, and a programme has many courses.
+    aliases: [is a core module of, is an optional module on, counts towards, is taught on]
+    from: {node: Course}
+    to: {node: Programme}
+    extensions:
+      custom:
+        relate-examples: {phrase: is part of}
+  coursePrerequisiteOfCourse:
+    type: PREREQUISITE_OF
+    description: >-
+      The course must be passed before the other, later course can be taken; read from the earlier
+      course to the later one; many to many.
+    aliases: [is required for, must be passed before, leads on to]
+    from: {node: Course}
+    to: {node: Course}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a prerequisite for}
+  courseTaughtInTerm:
+    type: TAUGHT_IN
+    description: >-
+      The course is taught in the term; a course that runs all year is taught in each of its terms, and
+      a term holds many courses.
+    aliases: [runs in, is delivered in, is offered in]
+    from: {node: Course}
+    to: {node: Term}
+    extensions:
+      custom:
+        relate-examples: {phrase: is taught in}
+  assessmentComponentOfCourse:
+    type: COMPONENT_OF
+    description: >-
+      The assessment is one of the course's assessed components: exactly one course per assessment,
+      one or more assessments per course.
+    aliases: [is part of, counts towards, is set in, assesses]
+    from: {node: Assessment, count: 1}
+    to: {node: Course, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a component of}
+  assessmentAssessesOutcome:
+    type: ASSESSES
+    description: >-
+      The assessment tests the learning outcome; an assessment covers one or more outcomes, and an
+      outcome should be assessed at least once.
+    aliases: [tests, covers, measures, maps to]
+    from: {node: Assessment, min_count: 1}
+    to: {node: LearningOutcome, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: assesses}
+  submissionSubmittedByStudent:
+    type: SUBMITTED_BY
+    description: >-
+      The submission was handed in by the student: exactly one student per submission, many
+      submissions per student.
+    aliases: [was handed in by, was made by, is the work of]
+    from: {node: Submission, count: 1}
+    to: {node: Student}
+    extensions:
+      custom:
+        relate-examples: {phrase: was submitted by}
+  submissionSubmittedForAssessment:
+    type: SUBMITTED_FOR
+    description: >-
+      The submission answers the assessment: exactly one assessment per submission, many submissions
+      per assessment.
+    aliases: [was handed in for, answers, is an attempt at]
+    from: {node: Submission, count: 1}
+    to: {node: Assessment}
+    extensions:
+      custom:
+        relate-examples: {phrase: was submitted for}
+  submissionMarkedByInstructor:
+    type: MARKED_BY
+    description: >-
+      The instructor marked or second-marked the submission; one or more markers per submission, many
+      submissions per marker.
+    aliases: [was graded by, was assessed by, was second-marked by, was moderated by]
+    from: {node: Submission}
+    to: {node: Instructor}
+    extensions:
+      custom:
+        relate-examples: {phrase: was marked by}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Education
+      card:
+        title: Education
+        description: Follow students, courses and assessments through to the learning outcomes a failure leaves unmet and the progression it blocks.
+      source:
+        derived_from: create-context-graph's education.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Organization became Department and Programme,
+          Student and Instructor stand on their own, and LearningOutcome is new; the Enrollment kind became
+          the TAKES and ENROLLED_ON links; Course, Term, Assessment and Submission keep their meaning with
+          new descriptions and properties. OFFERED_IN became TAUGHT_IN, Assessment's PART_OF became
+          COMPONENT_OF and GRADED_BY became MARKED_BY; FAILED, DIRECTS, MEMBER_OF, OFFERED_BY, ASSESSES and
+          Course's PART_OF (to Programme) are new; BELONGS_TO, HELD_AT and ATTENDED (to the base's
+          Organization, Location and Event) were dropped; TEACHES, ADVISES, PREREQUISITE_OF, SUBMITTED_BY and
+          SUBMITTED_FOR were kept, and every link was given a cardinality. The tools were written anew for an
+          extracted graph.

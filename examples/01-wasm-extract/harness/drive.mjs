@@ -357,6 +357,11 @@ async function extractSample(page, id) {
   await page.waitForFunction(() => ['running', 'confirm', 'failed'].includes(document.body.dataset.extract ?? '') ||
     document.body.dataset.extract === 'done', null, { timeout: 60000 });
   await waitDs(page, 'extract', ['done', 'failed', 'stopped', 'confirm'], 300000);
+  // A document over the page's ASK_ABOVE sentences is asked about first (sizeCheckAndExtract): say yes, as a reader would.
+  if ((await ds(page, 'extract')) === 'confirm') {
+    await page.click(tid('confirm-yes'));
+    await waitDs(page, 'extract', ['done', 'failed', 'stopped'], 300000);
+  }
   const kept = await page.$$eval(tid('kept-fact'), (els) => els.map((e) => /** @type {HTMLElement} */ (e).dataset.fact ?? ''));
   const data = await page.$eval(tid('extract-status'), (e) => ({ .../** @type {HTMLElement} */ (e).dataset }));
   return { state: await ds(page, 'extract'), status: await text(page, 'extract-status'), kept, data };
@@ -639,7 +644,10 @@ async function browserRun(argv) {
         const obs = new MutationObserver(() => { if (el.textContent) seen.add(el.textContent); });
         obs.observe(el, { childList: true, characterData: true, subtree: true });
         const done = () => { obs.disconnect(); resolve([...seen]); };
+        // extractSample answers the page's question (a sample over ASK_ABOVE sentences), so 'confirm' is not an end;
+        // the deadline is extractSample's own, so a page that never finishes cannot hold the run.
         const t = setInterval(() => { if (['done', 'failed', 'stopped'].includes(document.body.dataset.extract ?? '')) { clearInterval(t); done(); } }, 50);
+        setTimeout(() => { clearInterval(t); done(); }, 360000);
       }));
       const r = await extractSample(page, SAMPLE);
       progress.push(.../** @type {string[]} */ (await watching));
@@ -769,7 +777,8 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
     say('## the same document again (D7, D9)');
     const again = await extractSample(page, SAMPLE);
     say(`${SAMPLE}: ${again.state}; ${again.status}`);
-    yes(again.data.inferences === '0' && again.data.skipped === '1', 're-extracting runs 0 inferences');
+    // Every section is complete (D9), so each is skipped: the sample's three.
+    yes(again.data.inferences === '0' && Number(again.data.skipped) > 0 && again.data.skipped === again.data.sections, 're-extracting runs 0 inferences');
 
     // ---- NVL -----------------------------------------------------------------------------------------------
     say();
@@ -1586,7 +1595,16 @@ RETURN entities, rels, claims + mentions AS review`, { doc });
     say("## a store made under create-context-graph's version of a curated domain: the page offers to empty it (D20)");
     // An earlier build stored create-context-graph's financial-services, converted (harness/convert.mjs ccgConversions, from
     // data/ontologies/ccg/): an empty store under it stands for one, with the same ontology id as the curated document.
-    await page.evaluate(() => /** @type {any} */ (window).ex01.call('reset'));
+    // The open store is OTHER's (the picker and crash sections), so the picker goes back to financial-services's,
+    // which the Store tab's Reset empties, before the old document is applied to it.
+    await page.selectOption(tid('domain-select'), `domains/${ONTOLOGY}.ontology.yaml`);
+    await page.waitForFunction((name) => document.body.dataset.store === name, STORE, { timeout: 60000 }).catch(() => {});
+    await waitDs(page, 'busy', ['0'], 60000);
+    await page.click(tid('tab-store'));
+    await page.click(tid('reset'));
+    await page.click(tid('reset-confirm'));
+    await page.waitForFunction(() => /empty again/.test(document.querySelector('[data-testid="store-op"]')?.textContent ?? ''), null, { timeout: 60000 }).catch(() => {});
+    await waitDs(page, 'busy', ['0'], 60000);
     const oldDoc = ccgConversions().find((c) => c.o.id === ONTOLOGY)?.text ?? '';
     await page.click(tid('tab-ontology'));
     await page.fill(tid('ontology-yaml'), oldDoc);

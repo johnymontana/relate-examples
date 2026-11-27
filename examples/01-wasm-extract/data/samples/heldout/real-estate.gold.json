@@ -1,0 +1,55 @@
+{
+  "entities": [
+    {"name": "2715 Arbor Mesa Court", "type": "Residence"},
+    {"name": "Monte Vista", "type": "Neighborhood"},
+    {"name": "MLS #1849362", "type": "Listing"},
+    {"name": "Priya Natarajan", "type": "Buyer"},
+    {"name": "Samuel Brandt", "type": "Buyer"},
+    {"name": "Rosalind Kettering", "type": "Seller"},
+    {"name": "Marco Esquivel", "type": "RealEstateAgent"},
+    {"name": "Tamsin Hollowell", "type": "RealEstateAgent"},
+    {"name": "Mission Trail Properties", "type": "Brokerage"},
+    {"name": "Blue Quail Realty", "type": "Brokerage"},
+    {"name": "Granite Arch Bank", "type": "Lender"},
+    {"name": "Cypress Bend Credit Union", "type": "Lender"},
+    {"name": "HI-26-0977", "type": "Inspection"},
+    {"name": "HI-27-0110", "type": "Inspection"},
+    {"name": "Celeste Fairbanks", "type": "Inspector"},
+    {"name": "failed water heater", "type": "Defect"},
+    {"name": "foundation movement", "type": "Defect"},
+    {"name": "roof leak", "type": "Defect"}
+  ],
+  "relations": [
+    {"source": "Priya Natarajan", "target": "2715 Arbor Mesa Court", "type": "BUYS", "how": "list"},
+    {"source": "Samuel Brandt", "target": "2715 Arbor Mesa Court", "type": "BUYS", "how": "list"},
+    {"source": "Rosalind Kettering", "target": "2715 Arbor Mesa Court", "type": "SELLS", "how": "nominal"},
+    {"source": "2715 Arbor Mesa Court", "target": "Monte Vista", "type": "LOCATED_IN", "how": "plain"},
+    {"source": "Marco Esquivel", "target": "Mission Trail Properties", "type": "WORKS_FOR", "how": "table"},
+    {"source": "Tamsin Hollowell", "target": "Blue Quail Realty", "type": "WORKS_FOR", "how": "table"},
+    {"source": "Priya Natarajan", "target": "Marco Esquivel", "type": "REPRESENTED_BY", "how": "list"},
+    {"source": "Samuel Brandt", "target": "Marco Esquivel", "type": "REPRESENTED_BY", "how": "list"},
+    {"source": "Rosalind Kettering", "target": "Tamsin Hollowell", "type": "LISTED_WITH", "how": "plain"},
+    {"source": "MLS #1849362", "target": "Tamsin Hollowell", "type": "LISTED_BY", "how": "passive"},
+    {"source": "MLS #1849362", "target": "2715 Arbor Mesa Court", "type": "LISTING_FOR", "how": "plain"},
+    {"source": "HI-26-0977", "target": "2715 Arbor Mesa Court", "type": "INSPECTED", "how": "plain"},
+    {"source": "Celeste Fairbanks", "target": "HI-26-0977", "type": "PERFORMED", "how": "plain"},
+    {"source": "Priya Natarajan", "target": "HI-26-0977", "type": "ORDERED", "how": "plain"},
+    {"source": "HI-26-0977", "target": "failed water heater", "type": "FOUND", "how": "list"},
+    {"source": "HI-26-0977", "target": "foundation movement", "type": "FOUND", "how": "list"},
+    {"source": "Rosalind Kettering", "target": "foundation movement", "type": "DISCLOSED", "how": "plain"},
+    {"source": "Priya Natarajan", "target": "Granite Arch Bank", "type": "BORROWS_FROM", "how": "list"},
+    {"source": "Samuel Brandt", "target": "Granite Arch Bank", "type": "BORROWS_FROM", "how": "list"}
+  ],
+  "distractors": [
+    {"source": "HI-26-0977", "target": "roof leak", "type": "FOUND", "family": "negation"},
+    {"source": "Samuel Brandt", "target": "Cypress Bend Credit Union", "type": "BORROWS_FROM", "family": "hedge"},
+    {"source": "Celeste Fairbanks", "target": "HI-27-0110", "type": "PERFORMED", "family": "future"}
+  ],
+  "properties": [
+    {"entity": "HI-26-0977", "property": "inspectedOn", "text": "October 14, 2026", "value": "2026-10-14", "how": "plain"},
+    {"entity": "2715 Arbor Mesa Court", "property": "yearBuilt", "text": "1928", "value": 1928, "how": "plain"},
+    {"entity": "MLS #1849362", "property": "listPrice", "text": "$639,000", "value": 639000, "how": "plain"},
+    {"entity": "Priya Natarajan", "property": "financing", "text": "conventional", "value": "conventional", "how": "list"},
+    {"entity": "Samuel Brandt", "property": "financing", "text": "conventional", "value": "conventional", "how": "list"}
+  ]
+}

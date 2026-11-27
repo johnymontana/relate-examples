@@ -1,0 +1,103 @@
+# What example 01 adds to Neo4j's competitive-intelligence package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for identifiers the documents state, the
+# properties whose values the model reads (D27), and example arguments for the package's queries, in
+# the words of this example's documents.
+package: competitive-intelligence
+card:
+  title: Life Sciences Competitive Intelligence
+  category: Healthcare & Life Sciences
+  description: Map competitors' drug pipelines and patent estates against shared targets and diseases to spot crowding, failures and acquisition candidates.
+industry: Healthcare & Life Sciences
+nodes:
+  Company:
+    colour: "#2563eb"
+    proper: true
+    ask: a pharmaceutical or biotechnology company that develops drugs or owns patents, named by its company name, such as Ulverston Bio or Merrowby Pharma; not a registry, regulator or committee
+    properties:
+      market_cap:
+        extract: true
+        parse: MONEY
+        ask: the company's market capitalisation or market value in US dollars, a sum such as $905 million or $1.84 billion
+  # Drugs are named by compound codes (UBL-5457) until they have a non-proprietary name, which is
+  # lower case (veltonemab): not proper, or every INN would be dropped.
+  Drug:
+    colour: "#dc2626"
+    propose: true
+    ask: a drug candidate or development asset, named by its sponsor's compound code, such as UBL-5457 or KME-058, or by its non-proprietary name; the molecule, not its mechanism or drug class
+    pattern:
+      id: "^[A-Z]{3}-[0-9]{2,4}$"
+    properties:
+      status:
+        extract: true
+        ask: the development status of the asset as a whole, active, approved or discontinued, not the recruitment status of one of its trials
+  Protein:
+    colour: "#7c3aed"
+    proper: true
+    ask: a human protein pursued as a drug target, named by its gene symbol or common name, such as LRRK2 or GBA1; the target itself, not the drugs that act on it
+  # Diseases are written in lower case after their eponym (Parkinson's disease): not proper.
+  Disease:
+    colour: "#059669"
+    ask: a disease or indication that drugs are developed for and patents claim, such as Parkinson's disease
+  ClinicalTrial:
+    colour: "#d97706"
+    proper: true
+    propose: true
+    ask: a registered clinical trial or study, named by its ClinicalTrials.gov NCT number, such as NCT99194862
+  # Every phase is written with its number (Phase 2), so proper drops only words such as "late-stage".
+  Phase:
+    colour: "#0891b2"
+    proper: true
+    ask: a clinical development phase, written Phase 1, Phase 2, Phase 3 or Phase 4; the stage, not the trial itself
+  Patent:
+    colour: "#db2777"
+    proper: true
+    propose: true
+    ask: a patent or published patent application, named by its publication number with a country prefix and kind code, such as US19352064B2 or EP9055721B1
+    pattern:
+      id: "^(?:US|EP|WO)[0-9]{7,8}[AB][0-9]$"
+    properties:
+      status:
+        extract: true
+        ask: the legal status of the patent or application, granted, pending, expired or abandoned, not the status of a drug or a trial
+# The package uses TARGETS and TREATS for both drugs and patents; each type reads as one phrase.
+relationships:
+  inPipeline:
+    phrase: develops
+  targets:
+    phrase: targets
+  patentTargets:
+    phrase: targets
+  treats:
+    phrase: treats
+  patentTreats:
+    phrase: treats
+  investigatedIn:
+    phrase: is tested in
+  hasPhase:
+    phrase: is in
+  forDisease:
+    phrase: studies
+  hasOwner:
+    phrase: is assigned to
+tools:
+  company-therapeutic-focus:
+    args: {companyId: CO-021}
+  competitive-landscape-for-a-target:
+    args: {proteinName: LRRK2}
+  disease-pipeline-intensity:
+    args: {diseaseName: "Parkinson's disease"}
+  target-diversification-within-a-disease:
+    args: {diseaseName: "Parkinson's disease"}
+  failed-programmes-in-a-disease:
+    args: {diseaseName: "Parkinson's disease"}
+  acquisition-target-screening:
+    args: {maxMarketCapUsd: 2000000000, maxPhase: 2}
+  patent-overlap-between-companies:
+    args: {minPatentsEach: 1}
+  patents-without-a-pipeline-programme:
+    args: {minPatents: 2}
+  pipeline-and-patent-convergence-on-a-target:
+    args: {minPhase: 1}

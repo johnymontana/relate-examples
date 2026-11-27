@@ -1,0 +1,569 @@
+# Wildlife Management: example 01's curated ontology for camera-trap, patrol and field incident
+# reports (D20). Written for this repository from create-context-graph's wildlife-management.yaml at
+# 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, the people are the rangers a protected area
+# stations and the patrols they lead, the place is the protected area itself (a conservancy, park or
+# reserve), and Camera became the camera trap a monitoring team deploys.
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Species,
+# habitats and threats are named in lower case, so they are not proper. Every link says its direction
+# and cardinality and carries the phrase the model reads. The tools are the ontology's competency
+# questions, written for the graph the page extracts: entities carry name, display, key and their key
+# property; relationships carry p, claims, sentences and docs, and the trace (_Sentence, _Claim) holds
+# the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: wildlife-management
+name: Wildlife Management
+description: >-
+  Wildlife management as a protected area's monitoring and ranger teams write about it: the
+  conservancies, parks and reserves they look after and the habitats those contain, the rangers
+  stationed there and the patrols they lead, the camera traps set across the habitats and the
+  sightings those traps and patrols record, the species and the known individual animals the
+  sightings identify, and the threats patrols find evidence of and the species those threats press on.
+  It answers which camera trap recorded which animal and where, which known individuals live in an
+  area and where they were last identified, what each patrol covered and found, which threats press on
+  the species of an area, who led and who reported what, and what the source text says about each
+  fact. Counts, trap-nights, coordinates, dates and predator-prey ecology are out of scope, and so are
+  the agencies, vets and communities around the work: a document states them, the extractor keeps
+  only the names and the links between them.
+nodes:
+  Ranger:
+    label: Ranger
+    description: >-
+      A member of a protected area's field staff (a ranger, scout, sergeant or monitoring officer),
+      named in full ("Ranger Mary Nkatha", "Daniel Lekalau, the unit's sergeant"). Rangers lead patrols
+      and report sightings; vets, herders and visitors are not rangers.
+    aliases: [scout, game scout, warden, wildlife officer, monitoring officer, patrol leader]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The ranger's full name as the documents write it, without rank."}
+      rank: {type: STRING, one_of: [ranger, corporal, sergeant, community scout, monitoring officer, warden], description: "The ranger's rank or post."}
+      unit: {type: STRING, description: "The unit the ranger serves in (rapid response unit, community scouts, monitoring team)."}
+    extensions:
+      display: {x: 260, y: -200, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a ranger, scout, sergeant or monitoring officer on a protected area's field staff, a person named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: ranger-activity
+            category: aggregation
+            question: Where is each ranger stationed, how many patrols did they lead, and how many sightings did they report?
+            description: Per ranger, the protected areas they are stationed at, the patrols they led and the sightings they reported.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each patrol is counted once per sighting; after an aggregating RETURN, ORDER BY may use only what it projects.
+            cypher: |-
+              MATCH (r:Ranger)
+              OPTIONAL MATCH (r)-[:STATIONED_AT]->(a:ProtectedArea)
+              OPTIONAL MATCH (p:Patrol)-[:LED_BY]->(r)
+              OPTIONAL MATCH (s:Sighting)-[:REPORTED_BY]->(r)
+              RETURN r.name AS ranger, collect(DISTINCT a.name) AS stationed_at, count(DISTINCT p) AS patrols_led,
+                     count(DISTINCT s) AS sightings_reported
+              ORDER BY patrols_led DESC, sightings_reported DESC, ranger
+  ProtectedArea:
+    label: ProtectedArea
+    description: >-
+      A named area managed for wildlife (a conservancy, national park, game reserve or rhino
+      sanctuary), named as on a map ("Ntaletiti Community Conservancy"). A protected area contains
+      habitats; a habitat is a kind of ground, not a place.
+    aliases: [conservancy, national park, game reserve, sanctuary, reserve, park]
+    reference: https://schema.org/Park
+    properties:
+      name: {type: STRING, key: true, description: "The protected area's name as the documents write it."}
+      designation: {type: STRING, one_of: [national park, national reserve, game reserve, community conservancy, private conservancy, sanctuary], description: "The area's legal or management designation."}
+      areaKm2: {type: FLOAT, description: "The area's extent in square kilometres."}
+      county: {type: STRING, description: "The county or province the area lies in (Laikipia)."}
+    extensions:
+      display: {x: 0, y: -260, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a named conservancy, national park, game reserve or sanctuary managed for wildlife, named as on a map, never a habitat type", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-protected-area
+            category: lookup
+            question: What is this protected area, and what does the store connect to it?
+            description: Finds protected areas whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (a:ProtectedArea) WHERE toLower(a.name) CONTAINS toLower($area)
+              OPTIONAL MATCH (a)-[r]-(x:_Entity)
+              RETURN a.name AS area, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY area, link, other
+            parameters:
+              - {name: area, type: STRING, description: "Part of the protected area's name.", example: Ntaletiti}
+          - type: canonicalQuery
+            name: protected-area-profile
+            category: neighbourhood
+            question: For each protected area, which habitats does it contain, who is stationed there, which camera traps and patrols work it, and which known animals live in it?
+            description: Each protected area with its habitats, its rangers, the camera traps deployed in it, the patrols that covered it and its resident individuals.
+            teaches: Five independent neighbourhoods of one node come back as five collected lists; DISTINCT stops each list repeating once per row of the others.
+            cypher: |-
+              MATCH (a:ProtectedArea)
+              OPTIONAL MATCH (a)-[:CONTAINS]->(h:Habitat)
+              OPTIONAL MATCH (r:Ranger)-[:STATIONED_AT]->(a)
+              OPTIONAL MATCH (c:CameraTrap)-[:DEPLOYED_IN]->(a)
+              OPTIONAL MATCH (p:Patrol)-[:COVERED]->(a)
+              OPTIONAL MATCH (i:Individual)-[:RESIDENT_IN]->(a)
+              RETURN a.name AS area, collect(DISTINCT h.name) AS habitats, collect(DISTINCT r.name) AS rangers,
+                     collect(DISTINCT c.name) AS camera_traps, collect(DISTINCT p.name) AS patrols, collect(DISTINCT i.name) AS residents
+              ORDER BY area
+  Habitat:
+    label: Habitat
+    description: >-
+      A type of habitat as a monitoring team maps and stratifies it (riverine woodland, acacia
+      bushland, open grassland, swamp), named in lower case. A protected area contains habitats and a
+      camera trap is set in one; the named area itself is a protected area.
+    aliases: [habitat type, vegetation type, land cover, stratum]
+    properties:
+      name: {type: STRING, key: true, description: "The habitat type as the documents name it."}
+      habitatClass: {type: STRING, one_of: [forest, woodland, bushland, grassland, wetland, rocky outcrop], description: "The broad class the habitat belongs to."}
+      condition: {type: STRING, one_of: [good, fair, degraded], description: "The habitat's condition as the document judges it."}
+    extensions:
+      display: {x: -380, y: 40, colour: "#65a30d"}
+      custom:
+        relate-examples: {ask: "a vegetation type that ecologists map as a habitat, in lower case, such as riverine forest, acacia bushland, open grassland or papyrus swamp"}
+        tools:
+          - type: canonicalQuery
+            name: habitats-a-species-uses
+            category: path
+            question: Which habitats does this species inhabit, which camera traps are set in them, and which protected areas contain them?
+            description: Each habitat the species inhabits, with the camera traps set in it and the protected areas that contain it.
+            teaches: Two links into one middle node (INHABITS and SET_IN both end at the habitat) join a species to the cameras that could record it.
+            cypher: |-
+              MATCH (sp:Species)-[:INHABITS]->(h:Habitat)
+              WHERE toLower(sp.name) CONTAINS toLower($species)
+              OPTIONAL MATCH (c:CameraTrap)-[:SET_IN]->(h)
+              OPTIONAL MATCH (a:ProtectedArea)-[:CONTAINS]->(h)
+              RETURN sp.name AS species, h.name AS habitat, collect(DISTINCT c.name) AS camera_traps, collect(DISTINCT a.name) AS areas
+              ORDER BY habitat
+            parameters:
+              - {name: species, type: STRING, description: "Part of the species' name.", example: black rhino}
+  Species:
+    label: Species
+    description: >-
+      A species of wild animal, named by its common name (often in lower case, as "black rhino") or
+      its Latin binomial ("Diceros bicornis"). A species is what a sighting records and a threat
+      presses on; one named animal of it is an individual.
+    aliases: [taxon, animal, mammal, bird, target species]
+    reference: https://schema.org/Taxon
+    properties:
+      name: {type: STRING, key: true, description: "The species' common name as the documents write it."}
+      scientificName: {type: STRING, pattern: "^[A-Z][a-z]+ [a-z]+$", description: "The Latin binomial, genus and species (Equus grevyi)."}
+      redListCategory: {type: STRING, one_of: [LC, NT, VU, EN, CR, EW, EX], description: "The species' IUCN Red List category."}
+    extensions:
+      display: {x: -240, y: 260, colour: "#d97706"}
+      custom:
+        relate-examples: {ask: "a species of wild animal, named by its whole common name, often in lower case, such as elephant, black rhino, leopard or Grevy's zebra"}
+        tools:
+          - type: canonicalQuery
+            name: what-is-known-about-a-species
+            category: neighbourhood
+            question: Which sightings recorded this species, which known individuals belong to it, and what threatens it?
+            description: The species with the sightings that recorded it, its known individuals and the threats that press on it.
+            teaches: A species is reached from three sides (RECORDED, BELONGS_TO, THREATENS all end at it); each OPTIONAL MATCH keeps the species when one side is empty.
+            cypher: |-
+              MATCH (sp:Species) WHERE toLower(sp.name) CONTAINS toLower($species)
+              OPTIONAL MATCH (s:Sighting)-[:RECORDED]->(sp)
+              OPTIONAL MATCH (i:Individual)-[:BELONGS_TO]->(sp)
+              OPTIONAL MATCH (t:Threat)-[:THREATENS]->(sp)
+              RETURN sp.name AS species, collect(DISTINCT s.name) AS sightings, collect(DISTINCT i.name) AS known_individuals,
+                     collect(DISTINCT t.name) AS threats
+              ORDER BY species
+            parameters:
+              - {name: species, type: STRING, description: "Part of the species' name.", example: black rhino}
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: leopard}
+  Individual:
+    label: Individual
+    description: >-
+      One known wild animal that a team recognises by its given name or its ear notches, collar or
+      markings ("Nalangu, a female black rhino"). An individual belongs to one species and is what a
+      sighting identifies; the species itself is not an individual.
+    aliases: [known individual, collared animal, ear-notched rhino, identified animal]
+    properties:
+      name: {type: STRING, key: true, description: "The individual's given name or code as the documents write it."}
+      sex: {type: STRING, one_of: [male, female, unknown], description: "The animal's sex."}
+      ageClass: {type: STRING, one_of: [calf, juvenile, subadult, adult], description: "The animal's age class."}
+      earNotch: {type: STRING, description: "The ear-notch pattern a rhino is identified by (two notches, left ear)."}
+      collarId: {type: STRING, pattern: "^COL-[0-9]{3}$", description: "The tracking collar's code, COL- and three digits."}
+    extensions:
+      display: {x: 0, y: 300, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "one known wild animal called by its own given name or tag, such as a collared lion or an ear-notched rhino, never the name of a species", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: where-was-this-individual-identified
+            category: path
+            question: Where and by whom was this known animal identified, through which camera trap and in which protected area?
+            description: Every sighting that identified the individual, with its species, the camera trap that captured the sighting, that trap's protected area and the ranger who reported it.
+            teaches: A chain individual, sighting, camera trap, protected area reads off the sighting; OPTIONAL MATCH keeps a ranger's sighting, which no camera captured.
+            cypher: |-
+              MATCH (i:Individual)<-[:IDENTIFIED]-(s:Sighting) WHERE toLower(i.name) CONTAINS toLower($individual)
+              OPTIONAL MATCH (i)-[:BELONGS_TO]->(sp:Species)
+              OPTIONAL MATCH (s)-[:CAPTURED_BY]->(c:CameraTrap)
+              OPTIONAL MATCH (c)-[:DEPLOYED_IN]->(a:ProtectedArea)
+              OPTIONAL MATCH (s)-[:REPORTED_BY]->(r:Ranger)
+              RETURN i.name AS individual, s.name AS sighting, collect(DISTINCT sp.name) AS species, collect(DISTINCT c.name) AS camera_trap,
+                     collect(DISTINCT a.name) AS area, collect(DISTINCT r.name) AS reported_by
+              ORDER BY individual, sighting
+            parameters:
+              - {name: individual, type: STRING, description: "Part of the individual's name.", example: Nalangu}
+  Sighting:
+    label: Sighting
+    description: >-
+      One record of wildlife seen or detected (a camera-trap detection or a ranger's observation),
+      identified by its record number (SG-4410). A sighting records a species, may identify a known
+      individual, and is captured by a camera trap or reported by a ranger.
+    aliases: [detection, observation, capture, record, independent detection]
+    properties:
+      sightingId: {type: STRING, key: true, pattern: "^SG-[0-9]{4}$", description: "The sighting's record number, SG- and four digits."}
+      name: {type: STRING, description: "The sighting as a document names it."}
+      method: {type: STRING, one_of: [camera trap, ranger observation, aerial count, telemetry], description: "How the animal was recorded."}
+      observedOn: {type: DATE, description: "The date of the sighting.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the sighting was recorded, a full date such as 4 Jul 2026"}}}}
+      groupSize: {type: INTEGER, description: "The number of animals in the frame or the group."}
+    extensions:
+      display: {x: 0, y: 0, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "one record of wildlife seen or detected, a camera-trap detection or a ranger's observation, identified by a record number such as SG-1234", proper: true, propose: true}
+  CameraTrap:
+    label: CameraTrap
+    description: >-
+      A camera trap or camera-trap station that a monitoring team deploys on a grid or a game trail,
+      identified by its station code (CT-07). A camera trap is deployed in a protected area, set in one
+      habitat, and captures sightings.
+    aliases: [camera, trail camera, camera station, trap station, remote camera]
+    properties:
+      cameraId: {type: STRING, key: true, pattern: "^CT-[0-9]{2}$", description: "The station code, CT- and two digits."}
+      name: {type: STRING, description: "The camera trap as a document names it."}
+      model: {type: STRING, description: "The camera's make and model."}
+      status: {type: STRING, one_of: [active, faulty, stolen, planned, retired], description: "Whether the camera is running."}
+      trapNights: {type: INTEGER, description: "The nights the camera ran in the reporting period."}
+    extensions:
+      display: {x: -240, y: -200, colour: "#6366f1"}
+      custom:
+        relate-examples: {ask: "a camera trap or camera-trap station, identified by a station code such as CT-05", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: camera-trap-by-code
+            category: lookup
+            question: Where is this camera trap, and what has it recorded?
+            description: The camera trap whose code is the parameter, with its protected area, its habitat, its sightings and the species and individuals they show.
+            teaches: The key property (cameraId) is filled from the entity's name when the text gives the code, so an exact match works here.
+            cypher: |-
+              MATCH (c:CameraTrap) WHERE c.cameraId = $cameraId
+              OPTIONAL MATCH (c)-[:DEPLOYED_IN]->(a:ProtectedArea)
+              OPTIONAL MATCH (c)-[:SET_IN]->(h:Habitat)
+              OPTIONAL MATCH (s:Sighting)-[:CAPTURED_BY]->(c)
+              OPTIONAL MATCH (s)-[:RECORDED]->(sp:Species)
+              OPTIONAL MATCH (s)-[:IDENTIFIED]->(i:Individual)
+              RETURN c.cameraId AS camera_trap, collect(DISTINCT a.name) AS area, collect(DISTINCT h.name) AS habitat,
+                     collect(DISTINCT s.name) AS sightings, collect(DISTINCT sp.name) AS species, collect(DISTINCT i.name) AS individuals
+            parameters:
+              - {name: cameraId, type: STRING, description: "A camera-trap station code, CT- and two digits.", example: CT-07}
+          - type: canonicalQuery
+            name: detections-per-camera-trap
+            category: aggregation
+            question: How many sightings did each camera trap capture, and of how many species?
+            description: Per camera trap, the sightings it captured and the distinct species those sightings recorded.
+            teaches: count(DISTINCT …) over an OPTIONAL MATCH gives 0, not a missing row, for a camera that captured nothing.
+            cypher: |-
+              MATCH (c:CameraTrap)
+              OPTIONAL MATCH (s:Sighting)-[:CAPTURED_BY]->(c)
+              OPTIONAL MATCH (s)-[:RECORDED]->(sp:Species)
+              RETURN c.name AS camera_trap, count(DISTINCT s) AS sightings, count(DISTINCT sp) AS species
+              ORDER BY sightings DESC, camera_trap
+  Patrol:
+    label: Patrol
+    description: >-
+      One ranger patrol (on foot, by vehicle or at night), identified by its patrol number (PTL-0912)
+      and logged with its leader, its route and what it found. A patrol covers a protected area, finds
+      evidence of threats and logs sightings.
+    aliases: [foot patrol, vehicle patrol, night patrol, anti-poaching patrol, sweep]
+    properties:
+      patrolId: {type: STRING, key: true, pattern: "^PTL-[0-9]{4}$", description: "The patrol number, PTL- and four digits."}
+      name: {type: STRING, description: "The patrol as a document names it."}
+      mode: {type: STRING, one_of: [foot, vehicle, night, aerial, boat], description: "How the patrol travelled.", extensions: {custom: {relate-examples: {extract: true, ask: "how the patrol travelled, foot or vehicle"}}}}
+      startDate: {type: DATE, description: "The date the patrol set out.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the patrol took place, a full date such as 3 Aug 2026"}}}}
+      distanceKm: {type: FLOAT, description: "The distance the patrol covered, in kilometres."}
+    extensions:
+      display: {x: 300, y: 40, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "one ranger patrol, on foot, by vehicle or at night, identified by a patrol number such as PTL-0456", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: patrol-by-number
+            category: lookup
+            question: Who led this patrol, where did it go, and what did it find and log?
+            description: The patrol whose number is the parameter, with its leader, the protected area it covered, the threats it found evidence of and the sightings it logged.
+            teaches: The key property (patrolId) comes from the patrol number in the text; one row per patrol, with each neighbourhood collected.
+            cypher: |-
+              MATCH (p:Patrol) WHERE p.patrolId = $patrolId
+              OPTIONAL MATCH (p)-[:LED_BY]->(r:Ranger)
+              OPTIONAL MATCH (p)-[:COVERED]->(a:ProtectedArea)
+              OPTIONAL MATCH (p)-[:FOUND]->(t:Threat)
+              OPTIONAL MATCH (p)-[:LOGGED]->(s:Sighting)
+              RETURN p.patrolId AS patrol, collect(DISTINCT r.name) AS led_by, collect(DISTINCT a.name) AS covered,
+                     collect(DISTINCT t.name) AS found, collect(DISTINCT s.name) AS logged
+            parameters:
+              - {name: patrolId, type: STRING, description: "A patrol number, PTL- and four digits.", example: PTL-0912}
+          - type: canonicalQuery
+            name: what-the-text-says-about-each-patrol
+            category: evidence
+            question: Which sentences say who led each patrol, where it went and what it found?
+            description: Every fact a patrol is the source of (LED_BY, COVERED, FOUND, LOGGED), with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words. Leaving the type open (-[r]->) and reading type(r) gathers every link at once.
+            cypher: |-
+              MATCH (p:Patrol)-[r]->(x:_Entity)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN p.name AS patrol, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY patrol, link, other
+  Threat:
+    label: Threat
+    description: >-
+      A human or natural pressure on wildlife (snaring, poaching, livestock incursion, retaliatory
+      poisoning, disease), named in lower case. Patrols find evidence of threats and threats press on
+      species; the snare or carcass a patrol recovers is the evidence, not the threat.
+    aliases: [pressure, risk, illegal activity, poaching, human-wildlife conflict]
+    properties:
+      name: {type: STRING, key: true, description: "The threat as the documents name it."}
+      threatClass: {type: STRING, one_of: [poaching, snaring, human-wildlife conflict, livestock incursion, disease, habitat loss, fire], description: "The threat's class."}
+      severity: {type: STRING, one_of: [low, moderate, high, critical], description: "How severe the document judges the threat to be."}
+    extensions:
+      display: {x: 300, y: 280, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a threat to wildlife, named as a whole phrase in lower case, such as snaring, rhino poaching, livestock incursion, poisoning or disease"}
+        tools:
+          - type: canonicalQuery
+            name: threats-found-in-an-area
+            category: path
+            question: Which threats did patrols find evidence of in this protected area, and which species do those threats press on?
+            description: The chain protected area, patrol, threat, species, for every area whose name holds the text.
+            teaches: A pattern that turns at the patrol (COVERED out to the area, FOUND out to the threat) joins a place to what was found in it, then THREATENS carries on to the species.
+            cypher: |-
+              MATCH (a:ProtectedArea)<-[:COVERED]-(p:Patrol)-[:FOUND]->(t:Threat)
+              WHERE toLower(a.name) CONTAINS toLower($area)
+              OPTIONAL MATCH (t)-[:THREATENS]->(sp:Species)
+              RETURN a.name AS area, t.name AS threat, collect(DISTINCT p.name) AS found_by, collect(DISTINCT sp.name) AS threatens
+              ORDER BY area, threat
+            parameters:
+              - {name: area, type: STRING, description: "Part of the protected area's name.", example: Lomunyak}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them; a patrol that found no evidence of a threat is one such claim.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: rhino poaching}
+relationships:
+  rangerStationedAtArea:
+    type: STATIONED_AT
+    description: >-
+      The ranger is posted to the protected area and works from it; one station per ranger at a time,
+      and an area has many rangers.
+    aliases: [is posted to, is based at, serves at, works at]
+    from: {node: Ranger}
+    to: {node: ProtectedArea, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is stationed at}
+  patrolLedByRanger:
+    type: LED_BY
+    description: >-
+      The ranger led the patrol as its commander; exactly one leader per patrol, and a ranger leads
+      many patrols.
+    aliases: [was commanded by, was under, was headed by]
+    from: {node: Patrol}
+    to: {node: Ranger, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was led by}
+  patrolCoveredArea:
+    type: COVERED
+    description: >-
+      The patrol's route lay in the protected area; a patrol covers one or more areas, and an area is
+      covered by many patrols.
+    aliases: [patrolled, swept, walked, searched]
+    from: {node: Patrol, min_count: 1}
+    to: {node: ProtectedArea}
+    extensions:
+      custom:
+        relate-examples: {phrase: covered}
+  patrolFoundThreat:
+    type: FOUND
+    description: >-
+      The patrol found evidence of the threat (snares, a carcass, cattle, a poachers' camp); many to
+      many: a patrol may find several threats, and a threat is found by many patrols.
+    aliases: [recorded, detected, came across, uncovered]
+    from: {node: Patrol}
+    to: {node: Threat}
+    extensions:
+      custom:
+        relate-examples: {phrase: found evidence of}
+  patrolLoggedSighting:
+    type: LOGGED
+    description: >-
+      The patrol logged the sighting on its route; one patrol per sighting it logs, and a patrol logs
+      many sightings.
+    aliases: [recorded, entered, made]
+    from: {node: Patrol}
+    to: {node: Sighting}
+    extensions:
+      custom:
+        relate-examples: {phrase: logged}
+  threatThreatensSpecies:
+    type: THREATENS
+    description: >-
+      The threat harms or endangers the species in the document's landscape; many to many.
+    aliases: [endangers, kills, harms, presses on, is a threat to]
+    from: {node: Threat}
+    to: {node: Species}
+    extensions:
+      custom:
+        relate-examples: {phrase: threatens}
+  speciesInhabitsHabitat:
+    type: INHABITS
+    description: >-
+      The species lives in or depends on the habitat; many to many: a species uses several habitats,
+      and a habitat holds many species.
+    aliases: [lives in, uses, depends on, favours, browses in]
+    from: {node: Species}
+    to: {node: Habitat}
+    extensions:
+      custom:
+        relate-examples: {phrase: inhabits}
+  areaContainsHabitat:
+    type: CONTAINS
+    description: >-
+      The protected area contains ground of the habitat type; many to many: an area holds several
+      habitats, and a habitat occurs in many areas.
+    aliases: [holds, includes, has, is made up of]
+    from: {node: ProtectedArea}
+    to: {node: Habitat}
+    extensions:
+      custom:
+        relate-examples: {phrase: contains}
+  individualBelongsToSpecies:
+    type: BELONGS_TO
+    description: >-
+      The individual is an animal of the species; exactly one species per individual, and a species has
+      many known individuals.
+    aliases: [is a, is one of, is an animal of]
+    from: {node: Individual}
+    to: {node: Species, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a}
+  individualResidentInArea:
+    type: RESIDENT_IN
+    description: >-
+      The individual lives in the protected area as a resident, whatever its wanderings; one home area
+      per individual in this ontology, many residents per area.
+    aliases: [lives in, is resident in, ranges in, was born in]
+    from: {node: Individual}
+    to: {node: ProtectedArea, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: lives in}
+  sightingIdentifiedIndividual:
+    type: IDENTIFIED
+    description: >-
+      The sighting identified the known individual, by its notches, collar or markings; a sighting
+      identifies one or more individuals, and an individual is identified by many sightings.
+    aliases: [showed, was of, picked up, confirmed]
+    from: {node: Sighting}
+    to: {node: Individual}
+    extensions:
+      custom:
+        relate-examples: {phrase: identified}
+  sightingRecordedSpecies:
+    type: RECORDED
+    description: >-
+      The sighting recorded an animal of the species; one species per sighting in this ontology, and a
+      species is recorded by many sightings.
+    aliases: [showed, detected, was of, captured]
+    from: {node: Sighting}
+    to: {node: Species, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: recorded}
+  sightingCapturedByCamera:
+    type: CAPTURED_BY
+    description: >-
+      The camera trap took the frames the sighting is made from; one camera trap per sighting, and a
+      camera trap captures many sightings. A ranger's sighting has none.
+    aliases: [was taken by, came from, was triggered at, was detected by]
+    from: {node: Sighting}
+    to: {node: CameraTrap, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was captured by}
+  sightingReportedByRanger:
+    type: REPORTED_BY
+    description: >-
+      The ranger saw the animal and reported the sighting; one reporter per sighting, and a ranger
+      reports many sightings. A camera-trap detection has none.
+    aliases: [was made by, was logged by, was seen by, was observed by]
+    from: {node: Sighting}
+    to: {node: Ranger, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was reported by}
+  cameraDeployedInArea:
+    type: DEPLOYED_IN
+    description: >-
+      The camera trap is deployed in the protected area; one area per camera trap, and an area has
+      many camera traps.
+    aliases: [is installed in, runs in, is placed in, sits in]
+    from: {node: CameraTrap}
+    to: {node: ProtectedArea, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is deployed in}
+  cameraSetInHabitat:
+    type: SET_IN
+    description: >-
+      The camera trap is set in ground of the habitat type, the stratum its detections count for; one
+      habitat per camera trap, and a habitat has many camera traps.
+    aliases: [faces, watches, is sited in, stands in]
+    from: {node: CameraTrap}
+    to: {node: Habitat, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is set in}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Science & Environment
+      card:
+        title: Wildlife Management
+        description: Follow camera traps, patrols and rangers to the animals they record and the threats they find.
+      source:
+        derived_from: create-context-graph's wildlife-management.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base is gone; Person became Ranger, the habitat's protection level became a
+          ProtectedArea of its own, Camera became CameraTrap, and Patrol is new; Species, Individual,
+          Habitat, Sighting and Threat keep their meaning with new descriptions and properties.
+          SIGHTED_AT and OBSERVED_BY now read from the sighting (IDENTIFIED, REPORTED_BY), MONITORS
+          became SET_IN, PREYS_ON was dropped, and the links were given cardinalities; the tools were
+          written anew for an extracted graph.

@@ -1,0 +1,624 @@
+# Scientific Research: example 01's curated ontology for grant reports, experiment logs and the papers
+# that come out of them (D20). Written for this repository from create-context-graph's
+# scientific-research.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page:
+# the inherited POLE+O base (Person, Organization, Location, Event, Object) is gone, and the parties are
+# named for what research offices call them (Researcher, Institution, Funder).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: scientific-research
+name: Scientific Research
+description: >-
+  Funded research as investigators, research offices and funders write about it in proposals,
+  progress reports and papers: the researchers and the institutions they work at, the funders and the
+  grants they award, the experiments those grants pay for, the methods and instruments each experiment
+  used and the datasets it produced, and the papers that report the work, the venues they appeared in
+  and what they cite. It answers who leads and who works on a grant, which experiments a grant paid for
+  and which papers report them, whether a result has been replicated and where, where a dataset came
+  from and which papers use it, which instruments and methods a study relied on, and what each funder's
+  grants have produced. Results, measurements, budgets and timelines are out of scope: a document
+  states them, the extractor does not keep them.
+nodes:
+  Researcher:
+    label: Researcher
+    description: >-
+      A person who does or leads research (a principal investigator, co-investigator, postdoctoral
+      researcher, research student or industrial scientist), named in full and often with a title ("Dr
+      Amara Osei"). A researcher is a person; the institution they work at is not.
+    aliases: [scientist, investigator, principal investigator, postdoc, PhD student, author]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The researcher's full name as the documents write it, without a title."}
+      orcid: {type: STRING, pattern: "^[0-9]{4}-[0-9]{4}-[0-9]{4}-[0-9]{3}[0-9X]$", description: "The researcher's ORCID iD, four groups of four characters (0000-0002-1825-0097)."}
+      role: {type: STRING, one_of: [principal investigator, co-investigator, postdoctoral researcher, research student, research scientist, technician], description: "The researcher's role on the work the document describes."}
+    extensions:
+      display: {x: -120, y: 0, colour: "#1d4ed8"}
+      custom:
+        relate-examples: {ask: "a scientist, engineer or research student named in full, such as a principal investigator, postdoctoral researcher or PhD student", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-researcher
+            category: lookup
+            question: Who is this researcher, and what does the store connect to them?
+            description: Finds researchers whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (r:Researcher) WHERE toLower(r.name) CONTAINS toLower($researcher)
+              OPTIONAL MATCH (r)-[l]-(x:_Entity)
+              RETURN r.name AS researcher, type(l) AS link, x.kind AS kind, x.name AS other
+              ORDER BY researcher, link, other
+            parameters:
+              - {name: researcher, type: STRING, description: "Part of the researcher's name.", example: Osei}
+          - type: canonicalQuery
+            name: researcher-output
+            category: aggregation
+            question: How many papers and experiments does each researcher have, and where do they work?
+            description: Per researcher, their institutions, the papers they authored and the experiments they conducted.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each paper is counted once per experiment.
+            cypher: |-
+              MATCH (r:Researcher)
+              OPTIONAL MATCH (r)-[:AFFILIATED_WITH]->(i:Institution)
+              OPTIONAL MATCH (r)-[:AUTHORED]->(p:Paper)
+              OPTIONAL MATCH (r)-[:CONDUCTED]->(e:Experiment)
+              RETURN r.name AS researcher, collect(DISTINCT i.name) AS institutions,
+                     count(DISTINCT p) AS papers, count(DISTINCT e) AS experiments
+              ORDER BY papers DESC, experiments DESC, researcher
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Halloran}
+  Institution:
+    label: Institution
+    description: >-
+      A university, research institute, national laboratory or company research site where researchers
+      work, grants are held and instruments are housed, named in full ("the University of Wearmouth",
+      "Solenne Photovoltaics Ltd"). An institution does the research; a funder pays for it.
+    aliases: [university, research institute, laboratory, host organisation, research organisation, industrial partner]
+    reference: https://schema.org/ResearchOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The institution's name as the documents write it."}
+      ror: {type: STRING, pattern: "^0[a-z0-9]{6}[0-9]{2}$", description: "The institution's Research Organization Registry identifier, nine characters starting with 0 (03yrm5c26)."}
+      institutionType: {type: STRING, one_of: [university, research institute, national laboratory, company], description: "What kind of institution it is."}
+      city: {type: STRING, description: "The city of the institution's main site."}
+    extensions:
+      display: {x: -360, y: 40, colour: "#6366f1"}
+      custom:
+        relate-examples: {ask: "a university, research institute, laboratory or company where researchers work and grants are held, named in full, never a city or region", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: institution-people-grants-and-kit
+            category: neighbourhood
+            question: Who works at each institution, which grants does it hold, and which instruments does it house?
+            description: Each institution with the researchers affiliated with it, the grants held there and the instruments housed there.
+            teaches: Three independent neighbourhoods of one node come back as three collected lists; DISTINCT removes the repeats the OPTIONAL MATCHes multiply.
+            cypher: |-
+              MATCH (i:Institution)
+              OPTIONAL MATCH (r:Researcher)-[:AFFILIATED_WITH]->(i)
+              OPTIONAL MATCH (g:Grant)-[:HELD_AT]->(i)
+              OPTIONAL MATCH (k:Instrument)-[:HOUSED_AT]->(i)
+              RETURN i.name AS institution, collect(DISTINCT r.name) AS researchers,
+                     collect(DISTINCT g.name) AS grants, collect(DISTINCT k.name) AS instruments
+              ORDER BY institution
+  Funder:
+    label: Funder
+    description: >-
+      An organisation that awards research grants (a research council, government agency, charitable
+      foundation or trust), named in full ("the Aurelian Energy Foundation"). A funder pays for the work;
+      the institution that holds the grant does it.
+    aliases: [funding body, funding agency, sponsor, research council, foundation, trust]
+    reference: https://schema.org/FundingAgency
+    properties:
+      name: {type: STRING, key: true, description: "The funder's name."}
+      funderType: {type: STRING, one_of: [research council, government agency, foundation, charity, company], description: "What kind of funder it is."}
+      country: {type: STRING, description: "The country the funder is based in, as an ISO 3166 alpha-2 code (GB)."}
+    extensions:
+      display: {x: -360, y: -240, colour: "#15803d"}
+      custom:
+        relate-examples: {ask: "a research council, foundation, charity or trust that awards research grants, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: funder-portfolio
+            category: aggregation
+            question: How many grants has each funder awarded, and how many experiments and papers have they paid for?
+            description: Per funder, its grants, the experiments those grants fund and the papers that acknowledge them.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (f:Funder)<-[:AWARDED_BY]-(g:Grant)
+              OPTIONAL MATCH (e:Experiment)-[:FUNDED_BY]->(g)
+              OPTIONAL MATCH (p:Paper)-[:ACKNOWLEDGES]->(g)
+              RETURN f.name AS funder, count(DISTINCT g) AS grants, count(DISTINCT e) AS experiments, count(DISTINCT p) AS papers
+              ORDER BY grants DESC, papers DESC, funder
+  Grant:
+    label: Grant
+    description: >-
+      An award of money from a funder for a research project, identified by the funder's reference
+      (AEF-2024-118) and often called by the project's acronym. The grant is the award; the funder that
+      made it and the experiments it pays for are separate.
+    aliases: [award, research grant, project, studentship, equipment grant]
+    reference: https://schema.org/MonetaryGrant
+    properties:
+      grantRef: {type: STRING, key: true, pattern: "^[A-Z]{2,5}-20[0-9]{2}-[0-9]{3}$", description: "The funder's grant reference: two to five capitals, the year of award and a three-digit number (AEF-2024-118)."}
+      name: {type: STRING, description: "The grant as a document names it."}
+      acronym: {type: STRING, description: "The project's short name (DuraTandem)."}
+      amount: {type: FLOAT, description: "The amount awarded, in pounds sterling.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the sum of money the grant is worth, such as £1,240,000"}}}}
+      startDate: {type: DATE, description: "The first day of the grant's term.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the grant's term starts, such as 1 October 2024"}}}}
+      endDate: {type: DATE, description: "The last day of the grant's term."}
+      status: {type: STRING, one_of: [submitted, awarded, active, completed, declined], description: "Where the grant or application stands."}
+    extensions:
+      display: {x: -120, y: -240, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a research grant awarded by a funder, identified by a reference such as AEF-2024-118, never an amount of money", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: grant-by-reference
+            category: lookup
+            question: Which grant has this reference, who awarded it, where is it held, and who leads it?
+            description: The grant whose reference is the parameter, with its funder, its host institution, its principal investigator and its co-investigators.
+            teaches: The key property (grantRef) is filled from the entity's name when the text gives the reference, so an exact match works here.
+            cypher: |-
+              MATCH (g:Grant) WHERE g.grantRef = $ref
+              OPTIONAL MATCH (g)-[:AWARDED_BY]->(f:Funder)
+              OPTIONAL MATCH (g)-[:HELD_AT]->(i:Institution)
+              OPTIONAL MATCH (g)-[:LED_BY]->(pi:Researcher)
+              OPTIONAL MATCH (co:Researcher)-[:CO_INVESTIGATOR_ON]->(g)
+              RETURN g.grantRef AS grant, collect(DISTINCT f.name) AS funders, collect(DISTINCT i.name) AS held_at,
+                     collect(DISTINCT pi.name) AS principal_investigators, collect(DISTINCT co.name) AS co_investigators
+            parameters:
+              - {name: ref, type: STRING, description: "A grant reference.", example: AEF-2024-118}
+          - type: canonicalQuery
+            name: from-grant-to-papers
+            category: path
+            question: Which papers report work this grant paid for, and which grants do they acknowledge?
+            description: The chain grant, experiment, paper, for every grant whose reference or name holds the text, with each paper's acknowledged grants.
+            teaches: A two-hop pattern against the arrows reads backwards from the grant; a second OPTIONAL MATCH checks whether the paper thanks the grant that paid for it.
+            cypher: |-
+              MATCH (p:Paper)-[:REPORTS]->(e:Experiment)-[:FUNDED_BY]->(g:Grant)
+              WHERE g.grantRef = $ref OR toLower(g.name) CONTAINS toLower($ref)
+              OPTIONAL MATCH (p)-[:ACKNOWLEDGES]->(ack:Grant)
+              RETURN g.name AS grant, e.name AS experiment, p.name AS paper, collect(DISTINCT ack.name) AS acknowledges
+              ORDER BY experiment, paper
+            parameters:
+              - {name: ref, type: STRING, description: "A grant reference, or part of the grant's name.", example: AEF-2024-118}
+  Experiment:
+    label: Experiment
+    description: >-
+      A planned piece of research (a laboratory study, field trial, test campaign or computational screen),
+      named as the project names it ("the Damp-Heat Study"). An experiment uses methods and instruments and
+      produces datasets; a paper reports it.
+    aliases: [study, trial, campaign, test series, screen, work package task]
+    properties:
+      name: {type: STRING, key: true, description: "The experiment as the project names it."}
+      workPackage: {type: STRING, pattern: "^WP[0-9]{1,2}$", description: "The work package the experiment belongs to (WP2)."}
+      status: {type: STRING, one_of: [planned, in progress, complete, abandoned], description: "Where the experiment stands.", extensions: {custom: {relate-examples: {extract: true, ask: "where the experiment stands: planned, in progress, complete or abandoned"}}}}
+      startDate: {type: DATE, description: "The date the experiment started."}
+      endDate: {type: DATE, description: "The date the experiment ended, or is planned to."}
+    extensions:
+      display: {x: 120, y: -80, colour: "#d97706"}
+      custom:
+        relate-examples: {ask: "a named study, trial or test campaign of laboratory, field or computational work, such as the Damp-Heat Study, never a work package such as WP2", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: how-an-experiment-was-done
+            category: neighbourhood
+            question: Who ran this experiment, with which methods and instruments, what did it produce, and who paid for it?
+            description: The experiments whose name holds the text, each with its researchers, methods, instruments, datasets and grants.
+            teaches: OPTIONAL MATCH on each side keeps an experiment in the answer even when the text names no instrument or dataset for it.
+            cypher: |-
+              MATCH (e:Experiment) WHERE toLower(e.name) CONTAINS toLower($experiment)
+              OPTIONAL MATCH (r:Researcher)-[:CONDUCTED]->(e)
+              OPTIONAL MATCH (e)-[:USED_METHOD]->(m:Method)
+              OPTIONAL MATCH (e)-[:USED_INSTRUMENT]->(k:Instrument)
+              OPTIONAL MATCH (e)-[:PRODUCED]->(d:Dataset)
+              OPTIONAL MATCH (e)-[:FUNDED_BY]->(g:Grant)
+              RETURN e.name AS experiment, collect(DISTINCT r.name) AS conducted_by, collect(DISTINCT m.name) AS methods,
+                     collect(DISTINCT k.name) AS instruments, collect(DISTINCT d.name) AS datasets, collect(DISTINCT g.name) AS grants
+              ORDER BY experiment
+            parameters:
+              - {name: experiment, type: STRING, description: "Part of the experiment's name.", example: Damp-Heat}
+          - type: canonicalQuery
+            name: replications-and-where-they-ran
+            category: path
+            question: Which experiments have been replicated, and was the replication done at another institution?
+            description: Every REPLICATES link with the institutions of the researchers who conducted the original and the replication.
+            teaches: Walk out from both ends of one relationship to compare them; an independent replication is one whose institutions differ from the original's.
+            cypher: |-
+              MATCH (rep:Experiment)-[:REPLICATES]->(orig:Experiment)
+              OPTIONAL MATCH (a:Researcher)-[:CONDUCTED]->(orig)
+              OPTIONAL MATCH (a)-[:AFFILIATED_WITH]->(ia:Institution)
+              OPTIONAL MATCH (b:Researcher)-[:CONDUCTED]->(rep)
+              OPTIONAL MATCH (b)-[:AFFILIATED_WITH]->(ib:Institution)
+              RETURN orig.name AS original, rep.name AS replication,
+                     collect(DISTINCT ia.name) AS original_institutions, collect(DISTINCT ib.name) AS replication_institutions
+              ORDER BY original, replication
+          - type: canonicalQuery
+            name: who-conducted-what-and-why
+            category: evidence
+            question: Which sentences say who conducted each experiment?
+            description: Every CONDUCTED fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (r:Researcher)-[c:CONDUCTED]->(e:Experiment)
+              UNWIND c.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN r.name AS researcher, e.name AS experiment, round(c.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY experiment, researcher
+  Method:
+    label: Method
+    description: >-
+      A technique, protocol or analysis a study applies (a measurement technique, a test protocol or a
+      computational method), written in lower case with an optional abbreviation ("X-ray diffraction
+      (XRD)"). A method is what is done; the instrument is the machine it is done on.
+    aliases: [technique, protocol, assay, analysis method, methodology]
+    properties:
+      name: {type: STRING, key: true, description: "The method's name as the documents write it, in full."}
+      abbreviation: {type: STRING, description: "The abbreviation the field uses (XRD, DFT)."}
+      category: {type: STRING, one_of: [measurement, test protocol, computation, analysis], description: "What kind of method it is."}
+    extensions:
+      display: {x: 360, y: -200, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "a scientific technique, test protocol or analysis method, often in lower case, such as X-ray diffraction, density functional theory or damp-heat testing, never the data or quantity it yields"}
+        tools:
+          - type: canonicalQuery
+            name: experiments-by-method
+            category: aggregation
+            question: Which methods do the experiments rely on, and how many experiments use each?
+            description: Per method, the number of experiments that used it and their names.
+            teaches: count and collect in one RETURN give the size of a group and its members side by side.
+            cypher: |-
+              MATCH (e:Experiment)-[:USED_METHOD]->(m:Method)
+              RETURN m.name AS method, count(DISTINCT e) AS experiments, collect(DISTINCT e.name) AS used_by
+              ORDER BY experiments DESC, method
+  Instrument:
+    label: Instrument
+    description: >-
+      A piece of research equipment or computing (a diffractometer, climate chamber, outdoor test rig,
+      microscope or computing cluster), named by its facility name and type ("the Osprey diffractometer").
+      An instrument is the machine; a method is what is done with it.
+    aliases: [equipment, apparatus, rig, facility, cluster, chamber]
+    properties:
+      name: {type: STRING, key: true, description: "The instrument as the documents name it."}
+      instrumentType: {type: STRING, one_of: [diffractometer, climate chamber, test rig, microscope, spectrometer, computing cluster], description: "What kind of instrument it is."}
+      facility: {type: STRING, description: "The shared facility or laboratory that runs it."}
+    extensions:
+      display: {x: 360, y: 40, colour: "#a16207"}
+      custom:
+        relate-examples: {ask: "a named instrument, chamber, test rig, microscope or computing cluster that experiments run on", proper: true}
+  Dataset:
+    label: Dataset
+    description: >-
+      A named collection of research data (measurements, logs or simulation results) that an experiment
+      produced and papers analyse ("TandemAge-DH"). A dataset is the data; a paper is what was written
+      about it.
+    aliases: [data set, data output, database, library, data release]
+    reference: https://schema.org/Dataset
+    properties:
+      name: {type: STRING, key: true, description: "The dataset's name as the documents write it."}
+      doi: {type: STRING, pattern: "^10\\.[0-9]{4,9}/[-._;()/:A-Za-z0-9]+$", description: "The dataset's DOI, when a repository has minted one."}
+      sizeGB: {type: FLOAT, description: "The dataset's size in gigabytes."}
+      licence: {type: STRING, one_of: [CC BY 4.0, CC0, restricted, embargoed], description: "The terms the dataset is released under."}
+    extensions:
+      display: {x: 240, y: 200, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "a named dataset or data release of measurements, logs or simulation results, such as TandemAge-DH, never a paper", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: dataset-provenance
+            category: path
+            question: Where did this dataset come from, on which instruments and at which institutions, and which papers use it?
+            description: The chain instrument, experiment, dataset for every dataset whose name holds the text, with the instruments' institutions and the papers that use the dataset.
+            teaches: Provenance is a path; OPTIONAL MATCH at each hop keeps the dataset when the text leaves a step out.
+            cypher: |-
+              MATCH (d:Dataset) WHERE toLower(d.name) CONTAINS toLower($dataset)
+              OPTIONAL MATCH (e:Experiment)-[:PRODUCED]->(d)
+              OPTIONAL MATCH (e)-[:USED_INSTRUMENT]->(k:Instrument)
+              OPTIONAL MATCH (k)-[:HOUSED_AT]->(i:Institution)
+              OPTIONAL MATCH (p:Paper)-[:USES_DATASET]->(d)
+              RETURN d.name AS dataset, collect(DISTINCT e.name) AS produced_by, collect(DISTINCT k.name) AS instruments,
+                     collect(DISTINCT i.name) AS sites, collect(DISTINCT p.name) AS used_in
+              ORDER BY dataset
+            parameters:
+              - {name: dataset, type: STRING, description: "Part of the dataset's name.", example: TandemAge-DH}
+  Paper:
+    label: Paper
+    description: >-
+      A written research output (a journal article, conference paper, preprint or manuscript), named by
+      its title, cited by its first author and year ("Osei et al. (2025)") or identified by its DOI. A
+      paper reports experiments; a venue is where it appeared.
+    aliases: [article, publication, conference paper, preprint, manuscript, output]
+    reference: https://schema.org/ScholarlyArticle
+    properties:
+      doi: {type: STRING, key: true, pattern: "^10\\.[0-9]{4,9}/[-._;()/:A-Za-z0-9]+$", description: "The paper's Digital Object Identifier, 10. and a registrant code, a slash and a suffix (10.5555/sml.2025.04117)."}
+      name: {type: STRING, description: "The paper as a document names it: its title or its citation."}
+      paperType: {type: STRING, one_of: [journal article, conference paper, preprint, manuscript, review], description: "What kind of output it is."}
+      year: {type: INTEGER, description: "The year of publication."}
+      openAccess: {type: BOOLEAN, description: "Whether the paper is free to read."}
+    extensions:
+      display: {x: 0, y: 260, colour: "#be185d"}
+      custom:
+        relate-examples: {ask: "a journal article, conference paper or manuscript reporting research, named by its title in words, never punctuation", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: paper-by-doi
+            category: lookup
+            question: Which paper has this DOI, who wrote it, where did it appear, and which grants does it acknowledge?
+            description: The paper whose DOI is the parameter, with its authors, its venue and the grants it acknowledges.
+            teaches: An identifier the text states is the entity's key property (doi, from its name or alias), so an exact match finds it.
+            cypher: |-
+              MATCH (p:Paper) WHERE p.doi = $doi
+              OPTIONAL MATCH (r:Researcher)-[:AUTHORED]->(p)
+              OPTIONAL MATCH (p)-[:PUBLISHED_IN]->(v:Venue)
+              OPTIONAL MATCH (p)-[:ACKNOWLEDGES]->(g:Grant)
+              RETURN p.doi AS doi, p.name AS paper, collect(DISTINCT r.name) AS authors,
+                     collect(DISTINCT v.name) AS venues, collect(DISTINCT g.name) AS grants
+            parameters:
+              - {name: doi, type: STRING, description: "A DOI, without the doi.org prefix.", example: 10.5555/sml.2025.04117}
+          - type: canonicalQuery
+            name: citation-chain
+            category: path
+            question: Which earlier papers does this paper build on, directly or through the papers it cites?
+            description: The chain of CITES links out from a paper, up to three steps.
+            teaches: A bounded variable-length pattern (*1..3) walks a citation chain without risking an unbounded search.
+            cypher: |-
+              MATCH path = (p:Paper)-[:CITES*1..3]->(:Paper)
+              WHERE toLower(p.name) CONTAINS toLower($paper)
+              RETURN p.name AS paper, [n IN nodes(path) | n.name] AS chain, length(path) AS steps
+              ORDER BY steps, paper
+            parameters:
+              - {name: paper, type: STRING, description: "Part of the paper's title or citation.", example: outdoor stability}
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Damp-Heat Study}
+  Venue:
+    label: Venue
+    description: >-
+      A journal, conference or proceedings series where papers are published or presented, named in full
+      ("Solar Materials Letters", "the Northern Photovoltaics Conference"). A venue is where a paper
+      appeared, never the paper itself.
+    aliases: [journal, conference, proceedings, publication venue]
+    properties:
+      name: {type: STRING, key: true, description: "The venue's name as the documents write it."}
+      venueType: {type: STRING, one_of: [journal, conference, proceedings], description: "What kind of venue it is."}
+      issn: {type: STRING, pattern: "^[0-9]{4}-[0-9]{3}[0-9X]$", description: "A journal's International Standard Serial Number (2049-3630)."}
+    extensions:
+      display: {x: -280, y: 280, colour: "#9333ea"}
+      custom:
+        relate-examples: {ask: "a journal or conference, named in full, where papers are published or presented, never a city or a paper title", proper: true}
+relationships:
+  researcherAffiliatedWithInstitution:
+    type: AFFILIATED_WITH
+    description: >-
+      The researcher works at, or holds an appointment at, the institution; a researcher may hold more
+      than one affiliation, and an institution has many researchers.
+    aliases: [works at, is based at, is a member of, holds an appointment at]
+    from: {node: Researcher}
+    to: {node: Institution}
+    extensions:
+      custom:
+        relate-examples: {phrase: works at}
+  grantLedByResearcher:
+    type: LED_BY
+    description: >-
+      The researcher is the grant's principal investigator: exactly one per grant; a researcher may lead
+      several grants.
+    aliases: [is the principal investigator of, is directed by, is held by]
+    from: {node: Grant, count: 1}
+    to: {node: Researcher}
+    extensions:
+      custom:
+        relate-examples: {phrase: is led by}
+  researcherCoInvestigatorOnGrant:
+    type: CO_INVESTIGATOR_ON
+    description: >-
+      The researcher is a named co-investigator on the grant, beside its principal investigator; a grant
+      may have several co-investigators and a researcher may be one on several grants.
+    aliases: [is a co-applicant on, is a Co-I on, co-leads]
+    from: {node: Researcher}
+    to: {node: Grant}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a co-investigator on}
+  grantAwardedByFunder:
+    type: AWARDED_BY
+    description: >-
+      The funder awarded the grant: one funder per grant in this ontology, many grants per funder.
+    aliases: [was made by, was funded by, is from]
+    from: {node: Grant, count: 1}
+    to: {node: Funder}
+    extensions:
+      custom:
+        relate-examples: {phrase: was awarded by}
+  grantHeldAtInstitution:
+    type: HELD_AT
+    description: >-
+      The grant is held and administered at the institution: one host per grant, many grants per
+      institution.
+    aliases: [is hosted by, is administered by, is based at]
+    from: {node: Grant, count: 1}
+    to: {node: Institution}
+    extensions:
+      custom:
+        relate-examples: {phrase: is held at}
+  experimentFundedByGrant:
+    type: FUNDED_BY
+    description: >-
+      The grant pays for the experiment; an experiment may be funded by several grants and a grant funds
+      many experiments.
+    aliases: [is paid for by, is supported by, is funded from]
+    from: {node: Experiment}
+    to: {node: Grant}
+    extensions:
+      custom:
+        relate-examples: {phrase: is funded by}
+  researcherConductedExperiment:
+    type: CONDUCTED
+    description: >-
+      The researcher ran or carried out the experiment; an experiment has one or more researchers, and a
+      researcher conducts many experiments.
+    aliases: [ran, carried out, performed, was run by]
+    from: {node: Researcher}
+    to: {node: Experiment}
+    extensions:
+      custom:
+        relate-examples: {phrase: conducted}
+  experimentUsedMethod:
+    type: USED_METHOD
+    description: >-
+      The experiment applied the method to its samples or data; many to many.
+    aliases: [applied, employed, measured by, relied on]
+    from: {node: Experiment}
+    to: {node: Method}
+    extensions:
+      custom:
+        relate-examples: {phrase: used}
+  experimentUsedInstrument:
+    type: USED_INSTRUMENT
+    description: >-
+      The experiment ran on, or measured with, the instrument; many to many.
+    aliases: [used, was measured on, used time on]
+    from: {node: Experiment}
+    to: {node: Instrument}
+    extensions:
+      custom:
+        relate-examples: {phrase: ran on}
+  experimentProducedDataset:
+    type: PRODUCED
+    description: >-
+      The experiment produced the dataset: each dataset comes from one experiment, and an experiment may
+      produce several datasets.
+    aliases: [generated, yielded, released]
+    from: {node: Experiment}
+    to: {node: Dataset, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: produced}
+  experimentReplicatesExperiment:
+    type: REPLICATES
+    description: >-
+      The experiment repeats the other, earlier experiment to test its result; read from the replication
+      to the original; an original may be replicated several times.
+    aliases: [repeated, reproduced, replicated]
+    from: {node: Experiment}
+    to: {node: Experiment}
+    extensions:
+      custom:
+        relate-examples: {phrase: replicated}
+  instrumentHousedAtInstitution:
+    type: HOUSED_AT
+    description: >-
+      The instrument is installed at, and run by, the institution: one institution per instrument, many
+      instruments per institution.
+    aliases: [is installed at, is run by, belongs to]
+    from: {node: Instrument, count: 1}
+    to: {node: Institution}
+    extensions:
+      custom:
+        relate-examples: {phrase: is housed at}
+  researcherAuthoredPaper:
+    type: AUTHORED
+    description: >-
+      The researcher is an author of the paper; a paper has one or more authors, and a researcher writes
+      many papers.
+    aliases: [wrote, co-authored, drafted, is an author of]
+    from: {node: Researcher}
+    to: {node: Paper}
+    extensions:
+      custom:
+        relate-examples: {phrase: authored}
+  paperPublishedInVenue:
+    type: PUBLISHED_IN
+    description: >-
+      The paper appeared in the journal or was presented at the conference: one venue per paper, many
+      papers per venue.
+    aliases: [appeared in, was presented at, was accepted by]
+    from: {node: Paper, count: 1}
+    to: {node: Venue}
+    extensions:
+      custom:
+        relate-examples: {phrase: was published in}
+  paperReportsExperiment:
+    type: REPORTS
+    description: >-
+      The paper presents the experiment's methods and results; a paper may report several experiments and
+      an experiment be reported in several papers.
+    aliases: [presents, describes, publishes the results of]
+    from: {node: Paper}
+    to: {node: Experiment}
+    extensions:
+      custom:
+        relate-examples: {phrase: reports}
+  paperUsesDataset:
+    type: USES_DATASET
+    description: >-
+      The paper analyses or draws on the dataset, whether its own experiment produced it or not; many to
+      many.
+    aliases: [analyses, draws on, uses, reanalyses]
+    from: {node: Paper}
+    to: {node: Dataset}
+    extensions:
+      custom:
+        relate-examples: {phrase: analyses}
+  paperAcknowledgesGrant:
+    type: ACKNOWLEDGES
+    description: >-
+      The paper acknowledges the grant as a source of funding, as funders count their outputs; many to many.
+    aliases: [thanks, credits, was funded by]
+    from: {node: Paper}
+    to: {node: Grant}
+    extensions:
+      custom:
+        relate-examples: {phrase: acknowledges}
+  paperCitesPaper:
+    type: CITES
+    description: >-
+      The paper cites the other, earlier paper in its references; read from the citing paper to the cited
+      one; many to many.
+    aliases: [references, builds on, refers to]
+    from: {node: Paper}
+    to: {node: Paper}
+    extensions:
+      custom:
+        relate-examples: {phrase: cites}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Science & Environment
+      card:
+        title: Scientific Research
+        description: Follow a grant from its funder and investigators to the experiments it paid for, the instruments, methods and datasets behind them, and the papers that report them.
+      source:
+        derived_from: create-context-graph's scientific-research.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Researcher, Institution, Grant, Experiment,
+          Dataset and Paper keep their meaning with new descriptions and properties; the grant's
+          funding_agency became the Funder kind, the paper's journal the Venue kind, and Method and
+          Instrument are new kinds; the links were renamed for their meaning, given cardinalities and
+          extended to grants' investigators and hosts, instruments, methods, replication and
+          acknowledgements; the tools were written anew for an extracted graph.

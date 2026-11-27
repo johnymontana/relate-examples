@@ -67,39 +67,30 @@ import { canon, cmp, dump, sha256 } from '../../../lib/replay.mjs';
  * The gate's default cutoffs and margins on GLiNER2.5-small-v1, for every ontology: a
  * create-context-graph document, and any other document (Ontology.format 'generic', asked the
  * same way: label texts, links between their endpoints), which has no gold set of its own. Each
- * value is on a 0.05 grid, set on create-context-graph's 27 samples (written in short declarative
- * sentences, one fact each) with the model asked as pipeline.modelSchema asks
- * it and the gate as below, and checked on six held-out documents written the same way and never
- * tuned on (expected/score.txt "settling the defaults" and "the held-out set"). Kind and link cutoffs are stored per Kind and LinkType when a store is first opened, so the
- * page's sliders move them per kind afterwards (D10 rule 5); defaultGate() gives the set for another
- * model. They suit plainly written text and were calibrated on these samples: on denser prose (an
- * earlier, wordier version of the samples) relations score P 0.808 here, 0.867 at 0.60/0.45 and 0.958 at 0.75/0.60
- * (entities P 0.400, 0.432, 0.505), so raise them on the Cutoffs tab for such text.
- *   entKeep 0.50  entity F1 on the samples 0.935 at 0.40, 0.950 at 0.50, 0.939 at 0.60, 0.884 at 0.75;
- *                 below 0.60 more claims anchor on a kept end instead of waiting on one in review
- *                 (relation recall 0.888 at 0.40, 0.861 at 0.50, 0.759 at 0.60, 0.594 at 0.75). Domain
- *                 kinds score 0.5 to 0.9 where Person scores 0.99, so 0.75 left many of them in review.
- *   entDrop 0.30  the drop cutoffs decide only what waits in review (no kept fact moves): at 0.30 the
- *                 samples' queue holds 95 mentions (181 at 0.20)
- *   relKeep 0.35  relation precision is 1.000 from 0.30 to 0.70 on the samples while recall falls
- *                 (0.865 at 0.30, 0.861 at 0.35, 0.782 at 0.40, 0.281 at 0.60); 0.25 keeps a false
- *                 fact. Between 0.35 and 0.60 lie 189 true facts and 3 false ones, which rule 6 holds in
- *                 review. The hedge cap, not the band, keeps the distractors out: none is kept at any
- *                 keep from 0.25. Held out: relations P 0.979 R 0.723, no distractor kept.
- *   relDrop 0.20  E4's; at 0.30 the claims in review would fall from 53 to 37 and the best claims of 8
- *                 gold relations would drop (score.txt, "drop cutoffs")
- *   typeMargin 0.05  on the samples it sends 9 mentions to review; entity F1 0.953 at 0, 0.950 at 0.05
- *                    (one true entity more and one false fewer at 0: not moved on one entity)
- *   relMargin 0.05   D10's value; rule 6 sends 6 claims to review on the samples, at 0 as at 0.05 (a
- *                    weaker second link for one pair in one sentence goes whatever the margin)
- *   poleMargin 0.25  rule 2's POLE preference (create-context-graph's poles only): entity F1 0.925 with it
- *                    off, 0.950 at 0.25, 0.951 at 0.40 to 0.60 (score.txt, "the pole margin")
- * The margins are the page's (state.gate), the same for every model. (Earlier builds' defaults:
- * 0.75/0.20 and 0.60/0.20 before the samples were rewritten; edgextract's format had 0.85/0.70 from its golden set,
- * LEGACY_DEFAULTS.)
+ * value is on a 0.05 grid, set on the corpus's dev set (D23: the 40 bundled ontologies' 49 documents, written in
+ * the genres their fields read, with the model asked as pipeline.modelSchema asks it and the gate as below),
+ * precision-first (the most recall whose kept precision is at least 0.90), and checked on the 12 held-out
+ * documents, never tuned on (expected/score.txt "settling the defaults" and "the held-out set"). Kind and
+ * link cutoffs are stored per Kind and LinkType when a store is first opened, so the page's sliders move them
+ * per kind afterwards (D10 rule 5); defaultGate() gives the set for another model.
+ *   entKeep 0.70  entity precision 0.826 at 0.50, 0.888 at 0.65 (the best F1, 0.854), 0.903 at 0.70 (recall
+ *                 0.800), 0.931 at 0.80: on real prose the model names many things that are not entities
+ *                 of the domain, and a wrong node costs more than a right one left in review
+ *   entDrop 0.30  the drop cutoffs decide only what waits in review (no kept fact moves)
+ *   relKeep 0.20  relation precision 0.903 at 0.20 (recall 0.262, the best F1 too), 0.923 at 0.25 (0.231),
+ *                 0.959 at 0.35 (0.169): 0.20 is the precision-first pick, with the drop moved below it.
+ *                 Lists (20 of 531) and table rows (1 of 441) are where the facts are lost: the model
+ *                 returns a whole list or row as one end, which no cutoff recovers
+ *   relDrop 0.15  below the keep, so claims between them wait in review
+ *   typeMargin 0.05, relMargin 0.05  entity and relation F1 move by at most 0.001 between 0 and 0.15
+ *   poleMargin 0.25  rule 2's POLE preference, for create-context-graph's documents only (no bundled one)
+ *   attrKeep 0.50, attrDrop 0.30  values (D27): P 0.905 R 0.670 at 0.50
+ * The margins are the page's (state.gate), the same for every model. (Earlier builds' defaults: 0.50/0.30
+ * and 0.35/0.20 on create-context-graph's samples, 0.75/0.20 and 0.60/0.20 before those were rewritten;
+ * edgextract's format had 0.85/0.70 from its golden set, LEGACY_DEFAULTS.)
  */
 export const DEFAULT_GATE = Object.freeze({
-  entKeep: 0.5, entDrop: 0.3, relKeep: 0.35, relDrop: 0.2, typeMargin: 0.05, relMargin: 0.05, poleMargin: 0.25, attrKeep: 0.5, attrDrop: 0.3,
+  entKeep: 0.7, entDrop: 0.3, relKeep: 0.2, relDrop: 0.15, typeMargin: 0.05, relMargin: 0.05, poleMargin: 0.25, attrKeep: 0.5, attrDrop: 0.3,
 });
 
 /** The model the defaults assume when none is named (models.js DEFAULT_MODEL). */
@@ -111,7 +102,9 @@ export const DEFAULT_MODEL = 'small';
  * and entities F1 0.899 at the entity keep 0.50 (0.811 at 0.90). 0.35 would add 2 true facts and 1
  * false one here, and 3 and 9 false ones with no true one on the earlier, wordier samples. Its earlier 0.90/0.90 kept hedged claims out, which the hedge cap now does at every keep
  * pair from 0.35 to 0.95. On dense prose it costs precision as small-v1's do (relations P 0.748 here,
- * 0.887 at 0.90/0.90). Held out: relations P 0.980 R 0.738. The drops are DEFAULT_GATE's.
+ * 0.887 at 0.90/0.90). Held out: relations P 0.980 R 0.738. The drops are DEFAULT_GATE's. These are
+ * create-context-graph's samples' numbers: base-v1 is not recalibrated on the curated corpus (run.sh --model
+ * base prints its scores), so its other settings are small-v1's.
  */
 export const MODEL_GATES = Object.freeze({
   base: Object.freeze({ relKeep: 0.5 }),
@@ -171,6 +164,10 @@ export const HEDGE_CUES = Object.freeze([
   // a scheduled future ("is due to lead"; not "due to the rain"), a condition, and a claim reported from a source
   ['due to', '(?:is|are|was|were)\\s+due\\s+to', true, true], ['if', 'if', true, true], ['unless', 'unless', true, true],
   ['according to', 'according\\s+to', true, true],
+  // reported speech before the claim ("A trade report says X has in-licensed Y"; "Mr Imrie says the order
+  // also contained …"): a fact a sentence asserts before its speaker ("Dr Ash, tutor to Lee, said …") is
+  // not reached, since the cue is looked for only up to the claim's later end
+  ['says', '(?:says|said\\s+that|say\\s+that)', true, true],
   // what an earlier version said ("An earlier draft of the timeline said that …"; the correction follows it)
   ['an earlier version said', '(?:earlier|earliest|first|previous|initial|early|interim|original|older)\\s+(?:draft|version|note|notice|issue|report|release|timeline|entry|edition|statement)[^.;]{0,80}?\\s(?:said|stated|recorded|reported|listed|showed|gave|claimed|named)', true, true],
   // "will" before a verb ("will be implemented", "will not open"), lower case only, and not "will of" (a testator's will)
@@ -418,17 +415,39 @@ export function kindWordsOf(o) {
   return new Map(o.types.map((k) => [k.id, kindWords(k.ask?.label ?? k.id)]));
 }
 
+/** The kinds whose mentions are proper names or identifiers (relate-examples proper, D26). @param {Ontology} o */
+export function properKinds(o) {
+  return new Set(o.types.filter((t) => t.proper).map((t) => t.id));
+}
+
+/** A capital letter or a digit: what a proper name or an identifier holds (D26). */
+const CASED = /[\p{Lu}\p{Lt}\p{Nd}]/u;
+
 /**
- * Bring every mention's name and every claim's end keys to the current name rules (names.js
- * mentionName with the kind's label words; claimEndKeys), so a store an earlier build wrote keys its
- * entities as a fresh extraction would. Only what changed is written; idempotent.
+ * A mention's canonical name: names.js mentionName with its kind's label words, or '' for a model
+ * mention of a kind of proper names (properKinds) with no capital letter and no digit ("the claimant",
+ * "two other cars"), which names none, so rule 0 drops it (no-name). The pipeline names each new
+ * mention with it and refreshNames each stored one, so a reopened store keeps a fresh extraction's names.
+ * @param {string} text @param {string} label @param {string} source 'model' | 'gazetteer'
+ * @param {Map<string, string[]>} words kindWordsOf @param {Set<string>} proper properKinds
+ */
+export function nameOfMention(text, label, source, words, proper) {
+  return source === 'model' && proper.has(label) && !CASED.test(text) ? '' : mentionName(text, words.get(label) ?? []);
+}
+
+/**
+ * Bring every mention's name and every claim's end keys to the current name rules (nameOfMention;
+ * claimEndKeys), so a store an earlier build wrote keys its entities as a fresh extraction would.
+ * Only what changed is written; idempotent, and a no-op on a store this build extracted.
  * @param {object} db @param {Cl} cl @param {Ontology} o
  * @returns {{mentions: number, claims: number}} rows rewritten
  */
 export function refreshNames(db, cl, o) {
   const words = kindWordsOf(o);
-  const ms = q(db, cl, 'MATCH (m:_Mention) RETURN m.key AS key, m.text AS text, m.label AS label, m.name AS name, m.plain AS plain').rows
-    .map((r) => ({ key: r.key, was: `${r.name}|${r.plain}`, name: mentionName(String(r.text ?? ''), words.get(r.label) ?? []), plain: mentionName(String(r.text ?? '')) }))
+  const proper = properKinds(o);
+  const ms = q(db, cl, 'MATCH (m:_Mention) RETURN m.key AS key, m.text AS text, m.label AS label, m.source AS source, m.name AS name, m.plain AS plain').rows
+    .map((r) => ({ key: r.key, was: `${r.name}|${r.plain}`, name: nameOfMention(String(r.text ?? ''), String(r.label ?? ''), String(r.source ?? ''), words, proper),
+      plain: mentionName(String(r.text ?? '')) }))
     .filter((r) => `${r.name}|${r.plain}` !== r.was);
   const cs = q(db, cl, 'MATCH (c:_Claim) RETURN c.key AS key, c.htext AS htext, c.ttext AS ttext, c.hkeys AS hkeys, c.tkeys AS tkeys').rows
     .map((r) => ({ key: r.key, was: JSON.stringify([r.hkeys, r.tkeys]), hkeys: claimEndKeys(String(r.htext ?? ''), words), tkeys: claimEndKeys(String(r.ttext ?? ''), words) }))

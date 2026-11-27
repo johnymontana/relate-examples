@@ -1,0 +1,118 @@
+# What example 01 adds to Neo4j's identity-validation package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for identifiers the documents state, the
+# properties the model reads values for (D27), and example arguments for the package's queries, in the
+# words of this example's documents.
+package: identity-validation
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: Identity Validation
+  category: Industry Agnostic
+  description: Resolve one person across systems and channels, and surface near-duplicate identifiers that signal synthetic identity fraud.
+industry: Industry Agnostic
+nodes:
+  Identity:
+    colour: "#2563eb"
+    proper: true
+    propose: true
+    ask: a raw profile record captured by one source system, named only by its record ID such as ID-7001; not the person it may describe, not the system that captured it, not a description such as the first record
+    pattern:
+      identityId: "^ID-[0-9]{4}$"
+    properties:
+      # The package's four systems (CRM, MobileApp, CallCenter, Ecommerce) are not a vocabulary in its
+      # document, so this is a free-text value: every sentence goes to the second call.
+      sourceSystem:
+        extract: true
+        ask: the source system or channel that captured the record, such as Ecommerce, CallCenter, CRM or MobileApp
+  # Names are written in the masked display form the records hold (Carlos M***z), always capitalised.
+  PersonName:
+    colour: "#7c3aed"
+    proper: true
+    ask: a person's name as a record captured it, usually masked with asterisks, such as Carlos M***z or David K**; the name on the record, not the record ID
+  Phone:
+    colour: "#059669"
+    proper: true
+    propose: true
+    ask: a telephone number on a record, three groups of digits joined by hyphens, such as 555-904-9125
+    pattern:
+      phoneNumber: "^[0-9]{3}-[0-9]{3}-[0-9]{4}$"
+  # Masked addresses are lower case without digits (will***@maild.net, none@none.com): not proper.
+  Email:
+    colour: "#0891b2"
+    propose: true
+    ask: an email address on a record, usually masked before the @ sign, such as will***@maild.net
+    pattern:
+      email: "^[A-Za-z0-9._%+*-]+@[A-Za-z0-9-]+(\\.[A-Za-z0-9-]+)+$"
+  SSN:
+    colour: "#dc2626"
+    proper: true
+    propose: true
+    ask: a social security number on a record, masked to its last four digits, such as XXX-XX-4598; the number itself, not the word SSN
+    pattern:
+      ssn: "^XXX-XX-[0-9]{4}$"
+  # The documents name an address by its street portion (the package's address property), as the
+  # package's own records split it, and give the city and ZIP code beside it: the model reads a value
+  # beside its entity, never one inside the entity's own name.
+  Address:
+    colour: "#d97706"
+    proper: true
+    ask: a street address on a record, a house number and street name such as 5169 Ramirez Roads or 19 Birchwood Ct; the street itself, not its city, state or ZIP code, and not its geocoded point
+    properties:
+      city:
+        extract: true
+        ask: the town or city of the street address, such as Columbus or Austin
+      zipcode:
+        extract: true
+        ask: the five-digit ZIP code of the street address, such as 43201
+  # A date of birth is masked to its year (1995-XX-XX) and compared by the hash of the full date,
+  # so the documents name it by its hash: two people born in one year are two dates of birth. Its
+  # display value (dob) cannot be read from the text: the field would read "dob", as the kind does.
+  DOB:
+    colour: "#db2777"
+    proper: true
+    propose: true
+    ask: a date of birth on a record, named by the hash it is compared by, sixteen hex characters such as 74c352df9e9cea5f; not the masked birth year
+    pattern:
+      dateHash: "^[0-9a-f]{16}$"
+  IPAddress:
+    colour: "#4f46e5"
+    proper: true
+    propose: true
+    ask: an IP address a record was submitted or seen from, four numbers joined by dots, such as 198.51.100.55
+    pattern:
+      ip: "^[0-9]{1,3}([.][0-9]{1,3}){3}$"
+  Location:
+    colour: "#65a30d"
+    proper: true
+    propose: true
+    ask: a geocoded point that an address resolves to, a latitude and longitude pair in decimal degrees such as 40.003812,-82.996425; never a city, a street or a postal address
+    # latitude and longitude are not read from the text: the documents write them only inside the
+    # point's own name (its locationId), and the model gives the whole pair as either value.
+    pattern:
+      locationId: "^-?[0-9]{1,3}[.][0-9]+,-?[0-9]{1,3}[.][0-9]+$"
+relationships:
+  hasName:
+    phrase: is in the name of
+  hasPhone:
+    phrase: is reachable on
+  hasEmail:
+    phrase: uses
+  hasSsn:
+    phrase: declares
+  hasAddress:
+    phrase: is registered at
+  hasDob:
+    phrase: carries the date of birth
+  hasIp:
+    phrase: was submitted from
+  geocodedTo:
+    phrase: geocodes to
+tools:
+  match-cluster-as-a-graph:
+    args: {identityId: ID-7001}
+  cross-channel-profile-assembly:
+    args: {phoneNumber: 555-904-9125}
+  cross-channel-profile-as-a-graph:
+    args: {phoneNumber: 555-904-9125}

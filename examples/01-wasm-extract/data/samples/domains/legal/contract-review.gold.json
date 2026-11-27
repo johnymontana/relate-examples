@@ -1,0 +1,46 @@
+{
+  "entities": [
+    {"name": "Tom Sorensen", "type": "Counsel"},
+    {"name": "Rachel Imrie", "type": "Counsel"},
+    {"name": "Fiona Adeyemi KC", "type": "Counsel"},
+    {"name": "Pembury Lane LLP", "type": "LawFirm"},
+    {"name": "Master Services Agreement", "type": "Contract", "aliases": ["MSA"]},
+    {"name": "Change Note 3", "type": "Contract"},
+    {"name": "Halden v Corvane", "type": "Case"},
+    {"name": "Halden Logistics Ltd", "type": "Party", "aliases": ["Halden"]},
+    {"name": "Corvane Systems plc", "type": "Party", "aliases": ["Corvane"]},
+    {"name": "Brightwater Integration Ltd", "type": "Party", "aliases": ["Brightwater"]},
+    {"name": "SJ Application", "type": "Filing"},
+    {"name": "Defence and Counterclaim", "type": "Filing"},
+    {"name": "SJ Hearing", "type": "Hearing"},
+    {"name": "CMC", "type": "Hearing"},
+    {"name": "clause 9", "type": "Clause"},
+    {"name": "clause 14.2", "type": "Clause"},
+    {"name": "clause 14.3", "type": "Clause"},
+    {"name": "clause 22", "type": "Clause"},
+    {"name": "Unfair Contract Terms Act 1977", "type": "Statute"}
+  ],
+  "relations": [
+    {"source": "Tom Sorensen", "target": "Pembury Lane LLP", "type": "MEMBER_OF", "how": "apposition"},
+    {"source": "Halden Logistics Ltd", "target": "Halden v Corvane", "type": "CLAIMANT_IN", "how": "plain"},
+    {"source": "Halden v Corvane", "target": "Master Services Agreement", "type": "ARISES_UNDER", "how": "alias"},
+    {"source": "Fiona Adeyemi KC", "target": "Halden Logistics Ltd", "type": "REPRESENTS", "how": "alias"},
+    {"source": "Fiona Adeyemi KC", "target": "SJ Hearing", "type": "APPEARS_AT", "how": "nominal"},
+    {"source": "Halden Logistics Ltd", "target": "Master Services Agreement", "type": "SIGNED", "how": "list"},
+    {"source": "Corvane Systems plc", "target": "Master Services Agreement", "type": "SIGNED", "how": "list"},
+    {"source": "clause 14.2", "target": "Master Services Agreement", "type": "PART_OF", "how": "nominal"},
+    {"source": "clause 22", "target": "Master Services Agreement", "type": "PART_OF", "how": "nominal"},
+    {"source": "SJ Application", "target": "clause 14.3", "type": "INVOKES", "how": "plain"},
+    {"source": "clause 14.3", "target": "Unfair Contract Terms Act 1977", "type": "SUBJECT_TO", "how": "plain"},
+    {"source": "clause 14.2", "target": "Unfair Contract Terms Act 1977", "type": "SUBJECT_TO", "how": "coreference"}
+  ],
+  "distractors": [
+    {"source": "Defence and Counterclaim", "target": "clause 22", "type": "INVOKES", "family": "negation"},
+    {"source": "Halden Logistics Ltd", "target": "Change Note 3", "type": "SIGNED", "family": "alleged"},
+    {"source": "Brightwater Integration Ltd", "target": "Master Services Agreement", "type": "SIGNED", "family": "negation"},
+    {"source": "Brightwater Integration Ltd", "target": "Halden v Corvane", "type": "DEFENDANT_IN", "family": "conditional"}
+  ],
+  "properties": [
+    {"entity": "Master Services Agreement", "property": "signedOn", "text": "12 March 2024", "value": "2024-03-12", "how": "plain"}
+  ]
+}

@@ -1,0 +1,962 @@
+{
+  "entities": [
+    {
+      "name": "Saltire Biologics",
+      "type": "Company"
+    },
+    {
+      "name": "Merrowby Pharma",
+      "type": "Company",
+      "aliases": [
+        "Merrowby"
+      ]
+    },
+    {
+      "name": "Larkfield Pharma",
+      "type": "Company"
+    },
+    {
+      "name": "Quillon Biosciences",
+      "type": "Company"
+    },
+    {
+      "name": "Ulverston Bio",
+      "type": "Company",
+      "aliases": [
+        "Ulverston"
+      ]
+    },
+    {
+      "name": "Davenholt Pharma",
+      "type": "Company"
+    },
+    {
+      "name": "Ortolan Bio",
+      "type": "Company",
+      "aliases": [
+        "Ortolan"
+      ]
+    },
+    {
+      "name": "Kestrel Molecular",
+      "type": "Company"
+    },
+    {
+      "name": "Ashcombe Pharma",
+      "type": "Company"
+    },
+    {
+      "name": "Lowther Biosciences",
+      "type": "Company"
+    },
+    {
+      "name": "Pendleford Pharma",
+      "type": "Company"
+    },
+    {
+      "name": "MPE-7450",
+      "type": "Drug"
+    },
+    {
+      "name": "LPA-3882",
+      "type": "Drug"
+    },
+    {
+      "name": "QBU-6665",
+      "type": "Drug"
+    },
+    {
+      "name": "UBL-5457",
+      "type": "Drug"
+    },
+    {
+      "name": "DPA-9704",
+      "type": "Drug"
+    },
+    {
+      "name": "OBR-301",
+      "type": "Drug"
+    },
+    {
+      "name": "LPA-2767",
+      "type": "Drug"
+    },
+    {
+      "name": "SBA-3857",
+      "type": "Drug"
+    },
+    {
+      "name": "KME-058",
+      "type": "Drug"
+    },
+    {
+      "name": "APS-1223",
+      "type": "Drug"
+    },
+    {
+      "name": "MPE-6073",
+      "type": "Drug"
+    },
+    {
+      "name": "LBO-1000",
+      "type": "Drug"
+    },
+    {
+      "name": "PPE-5278",
+      "type": "Drug"
+    },
+    {
+      "name": "UBL-4373",
+      "type": "Drug"
+    },
+    {
+      "name": "LRRK2",
+      "type": "Protein"
+    },
+    {
+      "name": "GBA1",
+      "type": "Protein"
+    },
+    {
+      "name": "Parkinson's disease",
+      "type": "Disease"
+    },
+    {
+      "name": "NCT99358788",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99106394",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99171444",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99194862",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99266417",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99102491",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99050451",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99175347",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99357487",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99105093",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99170143",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99193561",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99046548",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99246902",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99375701",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99344477",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99417333",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "NCT99198765",
+      "type": "ClinicalTrial"
+    },
+    {
+      "name": "Phase 1",
+      "type": "Phase"
+    },
+    {
+      "name": "Phase 2",
+      "type": "Phase"
+    },
+    {
+      "name": "Phase 3",
+      "type": "Phase"
+    },
+    {
+      "name": "US19143321B2",
+      "type": "Patent"
+    },
+    {
+      "name": "US19352064B2",
+      "type": "Patent"
+    },
+    {
+      "name": "US19266111B2",
+      "type": "Patent"
+    },
+    {
+      "name": "US19356157B2",
+      "type": "Patent"
+    },
+    {
+      "name": "US19241553B2",
+      "type": "Patent"
+    },
+    {
+      "name": "EP9055721B1",
+      "type": "Patent"
+    }
+  ],
+  "relations": [
+    {
+      "source": "Merrowby Pharma",
+      "target": "MPE-7450",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Larkfield Pharma",
+      "target": "LPA-3882",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Quillon Biosciences",
+      "target": "QBU-6665",
+      "type": "IN_PIPELINE",
+      "how": "plain"
+    },
+    {
+      "source": "Ulverston Bio",
+      "target": "UBL-5457",
+      "type": "IN_PIPELINE",
+      "how": "nominal"
+    },
+    {
+      "source": "Davenholt Pharma",
+      "target": "DPA-9704",
+      "type": "IN_PIPELINE",
+      "how": "plain"
+    },
+    {
+      "source": "Larkfield Pharma",
+      "target": "LPA-2767",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Ortolan Bio",
+      "target": "OBR-301",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Saltire Biologics",
+      "target": "SBA-3857",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Kestrel Molecular",
+      "target": "KME-058",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Ashcombe Pharma",
+      "target": "APS-1223",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Merrowby Pharma",
+      "target": "MPE-6073",
+      "type": "IN_PIPELINE",
+      "how": "plain"
+    },
+    {
+      "source": "Lowther Biosciences",
+      "target": "LBO-1000",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Pendleford Pharma",
+      "target": "PPE-5278",
+      "type": "IN_PIPELINE",
+      "how": "table"
+    },
+    {
+      "source": "Ulverston Bio",
+      "target": "UBL-4373",
+      "type": "IN_PIPELINE",
+      "how": "cross-sentence"
+    },
+    {
+      "source": "MPE-7450",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "MPE-7450",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "LPA-3882",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "LPA-3882",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "QBU-6665",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "QBU-6665",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "UBL-5457",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "UBL-5457",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "DPA-9704",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "DPA-9704",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "OBR-301",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "OBR-301",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "LPA-2767",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "LPA-2767",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "SBA-3857",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "SBA-3857",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "KME-058",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "KME-058",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "APS-1223",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "APS-1223",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "MPE-6073",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "MPE-6073",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "LBO-1000",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "LBO-1000",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "PPE-5278",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "PPE-5278",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "list"
+    },
+    {
+      "source": "UBL-4373",
+      "target": "GBA1",
+      "type": "TARGETS",
+      "how": "apposition"
+    },
+    {
+      "source": "UBL-4373",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "apposition"
+    },
+    {
+      "source": "MPE-7450",
+      "target": "NCT99358788",
+      "type": "INVESTIGATED_IN",
+      "how": "plain"
+    },
+    {
+      "source": "LPA-3882",
+      "target": "NCT99106394",
+      "type": "INVESTIGATED_IN",
+      "how": "plain"
+    },
+    {
+      "source": "QBU-6665",
+      "target": "NCT99171444",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "UBL-5457",
+      "target": "NCT99194862",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "DPA-9704",
+      "target": "NCT99266417",
+      "type": "INVESTIGATED_IN",
+      "how": "plain"
+    },
+    {
+      "source": "LPA-2767",
+      "target": "NCT99102491",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "OBR-301",
+      "target": "NCT99050451",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "SBA-3857",
+      "target": "NCT99175347",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "MPE-7450",
+      "target": "NCT99357487",
+      "type": "INVESTIGATED_IN",
+      "how": "coreference"
+    },
+    {
+      "source": "LPA-3882",
+      "target": "NCT99105093",
+      "type": "INVESTIGATED_IN",
+      "how": "plain"
+    },
+    {
+      "source": "QBU-6665",
+      "target": "NCT99170143",
+      "type": "INVESTIGATED_IN",
+      "how": "apposition"
+    },
+    {
+      "source": "UBL-5457",
+      "target": "NCT99193561",
+      "type": "INVESTIGATED_IN",
+      "how": "coreference"
+    },
+    {
+      "source": "KME-058",
+      "target": "NCT99046548",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "APS-1223",
+      "target": "NCT99246902",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "MPE-6073",
+      "target": "NCT99375701",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "LBO-1000",
+      "target": "NCT99344477",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "PPE-5278",
+      "target": "NCT99417333",
+      "type": "INVESTIGATED_IN",
+      "how": "table"
+    },
+    {
+      "source": "UBL-4373",
+      "target": "NCT99198765",
+      "type": "INVESTIGATED_IN",
+      "how": "plain"
+    },
+    {
+      "source": "NCT99358788",
+      "target": "Phase 3",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99106394",
+      "target": "Phase 3",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99171444",
+      "target": "Phase 3",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99194862",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99266417",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99102491",
+      "target": "Phase 1",
+      "type": "HAS_PHASE",
+      "how": "table"
+    },
+    {
+      "source": "NCT99050451",
+      "target": "Phase 1",
+      "type": "HAS_PHASE",
+      "how": "table"
+    },
+    {
+      "source": "NCT99175347",
+      "target": "Phase 1",
+      "type": "HAS_PHASE",
+      "how": "table"
+    },
+    {
+      "source": "NCT99357487",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99105093",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99170143",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99193561",
+      "target": "Phase 1",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99046548",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "table"
+    },
+    {
+      "source": "NCT99246902",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "table"
+    },
+    {
+      "source": "NCT99375701",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "table"
+    },
+    {
+      "source": "NCT99344477",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "table"
+    },
+    {
+      "source": "NCT99417333",
+      "target": "Phase 2",
+      "type": "HAS_PHASE",
+      "how": "table"
+    },
+    {
+      "source": "NCT99198765",
+      "target": "Phase 3",
+      "type": "HAS_PHASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99358788",
+      "target": "Parkinson's disease",
+      "type": "FOR_DISEASE",
+      "how": "apposition"
+    },
+    {
+      "source": "NCT99266417",
+      "target": "Parkinson's disease",
+      "type": "FOR_DISEASE",
+      "how": "apposition"
+    },
+    {
+      "source": "US19143321B2",
+      "target": "Ulverston Bio",
+      "type": "HAS_OWNER",
+      "how": "table"
+    },
+    {
+      "source": "US19143321B2",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "table"
+    },
+    {
+      "source": "US19143321B2",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "table"
+    },
+    {
+      "source": "US19352064B2",
+      "target": "Ulverston Bio",
+      "type": "HAS_OWNER",
+      "how": "table"
+    },
+    {
+      "source": "US19352064B2",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "table"
+    },
+    {
+      "source": "US19352064B2",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "table"
+    },
+    {
+      "source": "US19266111B2",
+      "target": "Ulverston Bio",
+      "type": "HAS_OWNER",
+      "how": "table"
+    },
+    {
+      "source": "US19266111B2",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "table"
+    },
+    {
+      "source": "US19266111B2",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "table"
+    },
+    {
+      "source": "US19356157B2",
+      "target": "Kestrel Molecular",
+      "type": "HAS_OWNER",
+      "how": "passive"
+    },
+    {
+      "source": "US19356157B2",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "table"
+    },
+    {
+      "source": "US19356157B2",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "table"
+    },
+    {
+      "source": "US19241553B2",
+      "target": "Ortolan Bio",
+      "type": "HAS_OWNER",
+      "how": "table"
+    },
+    {
+      "source": "US19241553B2",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "table"
+    },
+    {
+      "source": "US19241553B2",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "table"
+    },
+    {
+      "source": "EP9055721B1",
+      "target": "Kestrel Molecular",
+      "type": "HAS_OWNER",
+      "how": "passive"
+    },
+    {
+      "source": "EP9055721B1",
+      "target": "LRRK2",
+      "type": "TARGETS",
+      "how": "table"
+    },
+    {
+      "source": "EP9055721B1",
+      "target": "Parkinson's disease",
+      "type": "TREATS",
+      "how": "table"
+    }
+  ],
+  "distractors": [
+    {
+      "source": "Ashcombe Pharma",
+      "target": "OBR-301",
+      "type": "IN_PIPELINE",
+      "family": "alleged"
+    },
+    {
+      "source": "OBR-301",
+      "target": "GBA1",
+      "type": "TARGETS",
+      "family": "hedge"
+    },
+    {
+      "source": "US19241553B2",
+      "target": "Larkfield Pharma",
+      "type": "HAS_OWNER",
+      "family": "negation"
+    },
+    {
+      "source": "NCT99375701",
+      "target": "Phase 3",
+      "type": "HAS_PHASE",
+      "family": "retracted"
+    },
+    {
+      "source": "US19241553B2",
+      "target": "Saltire Biologics",
+      "type": "HAS_OWNER",
+      "family": "conditional"
+    }
+  ],
+  "properties": [
+    {
+      "entity": "Ulverston Bio",
+      "property": "market_cap",
+      "text": "$1.84 billion",
+      "value": 1840000000,
+      "how": "apposition"
+    },
+    {
+      "entity": "Larkfield Pharma",
+      "property": "market_cap",
+      "text": "$905 million",
+      "value": 905000000,
+      "how": "apposition"
+    },
+    {
+      "entity": "Ortolan Bio",
+      "property": "market_cap",
+      "text": "$287 million",
+      "value": 287000000,
+      "how": "apposition"
+    },
+    {
+      "entity": "Kestrel Molecular",
+      "property": "market_cap",
+      "text": "$395 million",
+      "value": 395000000,
+      "how": "apposition"
+    },
+    {
+      "entity": "KME-058",
+      "property": "status",
+      "text": "discontinued",
+      "value": "Discontinued",
+      "how": "list"
+    },
+    {
+      "entity": "APS-1223",
+      "property": "status",
+      "text": "discontinued",
+      "value": "Discontinued",
+      "how": "list"
+    },
+    {
+      "entity": "MPE-6073",
+      "property": "status",
+      "text": "discontinued",
+      "value": "Discontinued",
+      "how": "list"
+    },
+    {
+      "entity": "LBO-1000",
+      "property": "status",
+      "text": "discontinued",
+      "value": "Discontinued",
+      "how": "list"
+    },
+    {
+      "entity": "PPE-5278",
+      "property": "status",
+      "text": "discontinued",
+      "value": "Discontinued",
+      "how": "list"
+    },
+    {
+      "entity": "US19143321B2",
+      "property": "status",
+      "text": "Expired",
+      "value": "Expired",
+      "how": "table"
+    },
+    {
+      "entity": "US19352064B2",
+      "property": "status",
+      "text": "Granted",
+      "value": "Granted",
+      "how": "table"
+    },
+    {
+      "entity": "US19266111B2",
+      "property": "status",
+      "text": "Granted",
+      "value": "Granted",
+      "how": "table"
+    },
+    {
+      "entity": "US19356157B2",
+      "property": "status",
+      "text": "Granted",
+      "value": "Granted",
+      "how": "table"
+    },
+    {
+      "entity": "US19241553B2",
+      "property": "status",
+      "text": "Granted",
+      "value": "Granted",
+      "how": "table"
+    },
+    {
+      "entity": "EP9055721B1",
+      "property": "status",
+      "text": "Pending",
+      "value": "Pending",
+      "how": "table"
+    }
+  ]
+}

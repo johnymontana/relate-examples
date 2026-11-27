@@ -1,0 +1,120 @@
+# What example 01 adds to Neo4j's securities-reference-data package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for the record ids the report states, the
+# properties whose values the model reads (D27: a fund's net assets, a debt issue's amount outstanding and
+# an offering's type, from the package's own vocabulary), and example arguments for the package's
+# queries, taken from the records this example's exception report narrates (the package's sample data:
+# Kairo Denki Holdings K.K. is LE-0482, Kairo Denki Finance B.V. LE-0483).
+package: securities-reference-data
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: "Securities: Reference Data and Look-through Exposure"
+  category: Financial Services
+  description: Built on the EDM Council's FIBO Securities ontology, reconcile identifiers and listings, map every route to an issuer group, and see fund exposure and concentration through layers of funds, receipts and subsidiaries.
+industry: Financial Services
+nodes:
+  LegalEntity:
+    colour: "#2563eb"
+    proper: true
+    ask: a company or bank that issues securities, acts as depositary, underwrites offerings or manages funds, named by its registered name with its legal-form suffix, such as Kairo Denki Finance B.V. or Northgate Capital Management LLC
+  # Securities are named by their security master description; the record id (SEC-00518) is proposed by its pattern.
+  Security:
+    colour: "#d97706"
+    proper: true
+    propose: true
+    ask: a share, bond, depositary receipt or fund unit, named by its record id, such as SEC-00518, or by its security master description, such as Kairo Denki Holdings Ordinary Shares or Ostrander Energy 1.625% Sr Notes 2030
+    pattern:
+      securityId: "^SEC-[0-9]{5}$"
+    properties:
+      faceAmountOutstanding:
+        extract: true
+        parse: MONEY
+        ask: the principal amount of a bond or note issue outstanding, a sum with its currency such as €1.25bn or $500m, never a coupon, a year, a percentage or a number of shares per bond
+  # The package keys an identifier by scheme and value (ISIN:US2403455205), which no text writes: no pattern.
+  Identifier:
+    colour: "#7c3aed"
+    proper: true
+    ask: a market identifier, written as a scheme name followed by its code, such as ISIN US2403455205, CUSIP 240345520 or SEDOL HBX4BB7; the identifier, not the security it identifies
+  Exchange:
+    colour: "#334155"
+    proper: true
+    ask: a stock exchange or trading venue named by its name, such as London Stock Exchange or New York Stock Exchange, or by its Market Identifier Code, such as XNYS; the market, not a listing on it
+  Listing:
+    colour: "#0891b2"
+    proper: true
+    propose: true
+    ask: one exchange's listing record for a security, named by its listing id, such as LST-00384; the record of a security on one exchange, not the exchange or the security
+    pattern:
+      listingId: "^LST-[0-9]{5}$"
+  Fund:
+    colour: "#059669"
+    proper: true
+    propose: true
+    ask: an investment fund, ETF or fund of funds, named by its fund id, such as FND-002, or by a name ending in Fund, ETF or Fund of Funds, such as Aldermoor Global Allocation Fund of Funds; the fund, not the company that manages it
+    pattern:
+      fundId: "^FND-[0-9]{3}$"
+    properties:
+      totalNetAssets:
+        extract: true
+        parse: MONEY
+        ask: the fund's total net assets, a sum with its currency such as $2.4bn, never a holding's weight or the value of one position
+  Offering:
+    colour: "#db2777"
+    proper: true
+    propose: true
+    ask: an offering that sold a new issue of securities to investors, named by its offering id, such as OFF-00352; the sale, not the security it sold or its underwriters
+    pattern:
+      offeringId: "^OFF-[0-9]{5}$"
+    properties:
+      offeringType:
+        extract: true
+        ask: the kind of offering, one of public offering, private offering or exempt offering
+relationships:
+  issuedBy:
+    phrase: was issued by
+  directlyConsolidatedBy:
+    phrase: is a subsidiary of
+  identifiedBy:
+    phrase: is identified by
+  lists:
+    phrase: lists
+  listedOn:
+    phrase: is on
+  represents:
+    phrase: represents
+  convertibleInto:
+    phrase: converts into
+  unitOf:
+    phrase: is a unit of
+  holds:
+    phrase: holds
+  managedBy:
+    phrase: is managed by
+  offers:
+    phrase: sold
+  underwrittenBy:
+    phrase: was underwritten by
+tools:
+  # The report's records by their ids in the sample data: SEDOL HBX4BB7 (Wexcombe Breweries), KVR on XNYS and
+  # the 3 May 2017 trade file, SEC-00559 (the Tessaly notes LST-00384 lists), the snapshot of 30 October 2026,
+  # LE-0483 Kairo Denki Finance B.V. (its group), LE-0482 Kairo Denki Holdings K.K., FND-002 and the 10% limit.
+  resolve-a-security-by-identifier:
+    args: {scheme: SEDOL, value: HBX4BB7}
+  ticker-at-a-date:
+    args: {mic: XNYS, ticker: KVR, asOf: "2017-05-03"}
+  listings-of-a-security:
+    args: {securityId: SEC-00559}
+  active-listings-of-matured-securities:
+    args: {asOf: "2026-10-30"}
+  issuer-group-capital-structure:
+    args: {entityId: LE-0483, asOf: "2026-10-30"}
+  routes-to-an-issuer-group:
+    args: {entityId: LE-0482}
+  fund-look-through-holdings:
+    args: {fundId: FND-002, limit: 25}
+  look-through-exposure-by-issuer-group:
+    args: {fundId: FND-002, limit: 10}
+  look-through-concentration-breaches:
+    args: {limitPct: 10}

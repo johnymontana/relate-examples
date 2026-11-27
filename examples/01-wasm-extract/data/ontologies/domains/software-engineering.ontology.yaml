@@ -1,0 +1,623 @@
+# Software Engineering: example 01's curated ontology for incident postmortems, design documents and
+# pull requests (D20). Written for this repository from create-context-graph's software-engineering.yaml
+# at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, and the kinds are named for what an
+# engineering organisation calls them (Engineer, Team, Service, Repository, Library, PullRequest, Issue,
+# Release, Deployment, Incident).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept (schema.org), realistic properties (identifiers with patterns, vocabularies
+# with one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether
+# its mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Services,
+# repositories and libraries are named in lower case (ledger-api, vantorra/ledger, dbkit), so they are not
+# proper. Every link says its direction and cardinality and carries the phrase the model reads. The tools
+# are the ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the trace
+# (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: software-engineering
+name: Software Engineering
+description: >-
+  Software delivery and operations as engineering teams write about them in postmortems, design
+  documents and pull requests: the engineers and the teams they belong to, the services those teams own
+  and run, the repositories the services are built from and the libraries they use, the pull requests
+  that change the code and the issues they fix, the releases that bundle pull requests and the
+  deployments that roll releases out, and the incidents a deployment can trigger, with the engineers who
+  respond and the follow-up issues that come out of them. It answers who owns a service and who is on
+  call for it, which services depend on one that failed, which deployment, release and pull request lie
+  behind an incident, who wrote and reviewed a change, and which follow-ups are still open, with the
+  sentence behind each fact. Metrics, alerts, logs, files and functions, and sprint planning are out of
+  scope: a document mentions them, the extractor does not keep them.
+nodes:
+  Engineer:
+    label: Engineer
+    description: >-
+      A person who builds or runs the software (a software engineer, site reliability engineer or
+      engineering manager), named in full ("Daniel Osei") and sometimes by a first name in a review
+      thread. An engineer belongs to a team; the team, not the engineer, owns services.
+    aliases: [developer, software engineer, SRE, on-call engineer, reviewer, author, incident commander]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The engineer's full name as the documents write it."}
+      role: {type: STRING, one_of: [software engineer, senior engineer, staff engineer, site reliability engineer, engineering manager], description: "The engineer's role."}
+      handle: {type: STRING, pattern: "^[a-z0-9](?:[a-z0-9-]{0,37}[a-z0-9])?$", description: "The engineer's user name on the code host, lower case (dosei)."}
+    extensions:
+      display: {x: -320, y: -200, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a person named in full who works in engineering, such as a software engineer, site reliability engineer or engineering manager, often as an author, reviewer, assignee or on-call responder", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: engineer-activity
+            category: aggregation
+            question: How many pull requests has each engineer written and reviewed, how many incidents did they respond to, and how many follow-ups do they hold?
+            description: Per engineer, the pull requests they authored and reviewed, the incidents they responded to and the issues assigned to them.
+            teaches: Four OPTIONAL MATCHes from one node multiply rows, so count DISTINCT; after an aggregating RETURN, ORDER BY uses only projected names.
+            cypher: |-
+              MATCH (e:Engineer)
+              OPTIONAL MATCH (e)-[:AUTHORED]->(a:PullRequest)
+              OPTIONAL MATCH (e)-[:REVIEWED]->(rv:PullRequest)
+              OPTIONAL MATCH (e)-[:RESPONDED_TO]->(i:Incident)
+              OPTIONAL MATCH (iss:Issue)-[:ASSIGNED_TO]->(e)
+              RETURN e.name AS engineer, count(DISTINCT a) AS authored, count(DISTINCT rv) AS reviewed,
+                     count(DISTINCT i) AS incidents, count(DISTINCT iss) AS assigned_issues
+              ORDER BY incidents DESC, authored DESC, engineer
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: ledger-api}
+  Team:
+    label: Team
+    description: >-
+      An engineering team that owns services and carries their on-call rotation, named by what it owns
+      or does ("the Ledger team", "the SRE team"). A team is a group of engineers inside the company, not
+      the company itself.
+    aliases: [squad, group, on-call rotation, platform team]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The team's name, without the word team."}
+      function: {type: STRING, one_of: [product, platform, site reliability, data, security], description: "What the team is for."}
+      channel: {type: STRING, pattern: "^#[a-z0-9][a-z0-9-]*$", description: "The team's chat channel (#ledger-oncall)."}
+    extensions:
+      display: {x: -380, y: 40, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "an engineering team, such as the Ledger team or the SRE team, that owns services and carries their on-call rotation", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: who-owns-a-service
+            category: neighbourhood
+            question: Which team owns this service, who is on that team, who is on call for it, and where does its code live?
+            description: The service's owning teams and their members, the engineers on call for it and the repositories it is built from.
+            teaches: OPTIONAL MATCH keeps the service in the answer even when the text names no owner, on-call engineer or repository for it.
+            cypher: |-
+              MATCH (s:Service) WHERE toLower(s.name) CONTAINS toLower($service)
+              OPTIONAL MATCH (t:Team)-[:OWNS]->(s)
+              OPTIONAL MATCH (m:Engineer)-[:MEMBER_OF]->(t)
+              OPTIONAL MATCH (oc:Engineer)-[:ON_CALL_FOR]->(s)
+              OPTIONAL MATCH (s)-[:BUILT_FROM]->(repo:Repository)
+              RETURN s.name AS service, collect(DISTINCT t.name) AS owners, collect(DISTINCT m.name) AS team_members,
+                     collect(DISTINCT oc.name) AS on_call, collect(DISTINCT repo.name) AS repositories
+              ORDER BY service
+            parameters:
+              - {name: service, type: STRING, description: "Part of the service's name.", example: ledger-api}
+  Service:
+    label: Service
+    description: >-
+      A piece of software that runs in production (an API, a worker, a web front end or a datastore),
+      named by its lower-case, hyphenated service name ("ledger-api", "ledger-db"). A service is what
+      runs; the repository is where its code lives, and a library is code built into it.
+    aliases: [microservice, API, worker, application, system, database]
+    reference: https://schema.org/SoftwareApplication
+    properties:
+      name: {type: STRING, key: true, description: "The service's name as the service catalogue writes it, lower case with hyphens (checkout-api)."}
+      serviceType: {type: STRING, one_of: [api, worker, web, database, cache, queue], description: "What kind of service it is."}
+      tier: {type: STRING, one_of: [tier-0, tier-1, tier-2], description: "How critical the service is; tier-0 services page at once."}
+      language: {type: STRING, description: "The main programming language of the service (Go)."}
+    extensions:
+      display: {x: 140, y: 60, colour: "#059669"}
+      custom:
+        relate-examples: {ask: "a system running in production, a microservice, worker, website or database cluster, such as ledger-api, payouts-worker or ledger-db"}
+        tools:
+          - type: canonicalQuery
+            name: find-a-service
+            category: lookup
+            question: Which service is this, and what does the store connect to it?
+            description: Finds services whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (s:Service) WHERE toLower(s.name) CONTAINS toLower($service)
+              OPTIONAL MATCH (s)-[r]-(x:_Entity)
+              RETURN s.name AS service, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY service, link, other
+            parameters:
+              - {name: service, type: STRING, description: "Part of the service's name.", example: ledger-api}
+          - type: canonicalQuery
+            name: blast-radius
+            category: path
+            question: Which services depend on this one, directly or through others, and so fail when it fails?
+            description: Every service with a chain of DEPENDS_ON links into the named service, up to three hops, with the chain.
+            teaches: A bounded variable-length pattern (*1..3) walks a dependency chain without risking an unbounded search.
+            cypher: |-
+              MATCH p = (up:Service)-[:DEPENDS_ON*1..3]->(s:Service)
+              WHERE toLower(s.name) CONTAINS toLower($service)
+              RETURN s.name AS service, up.name AS dependent, [n IN nodes(p) | n.name] AS chain, length(p) AS hops
+              ORDER BY hops, dependent
+            parameters:
+              - {name: service, type: STRING, description: "Part of the name of the service that failed.", example: ledger-api}
+  Repository:
+    label: Repository
+    description: >-
+      A version-controlled code repository on the company's code host, named as owner and name joined
+      by a slash ("vantorra/ledger"). One repository can build several services, and pull requests are
+      opened against it.
+    aliases: [repo, codebase, monorepo, source tree]
+    reference: https://schema.org/SoftwareSourceCode
+    properties:
+      slug: {type: STRING, key: true, pattern: "^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9._-]*$", description: "The repository's owner and name, lower case, joined by a slash (vantorra/ledger)."}
+      name: {type: STRING, description: "The repository as a document names it."}
+      visibility: {type: STRING, one_of: [public, internal, private], description: "Who can read the repository."}
+      defaultBranch: {type: STRING, description: "The branch pull requests merge into (main)."}
+    extensions:
+      display: {x: -180, y: 240, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a source code repository on a code host, written as owner/name, such as vantorra/ledger", propose: true}
+  Library:
+    label: Library
+    description: >-
+      A software package that services import rather than run (an internal client library, an SDK or
+      an open-source driver), named as its package is ("dbkit", "pgx"). A library is built into a
+      service; a service it calls over the network is another service.
+    aliases: [package, dependency, module, SDK, client library, driver]
+    properties:
+      name: {type: STRING, key: true, description: "The package's name as its ecosystem writes it."}
+      ecosystem: {type: STRING, one_of: [Go modules, npm, PyPI, Maven, crates.io], description: "The package ecosystem it is published to."}
+      version: {type: STRING, description: "A version a document cites, as a semantic version (3.0.0)."}
+      internal: {type: BOOLEAN, description: "Whether the company wrote and publishes the library itself."}
+    extensions:
+      display: {x: 120, y: 300, colour: "#14b8a6"}
+      custom:
+        relate-examples: {ask: "a software library such as dbkit or pgx"}
+        tools:
+          - type: canonicalQuery
+            name: library-reach
+            category: neighbourhood
+            question: Which services use this library, which pull requests upgraded it, and which incidents hit those services?
+            description: Each service that uses the library, with the pull requests that upgraded it and the incidents that affected the service.
+            teaches: A library is a hub between code changes and running services; two OPTIONAL MATCHes read both sides at once.
+            cypher: |-
+              MATCH (s:Service)-[:USES]->(lib:Library) WHERE toLower(lib.name) CONTAINS toLower($library)
+              OPTIONAL MATCH (pr:PullRequest)-[:UPGRADES]->(lib)
+              OPTIONAL MATCH (i:Incident)-[:AFFECTED]->(s)
+              RETURN lib.name AS library, s.name AS service, collect(DISTINCT pr.name) AS upgraded_by,
+                     collect(DISTINCT i.name) AS incidents
+              ORDER BY service
+            parameters:
+              - {name: library, type: STRING, description: "Part of the library's name.", example: dbkit}
+  PullRequest:
+    label: PullRequest
+    description: >-
+      A proposed change to a repository's code that an engineer opens for review and that is merged or
+      closed, written as PR and its number ("PR #1842"). A pull request changes code; the issue it fixes
+      describes the problem.
+    aliases: [PR, merge request, MR, change, diff, patch]
+    properties:
+      number: {type: STRING, key: true, pattern: "^[0-9]{1,6}$", description: "The pull request's number in its repository, digits only (1842); texts write PR #1842."}
+      name: {type: STRING, description: "The pull request as a document names it."}
+      title: {type: STRING, description: "The pull request's title."}
+      state: {type: STRING, one_of: [draft, open, merged, closed], description: "Where the pull request stands."}
+      mergedOn: {type: DATE, description: "The date it was merged."}
+      linesChanged: {type: INTEGER, description: "Lines added and removed, together."}
+    extensions:
+      display: {x: -80, y: -120, colour: "#8b5cf6"}
+      custom:
+        relate-examples: {ask: "a pull request or merge request, written PR and its number, such as PR #1842", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: pull-request-in-context
+            category: lookup
+            question: Who wrote and reviewed this pull request, where was it opened, what does it fix, and which release shipped it?
+            description: The pull request whose number is the parameter, with its authors, reviewers, repository, the issues it fixes and the releases that include it.
+            teaches: The key property (number) is filled from the entity's name when the text gives it ("PR #1842" gives 1842), so an exact match works here.
+            cypher: |-
+              MATCH (pr:PullRequest) WHERE pr.number = $number
+              OPTIONAL MATCH (a:Engineer)-[:AUTHORED]->(pr)
+              OPTIONAL MATCH (rv:Engineer)-[:REVIEWED]->(pr)
+              OPTIONAL MATCH (pr)-[:TARGETS]->(repo:Repository)
+              OPTIONAL MATCH (pr)-[:FIXES]->(iss:Issue)
+              OPTIONAL MATCH (v:Release)-[:INCLUDES]->(pr)
+              RETURN pr.name AS pull_request, collect(DISTINCT a.name) AS authors, collect(DISTINCT rv.name) AS reviewers,
+                     collect(DISTINCT repo.name) AS repositories, collect(DISTINCT iss.name) AS fixes, collect(DISTINCT v.name) AS releases
+            parameters:
+              - {name: number, type: STRING, description: "A pull request's number, digits only.", example: "1842"}
+  Issue:
+    label: Issue
+    description: >-
+      A ticket in an issue tracker (a bug, a task or an incident follow-up), identified by its project
+      key and number ("LEDGER-412"). An issue records work to be done; the pull request that does the
+      work is a separate kind.
+    aliases: [ticket, bug, task, action item, follow-up, story]
+    properties:
+      issueKey: {type: STRING, key: true, pattern: "^(?!(?:INC|DEP|SEV)-)[A-Z][A-Z0-9]{1,9}-[0-9]{1,6}$", description: "The tracker key: the project code in capitals, a hyphen and a number (LEDGER-412). The INC-, DEP- and SEV- prefixes belong to incident numbers, deploy numbers and severities, not to the tracker."}
+      name: {type: STRING, description: "The issue as a document names it."}
+      title: {type: STRING, description: "The issue's summary line."}
+      issueType: {type: STRING, one_of: [bug, task, story, follow-up], description: "What kind of ticket it is."}
+      status: {type: STRING, one_of: [open, in progress, in review, done], description: "Where the issue stands.", extensions: {custom: {relate-examples: {extract: true, ask: "where the ticket stands, open, in progress, in review or done"}}}}
+      priority: {type: STRING, one_of: [P0, P1, P2, P3], description: "The issue's priority, P0 the highest."}
+      dueOn: {type: DATE, description: "The date the work is due, as the action-item list gives it.", extensions: {custom: {relate-examples: {extract: true, ask: "the deadline by which the ticket or action item must be done, such as 31 Oct 2026"}}}}
+    extensions:
+      display: {x: -60, y: -320, colour: "#ca8a04"}
+      custom:
+        relate-examples: {ask: "an issue tracker ticket, such as a bug or an action item, identified by a key such as LEDGER-412", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: follow-up-progress
+            category: aggregation
+            question: How many follow-up issues came out of each incident, how many have a fixing pull request, and who holds them?
+            description: Per incident, its follow-up issues, the pull requests that fix them and the engineers they are assigned to.
+            teaches: Counting DISTINCT on two optional sides of one pattern gives two independent tallies in one row.
+            cypher: |-
+              MATCH (iss:Issue)-[:FOLLOWS_UP]->(i:Incident)
+              OPTIONAL MATCH (iss)-[:ASSIGNED_TO]->(e:Engineer)
+              OPTIONAL MATCH (pr:PullRequest)-[:FIXES]->(iss)
+              RETURN i.name AS incident, count(DISTINCT iss) AS follow_ups, count(DISTINCT pr) AS fixing_prs,
+                     collect(DISTINCT e.name) AS assignees
+              ORDER BY follow_ups DESC, incident
+  Release:
+    label: Release
+    description: >-
+      A versioned build of one service that bundles merged pull requests, named by its version number
+      with a leading v. A release is what gets shipped, and each deployment rolls one release out to an
+      environment; the version a document gives for a library is that library's, not a release.
+    aliases: [version, build, tag, release candidate]
+    properties:
+      version: {type: STRING, key: true, pattern: "^v[0-9]+\\.[0-9]+\\.[0-9]+$", description: "The release's semantic version with a leading v (v4.12.0)."}
+      name: {type: STRING, description: "The release as a document names it."}
+      cutOn: {type: DATE, description: "The date the release was cut.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the release was cut, such as 13 October 2026"}}}}
+    extensions:
+      display: {x: 160, y: -180, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a release of a deployed service, written as v and its version number, such as v4.12.0", proper: true, propose: true}
+  Deployment:
+    label: Deployment
+    description: >-
+      One rollout of a release to an environment (a canary, a full production rollout or a rollback),
+      identified by its deploy number ("DEP-5521"). A rollback is a deployment of an earlier release, not
+      a separate kind.
+    aliases: [deploy, rollout, rollback, canary, push]
+    properties:
+      deployId: {type: STRING, key: true, pattern: "^DEP-[0-9]{4,6}$", description: "The deploy pipeline's number for the deployment, DEP- and four to six digits."}
+      name: {type: STRING, description: "The deployment as a document names it."}
+      environment: {type: STRING, one_of: [production, canary, staging], description: "Where the release was rolled out."}
+      strategy: {type: STRING, one_of: [rolling, canary, blue-green, rollback], description: "How it was rolled out."}
+      startedAt: {type: ZONED DATETIME, description: "When the rollout started, in UTC."}
+      outcome: {type: STRING, one_of: [succeeded, failed, rolled back], description: "How the rollout ended."}
+    extensions:
+      display: {x: 380, y: -180, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "one deployment, rollout or rollback of a release, identified by a deploy number such as DEP-5521", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: deployments-of-a-service
+            category: path
+            question: Which deployments rolled out which releases of this service, and did any of them trigger an incident?
+            description: The chain deployment, release, service for the named service, with any incident each deployment triggered.
+            teaches: A rollback is just another deployment of an older release, so one pattern lists rollouts and rollbacks alike.
+            cypher: |-
+              MATCH (d:Deployment)-[:SHIPPED]->(v:Release)-[:VERSION_OF]->(s:Service)
+              WHERE toLower(s.name) CONTAINS toLower($service)
+              OPTIONAL MATCH (i:Incident)-[:TRIGGERED_BY]->(d)
+              RETURN s.name AS service, d.name AS deployment, v.name AS release, collect(DISTINCT i.name) AS incidents
+              ORDER BY deployment
+            parameters:
+              - {name: service, type: STRING, description: "Part of the service's name.", example: ledger-api}
+  Incident:
+    label: Incident
+    description: >-
+      An unplanned disruption to production that an incident process declares, runs and reviews,
+      identified by its incident number ("INC-2291") and graded by severity. An incident is what
+      happened to users; the deployment that triggered it and the issues that follow it are separate
+      kinds.
+    aliases: [outage, SEV, production incident, degradation, postmortem]
+    properties:
+      incidentId: {type: STRING, key: true, pattern: "^INC-[0-9]{3,6}$", description: "The incident number, INC- and three to six digits."}
+      name: {type: STRING, description: "The incident as a document names it."}
+      title: {type: STRING, description: "The incident's one-line title."}
+      severity: {type: STRING, one_of: [SEV-1, SEV-2, SEV-3, SEV-4], description: "The severity it was declared or reviewed at, SEV-1 the worst.", extensions: {custom: {relate-examples: {extract: true, ask: "the severity the incident was declared or graded at, SEV-1 to SEV-4, such as SEV-1"}}}}
+      startedAt: {type: ZONED DATETIME, description: "When customer impact began, in UTC."}
+      resolvedAt: {type: ZONED DATETIME, description: "When the incident was resolved, in UTC."}
+      customerImpact: {type: STRING, description: "What users saw, in a sentence."}
+    extensions:
+      display: {x: 380, y: 60, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a production incident or outage, identified by an incident number such as INC-2291", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: incident-by-number
+            category: lookup
+            question: What triggered this incident, which services did it affect, and who responded?
+            description: The incident whose number is the parameter, with the deployments that triggered it, the services it affected and its responders.
+            teaches: The key property (incidentId) is filled from the entity's name when the text gives the number, so an exact match works here.
+            cypher: |-
+              MATCH (i:Incident) WHERE i.incidentId = $incident
+              OPTIONAL MATCH (i)-[:TRIGGERED_BY]->(d:Deployment)
+              OPTIONAL MATCH (i)-[:AFFECTED]->(s:Service)
+              OPTIONAL MATCH (e:Engineer)-[:RESPONDED_TO]->(i)
+              RETURN i.incidentId AS incident, collect(DISTINCT d.name) AS triggered_by, collect(DISTINCT s.name) AS affected,
+                     collect(DISTINCT e.name) AS responders
+            parameters:
+              - {name: incident, type: STRING, description: "An incident number.", example: INC-2291}
+          - type: canonicalQuery
+            name: from-incident-to-code
+            category: path
+            question: Which deployment, release and pull requests lie behind this incident, who wrote them, and which libraries did they upgrade?
+            description: The chain incident, deployment, release, pull request, with each pull request's authors and upgraded libraries and the release's service.
+            teaches: A four-node chain reads as the postmortem's causal story; OPTIONAL MATCH on the side links keeps a pull request whose author the text leaves out.
+            cypher: |-
+              MATCH (i:Incident)-[:TRIGGERED_BY]->(d:Deployment)-[:SHIPPED]->(v:Release)-[:INCLUDES]->(pr:PullRequest)
+              WHERE i.incidentId = $incident
+              OPTIONAL MATCH (a:Engineer)-[:AUTHORED]->(pr)
+              OPTIONAL MATCH (pr)-[:UPGRADES]->(lib:Library)
+              OPTIONAL MATCH (v)-[:VERSION_OF]->(s:Service)
+              RETURN i.name AS incident, d.name AS deployment, v.name AS release, collect(DISTINCT s.name) AS services,
+                     pr.name AS pull_request, collect(DISTINCT a.name) AS authors, collect(DISTINCT lib.name) AS upgraded
+              ORDER BY pull_request
+            parameters:
+              - {name: incident, type: STRING, description: "An incident number.", example: INC-2291}
+          - type: canonicalQuery
+            name: what-the-documents-say-about-an-incident
+            category: evidence
+            question: What do the documents say about this incident, fact by fact, and in which sentences?
+            description: Every extracted fact that touches the incident, with its score and the sentence it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (i:Incident)-[r]-(x:_Entity) WHERE i.incidentId = $incident
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN i.name AS incident, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: incident, type: STRING, description: "An incident number.", example: INC-2291}
+          - type: canonicalQuery
+            name: facts-in-more-than-one-document
+            category: cross-document
+            question: Which facts do two or more documents both state?
+            description: Every extracted relationship whose evidence spans more than one document, with the documents' titles.
+            teaches: A relationship's docs list holds every document that supports it; size() over it finds the corroborated facts.
+            cypher: |-
+              MATCH (a:_Entity)-[r]->(b:_Entity) WHERE size(r.docs) > 1
+              MATCH (d:_Document) WHERE d.id IN r.docs
+              RETURN a.name AS source, type(r) AS link, b.name AS target, collect(d.title) AS documents
+              ORDER BY link, source, target
+relationships:
+  teamOwnsService:
+    type: OWNS
+    description: >-
+      The team owns the service: it builds it, runs it and carries its pager; one owning team per service
+      in this ontology, many services per team.
+    aliases: [runs, is responsible for, maintains]
+    from: {node: Team}
+    to: {node: Service, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: owns}
+  engineerMemberOfTeam:
+    type: MEMBER_OF
+    description: >-
+      The engineer is a member of the team; one team per engineer in this ontology, many engineers per
+      team.
+    aliases: [is on, works on, belongs to, joined]
+    from: {node: Engineer}
+    to: {node: Team, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a member of}
+  serviceBuiltFromRepository:
+    type: BUILT_FROM
+    description: >-
+      The service is built from the repository's code; a service has one repository, a repository may
+      build several services.
+    aliases: [lives in, has its code in, is deployed from]
+    from: {node: Service}
+    to: {node: Repository, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is built from}
+  serviceDependsOnService:
+    type: DEPENDS_ON
+    description: >-
+      The first service calls the second at run time and fails or degrades when it does; read from the
+      caller to the callee; many to many.
+    aliases: [calls, relies on, reads from, writes to]
+    from: {node: Service}
+    to: {node: Service}
+    extensions:
+      custom:
+        relate-examples: {phrase: depends on}
+  serviceUsesLibrary:
+    type: USES
+    description: >-
+      The service imports the library and runs its code in process; many to many.
+    aliases: [imports, is built with, links against, wraps]
+    from: {node: Service}
+    to: {node: Library}
+    extensions:
+      custom:
+        relate-examples: {phrase: uses}
+  engineerAuthoredPullRequest:
+    type: AUTHORED
+    description: >-
+      The engineer wrote and opened the pull request; usually one author per pull request, many pull
+      requests per engineer.
+    aliases: [opened, wrote, submitted, raised]
+    from: {node: Engineer}
+    to: {node: PullRequest}
+    extensions:
+      custom:
+        relate-examples: {phrase: authored}
+  engineerReviewedPullRequest:
+    type: REVIEWED
+    description: >-
+      The engineer reviewed the pull request, whether they approved it, commented or asked for changes;
+      a pull request has one or more reviewers.
+    aliases: [approved, requested changes on, signed off]
+    from: {node: Engineer}
+    to: {node: PullRequest}
+    extensions:
+      custom:
+        relate-examples: {phrase: reviewed}
+  pullRequestTargetsRepository:
+    type: TARGETS
+    description: >-
+      The pull request was opened against the repository and merges into it; exactly one repository per
+      pull request, many pull requests per repository.
+    aliases: [was opened against, was merged into, is against]
+    from: {node: PullRequest}
+    to: {node: Repository, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was opened against}
+  pullRequestFixesIssue:
+    type: FIXES
+    description: >-
+      The pull request does the work the issue asks for and closes it when merged; a pull request may
+      fix several issues, and an issue may need several pull requests.
+    aliases: [closes, resolves, addresses]
+    from: {node: PullRequest}
+    to: {node: Issue}
+    extensions:
+      custom:
+        relate-examples: {phrase: fixes}
+  pullRequestUpgradesLibrary:
+    type: UPGRADES
+    description: >-
+      The pull request moves the repository onto another version of the library (or adds it); a pull
+      request may upgrade several libraries, a library is upgraded by many pull requests.
+    aliases: [bumps, updates, moves to, adds]
+    from: {node: PullRequest}
+    to: {node: Library}
+    extensions:
+      custom:
+        relate-examples: {phrase: upgraded}
+  releaseIncludesPullRequest:
+    type: INCLUDES
+    description: >-
+      The release ships the merged pull request; a release bundles many pull requests, a pull request
+      ships in the first release cut after it merges.
+    aliases: [contains, ships, bundles]
+    from: {node: Release}
+    to: {node: PullRequest}
+    extensions:
+      custom:
+        relate-examples: {phrase: included}
+  releaseVersionOfService:
+    type: VERSION_OF
+    description: >-
+      The release is a version of the service; each release belongs to exactly one service, a service
+      has many releases.
+    aliases: [is a release of, is a version of, of]
+    from: {node: Release}
+    to: {node: Service, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a version of}
+  deploymentShippedRelease:
+    type: SHIPPED
+    description: >-
+      The deployment rolled the release out (or, for a rollback, back out) to its environment; exactly
+      one release per deployment, many deployments per release.
+    aliases: [rolled out, deployed, restored, pushed]
+    from: {node: Deployment}
+    to: {node: Release, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: rolled out}
+  incidentTriggeredByDeployment:
+    type: TRIGGERED_BY
+    description: >-
+      The deployment set off the incident, as the incident review found; an incident usually has one
+      triggering deployment, and most deployments trigger none.
+    aliases: [was caused by, started with, followed]
+    from: {node: Incident}
+    to: {node: Deployment}
+    extensions:
+      custom:
+        relate-examples: {phrase: was triggered by}
+  incidentAffectedService:
+    type: AFFECTED
+    description: >-
+      The incident degraded or took down the service for its users or callers; an incident affects one
+      or more services.
+    aliases: [degraded, took down, impacted, hit]
+    from: {node: Incident}
+    to: {node: Service}
+    extensions:
+      custom:
+        relate-examples: {phrase: affected}
+  engineerRespondedToIncident:
+    type: RESPONDED_TO
+    description: >-
+      The engineer took part in the incident response, as incident commander, on-call responder or
+      helper; an incident has one or more responders.
+    aliases: [was paged for, led the response to, commanded, joined]
+    from: {node: Engineer}
+    to: {node: Incident}
+    extensions:
+      custom:
+        relate-examples: {phrase: responded to}
+  issueFollowsUpIncident:
+    type: FOLLOWS_UP
+    description: >-
+      The issue is an action item raised by the incident's review; an incident has many follow-ups, an
+      issue follows up one incident.
+    aliases: [is an action item from, came out of, was raised after]
+    from: {node: Issue}
+    to: {node: Incident, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a follow-up to}
+  issueAssignedToEngineer:
+    type: ASSIGNED_TO
+    description: >-
+      The engineer owns the issue and is expected to do or delegate the work; at most one assignee per
+      issue, many issues per engineer.
+    aliases: [is owned by, belongs to, was given to]
+    from: {node: Issue}
+    to: {node: Engineer, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is assigned to}
+  engineerOnCallForService:
+    type: ON_CALL_FOR
+    description: >-
+      The engineer holds the pager for the service during the period the document describes; a service
+      has a primary and sometimes a secondary on-call engineer.
+    aliases: [holds the pager for, is the on-call for, was paged for]
+    from: {node: Engineer}
+    to: {node: Service}
+    extensions:
+      custom:
+        relate-examples: {phrase: is on call for}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Software & AI
+      card:
+        title: Software Engineering
+        description: Trace an incident back through the deployment, release and pull request behind it to the engineers, teams and services involved.
+      source:
+        derived_from: create-context-graph's software-engineering.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Engineer and Organization became
+          Team; Repository, Issue, PullRequest, Deployment, Service and Incident keep their meaning with new
+          descriptions and properties, and Library and Release are new; the links were renamed for their
+          meaning, turned to read from the subject a postmortem writes about, and given cardinalities; the
+          tools were written anew for an extracted graph.

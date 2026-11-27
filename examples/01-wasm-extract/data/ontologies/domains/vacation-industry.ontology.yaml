@@ -1,0 +1,589 @@
+# Vacation Industry: example 01's curated ontology for resort groups' and tour operators' season
+# documents (D20). Written for this repository from create-context-graph's vacation-industry.yaml at
+# 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, and the parties are named for the three
+# roles the trade keeps apart (ResortGroup runs resorts, TourOperator sells holidays, Provider runs
+# excursions) and for its customers (Guest), beside the trade's own things (Resort, Destination,
+# Package, Activity, Season) and what measures a season (Booking, Review).
+#
+# Every kind carries the description a reader needs, aliases, a reference where schema.org has the
+# concept, realistic properties (identifiers with patterns, vocabularies with one_of), and under
+# extensions.custom.relate-examples the words the model reads (ask) and whether its mentions are
+# proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link says its
+# direction and cardinality and carries the phrase the model reads. The tools are the ontology's
+# competency questions, written for the graph the page extracts: entities carry name, display, key
+# and their key property; relationships carry p, claims, sentences and docs, and the trace
+# (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: vacation-industry
+name: Vacation Industry
+description: >-
+  The holiday business as resort groups and tour operators report on it at the end of a season: the
+  resort groups that run resorts, the destinations those resorts stand in, the packages sold there
+  and the tour operators that sell them, the activities a resort offers and the local providers that
+  run them, the trading seasons in which packages are sold and activities run, and the guests,
+  bookings and reviews that show how a season went. It answers who runs which resort and who sells
+  holidays there, what a package includes and when it is on sale, which activities a resort offers
+  and who runs them, who booked what and where, what guests' reviews are about and which activities
+  they single out, and what the source text says about each fact. A booking's value, arrival date
+  and status and a package's lead-in price are read from the text; occupancy, rates, revenue and
+  review scores are out of scope as figures, and so are rooms, staff, allocations and a guest's
+  contact details: a report states them, the extractor does not keep them.
+nodes:
+  Resort:
+    label: Resort
+    description: >-
+      A holiday resort or resort hotel that guests stay at, named in full ("Cala Serena Resort") and
+      often by its short name ("Cala Serena"). A resort is a place in one destination; the packages
+      sold for it and the group that runs it are not the resort.
+    aliases: [resort hotel, property, holiday village, beach resort]
+    reference: https://schema.org/Resort
+    properties:
+      name: {type: STRING, key: true, description: "The resort's name as the documents write it."}
+      resortType: {type: STRING, one_of: [beach, mountain, ski, spa, golf, all-inclusive, eco-lodge], description: "The kind of resort, as its group markets it."}
+      rooms: {type: INTEGER, description: "The number of rooms, suites and villas the resort lets."}
+      starRating: {type: INTEGER, description: "The resort's official star classification, 1 to 5."}
+      status: {type: STRING, one_of: [open, closed for the season, renovation, opening soon], description: "Whether the resort is trading."}
+    extensions:
+      display: {x: 0, y: -160, colour: "#0284c7"}
+      custom:
+        relate-examples: {ask: "a resort or resort hotel, the place where guests stay, named in full or by its short name, such as the Bayview Beach Resort; never a package sold to guests", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-resort
+            category: lookup
+            question: Which resort is this, and what does the store connect to it?
+            description: Finds resorts whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (r:Resort) WHERE toLower(r.name) CONTAINS toLower($resort)
+              OPTIONAL MATCH (r)-[l]-(x:_Entity)
+              RETURN r.name AS resort, type(l) AS link, x.kind AS kind, x.name AS other
+              ORDER BY resort, link, other
+            parameters:
+              - {name: resort, type: STRING, description: "Part of the resort's name.", example: Cala Serena}
+          - type: canonicalQuery
+            name: resort-activity-programme
+            category: neighbourhood
+            question: Which activities does each resort offer, who runs them, and in which seasons?
+            description: Each resort with the activities it offers, each activity's provider and the seasons it runs in.
+            teaches: OPTIONAL MATCH keeps an activity in the answer even when the text names no provider or season for it, such as a resort's own kids' club.
+            cypher: |-
+              MATCH (r:Resort)-[:OFFERS]->(a:Activity)
+              OPTIONAL MATCH (a)-[:RUN_BY]->(p:Provider)
+              OPTIONAL MATCH (a)-[:RUNS_IN]->(s:Season)
+              RETURN r.name AS resort, a.name AS activity, collect(DISTINCT p.name) AS run_by, collect(DISTINCT s.name) AS seasons
+              ORDER BY resort, activity
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Hannah Okonkwo}
+  ResortGroup:
+    label: ResortGroup
+    description: >-
+      A company that owns or runs resorts under contract: a resort group, hotel group or management
+      company, named in full ("Tamarel Leisure Group"). A resort group runs resorts and may sell its
+      own breaks direct; a tour operator sells holidays at resorts others run.
+    aliases: [resort operator, hotel group, management company, resort company, owner]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The group's name as the documents write it."}
+      model: {type: STRING, one_of: [owner-operator, management contract, franchise], description: "How the group holds the resorts it runs."}
+      country: {type: STRING, pattern: "^[A-Z]{2}$", description: "The country of the group's head office, as an ISO 3166 alpha-2 code (PT)."}
+    extensions:
+      display: {x: -260, y: -300, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a resort group, hotel group or management company that owns or runs resorts, named in full; never a tour operator", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: resort-group-portfolio
+            category: neighbourhood
+            question: Which resorts does each group run, in which destinations, and which packages are offered there?
+            description: Each resort group with the resorts it operates, their destinations and the packages offered at them.
+            teaches: OPTIONAL MATCH from the resort, not the group, so a resort with no destination still shows its packages.
+            cypher: |-
+              MATCH (g:ResortGroup)
+              OPTIONAL MATCH (g)-[:OPERATES]->(r:Resort)
+              OPTIONAL MATCH (r)-[:LOCATED_IN]->(d:Destination)
+              OPTIONAL MATCH (p:Package)-[:OFFERED_AT]->(r)
+              RETURN g.name AS group, collect(DISTINCT r.name) AS resorts, collect(DISTINCT d.name) AS destinations, collect(DISTINCT p.name) AS packages
+              ORDER BY group
+  TourOperator:
+    label: TourOperator
+    description: >-
+      A company that packages and sells holidays, contracting rooms at resorts it does not run, named
+      in full ("Brightwater Holidays"). A tour operator sells packages; it neither runs the resort nor
+      the excursions.
+    aliases: [operator, holiday company, travel company, wholesaler, tour company]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The tour operator's name as the documents write it."}
+      atolNumber: {type: STRING, pattern: "^[0-9]{4,5}$", description: "The tour operator's ATOL licence number, four or five digits, for packages sold to UK customers."}
+      sourceMarket: {type: STRING, pattern: "^[A-Z]{2}$", description: "The country the operator sells to, as an ISO 3166 alpha-2 code (DE)."}
+    extensions:
+      display: {x: -420, y: -60, colour: "#c026d3"}
+      custom:
+        relate-examples: {ask: "a tour operator or holiday company that sells package holidays at resorts others run, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: who-sells-at-whose-resorts
+            category: path
+            question: Which tour operators sell packages at the resorts each group runs?
+            description: The chain tour operator, package, resort, resort group, for every package a tour operator sells.
+            teaches: A pattern read against the links' directions (<-) still follows each declared link; the arrow says which end is the source.
+            cypher: |-
+              MATCH (t:TourOperator)<-[:SOLD_BY]-(p:Package)-[:OFFERED_AT]->(r:Resort)<-[:OPERATES]-(g:ResortGroup)
+              RETURN t.name AS tour_operator, p.name AS package, r.name AS resort, g.name AS group
+              ORDER BY tour_operator, package
+  Destination:
+    label: Destination
+    description: >-
+      A holiday destination that resorts stand in: a region, island or stretch of coast, named as the
+      trade names it ("the Algarve", "Mallorca"). A destination is where a resort is; a guest's home
+      country is not a destination.
+    aliases: [region, island, holiday region, resort area, coast]
+    reference: https://schema.org/TouristDestination
+    properties:
+      name: {type: STRING, key: true, description: "The destination's name as the documents write it."}
+      destinationType: {type: STRING, one_of: [region, island, coast, resort town], description: "What kind of place the destination is."}
+      country: {type: STRING, pattern: "^[A-Z]{2}$", description: "The destination's country, as an ISO 3166 alpha-2 code (ES)."}
+    extensions:
+      display: {x: 360, y: -240, colour: "#059669"}
+      custom:
+        relate-examples: {ask: "a holiday destination where resorts are, such as a region, island or stretch of coast like Crete or the Costa Brava; never a guest's home country", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: bookings-by-destination
+            category: aggregation
+            question: How many bookings and guests did each destination's resorts take?
+            description: Per destination, its resorts and the bookings and guests at them.
+            teaches: Count DISTINCT after a chain of OPTIONAL MATCHes, or each booking is counted once per guest.
+            cypher: |-
+              MATCH (d:Destination)<-[:LOCATED_IN]-(r:Resort)
+              OPTIONAL MATCH (b:Booking)-[:BOOKED_AT]->(r)
+              OPTIONAL MATCH (g:Guest)-[:BOOKED]->(b)
+              RETURN d.name AS destination, collect(DISTINCT r.name) AS resorts, count(DISTINCT b) AS bookings, count(DISTINCT g) AS guests
+              ORDER BY bookings DESC, destination
+  Provider:
+    label: Provider
+    description: >-
+      A local company contracted to run excursions or activities for resort guests: a boat charter,
+      kayak outfitter, dive school or guiding company, named in full ("Rocha Azul Kayaks"). A
+      provider runs activities but sells no packages and runs no resort.
+    aliases: [activity provider, excursion supplier, ground handler, supplier, contractor]
+    reference: https://schema.org/LocalBusiness
+    properties:
+      name: {type: STRING, key: true, description: "The provider's name as the documents write it."}
+      providerType: {type: STRING, one_of: [boat charter, water sports, guiding, spa, transport], description: "What the provider supplies."}
+      contractEnds: {type: DATE, description: "The date the provider's current contract with the resort ends."}
+    extensions:
+      display: {x: 380, y: 60, colour: "#b45309"}
+      custom:
+        relate-examples: {ask: "a local company a resort contracts to run its excursions, such as a boat charter, kayak outfitter, dive school or mountain guides, named in full; never a tour operator", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: providers-and-where-they-work
+            category: path
+            question: Which activities does each provider run, at which resorts, in which destinations?
+            description: The chain provider, activity, resort, destination for every provider the store holds.
+            teaches: A three-hop pattern reads as a sentence; OPTIONAL MATCH adds the destination where the text states one.
+            cypher: |-
+              MATCH (pr:Provider)<-[:RUN_BY]-(a:Activity)<-[:OFFERS]-(r:Resort)
+              OPTIONAL MATCH (r)-[:LOCATED_IN]->(d:Destination)
+              RETURN pr.name AS provider, a.name AS activity, r.name AS resort, collect(DISTINCT d.name) AS destinations
+              ORDER BY provider, activity
+  Package:
+    label: Package
+    description: >-
+      A named holiday package or break sold to guests, bundling nights at one resort with activities
+      ("the Family Sun Week"). A package is the product; a booking is one guest's purchase of it.
+    aliases: [holiday package, package holiday, break, bundle, offer]
+    reference: https://schema.org/TouristTrip
+    properties:
+      name: {type: STRING, key: true, description: "The package's name as it is sold."}
+      packageType: {type: STRING, one_of: [family, romantic, wellness, adventure, golf, all-inclusive, weekend break], description: "The kind of holiday the package is."}
+      nights: {type: INTEGER, description: "The number of nights the package includes."}
+      basePrice: {type: FLOAT, description: "The lead-in price per person, in the package's currency.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the package's lead-in price per person, a sum such as €640"}}}}
+      currency: {type: STRING, pattern: "^[A-Z]{3}$", description: "The currency the package is priced in, ISO 4217 (EUR)."}
+    extensions:
+      display: {x: -200, y: 40, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "a holiday package sold under its own name, such as a Golf Week, Romantic Escape or Wellness Break, that bundles nights at a resort with activities; never the resort itself", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-a-package-includes
+            category: neighbourhood
+            question: Where is this package offered, who sells it, what does it include, and in which seasons is it on sale?
+            description: The package whose name holds the text, with its resorts, its sellers, its activities and its seasons.
+            teaches: One node's four neighbourhoods come back as four collected lists; an empty list means the text states none.
+            cypher: |-
+              MATCH (p:Package) WHERE toLower(p.name) CONTAINS toLower($package)
+              OPTIONAL MATCH (p)-[:OFFERED_AT]->(r:Resort)
+              OPTIONAL MATCH (p)-[:SOLD_BY]->(t:TourOperator)
+              OPTIONAL MATCH (p)-[:INCLUDES]->(a:Activity)
+              OPTIONAL MATCH (p)-[:AVAILABLE_IN]->(s:Season)
+              RETURN p.name AS package, collect(DISTINCT r.name) AS resorts, collect(DISTINCT t.name) AS sold_by, collect(DISTINCT a.name) AS includes, collect(DISTINCT s.name) AS seasons
+              ORDER BY package
+            parameters:
+              - {name: package, type: STRING, description: "Part of the package's name.", example: Spa Escape}
+  Activity:
+    label: Activity
+    description: >-
+      A named excursion, tour, class, club or treatment a resort offers its guests ("the Sunset
+      Catamaran Cruise", "the Polvo Club"). An activity is what guests do; a package may include it,
+      and a provider may run it.
+    aliases: [excursion, tour, experience, kids' club, treatment, outing]
+    properties:
+      name: {type: STRING, key: true, description: "The activity's name as the resort sells it."}
+      activityType: {type: STRING, one_of: [excursion, water sport, hiking, spa, kids' club, dining, fitness, cultural], description: "The kind of activity."}
+      durationHours: {type: FLOAT, description: "How long one session lasts, in hours."}
+      price: {type: FLOAT, description: "The price per person when bought on its own, in the resort's currency."}
+      minAge: {type: INTEGER, description: "The youngest age allowed to take part, in years."}
+    extensions:
+      display: {x: 160, y: 60, colour: "#d97706"}
+      custom:
+        relate-examples: {ask: "a named excursion, tour, class, club or treatment a resort offers its guests, such as a sunset cruise, kayak tour, kids' club or spa ritual", proper: true}
+  Season:
+    label: Season
+    description: >-
+      A named trading season or holiday period of the trade's calendar, written with its year
+      ("Summer 2026", "Winter 2026/27"). A season is a span of dates; the bookings and activities in
+      it are not the season.
+    aliases: [trading season, holiday season, peak season, shoulder season, period]
+    properties:
+      name: {type: STRING, key: true, description: "The season as the documents write it, with its year."}
+      seasonCode: {type: STRING, pattern: "^[SW][0-9]{2}$", description: "The season's IATA-style code: S26 for Summer 2026, W26 for Winter 2026/27."}
+      seasonType: {type: STRING, one_of: [peak, high, shoulder, low, holiday], description: "Where the season sits in the year's demand."}
+      startDate: {type: DATE, description: "The first day of the season."}
+      endDate: {type: DATE, description: "The last day of the season."}
+    extensions:
+      display: {x: 0, y: 240, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a named trading season or holiday period written with its year, such as Summer 2024, Winter 2023/24 or Easter 2025; never a month on its own", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: season-programme
+            category: aggregation
+            question: How many packages were on sale, and how many activities ran, in each season?
+            description: Per season, the packages available in it and the activities that run in it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (s:Season)
+              OPTIONAL MATCH (p:Package)-[:AVAILABLE_IN]->(s)
+              OPTIONAL MATCH (a:Activity)-[:RUNS_IN]->(s)
+              RETURN s.name AS season, count(DISTINCT p) AS packages, count(DISTINCT a) AS activities, collect(DISTINCT p.name) AS package_names
+              ORDER BY packages DESC, activities DESC, season
+  Guest:
+    label: Guest
+    description: >-
+      A person who books or stays at a resort, named in full ("Lena Brandt") and sometimes afterwards
+      as "Ms Brandt". Guests make bookings and write reviews; a resort's or a company's own staff are
+      never its guests.
+    aliases: [holidaymaker, customer, traveller, client, lead passenger]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The guest's full name."}
+      loyaltyTier: {type: STRING, one_of: [member, silver, gold, platinum], description: "The guest's tier in the group's loyalty programme."}
+      travelStyle: {type: STRING, one_of: [family, couple, solo, group, wedding party], description: "How the guest travels, as the trade segments it."}
+      homeCountry: {type: STRING, pattern: "^[A-Z]{2}$", description: "The guest's country of residence, as an ISO 3166 alpha-2 code (GB)."}
+    extensions:
+      display: {x: -380, y: 240, colour: "#e11d48"}
+      custom:
+        relate-examples: {ask: "a person who books or stays at a resort, named in full or as Mr or Ms and a surname; never a member of staff", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-a-guests-booking-includes
+            category: path
+            question: Which activities did this guest's booking include, through the package they booked?
+            description: The chain guest, booking, package, activity, for every guest whose name holds the text.
+            teaches: A four-hop pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (g:Guest)-[:BOOKED]->(b:Booking)-[:FOR_PACKAGE]->(p:Package)-[:INCLUDES]->(a:Activity)
+              WHERE toLower(g.name) CONTAINS toLower($guest)
+              RETURN g.name AS guest, b.name AS booking, p.name AS package, a.name AS activity
+              ORDER BY guest, activity
+            parameters:
+              - {name: guest, type: STRING, description: "Part of the guest's name.", example: Okonkwo}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Family Sun Week}
+  Booking:
+    label: Booking
+    description: >-
+      A guest's holiday booking, for a package or a room-only stay at a resort, identified by its
+      booking reference (BK-318204). One lead guest makes it, even for a group.
+    aliases: [reservation, holiday booking, group booking, order]
+    reference: https://schema.org/Reservation
+    properties:
+      bookingRef: {type: STRING, key: true, pattern: "^BK-[0-9]{6}$", description: "The booking reference, BK- and six digits."}
+      name: {type: STRING, description: "The booking as a document names it."}
+      arrivalDate: {type: DATE, description: "The day the guests arrive.", extensions: {custom: {relate-examples: {extract: true, ask: "the arrival date of the booking, a day such as 8 Aug 2026"}}}}
+      nights: {type: INTEGER, description: "The number of nights booked."}
+      totalCost: {type: FLOAT, description: "The booking's total value, in its currency.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the total value of the booking, a sum of money such as €4,960"}}}}
+      currency: {type: STRING, pattern: "^[A-Z]{3}$", description: "The booking's currency, ISO 4217 (EUR)."}
+      status: {type: STRING, one_of: [confirmed, pending, cancelled, completed, no-show], description: "Where the booking stands.", extensions: {custom: {relate-examples: {extract: true, ask: "where the booking stands, confirmed, cancelled or completed"}}}}
+      channel: {type: STRING, one_of: [direct, tour operator, online travel agent, travel agent, group], description: "How the booking reached the resort."}
+    extensions:
+      display: {x: -160, y: 300, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a guest's holiday booking for a package or a stay, identified by a booking reference such as BK-104233", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: booking-by-reference
+            category: lookup
+            question: Which booking has this reference, who made it, and for which package and resort?
+            description: The booking whose reference is the parameter, with its guest, its package and its resort.
+            teaches: An identifier the text states is the entity's key property (bookingRef, from its name), so an exact match finds it.
+            cypher: |-
+              MATCH (b:Booking) WHERE b.bookingRef = $bookingRef
+              OPTIONAL MATCH (g:Guest)-[:BOOKED]->(b)
+              OPTIONAL MATCH (b)-[:FOR_PACKAGE]->(p:Package)
+              OPTIONAL MATCH (b)-[:BOOKED_AT]->(r:Resort)
+              RETURN b.bookingRef AS booking, collect(DISTINCT g.name) AS guests, collect(DISTINCT p.name) AS packages, collect(DISTINCT r.name) AS resorts
+            parameters:
+              - {name: bookingRef, type: STRING, description: "A booking reference, BK- and six digits.", example: BK-318204}
+  Review:
+    label: Review
+    description: >-
+      A guest's review or post-stay survey response about a stay, identified by its reference
+      (REV-40217). A review is about one resort and may single out activities; the score it gives is
+      a property, not a link.
+    aliases: [guest review, feedback, survey response, rating, comment card]
+    reference: https://schema.org/Review
+    properties:
+      reviewId: {type: STRING, key: true, pattern: "^REV-[0-9]{5}$", description: "The review's reference, REV- and five digits."}
+      name: {type: STRING, description: "The review as a document names it."}
+      rating: {type: INTEGER, description: "The overall score the guest gave, 1 to 5."}
+      source: {type: STRING, one_of: [post-stay survey, review site, social media], description: "Where the review was written."}
+      postedOn: {type: DATE, description: "The date the review was posted."}
+    extensions:
+      display: {x: 220, y: 300, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a guest's review or post-stay survey response about a stay, identified by a reference such as REV-10482", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: reviews-by-resort
+            category: aggregation
+            question: How many reviews is each resort's, who wrote them, and which activities do they single out?
+            description: Per resort, the reviews about it, their writers and the activities they mention.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each review is counted once per activity it mentions.
+            cypher: |-
+              MATCH (rv:Review)-[:ABOUT]->(r:Resort)
+              OPTIONAL MATCH (g:Guest)-[:WROTE]->(rv)
+              OPTIONAL MATCH (rv)-[:MENTIONS]->(a:Activity)
+              RETURN r.name AS resort, count(DISTINCT rv) AS reviews, collect(DISTINCT g.name) AS reviewers, collect(DISTINCT a.name) AS activities_mentioned
+              ORDER BY reviews DESC, resort
+          - type: canonicalQuery
+            name: what-the-reviews-say
+            category: evidence
+            question: Which sentences say who wrote each review, what it is about and which activities it singles out?
+            description: Every WROTE, ABOUT and MENTIONS fact of a review, with its score and the sentences it was read from.
+            teaches: An undirected pattern with a list of types reads WROTE, which arrives at the review, beside ABOUT and MENTIONS, which leave it; a relationship's sentence keys, unwound, lead to the words.
+            cypher: |-
+              MATCH (rv:Review)-[l]-(x:_Entity) WHERE type(l) IN ['WROTE', 'ABOUT', 'MENTIONS']
+              UNWIND l.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN rv.name AS review, type(l) AS link, x.name AS other, round(l.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY review, link, other
+relationships:
+  groupOperatesResort:
+    type: OPERATES
+    description: >-
+      The resort group runs the resort, as owner or under a management contract; one group per resort
+      in this ontology, and a group may run several resorts.
+    aliases: [runs, manages, owns, took over]
+    from: {node: ResortGroup}
+    to: {node: Resort, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: operates}
+  resortLocatedInDestination:
+    type: LOCATED_IN
+    description: >-
+      The resort stands in the destination; one destination per resort, many resorts per destination.
+    aliases: [is in, is on, stands in, overlooks]
+    from: {node: Resort}
+    to: {node: Destination, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: stands in}
+  packageOfferedAtResort:
+    type: OFFERED_AT
+    description: >-
+      The package is a stay at the resort; one resort per package in this ontology, and a resort
+      offers several packages.
+    aliases: [is a stay at, is sold at, is based at]
+    from: {node: Package}
+    to: {node: Resort, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is offered at}
+  packageSoldByTourOperator:
+    type: SOLD_BY
+    description: >-
+      The tour operator sells the package to its customers under an allocation at the resort; a
+      package may be sold by several tour operators, or by none when the resort sells it direct, and a
+      tour operator sells many packages.
+    aliases: [is sold through, is marketed by, sells, is contracted to]
+    from: {node: Package}
+    to: {node: TourOperator}
+    extensions:
+      custom:
+        relate-examples: {phrase: is sold by}
+  packageIncludesActivity:
+    type: INCLUDES
+    description: >-
+      The package includes the activity in its price; many to many.
+    aliases: [comes with, bundles, contains, covers]
+    from: {node: Package}
+    to: {node: Activity}
+    extensions:
+      custom:
+        relate-examples: {phrase: includes}
+  resortOffersActivity:
+    type: OFFERS
+    description: >-
+      The resort offers the activity to its guests, in house or through a provider; an activity is
+      offered at one resort in this ontology, and a resort offers many.
+    aliases: [runs, has, provides, puts on]
+    from: {node: Resort, count: 1}
+    to: {node: Activity}
+    extensions:
+      custom:
+        relate-examples: {phrase: offers}
+  activityRunByProvider:
+    type: RUN_BY
+    description: >-
+      The provider runs the activity under contract; at most one provider per activity (none when the
+      resort runs it itself), and a provider may run several.
+    aliases: [is operated by, is supplied by, is led by, runs]
+    from: {node: Activity}
+    to: {node: Provider, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is run by}
+  activityRunsInSeason:
+    type: RUNS_IN
+    description: >-
+      The activity is scheduled in the season; an activity may run in several seasons, and a season
+      has many activities.
+    aliases: [ran in, is scheduled in, operates in, is on in]
+    from: {node: Activity}
+    to: {node: Season}
+    extensions:
+      custom:
+        relate-examples: {phrase: runs in}
+  packageAvailableInSeason:
+    type: AVAILABLE_IN
+    description: >-
+      The package is on sale for travel in the season; a package may be available in several
+      seasons, and a season has many packages.
+    aliases: [is on sale for, was available in, is sold for, is priced for]
+    from: {node: Package}
+    to: {node: Season}
+    extensions:
+      custom:
+        relate-examples: {phrase: is available in}
+  guestBookedBooking:
+    type: BOOKED
+    description: >-
+      The guest made the booking, as its lead name; exactly one lead guest per booking, and a guest
+      may make several bookings.
+    aliases: [made, reserved, is the lead name on, holds]
+    from: {node: Guest}
+    to: {node: Booking, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: booked}
+  bookingForPackage:
+    type: FOR_PACKAGE
+    description: >-
+      The booking buys the package; at most one package per booking (none for a room-only stay),
+      many bookings per package.
+    aliases: [was for, buys, is a booking of, was booked on]
+    from: {node: Booking}
+    to: {node: Package, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is for}
+  bookingAtResort:
+    type: BOOKED_AT
+    description: >-
+      The booking is for a stay at the resort; one resort per booking, many bookings per resort.
+    aliases: [is a stay at, was booked at, took rooms at, stayed at]
+    from: {node: Booking}
+    to: {node: Resort, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is at}
+  guestWroteReview:
+    type: WROTE
+    description: >-
+      The guest wrote the review; one writer per review, and a guest may write several.
+    aliases: [posted, left, submitted, is the author of]
+    from: {node: Guest}
+    to: {node: Review, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: wrote}
+  reviewAboutResort:
+    type: ABOUT
+    description: >-
+      The review is about a stay at the resort; one resort per review, many reviews per resort.
+    aliases: [reviews, rates, concerns, is of]
+    from: {node: Review}
+    to: {node: Resort, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is about}
+  reviewMentionsActivity:
+    type: MENTIONS
+    description: >-
+      The review singles out the activity, for praise or complaint; a review may mention several
+      activities, and an activity many reviews.
+    aliases: [praises, criticises, singles out, complains about]
+    from: {node: Review}
+    to: {node: Activity}
+    extensions:
+      custom:
+        relate-examples: {phrase: mentions}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Travel & Hospitality
+      card:
+        title: Vacation Industry
+        description: Follow a season from the groups that run resorts and the tour operators that sell them, through packages and activities, to the guests who booked and what their reviews said.
+      source:
+        derived_from: create-context-graph's vacation-industry.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Resort, Package, Activity, Season, Guest and
+          Booking keep their meaning with new descriptions and properties; ResortGroup, TourOperator,
+          Provider, Destination and Review are new, for who runs a resort, who sells holidays there,
+          who runs its excursions, where it is and what guests said; MADE_BOOKING became BOOKED,
+          BOOKED_AT, INCLUDES and OFFERED_AT stay, AVAILABLE_IN now dates a package and the new RUNS_IN
+          an activity, REVIEWED became a Review with WROTE, ABOUT and MENTIONS, PARTICIPATED_IN and
+          PREFERRED_BY gave way to links read through bookings and packages, and each link has a
+          cardinality; check_in became arrivalDate, and it, total_cost, booking_status and a package's
+          lead-in price are read from the text; the tools were written anew for an extracted graph.

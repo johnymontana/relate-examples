@@ -37,8 +37,9 @@
  *   Anything else is refused: a file with `$schema` and `domain`/`entity_types`, and edgextract's
  *   ontology YAML (`types`), which earlier builds converted and this one no longer reads (a store
  *   that holds such a file says so: ontologyFromStored, LEGACY_FORMAT).
- * The bundled ontologies are the converted documents (data/ontologies/ogs/ccg/, which
- * harness/ontology.mjs keeps equal to a fresh conversion of the originals beside them).
+ * The bundled ontologies are the curated domains (data/ontologies/domains/, D20) and Neo4j's solution
+ * packages with their overlays applied (data/ontologies/ogs/studio/, D21, which harness/ontology.mjs
+ * keeps equal to a fresh conversion of the vendored packages).
  *
  * A document is checked against the spec's JSON Schema, by the spec's SDK, and by the rules ogs.js
  * lists (an endpoint names a node, a constraint names a property beside it, the id rule, ...). Then the kinds and

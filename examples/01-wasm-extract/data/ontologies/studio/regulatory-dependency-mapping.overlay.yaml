@@ -1,0 +1,70 @@
+# What example 01 adds to Neo4j's regulatory-dependency-mapping package (web/studio.js, D21). The
+# package's own files sit beside this one, verbatim; this file is this repository's. It only adds: a
+# colour per kind, the description the model reads for each kind (ask, at most 240 characters),
+# whether a kind's mentions are proper names (proper), the words the model reads for each link
+# (phrase), patterns for the identifiers the memo states, the property whose values the model reads
+# (D27), and example arguments for the package's queries, taken from the records this example's memo
+# narrates (the package's sample data: the K-DTF amendment to MIFIDPRU 4.12, in force 15 July 2026).
+package: regulatory-dependency-mapping
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: Regulatory Dependency Mapping
+  category: Financial Services
+  description: Trace a regulatory change through cross-referenced handbook sections to every other rule it reaches.
+industry: Financial Services
+nodes:
+  # A sourcebook's code is also the first word of every section identifier in it (MIFIDPRU 4.12), so
+  # the code alone names the standard. Not proposed: the pattern would propose the code inside every
+  # section identifier. The package lists Standard before Section, and gliner2.5-small-v1 reads the
+  # first identifier of a sentence (COBS 11.2 cites ...) as a standard whatever this ask says; asked
+  # with Section first, or alone, it reads it as a section. The ask names the bare code, keeps a code
+  # with a number out, and keeps out the memo's teams and the regulator, which it otherwise kept.
+  Standard:
+    colour: "#1d4ed8"
+    proper: true
+    ask: the code of a whole sourcebook on its own, a capitalised word with no number after it, such as MIFIDPRU, SYSC or COBS; never a code followed by a number, and never a team, an office or a regulator
+    pattern:
+      id: "^[A-Z]{2,10}$"
+  # A section identifier is two tokens (code and number), which a pattern never proposes (D26: one
+  # token at a time); the pattern only decides the key. A single rule (MIFIDPRU 4.12.2R) is not a
+  # section in the package: it is the subsection a citation carries, so the pattern refuses the R.
+  # The ask does not name a rule as a counter-example: given one, the model read more rules as sections.
+  Section:
+    colour: "#d97706"
+    proper: true
+    ask: a numbered part of a sourcebook, its code followed by a chapter or section number, such as MIFIDPRU 4, MIFIDPRU 4.12, SYSC 7.3 or COBS 11.4
+    pattern:
+      id: "^[A-Z]{2,10} [0-9]+[A-Z]?(?:\\.[0-9]+)*$"
+    properties:
+      # The package's only property a value can be read for: lastUpdated is a ZONED DATETIME, which D27
+      # does not extract, and id is the key. A free-text value, so every sentence goes to the second call.
+      title:
+        extract: true
+        ask: the heading of the section as the handbook publishes it, the words after its number, such as K-DTF daily trading flow requirement or Reporting timetable
+relationships:
+  # Both DEPENDS_ON entries are the handbook's containment, read child to parent, and share a phrase
+  # (ontology.js reads a type's phrase from its first entry). Is in, is part of, belongs to and comes
+  # under score no better than sits within; cites scores best for the cross-reference.
+  sectionInStandard:
+    phrase: sits within
+  sectionInSection:
+    phrase: sits within
+  sectionRelated:
+    phrase: cites
+tools:
+  explore-a-standard-s-section-hierarchy:
+    args: {standardId: MIFIDPRU}
+  cross-references-into-and-out-of-a-section:
+    args: {sectionId: MIFIDPRU 4.12}
+  sections-changed-since-a-date:
+    args: {changedSince: "2026-06-01"}
+  change-blast-radius-for-a-section:
+    args: {sectionId: MIFIDPRU 4.12}
+  most-cited-sections-by-inbound-citation-count:
+    args: {limit: 20}
+  recently-changed-sections-that-are-heavily-cited:
+    args: {changedSince: "2025-09-09", minInboundCitations: 2}
+  gds-rank-section-influence-with-pagerank:
+    args: {limit: 20}
+  gds-group-cross-referencing-sections-into-communities:
+    args: {minCommunitySize: 2}

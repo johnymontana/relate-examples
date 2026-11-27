@@ -8,7 +8,7 @@
 // data/golden/docs: a code fence, negation, hedging, pronouns, overlapping names, a prompt
 // injection, an event in front matter, a document with no names, a self-loop, markup, kinds the
 // ontology lacks); the texts are new, written for create-context-graph's Financial Services
-// ontology (data/ontologies/ogs/ccg/financial-services.ontology.yaml). Their people, firms,
+// ontology (data/ontologies/ccg/financial-services.yaml, converted: convert.mjs ccgConversions). Their people, firms,
 // accounts and events are fictional; the cities are real. They have no gold labels: extract.txt
 // lists every mention and claim the gate makes of them, gate.txt holds them to the floor and rule
 // invariants, audit.txt to the audits.

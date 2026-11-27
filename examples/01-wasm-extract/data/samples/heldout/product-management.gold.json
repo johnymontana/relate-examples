@@ -1,27 +1,46 @@
 {
   "entities": [
-    {"name": "Lucia Romero", "type": "Person"},
-    {"name": "Routeling", "type": "Organization"},
-    {"name": "Valencia", "type": "Location"},
-    {"name": "Q1 roadmap review", "type": "Event"},
-    {"name": "Offline Route Sync", "type": "Feature"},
-    {"name": "Epic E-31", "type": "Epic"},
-    {"name": "Map Tile Cache", "type": "Feature"},
-    {"name": "Objective O-7", "type": "Objective"},
-    {"name": "6.0 release", "type": "Release"},
-    {"name": "Sync Success Rate", "type": "Metric"},
-    {"name": "Tile Load Time", "type": "Metric"}
+    {"name": "Brackwater Gas Networks", "type": "CustomerCompany", "aliases": ["Brackwater"]},
+    {"name": "Dispatcher", "type": "Persona"},
+    {"name": "Field Technician", "type": "Persona"},
+    {"name": "Live Dispatch Board", "type": "Feature"},
+    {"name": "Drag-to-Reassign", "type": "Feature"},
+    {"name": "Technician ETA Sharing", "type": "Feature"},
+    {"name": "Dispatcher Workspace", "type": "Epic"},
+    {"name": "Dispatch squad", "type": "Squad"},
+    {"name": "Release 26.5", "type": "Release"},
+    {"name": "FB-3218", "type": "Feedback"},
+    {"name": "FB-3219", "type": "Feedback"},
+    {"name": "FB-3220", "type": "Feedback"},
+    {"name": "EXP-230", "type": "Experiment"},
+    {"name": "time to reassign", "type": "Metric"},
+    {"name": "ETA complaint rate", "type": "Metric"}
   ],
   "relations": [
-    {"source": "Lucia Romero", "target": "Routeling", "type": "WORKS_FOR"},
-    {"source": "Routeling", "target": "Valencia", "type": "LOCATED_AT"},
-    {"source": "Lucia Romero", "target": "Q1 roadmap review", "type": "PARTICIPATED_IN"},
-    {"source": "Offline Route Sync", "target": "Epic E-31", "type": "PRIORITIZED_IN"},
-    {"source": "Map Tile Cache", "target": "Epic E-31", "type": "PRIORITIZED_IN"},
-    {"source": "Epic E-31", "target": "Objective O-7", "type": "CONTRIBUTES_TO"},
-    {"source": "Offline Route Sync", "target": "6.0 release", "type": "PART_OF_RELEASE"},
-    {"source": "Map Tile Cache", "target": "6.0 release", "type": "PART_OF_RELEASE"},
-    {"source": "Offline Route Sync", "target": "Sync Success Rate", "type": "MEASURED_BY"},
-    {"source": "Map Tile Cache", "target": "Tile Load Time", "type": "MEASURED_BY"}
+    {"source": "Live Dispatch Board", "target": "Dispatcher Workspace", "type": "PART_OF", "how": "plain"},
+    {"source": "Live Dispatch Board", "target": "Dispatcher", "type": "DESIGNED_FOR", "how": "list"},
+    {"source": "Live Dispatch Board", "target": "Release 26.5", "type": "SHIPS_IN", "how": "coreference"},
+    {"source": "Live Dispatch Board", "target": "Dispatch squad", "type": "BUILT_BY", "how": "passive"},
+    {"source": "Dispatch squad", "target": "Dispatcher Workspace", "type": "OWNS", "how": "apposition"},
+    {"source": "FB-3218", "target": "Brackwater Gas Networks", "type": "RAISED_BY", "how": "table"},
+    {"source": "FB-3219", "target": "Brackwater Gas Networks", "type": "RAISED_BY", "how": "table"},
+    {"source": "FB-3220", "target": "Brackwater Gas Networks", "type": "RAISED_BY", "how": "table"},
+    {"source": "Drag-to-Reassign", "target": "FB-3218", "type": "ADDRESSES", "how": "table"},
+    {"source": "Technician ETA Sharing", "target": "FB-3219", "type": "ADDRESSES", "how": "table"},
+    {"source": "Drag-to-Reassign", "target": "Live Dispatch Board", "type": "DEPENDS_ON", "how": "plain"},
+    {"source": "Live Dispatch Board", "target": "time to reassign", "type": "MEASURED_BY", "how": "plain"},
+    {"source": "Technician ETA Sharing", "target": "ETA complaint rate", "type": "MEASURED_BY", "how": "plain"},
+    {"source": "EXP-230", "target": "Drag-to-Reassign", "type": "TESTS", "how": "plain"},
+    {"source": "EXP-230", "target": "time to reassign", "type": "MEASURES", "how": "coreference"}
+  ],
+  "distractors": [
+    {"source": "Live Dispatch Board", "target": "FB-3220", "type": "ADDRESSES", "family": "negation"},
+    {"source": "Technician ETA Sharing", "target": "Release 26.5", "type": "SHIPS_IN", "family": "conditional"},
+    {"source": "Drag-to-Reassign", "target": "Field Technician", "type": "DESIGNED_FOR", "family": "hedge"}
+  ],
+  "properties": [
+    {"entity": "Brackwater Gas Networks", "property": "annualRevenue", "text": "£640,000", "value": 640000, "how": "apposition"},
+    {"entity": "Release 26.5", "property": "releaseDate", "text": "13 April 2027", "value": "2027-04-13", "how": "plain"},
+    {"entity": "EXP-230", "property": "design", "text": "prototype test", "value": "prototype test", "how": "apposition"}
   ]
 }

@@ -3,9 +3,9 @@
 **Scope.** Example 01 only, worked in the worktree `.claude/worktrees/ex01-ontologies` on branch
 `ex01-ontologies`, cut from `3e887b1` (the Relate 1.3.0 and SDK 0.13.0 upgrade). That commit is not
 on `main` yet. It lives on `companies2-example01` with example 02's in-flight companies work, so
-this branch lands after the upgrade reaches `main` (or carries it). Nothing in this plan is built
-yet. It is a plan, not a record: when the work lands, the decisions below that meet AGENTS.md's bar
-become ADRs, and no code or doc cites this file.
+this branch lands after the upgrade reaches `main` (or carries it). Most of it is built: the
+**Status** section below tracks what is done and what remains. It is a plan, not a record: the
+decisions that met AGENTS.md's bar are ADR-0019 to ADR-0021, and no code or doc cites this file.
 
 **Goal.** The page should feel like a real knowledge-extraction tool, not a toy:
 1. **Forty domains in two families.** The 27 create-context-graph domains, rewritten as curated
@@ -34,6 +34,54 @@ breakdowns. Only after that do the other 38 domains follow, and they can be auth
 
 [Example README](README.md) · [Engine behaviours and design ids](NOTES.md) ·
 [Repository decisions](../../docs/adr/README.md) · [The packages](https://github.com/neo4j/studio-agent-use-cases)
+
+---
+
+## Status (2026-11-27, paused)
+
+Local commits on `ex01-ontologies`, never pushed: `b0c2a2a` (the two slices and properties from
+text), `8162d3f` (harness fixes, ADRs, browser tests), then the corpus landing (all 40 domains, the
+recalibrated defaults and the fixes below).
+
+| Phase | State | Notes |
+|---|---|---|
+| 0 Gates and spikes | done | Licence: vendored with Neo4j's permission (ADR-0020). |
+| 1 The reader | done | Spec 1.0.0 read as 1.1; cues, phrases and the schema budget (D22); key-from-name (D25); proposed identifiers (D26). |
+| 2 The 13 packages | done | `b76f767`, verbatim with overlays; `convert.mjs --check` clean; the SDK and ajv agree on all 40 bundled documents. |
+| 3 The 27 curated ontologies | done | The bar holds for 40 of 40 (`ontology.txt`). |
+| 4 The corpus | done | 49 documents (40 primary, 9 companions) and 12 held out, gold v2, lint clean. |
+| 5 Scoring and calibration | done | Precision-first (D23): entity keep 0.70, relation keep 0.20/0.15. base-v1 not recalibrated. |
+| 6 Tools | mostly | Curated tools return rows for 292 of 386; packages' for 28 of 133 (written for their CSV data); 1 error (loans-and-mortgages `default-contagion-…`, `IN` on a non-list). "Every tool returns rows" is not met. |
+| 7 The page | fixed, not yet re-verified | The first full browser run (2026-11-27) found five problems, all fixed: curated stores shown as "own document" (compare by sha, not YAML text); the sample's size question never answered by the test; `refreshNames` ignoring the `proper` rule on reopen (now `store.nameOfMention`, with a Node check that reopening changes nothing); the side panel showing a tool's example while asking for a value; the migration offer requiring `convertedFrom` (earlier builds' stores carry `format`). |
+| 8 Harness and CI | done, over budget | Inference cache (D24), engine pool, CI cache. A full `./run.sh` takes about an hour (target was 25 minutes): subset the grids or the ablations. |
+| 9a Reconcile with records | not started | Waits on 02's loader in `lib/`. |
+| 9b Properties from text | done | D27, ADR-0021: values P 0.918 R 0.642. |
+| 9c Aliases into one entity | not started | |
+| 10 Records | mostly | ADR-0019 to 0021, NOTES D20-D27 and G12, README, THIRD_PARTY, `site.json`, AGENTS.md, CI. The screenshot is not retaken. |
+
+**Scores at the defaults** (dev, 49 documents): entities P 0.903 R 0.800; relations P 0.917
+R 0.221 (lists 53 of 531, tables 7 of 441); values P 0.918 R 0.642; 3 of 246 distractors kept.
+Held out: entities P 0.868 R 0.728, relations P 0.944 R 0.233, 0 of 36 distractors kept.
+
+**`expected/` state.** probes, model, ontology, extract, gate, audit, review, score and
+`graph.cypher` are recorded from this code, each diff read and classified (the corpus, the new
+defaults, rule 3's inside join, the "says" cue, the wider SDK checks). Since that run, two harness
+lines changed (`extract.txt`: the reopen check; `gate.txt`: the Pine Clinic case named as the inside
+join), so the next `./run.sh` shows those two. **`browser.txt` and `native.txt` are still the
+create-context-graph build's**: the browser section has not passed end to end on the curated corpus.
+
+**Next, in order:**
+1. `./run.sh --update` (about an hour; `caffeinate -i`). Read `git diff expected/browser.txt
+   expected/native.txt` and the two harness lines above; fix any browser failure and rerun.
+2. Retake `screenshot.png` (`./run.sh --site`, then `node harness/drive.mjs --smoke --screenshot
+   screenshot.png --base-url …`).
+3. `review.txt`'s mention-reject case no longer shows unanchoring (the two claims rejoin another
+   mention of the same decision): pick a target whose claims have no other mention.
+4. Bring the run under budget (Phase 8).
+5. Record the known limits in README/NOTES: names.js gives no name to "A-" and all-digit
+   identifiers; split.js and "Ltd."; one ask per legal pair for multi-pair links; rule 2b; base-v1
+   uncalibrated.
+6. Before each commit: the two name searches, `uv run pytest -q`, `node harness/convert.mjs --check`.
 
 ---
 

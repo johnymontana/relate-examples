@@ -1,0 +1,582 @@
+# Gaming: example 01's curated ontology for the live operations of an online game (D20). Written for
+# this repository from create-context-graph's gaming.yaml at 707b168 (Apache-2.0,
+# data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base (Person,
+# Organization, Location, Event, Object) is gone, and the kinds are named for what a live-ops team
+# calls them (Player, Character, Guild, Zone, Patch, Exploit, Sanction).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality (an endpoint's count is the number of such relationships each node
+# at that end has) and carries the phrase the model reads. The tools are the ontology's competency
+# questions, written for the graph the page extracts: entities carry name, display, key and their key
+# property; relationships carry p, claims, sentences and docs, and the trace (_Sentence, _Claim) holds
+# the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: gaming
+name: Gaming
+description: >-
+  The live operations of an online multiplayer game as its live-ops, design and player-support teams
+  write about it: the player accounts and the characters they play, the guilds those characters
+  belong to, the items they equip, the quests they complete and the achievements they unlock, and
+  the zones where it happens; and, when something goes wrong, the exploits players abuse or report,
+  the patches and hotfixes that fix exploits and rebalance items, and the sanctions issued against
+  accounts. It answers who abused an exploit and through which characters and guilds, which items and
+  zones an exploit depends on, which patch fixed it and what else that patch changed, which
+  achievements were earned through it and which sanctions revoked them, and what the source text says
+  about each fact. Telemetry (damage figures, trigger counts, prices), the studio's own staff,
+  non-player characters and bosses are out of scope: a report names them, the extractor does not keep
+  them.
+nodes:
+  Player:
+    label: Player
+    description: >-
+      A player's account, named by its handle ("Nightjar77"): the person behind one or more characters,
+      and the unit that is reported, banned or suspended. A player is never a character, even when the
+      two names look alike.
+    aliases: [account, player account, user, gamer]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The account's handle as the documents write it."}
+      accountId: {type: STRING, pattern: "^AC-[0-9]{8}$", description: "The account's internal number, AC- and eight digits."}
+      region: {type: STRING, one_of: [NA, EU, APAC, SA, OCE], description: "The region of the account's home realms."}
+      status: {type: STRING, one_of: [active, suspended, banned, closed], description: "The account's standing."}
+      joinedOn: {type: DATE, description: "The date the account was created."}
+    extensions:
+      display: {x: -320, y: -140, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a player's account in an online game, named by its handle, often a run-together word with digits such as DuskRider42: the person behind the characters, who reports bugs and is banned or suspended", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-player
+            category: lookup
+            question: Who is this player, which characters do they play, and in which guilds?
+            description: Finds accounts whose handle contains the text, with the characters they play and those characters' guilds.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (p:Player) WHERE toLower(p.name) CONTAINS toLower($player)
+              OPTIONAL MATCH (p)-[:PLAYS]->(c:Character)
+              OPTIONAL MATCH (c)-[:MEMBER_OF]->(g:Guild)
+              RETURN p.name AS player, collect(DISTINCT c.name) AS characters, collect(DISTINCT g.name) AS guilds
+              ORDER BY player
+            parameters:
+              - {name: player, type: STRING, description: "Part of the account's handle.", example: Nightjar77}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Morrowgale}
+  Character:
+    label: Character
+    description: >-
+      A character a player plays in the game, named by its character name and often given with a class
+      and level ("Vexmora, a level-60 pyromancer"). A character belongs to one account; it joins
+      guilds, equips items, completes quests and unlocks achievements, where the account does not.
+    aliases: [avatar, toon, hero, alt]
+    properties:
+      name: {type: STRING, key: true, description: "The character's name as the documents write it."}
+      characterClass: {type: STRING, one_of: [pyromancer, warden, mender, ranger, duelist], description: "The character's class."}
+      level: {type: INTEGER, description: "The character's level, 1 to 60."}
+      realm: {type: STRING, description: "The realm (game server) the character lives on."}
+    extensions:
+      display: {x: -320, y: 80, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a character a player plays in the game, named by a one-word fantasy name and often given a class and level, such as a level-60 pyromancer; never the account's handle", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: character-sheet
+            category: neighbourhood
+            question: Who plays this character, and what has it equipped, completed and unlocked?
+            description: The character's account, the items it equipped, the quests it completed and the achievements it unlocked.
+            teaches: OPTIONAL MATCH keeps the character in the answer when the text names none of one kind of neighbour.
+            cypher: |-
+              MATCH (c:Character) WHERE toLower(c.name) CONTAINS toLower($character)
+              OPTIONAL MATCH (p:Player)-[:PLAYS]->(c)
+              OPTIONAL MATCH (c)-[:EQUIPPED]->(i:Item)
+              OPTIONAL MATCH (c)-[:COMPLETED]->(q:Quest)
+              OPTIONAL MATCH (c)-[:UNLOCKED]->(a:Achievement)
+              RETURN c.name AS character, collect(DISTINCT p.name) AS players, collect(DISTINCT i.name) AS equipped,
+                     collect(DISTINCT q.name) AS quests, collect(DISTINCT a.name) AS achievements
+              ORDER BY character
+            parameters:
+              - {name: character, type: STRING, description: "Part of the character's name.", example: Vexmora}
+  Guild:
+    label: Guild
+    description: >-
+      A guild, clan or raiding team that characters join, named in title case ("Ashen Covenant").
+      A guild is made of players' characters; it is not a studio team or a company.
+    aliases: [clan, raiding team, raid team, community]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The guild's name."}
+      realm: {type: STRING, description: "The realm the guild is registered on."}
+      memberCount: {type: INTEGER, description: "The characters on the guild's roster."}
+      foundedOn: {type: DATE, description: "The date the guild was founded."}
+    extensions:
+      display: {x: -400, y: 280, colour: "#059669"}
+      custom:
+        relate-examples: {ask: "a guild, clan or raiding team that players' characters belong to, named in title case", proper: true}
+  Item:
+    label: Item
+    description: >-
+      An in-game item: a weapon, armour piece or set, trinket, consumable, material or mount, named in
+      title case ("the Cinderbrand Talisman"). Items are what characters equip and quests reward, and
+      what balance patches change.
+    aliases: [gear, loot, equipment, trinket, armour set, drop]
+    properties:
+      name: {type: STRING, key: true, description: "The item's name."}
+      itemType: {type: STRING, one_of: [weapon, armour, armour set, trinket, consumable, material, mount], description: "What kind of item it is."}
+      rarity: {type: STRING, one_of: [common, uncommon, rare, epic, legendary], description: "The item's rarity tier."}
+      itemLevel: {type: INTEGER, description: "The item's level, which sets its power."}
+    extensions:
+      display: {x: 140, y: 80, colour: "#b45309"}
+      custom:
+        relate-examples: {ask: "an in-game item such as a weapon, armour piece or set, trinket, material or mount, named in title case", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: item-exposure
+            category: aggregation
+            question: For each item, how many characters equipped it, how many exploits use it, and which patches changed it?
+            description: Per item, the characters that equipped it, the exploits that use it and the patches that changed it.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each character is counted once per exploit.
+            cypher: |-
+              MATCH (i:Item)
+              OPTIONAL MATCH (c:Character)-[:EQUIPPED]->(i)
+              OPTIONAL MATCH (x:Exploit)-[:USES]->(i)
+              OPTIONAL MATCH (pt:Patch)-[:CHANGED]->(i)
+              RETURN i.name AS item, count(DISTINCT c) AS equipped_by, count(DISTINCT x) AS exploits, collect(DISTINCT pt.name) AS changed_by
+              ORDER BY exploits DESC, equipped_by DESC, item
+  Quest:
+    label: Quest
+    description: >-
+      A quest, questline or repeatable task the game gives characters, named by its title ("The Ember
+      Tithe"). A quest is given in a zone and rewards items; a raid or dungeon itself is a zone, not a
+      quest.
+    aliases: [questline, mission, daily, weekly]
+    properties:
+      name: {type: STRING, key: true, description: "The quest's title."}
+      questType: {type: STRING, one_of: [main story, side, daily, weekly, world, raid], description: "What kind of quest it is."}
+      levelRequirement: {type: INTEGER, description: "The lowest level that can accept it."}
+      repeatable: {type: BOOLEAN, description: "Whether a character can complete it more than once."}
+    extensions:
+      display: {x: 120, y: 300, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a quest, questline or daily or weekly task the game gives characters, named by its title", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: from-quest-reward-to-fix
+            category: path
+            question: Which quest rewards an item that an exploit uses, where is the quest given, and which patch fixed the exploit?
+            description: The chain quest, rewarded item, exploit that uses it, with the quest's zone and the patches that fixed the exploit.
+            teaches: A path through a shared node (the item) joins two stories, the quest's and the exploit's, in one row.
+            cypher: |-
+              MATCH (q:Quest)-[:REWARDS]->(i:Item)<-[:USES]-(x:Exploit)
+              OPTIONAL MATCH (q)-[:LOCATED_IN]->(z:Zone)
+              OPTIONAL MATCH (pt:Patch)-[:FIXED]->(x)
+              RETURN q.name AS quest, collect(DISTINCT z.name) AS given_in, i.name AS item, x.name AS exploit,
+                     collect(DISTINCT pt.name) AS fixed_by
+              ORDER BY quest, item, exploit
+  Zone:
+    label: Zone
+    description: >-
+      A region, dungeon or raid of the game world, named in title case ("Cinderfall Basin", "the Hollow
+      Forge"). Quests are given in zones and exploits occur in them; a realm (server) is not a zone.
+    aliases: [region, area, map, dungeon, raid, instance]
+    reference: https://schema.org/Place
+    properties:
+      name: {type: STRING, key: true, description: "The zone's name."}
+      zoneType: {type: STRING, one_of: [open world, dungeon, raid, city, battleground], description: "What kind of zone it is."}
+      levelRange: {type: STRING, pattern: "^[0-9]{1,2}-[0-9]{1,2}$", description: "The levels the zone is tuned for, as min-max (55-60)."}
+      maxPlayers: {type: INTEGER, description: "The largest group an instanced zone admits."}
+    extensions:
+      display: {x: 380, y: 200, colour: "#65a30d"}
+      custom:
+        relate-examples: {ask: "a region, dungeon or raid of the game world, named in title case; never a realm or game server", proper: true}
+  Patch:
+    label: Patch
+    description: >-
+      A game update shipped to the live servers (a content update, balance patch or hotfix), named by
+      its version number after the word Patch or Hotfix. Patches fix exploits and change items; the
+      exploit and the item are separate kinds.
+    aliases: [update, hotfix, balance patch, build, release]
+    properties:
+      name: {type: STRING, key: true, description: "The patch as the documents name it."}
+      version: {type: STRING, pattern: "^[0-9]+\\.[0-9]+\\.[0-9]+[a-z]?$", description: "The build version, major.minor.patch with an optional hotfix letter (7.3.1a)."}
+      patchType: {type: STRING, one_of: [content update, balance patch, hotfix], description: "What kind of update it is."}
+      releasedOn: {type: DATE, description: "The date it reached the live servers.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the patch reached the live servers, such as 24 June 2026"}}}}
+    extensions:
+      display: {x: 380, y: -120, colour: "#c026d3"}
+      custom:
+        relate-examples: {ask: "a game update, hotfix or balance patch shipped to the live servers, named by its version such as Patch 6.1.0 or Hotfix 6.1.0b", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-a-patch-did
+            category: neighbourhood
+            question: Which exploits did this patch fix, and which items did it change?
+            description: The patches whose name holds the text, each with the exploits it fixed and the items it changed.
+            teaches: Two independent neighbourhoods of one node come back as two collected lists.
+            cypher: |-
+              MATCH (pt:Patch) WHERE toLower(pt.name) CONTAINS toLower($patch)
+              OPTIONAL MATCH (pt)-[:FIXED]->(x:Exploit)
+              OPTIONAL MATCH (pt)-[:CHANGED]->(i:Item)
+              RETURN pt.name AS patch, collect(DISTINCT x.name) AS fixed, collect(DISTINCT i.name) AS changed
+              ORDER BY patch
+            parameters:
+              - {name: patch, type: STRING, description: "Part of the patch's name or version.", example: "7.3.2"}
+  Exploit:
+    label: Exploit
+    description: >-
+      A bug or unintended interaction that players abuse for an advantage, tracked by the live-ops team's
+      id (EXP-2026-031) and often known by a nickname ("the Kindling Loop"). An exploit is the defect;
+      the patch that fixes it and the sanctions that punish it are separate.
+    aliases: [bug, glitch, dupe, loop, cheese, abuse]
+    properties:
+      exploitId: {type: STRING, key: true, pattern: "^EXP-[0-9]{4}-[0-9]{3}$", description: "The tracking id, EXP-, the year and a three-digit number."}
+      name: {type: STRING, description: "The exploit as a document names it, its nickname or its id."}
+      exploitType: {type: STRING, one_of: [damage loop, item duplication, geometry clip, economy, client modification], description: "What kind of exploit it is."}
+      severity: {type: STRING, one_of: [S1, S2, S3, S4], description: "The live-ops severity, S1 the worst."}
+      firstSeen: {type: DATE, description: "The date of its first known abuse."}
+    extensions:
+      display: {x: 120, y: -140, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a bug or unintended interaction players abuse in a game, tracked by an id such as EXP-2026-031 or known by a nickname in title case", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: find-an-exploit
+            category: lookup
+            question: Which exploit has this id or nickname, and what does the store connect to it?
+            description: The exploits whose id is the text or whose name holds it, with every entity one link away.
+            teaches: The key property (exploitId) is filled from the entity's name when the text gives the id, so an exact match finds it; CONTAINS on the name finds a nickname.
+            cypher: |-
+              MATCH (x:Exploit) WHERE x.exploitId = $exploit OR toLower(x.name) CONTAINS toLower($exploit)
+              OPTIONAL MATCH (x)-[r]-(y:_Entity)
+              RETURN x.name AS exploit, x.exploitId AS id, type(r) AS link, y.kind AS kind, y.name AS other
+              ORDER BY exploit, link, other
+            parameters:
+              - {name: exploit, type: STRING, description: "An exploit's id or part of its nickname.", example: EXP-2026-031}
+          - type: canonicalQuery
+            name: exploit-at-a-glance
+            category: neighbourhood
+            question: For each exploit, which items does it use, where does it occur, who reported it and which patch fixed it?
+            description: Every exploit with the items it uses, the zones it occurs in, the players who reported it and the patches that fixed it.
+            teaches: Several OPTIONAL MATCHes from one node, each collected DISTINCT, give one row per exploit however many neighbours each has.
+            cypher: |-
+              MATCH (x:Exploit)
+              OPTIONAL MATCH (x)-[:USES]->(i:Item)
+              OPTIONAL MATCH (x)-[:OCCURS_IN]->(z:Zone)
+              OPTIONAL MATCH (rep:Player)-[:REPORTED]->(x)
+              OPTIONAL MATCH (fix:Patch)-[:FIXED]->(x)
+              RETURN x.name AS exploit, collect(DISTINCT i.name) AS items, collect(DISTINCT z.name) AS zones,
+                     collect(DISTINCT rep.name) AS reported_by, collect(DISTINCT fix.name) AS fixed_by
+              ORDER BY exploit
+          - type: canonicalQuery
+            name: guilds-behind-an-exploit
+            category: path
+            question: Which guilds were the players who abused this exploit playing in?
+            description: The chain exploit, abusing account, the character it plays, that character's guild.
+            teaches: A three-hop pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (x:Exploit)<-[:ABUSED]-(p:Player)-[:PLAYS]->(c:Character)
+              WHERE toLower(x.name) CONTAINS toLower($exploit)
+              OPTIONAL MATCH (c)-[:MEMBER_OF]->(g:Guild)
+              RETURN x.name AS exploit, g.name AS guild, p.name AS player, c.name AS character
+              ORDER BY guild, player, character
+            parameters:
+              - {name: exploit, type: STRING, description: "An exploit's id or part of its nickname.", example: EXP-2026-031}
+          - type: canonicalQuery
+            name: who-abused-what-and-the-words
+            category: evidence
+            question: Which sentences say who abused each exploit?
+            description: Every ABUSED fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (p:Player)-[r:ABUSED]->(x:Exploit)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN p.name AS player, x.name AS exploit, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY exploit, player
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Vexmora}
+  Achievement:
+    label: Achievement
+    description: >-
+      An achievement, feat or title a character unlocks in the game, named in title case ("Forge
+      Undone"). Live-ops teams revoke achievements earned through an exploit.
+    aliases: [feat, title, accomplishment, trophy, realm first]
+    properties:
+      name: {type: STRING, key: true, description: "The achievement's name."}
+      category: {type: STRING, one_of: [combat, raid, exploration, crafting, social, pvp, collection], description: "The achievement's category."}
+      points: {type: INTEGER, description: "The achievement points it is worth."}
+      realmFirst: {type: BOOLEAN, description: "Whether only the first group on a realm can earn it."}
+    extensions:
+      display: {x: -80, y: 200, colour: "#eab308"}
+      custom:
+        relate-examples: {ask: "an achievement, feat or realm-first title a character unlocks in the game, named in title case and often followed by the word achievement", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: achievements-earned-through-an-exploit
+            category: path
+            question: Which achievements did abusers' characters unlock, and which of the abusers' sanctions revoked them?
+            description: The chain exploit, abusing account, its character, the achievement that character unlocked, with the sanctions issued to that account that revoked it.
+            teaches: An OPTIONAL MATCH over one path (account, sanction, achievement) keeps only the sanctions that tie both ends together.
+            cypher: |-
+              MATCH (x:Exploit)<-[:ABUSED]-(p:Player)-[:PLAYS]->(c:Character)-[:UNLOCKED]->(a:Achievement)
+              OPTIONAL MATCH (p)<-[:ISSUED_TO]-(s:Sanction)-[:REVOKED]->(a)
+              RETURN a.name AS achievement, c.name AS character, p.name AS player, x.name AS exploit,
+                     collect(DISTINCT s.name) AS revoked_by
+              ORDER BY achievement, player, exploit
+  Sanction:
+    label: Sanction
+    description: >-
+      An enforcement action taken against a player account (a warning, suspension, permanent ban or
+      rollback), identified by its case number (ENF-30117). A sanction is issued to one account for an
+      exploit and may revoke what the account earned through it.
+    aliases: [ban, suspension, enforcement action, penalty, account action]
+    properties:
+      caseId: {type: STRING, key: true, pattern: "^ENF-[0-9]{5}$", description: "The enforcement case number, ENF- and five digits."}
+      name: {type: STRING, description: "The sanction as a document names it."}
+      action: {type: STRING, one_of: [warning, suspension, permanent ban, rollback], description: "What the sanction does to the account.", extensions: {custom: {relate-examples: {extract: true, ask: "what the sanction does to the account: a warning, a suspension, a permanent ban or a rollback"}}}}
+      durationDays: {type: INTEGER, description: "A suspension's length in days.", extensions: {custom: {relate-examples: {extract: true, ask: "the length of a suspension in days, such as 14 days"}}}}
+      issuedOn: {type: DATE, description: "The date the sanction took effect.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the sanction was issued or took effect, such as 26 June 2026"}}}}
+    extensions:
+      display: {x: -100, y: -320, colour: "#334155"}
+      custom:
+        relate-examples: {ask: "an enforcement action against a player account, such as a ban or suspension, identified by a case number such as ENF-30117", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: sanction-by-case-number
+            category: lookup
+            question: Which account was this sanction issued to, for which exploit, and what did it revoke?
+            description: The sanction whose case number is the parameter, with its account, its exploit and the achievements it revoked.
+            teaches: The key property (caseId) is filled from the entity's name when the text gives the case number, so an exact match works here.
+            cypher: |-
+              MATCH (s:Sanction) WHERE s.caseId = $case
+              OPTIONAL MATCH (s)-[:ISSUED_TO]->(p:Player)
+              OPTIONAL MATCH (s)-[:ISSUED_FOR]->(x:Exploit)
+              OPTIONAL MATCH (s)-[:REVOKED]->(a:Achievement)
+              RETURN s.name AS sanction, collect(DISTINCT p.name) AS players, collect(DISTINCT x.name) AS exploits,
+                     collect(DISTINCT a.name) AS revoked
+            parameters:
+              - {name: case, type: STRING, description: "An enforcement case number.", example: ENF-30117}
+          - type: canonicalQuery
+            name: enforcement-per-exploit
+            category: aggregation
+            question: For each exploit, how many accounts abused it and how many sanctions were issued for it?
+            description: Per exploit, the accounts that abused it, the sanctions issued for it and the accounts those sanctions reached.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (x:Exploit)
+              OPTIONAL MATCH (a:Player)-[:ABUSED]->(x)
+              OPTIONAL MATCH (p:Player)<-[:ISSUED_TO]-(s:Sanction)-[:ISSUED_FOR]->(x)
+              RETURN x.name AS exploit, count(DISTINCT a) AS abusers, count(DISTINCT s) AS sanctions, count(DISTINCT p) AS sanctioned
+              ORDER BY sanctions DESC, abusers DESC, exploit
+relationships:
+  playerPlaysCharacter:
+    type: PLAYS
+    description: >-
+      The player's account plays the character: each character has exactly one account, and an account
+      may play several characters.
+    aliases: [plays as, owns the character, is the account behind, mains]
+    from: {node: Player}
+    to: {node: Character, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: plays}
+  characterMemberOfGuild:
+    type: MEMBER_OF
+    description: >-
+      The character is on the guild's roster: at most one guild per character at a time, many
+      characters per guild.
+    aliases: [belongs to, is in, raids with, joined]
+    from: {node: Character, max_count: 1}
+    to: {node: Guild}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a member of}
+  characterEquippedItem:
+    type: EQUIPPED
+    description: >-
+      The character had the item equipped at the time the document describes; many to many.
+    aliases: [wore, wielded, was wearing, used]
+    from: {node: Character}
+    to: {node: Item}
+    extensions:
+      custom:
+        relate-examples: {phrase: equipped}
+  characterCompletedQuest:
+    type: COMPLETED
+    description: >-
+      The character completed the quest at least once; many to many.
+    aliases: [finished, turned in, ran]
+    from: {node: Character}
+    to: {node: Quest}
+    extensions:
+      custom:
+        relate-examples: {phrase: completed}
+  characterUnlockedAchievement:
+    type: UNLOCKED
+    description: >-
+      The character unlocked or earned the achievement; many to many, though a realm-first achievement
+      goes to one group per realm.
+    aliases: [earned, was awarded, got]
+    from: {node: Character}
+    to: {node: Achievement}
+    extensions:
+      custom:
+        relate-examples: {phrase: unlocked}
+  questRewardsItem:
+    type: REWARDS
+    description: >-
+      Completing the quest gives the item; a quest may reward several items, and an item may come from
+      several quests.
+    aliases: [gives, grants, awards, drops]
+    from: {node: Quest}
+    to: {node: Item}
+    extensions:
+      custom:
+        relate-examples: {phrase: rewards}
+  questLocatedInZone:
+    type: LOCATED_IN
+    description: >-
+      The quest is given and played in the zone: one zone per quest in this ontology, many quests per zone.
+    aliases: [is given in, is set in, starts in]
+    from: {node: Quest, count: 1}
+    to: {node: Zone}
+    extensions:
+      custom:
+        relate-examples: {phrase: is given in}
+  playerAbusedExploit:
+    type: ABUSED
+    description: >-
+      The account deliberately used the exploit for an advantage, as the team's logs establish; many to
+      many.
+    aliases: [exploited, used, ran, abused]
+    from: {node: Player}
+    to: {node: Exploit}
+    extensions:
+      custom:
+        relate-examples: {phrase: abused}
+  playerReportedExploit:
+    type: REPORTED
+    description: >-
+      The account reported the exploit to the studio (a bug report, a ticket or a bounty submission);
+      an exploit may be reported by several players.
+    aliases: [flagged, filed a report on, submitted]
+    from: {node: Player}
+    to: {node: Exploit}
+    extensions:
+      custom:
+        relate-examples: {phrase: reported}
+  exploitUsesItem:
+    type: USES
+    description: >-
+      The exploit depends on the item (it needs the item equipped, or duplicates it); an exploit may use
+      several items, an item may be used by several exploits.
+    aliases: [relies on, involves, combines, duplicates]
+    from: {node: Exploit}
+    to: {node: Item}
+    extensions:
+      custom:
+        relate-examples: {phrase: uses}
+  exploitOccursInZone:
+    type: OCCURS_IN
+    description: >-
+      The exploit can be performed in the zone; an exploit may occur in several zones, a zone may host
+      several exploits.
+    aliases: [works in, was found in, is limited to]
+    from: {node: Exploit}
+    to: {node: Zone}
+    extensions:
+      custom:
+        relate-examples: {phrase: occurs in}
+  patchFixedExploit:
+    type: FIXED
+    description: >-
+      The patch closed the exploit on the live servers; usually one patch per exploit, though a hotfix
+      may close it first and a later patch finish the job.
+    aliases: [closed, resolved, patched out, addressed]
+    from: {node: Patch}
+    to: {node: Exploit}
+    extensions:
+      custom:
+        relate-examples: {phrase: fixed}
+  patchChangedItem:
+    type: CHANGED
+    description: >-
+      The patch changed the item's stats or behaviour (a nerf, a buff or a rework); many to many.
+    aliases: [nerfed, buffed, reworked, rebalanced, adjusted]
+    from: {node: Patch}
+    to: {node: Item}
+    extensions:
+      custom:
+        relate-examples: {phrase: changed}
+  sanctionIssuedToPlayer:
+    type: ISSUED_TO
+    description: >-
+      The sanction was issued to the account: exactly one account per sanction, any number of sanctions
+      per account.
+    aliases: [was applied to, banned, suspended, actioned]
+    from: {node: Sanction, count: 1}
+    to: {node: Player}
+    extensions:
+      custom:
+        relate-examples: {phrase: was issued to}
+  sanctionIssuedForExploit:
+    type: ISSUED_FOR
+    description: >-
+      The sanction was issued for abusing the exploit; a sanction cites at least one exploit, an exploit
+      may lead to many sanctions.
+    aliases: [cites, punishes, was imposed for]
+    from: {node: Sanction, min_count: 1}
+    to: {node: Exploit}
+    extensions:
+      custom:
+        relate-examples: {phrase: was issued for}
+  sanctionRevokedAchievement:
+    type: REVOKED
+    description: >-
+      The sanction removed the achievement from the account's characters; a sanction may revoke several
+      achievements, an achievement may be revoked by several sanctions.
+    aliases: [removed, stripped, rolled back]
+    from: {node: Sanction}
+    to: {node: Achievement}
+    extensions:
+      custom:
+        relate-examples: {phrase: revoked}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Sports & Gaming
+      card:
+        title: Gaming
+        description: Follow an exploit from the players and characters who abused it to the patch that fixed it and the sanctions that followed.
+      source:
+        derived_from: create-context-graph's gaming.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base is gone; Player, Character, Guild, Item, Quest and Achievement keep their
+          meaning with new descriptions and properties, and Zone, Patch, Exploit and Sanction are new, for
+          live operations. Guild membership, equipment, quests and achievements hang off the character, as
+          the game records them; TRADED_WITH and Character OWNS Item were dropped; the links were renamed
+          for their meaning and given cardinalities; the tools were written anew for an extracted graph.

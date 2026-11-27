@@ -22,7 +22,7 @@
  *   does not assert (FAMILIES): never in the gold, scored by where the gate leaves them.
  */
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseOntology, MAX_TYPES } from '../web/ontology.js';
@@ -608,4 +608,42 @@ export async function cachedAnswers(requests, { scope, model, off = false }) {
     misses += 1;
   }
   return { answers, hits, misses, model: m };
+}
+
+/**
+ * `node harness/corpus.mjs --merge`: every domain's entries.json into data/samples/samples.json, then the
+ * entries.json files deleted. samples.json is the page's list (build.mjs ships it); the entries files only
+ * kept parallel writers out of one file. Order: the curated domains, then the solution packages, each by
+ * ontology id, a primary before its companions.
+ */
+export function mergeEntries() {
+  const file = join(DATA, 'samples/samples.json');
+  const list = JSON.parse(readFileSync(file, 'utf8'));
+  const merged = [];
+  for (const group of ['domains', 'studio']) {
+    const gdir = join(DATA, 'samples', group);
+    if (!existsSync(gdir)) continue;
+    for (const id of readdirSync(gdir).sort()) {
+      const f = join(gdir, id, 'entries.json');
+      if (!existsSync(f)) continue;
+      for (const e of JSON.parse(readFileSync(f, 'utf8'))) {
+        const at = list.findIndex((x) => x.id === e.id);
+        if (at >= 0) list[at] = e;
+        else list.push(e);
+      }
+      merged.push(f);
+    }
+  }
+  const cmpStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  const rank = { domains: 0, studio: 1 };
+  list.sort((a, b) => (rank[a.group] ?? 2) - (rank[b.group] ?? 2) || cmpStr(a.ontology, b.ontology)
+    || (a.role === 'primary' ? 0 : 1) - (b.role === 'primary' ? 0 : 1) || cmpStr(a.id, b.id));
+  writeFileSync(file, `${JSON.stringify(list, null, 2)}\n`);
+  for (const f of merged) unlinkSync(f);
+  return { entries: list.length, merged: merged.length };
+}
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1] && process.argv.includes('--merge')) {
+  const r = mergeEntries();
+  console.log(`corpus.mjs: samples.json lists ${r.entries} documents; ${r.merged} entries.json files merged and removed`);
 }

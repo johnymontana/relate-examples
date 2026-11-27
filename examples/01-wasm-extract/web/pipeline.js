@@ -272,7 +272,10 @@ export function modelRequests(o, text, opts = {}) {
  */
 export function clampToSentence(out, text) {
   const n = Array.from(text).length;
-  const fix = (/** @type {any} */ x) => (x && x.end !== null && x.end > n ? { ...x, end: n } : x);
+  const cps = Array.from(text);
+  // the end moved back, and the text with it (the model's text carries the stop the sentence lacks)
+  const fix = (/** @type {any} */ x) => (x && x.end !== null && x.end > n
+    ? { ...x, end: n, ...(typeof x.text === 'string' ? { text: cps.slice(x.start ?? 0, n).join('') } : {}) } : x);
   const ok = (/** @type {any} */ x) => x && x.start !== null && x.end !== null && x.start < x.end;
   const entities = out.entities.map(fix).filter(ok);
   const relations = out.relations.map((r) => ({ ...r, head: fix(r.head), tail: fix(r.tail) })).filter((r) => ok(r.head) && ok(r.tail));
@@ -314,7 +317,7 @@ export async function extractDocument(job) {
   const { schema, valueSchema, kindOf, relOf, structOf } = modelSchema(ontology, { asked });
   const valueSchemaText = valueSchema ? JSON.stringify(valueSchema) : null;
   const words = kindWordsOf(ontology);
-  const proper = new Set(ontology.types.filter((t) => t.proper).map((t) => t.id));
+  const proper = store.properKinds(ontology);
   const patterns = proposedPatterns(ontology);
   store.writeDocument(db, cl, { id: doc, title, chars: Array.from(text).length });
   const run = store.startRun(db, cl, { doc, model: modelInfo, floor: FLOOR, sections: sections.length, sentences: sentences.length });
@@ -378,8 +381,8 @@ export async function extractDocument(job) {
           const mkey = `${skey}|m|${label}|${s.start + e.start}-${s.start + e.end}`;
           // A kind of proper names (relate-examples proper, D26): a mention with no capital letter and no
           // digit ("the claimant", "two other cars") names none, so it gets no canonical name and rule 0 drops it.
-          const named = !proper.has(label) || CASED.test(surface);
-          mentions.set(mkey, { key: mkey, sentence: skey, doc, start: s.start + e.start, end: s.start + e.end, text: surface, label, name: named ? mentionName(surface, words.get(label)) : '', plain: mentionName(surface), p: e.score, source: 'model' });
+          mentions.set(mkey, { key: mkey, sentence: skey, doc, start: s.start + e.start, end: s.start + e.end, text: surface, label,
+            name: store.nameOfMention(surface, label, 'model', words, proper), plain: mentionName(surface), p: e.score, source: 'model' });
         }
         for (const g of gazetteerMentions(s.text, ontology.names)) {
           const mkey = `${skey}|g|${g.label}|${s.start + g.start}-${s.start + g.end}`;

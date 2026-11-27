@@ -1,0 +1,1143 @@
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
+id: identity-validation
+name: Identity Validation
+description: Models raw profile records as a hub of identities joined to the attribute values they carry — name, phone, email, SSN, address, date of birth and IP — so that two records describing the same person converge on the shared attribute node rather than having to be compared pairwise. Answers which identities are candidate matches, how strong the combined evidence is, and where a reused or near-miss identifier suggests a synthetic identity.
+nodes:
+  Identity:
+    label: Identity
+    properties:
+      identityId:
+        type: STRING
+        key: true
+        description: Identifier for the profile record, unique across every source system rather than only within one. e.g. `ID-9033`.
+        pattern: ^ID-[0-9]{4}$
+      sourceSystem:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the source system or channel that captured the record, such as Ecommerce, CallCenter, CRM or MobileApp
+        description: Name of the system the record was captured in. Two identities agreeing on an attribute matter more when they come from different systems, so this is what makes a match cross-channel rather than a duplicate within one feed. e.g. `CRM`.
+    extensions:
+      display:
+        x: 0
+        'y': 0
+        colour: '#2563eb'
+      custom:
+        relate-examples:
+          ask: a raw profile record captured by one source system, named only by its record ID such as ID-7001; not the person it may describe, not the system that captured it, not a description such as the first record
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: shared-identifier-fan-out-basic
+            question: Shared Identifier Fan-out (Basic)
+            description: 'The simplest pattern in this package, and the place to start: every pair of identities that converge on the same phone, email, SSN, address, date of birth or IP address node, with the connecting path. PersonName is left out deliberately — a name is a descriptor, not an identifier.'
+            cypher: |-
+              MATCH path = (i1:Identity)-[r1:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]->
+                           (shared:!Placeholder)
+                           <-[r2:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]-(i2:Identity)
+              WHERE i1.identityId < i2.identityId
+              RETURN i1.identityId AS identity1,
+                     i2.identityId AS identity2,
+                     type(r1) AS sharedSignal,
+                     shared,
+                     path
+              ORDER BY sharedSignal, identity1, identity2
+              LIMIT 200;
+            parameters: []
+            category: picture
+            teaches: The literal LIMIT 200 keeps the result browsable; on a real population this returns far more, so filter to one identity or attribute value under investigation rather than raising it. Relationship types are filtered inside the pattern so the planner never expands the wrong ones; widen the type list if the data adds attribute types. No type(r1) = type(r2) check is needed while each attribute label receives only one relationship type; reintroduce it if that stops being true.
+            returns: 'One row per identity pair and shared attribute node: identity1 and identity2 (identityId, identity1 the lower), sharedSignal (the relationship type), shared (the attribute node) and path, which renders as a graph in Browser. A pair sharing several attributes appears once per attribute.'
+            prerequisites: Neo4j 5.x for the :!Placeholder negated label expression. Placeholder flags applied first; until then the exclusion has nothing to exclude.
+            tags:
+              - matching
+              - fan-out
+              - shared-identifier
+              - visualisation
+            upstream:
+              file: QUERIES.md
+              heading: Shared Identifier Fan-out (Basic)
+              sample: 'Bundled sample data only: returns 39 rows across 17 identity pairs with the placeholder flags applied; 44 rows across 22 pairs without them.'
+          - type: canonicalQuery
+            name: confidence-scored-identity-matches
+            question: Confidence-Scored Identity Matches
+            description: Groups the fan-out by identity pair and ranks pairs by how many distinct identifier types they share — a shared phone is confidence 1, a shared phone and address confidence 2.
+            cypher: |-
+              MATCH (i1:Identity)-[r1:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]->
+                    (shared:!Placeholder)
+                    <-[r2:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]-(i2:Identity)
+              WHERE i1.identityId < i2.identityId
+              WITH i1, i2, collect(DISTINCT type(r1)) AS sharedSignals
+              RETURN i1.identityId AS identity1,
+                     i2.identityId AS identity2,
+                     sharedSignals,
+                     size(sharedSignals) AS confidence
+              ORDER BY confidence DESC, identity1, identity2
+              LIMIT 50;
+            parameters: []
+            category: query
+            teaches: 'The right first query for a demo: it separates pairs that share several identifier types from pairs that share one. confidence is a count, not a probability — a triage ranking, not a calibrated likelihood. Treat one shared attribute, especially an address alone, as a weak lead. Run it before and after the placeholder flags to show the false positives filler values create. The literal LIMIT 50 caps the list. Offers anchors for Match Cluster as a Graph.'
+            returns: 'One row per identity pair: identity1, identity2, sharedSignals (the distinct relationship types shared) and confidence (their count, 1–6), ordered by confidence descending.'
+            prerequisites: Neo4j 5.x for the :!Placeholder negated label expression. Placeholder flags applied first.
+            tags:
+              - matching
+              - confidence
+              - ranking
+              - triage
+            upstream:
+              file: QUERIES.md
+              heading: Confidence-Scored Identity Matches
+              sample: 'Bundled sample data only: returns 17 rows — 1 at confidence 5 (ID-1001 / ID-1003), 3 at 4, 1 at 3, 7 at 2 and 5 at 1.'
+          - type: canonicalQuery
+            name: match-cluster-as-a-graph
+            question: Match Cluster as a Graph
+            description: 'The full match cluster around one identity as paths: the seed, every attribute node it shares, and every other identity on the far side. The confidence query answers "which pairs?"; this answers "what does one cluster look like?".'
+            cypher: |-
+              MATCH path = (seed:Identity {identityId: $identityId})
+                           -[:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]->
+                           (shared:!Placeholder)
+                           <-[:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]-
+                           (match:Identity)
+              WHERE match <> seed
+              RETURN path;
+            parameters:
+              - name: identityId
+                type: STRING
+                description: Identity.identityId of the seed record. Ask the user, or offer one from Confidence-Scored Identity Matches.
+                example: ID-7001
+            category: picture
+            teaches: Visual, not tabular — the view to put on screen in a demo. An identity with no shared attribute returns nothing.
+            returns: Paths seed Identity → shared attribute ← matching Identity, one per shared attribute and matching identity, for Browser to draw as one cluster.
+            prerequisites: Neo4j 5.x for the :!Placeholder negated label expression. Placeholder flags applied first.
+            tags:
+              - visualisation
+              - cluster
+              - matching
+            upstream:
+              file: QUERIES.md
+              heading: Match Cluster as a Graph
+              sample: 'Bundled sample data only: $identityId = ''ID-1001'' returns 8 paths — 5 shared attributes linking it to ID-1003 and 3 to ID-1002, the Robert A***n records across CRM, MobileApp and CallCenter.'
+          - type: canonicalQuery
+            name: implausible-address-detection
+            question: Implausible Address Detection
+            description: 'The "flag junk before matching on it" idea applied to addresses: surfaces every address the geocoding step could not resolve. It flags by absence — an Address with no GEOCODED_TO relationship — rather than by trying to enumerate every way an address can be malformed.'
+            cypher: |-
+              MATCH (i:Identity)-[:HAS_ADDRESS]->(a:Address)
+              WHERE NOT (a)-[:GEOCODED_TO]->(:Location)
+              RETURN i.identityId AS identity,
+                     a.address AS address,
+                     a.city AS city,
+                     a.state AS state,
+                     a.zipcode AS zipcode
+              ORDER BY a.zipcode;
+            parameters: []
+            category: query
+            teaches: 'Read-only. Run it before the two location queries: an unresolved address has no Location, so it is silently absent from both. Re-run whenever a new source system brings new failure modes.'
+            returns: 'One row per identity and unresolved address: identity, address, city, state and zipcode, ordered by zipcode.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - data-quality
+              - address
+              - geocoding
+            upstream:
+              file: QUERIES.md
+              heading: Implausible Address Detection
+              sample: 'Bundled sample data only: returns 3 rows — ID-8105 (zip 00000), ID-8106 (zip 99999) and ID-8107 (Seattle zip 98101 on an Austin address).'
+          - type: canonicalQuery
+            name: location-match-same-coordinates-different-address-text
+            question: 'Location Match: Same Coordinates, Different Address Text'
+            description: Finds identities whose address text differs but whose addresses resolve to the same Location — "12 Main St" and "12 Main Street". Convergence on Location is a match signal in the same way convergence on a Phone is; here Location is the identifier, not Address.
+            cypher: |-
+              MATCH path = (i1:Identity)-[:HAS_ADDRESS]->(a1:Address)-[:GEOCODED_TO]->
+                           (l:Location)
+                           <-[:GEOCODED_TO]-(a2:Address)<-[:HAS_ADDRESS]-(i2:Identity)
+              WHERE i1.identityId < i2.identityId
+                AND a1.address <> a2.address
+              RETURN i1.identityId AS identity1,
+                     a1.address AS address1,
+                     i2.identityId AS identity2,
+                     a2.address AS address2,
+                     l.latitude AS latitude,
+                     l.longitude AS longitude,
+                     path
+              ORDER BY latitude, longitude;
+            parameters: []
+            category: query
+            teaches: The a1.address <> a2.address filter is what separates this from the fan-out, which already catches identities sharing the same Address node. It surfaces only what exact string equality misses, so pairs found here may share nothing else at all.
+            returns: 'One row per identity pair and shared Location: identity1, address1, identity2, address2 (the street portions), latitude, longitude and path.'
+            prerequisites: None beyond the imported reference ontology. Review Implausible Address Detection first.
+            tags:
+              - matching
+              - location
+              - geocoding
+              - standardisation
+            upstream:
+              file: QUERIES.md
+              heading: 'Location Match: Same Coordinates, Different Address Text'
+              sample: 'Bundled sample data only: returns 2 rows — ID-8101 / ID-8102 (215 Congress Ave / 215 Congress Avenue, Austin) and ID-8103 / ID-8104 (900 16th St / 900 16th Street, Denver).'
+          - type: canonicalQuery
+            name: descriptor-similarity-near-miss-name-spelling-requires-apoc
+            question: 'Descriptor Similarity: Near-Miss Name Spelling (requires APOC)'
+            description: 'Corroborates an already-suspected match with a near-miss name spelling. PersonName is a descriptor: plenty of unrelated people share a name, so a name never establishes a match. Only pairs that already share a phone, email, SSN or address are scored, never all name pairs.'
+            cypher: |-
+              MATCH (i1:Identity)-[:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS]->(shared)
+                    <-[:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS]-(i2:Identity)
+              WHERE i1.identityId < i2.identityId
+                AND NOT shared:Placeholder
+              WITH DISTINCT i1, i2
+              MATCH (i1)-[:HAS_NAME]->(n1:PersonName)
+              MATCH (i2)-[:HAS_NAME]->(n2:PersonName)
+              WHERE n1.fullName <> n2.fullName
+              WITH i1, i2, n1, n2,
+                   1 - apoc.text.jaroWinklerDistance(n1.fullName, n2.fullName) AS nameSimilarity
+              WHERE nameSimilarity >= 0.80
+              RETURN i1.identityId AS identity1,
+                     n1.fullName AS name1,
+                     i2.identityId AS identity2,
+                     n2.fullName AS name2,
+                     round(nameSimilarity, 3) AS nameSimilarity
+              ORDER BY nameSimilarity DESC;
+            parameters: []
+            category: query
+            teaches: apoc.text.jaroWinklerDistance returns a distance (0 = identical), not a similarity; the query converts with 1 - distance so the literal threshold 0.80 reads naturally. Skipping the conversion does not error — it sorts and thresholds backwards. 0.80 is a common starting point for Jaro–Winkler name matching; raise it to tighten. Jaro–Winkler rewards a shared prefix, so an unblocked scan returns mostly coincidental first-name matches and grows with population size — keep the blocking match. The blocking set leaves out HAS_DOB (a scope choice) and HAS_IP (shared infrastructure is weak evidence).
+            returns: 'One row per blocked pair with different names scoring at or above the threshold: identity1, name1, identity2, name2 and nameSimilarity (0–1, 1 identical), ordered by nameSimilarity descending.'
+            prerequisites: APOC (apoc.text.jaroWinklerDistance). Placeholder flags applied first.
+            tags:
+              - corroboration
+              - descriptor
+              - name
+              - fuzzy
+              - apoc
+            requires:
+              - apoc
+            upstream:
+              file: QUERIES.md
+              heading: 'Descriptor Similarity: Near-Miss Name Spelling (requires APOC)'
+              sample: 'Bundled sample data only: returns 3 rows — Carlos M***z / Carla M***z 0.948, Tyler B***n / Taylor B***n 0.923 and David K** / Daniel K** 0.861.'
+          - type: canonicalQuery
+            name: nearby-address-geographic-distance-as-descriptor
+            question: Nearby Address (Geographic Distance as Descriptor)
+            description: 'Corroborates an already-suspected match with geographic proximity. Distance is a descriptor for the same reason a name is: plenty of unrelated people live near each other. Only pairs already sharing a phone, email or SSN are scored; HAS_ADDRESS is deliberately left out of the blocking set, since address plausibility is what is being corroborated.'
+            cypher: |-
+              MATCH (i1:Identity)-[:HAS_PHONE|HAS_EMAIL|HAS_SSN]->(shared)
+                    <-[:HAS_PHONE|HAS_EMAIL|HAS_SSN]-(i2:Identity)
+              WHERE i1.identityId < i2.identityId
+                AND NOT shared:Placeholder
+              WITH DISTINCT i1, i2
+              MATCH (i1)-[:HAS_ADDRESS]->(a1:Address)-[:GEOCODED_TO]->(l1:Location)
+              MATCH (i2)-[:HAS_ADDRESS]->(a2:Address)-[:GEOCODED_TO]->(l2:Location)
+              WHERE l1 <> l2
+              WITH i1, i2, a1, a2,
+                   point.distance(
+                     point({latitude: l1.latitude, longitude: l1.longitude}),
+                     point({latitude: l2.latitude, longitude: l2.longitude})
+                   ) AS metersApart
+              WHERE metersApart <= 500
+              RETURN i1.identityId AS identity1,
+                     a1.address AS address1,
+                     i2.identityId AS identity2,
+                     a2.address AS address2,
+                     round(metersApart) AS metersApart
+              ORDER BY metersApart;
+            parameters: []
+            category: query
+            teaches: 'point.distance() returns metres for geographic points, built inline from Location.latitude and longitude; a cartesian x/y point would return the units of x and y. The literal 500 m threshold is a starting point with no strong prior: lower it where addresses are dense, and keep the identifier blocking or the query surfaces large numbers of coincidentally nearby strangers. If the optional SETUP.md statements have materialised Location.coordinates, substitute l1.coordinates and l2.coordinates.'
+            returns: 'One row per blocked pair whose addresses resolve to different Locations within the threshold: identity1, address1, identity2, address2 and metersApart (rounded metres), nearest first.'
+            prerequisites: None beyond the imported reference ontology — the built-in point.distance(), no plugin. Placeholder flags applied first; review Implausible Address Detection first.
+            tags:
+              - corroboration
+              - descriptor
+              - spatial
+              - distance
+            upstream:
+              file: QUERIES.md
+              heading: Nearby Address (Geographic Distance as Descriptor)
+              sample: 'Bundled sample data only: returns 1 row — ID-4001 / ID-4002, about 242 m apart in Austin.'
+          - type: canonicalQuery
+            name: weighted-composite-match-score-requires-apoc
+            question: Weighted Composite Match Score (requires APOC)
+            description: Blends identifier confidence with name similarity into one illustrative score, for triaging a large candidate list. Pairs are blocked on a shared phone, email, SSN or address, then scored on every identifier type they share.
+            cypher: |-
+              MATCH (i1:Identity)-[:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS]->(shared)
+                    <-[:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS]-(i2:Identity)
+              WHERE i1.identityId < i2.identityId
+                AND NOT shared:Placeholder
+              WITH DISTINCT i1, i2
+              MATCH (i1)-[r1:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]->(sharedAny)
+                    <-[r2:HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]-(i2)
+              WHERE NOT sharedAny:Placeholder
+              WITH i1, i2, collect(DISTINCT type(r1)) AS sharedSignals
+              MATCH (i1)-[:HAS_NAME]->(n1:PersonName)
+              MATCH (i2)-[:HAS_NAME]->(n2:PersonName)
+              WITH i1, i2, sharedSignals,
+                   1 - apoc.text.jaroWinklerDistance(n1.fullName, n2.fullName) AS nameSimilarity
+              RETURN i1.identityId AS identity1,
+                     i2.identityId AS identity2,
+                     sharedSignals,
+                     size(sharedSignals) AS identifierConfidence,
+                     round(nameSimilarity, 2) AS nameSimilarity,
+                     round(0.7 * (size(sharedSignals) / 6.0) + 0.3 * nameSimilarity, 3) AS weightedScore
+              ORDER BY weightedScore DESC, identity1, identity2
+              LIMIT 50;
+            parameters: []
+            category: query
+            teaches: 'size(sharedSignals) / 6.0 rescales the identifier count into the same 0–1 range as nameSimilarity so the two can be weighted and summed. The literal 0.7 / 0.3 weights are an illustrative starting point, not tuned values: adjust them with domain expertise, or learn them from a dataset already known to be deduplicated. Read the middle band — pairs held up by a single identifier and a near-miss name — as the ambiguous cases a human should review. The literal LIMIT 50 caps the list.'
+            returns: 'One row per blocked pair where both identities carry a name: identity1, identity2, sharedSignals, identifierConfidence (1–6), nameSimilarity (0–1, two decimals) and weightedScore (0–1), highest first.'
+            prerequisites: APOC (apoc.text.jaroWinklerDistance). Placeholder flags applied first.
+            tags:
+              - scoring
+              - triage
+              - composite
+              - apoc
+            requires:
+              - apoc
+            upstream:
+              file: QUERIES.md
+              heading: Weighted Composite Match Score (requires APOC)
+              sample: 'Bundled sample data only: returns 15 rows from 0.883 (ID-1001 / ID-1003) down to 0.375; the three near-miss-name pairs score 0.375–0.401, below every exact-name pair (0.533 and up).'
+          - type: canonicalQuery
+            name: node-key-constraints
+            question: Node-key constraints
+            cypher: |-
+              CREATE CONSTRAINT identityId_Identity_key IF NOT EXISTS
+                FOR (i:Identity) REQUIRE i.identityId IS NODE KEY;
+              CREATE CONSTRAINT fullName_PersonName_key IF NOT EXISTS
+                FOR (n:PersonName) REQUIRE n.fullName IS NODE KEY;
+              CREATE CONSTRAINT phoneNumber_Phone_key IF NOT EXISTS
+                FOR (p:Phone) REQUIRE p.phoneNumber IS NODE KEY;
+              CREATE CONSTRAINT email_Email_key IF NOT EXISTS
+                FOR (e:Email) REQUIRE e.email IS NODE KEY;
+              CREATE CONSTRAINT ssn_SSN_key IF NOT EXISTS
+                FOR (s:SSN) REQUIRE s.ssn IS NODE KEY;
+              CREATE CONSTRAINT addressId_Address_key IF NOT EXISTS
+                FOR (a:Address) REQUIRE a.addressId IS NODE KEY;
+              CREATE CONSTRAINT dateHash_DOB_key IF NOT EXISTS
+                FOR (d:DOB) REQUIRE d.dateHash IS NODE KEY;
+              CREATE CONSTRAINT ip_IPAddress_key IF NOT EXISTS
+                FOR (ip:IPAddress) REQUIRE ip.ip IS NODE KEY;
+              CREATE CONSTRAINT locationId_Location_key IF NOT EXISTS
+                FOR (l:Location) REQUIRE l.locationId IS NODE KEY;
+            parameters: []
+            category: setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Node-key constraints
+              sample: ''
+    description: 'A single raw profile record exactly as one source system captured it, not yet resolved to a real-world person. The hub of the reference ontology: every attribute hangs off an identity, and resolving two identities to one person is the outcome the package is looking for rather than something the data states.'
+  PersonName:
+    label: PersonName
+    properties:
+      fullName:
+        type: STRING
+        key: true
+        description: The full name as captured, in the masked display form, and the key on which identities converge. Because the key is the masked form it is weaker than the name it stands for — two different people whose masks collide would share one node — so masks are expected to be disambiguated before load. e.g. `Kyle N***n`.
+      firstName:
+        type: STRING
+        description: Given name, held separately for display and for future name-decomposition work. Not read by any matching logic. e.g. `Kyle`.
+      lastName:
+        type: STRING
+        description: Family name, held separately for display and for future name-decomposition work. Not read by any matching logic. e.g. `Nolan`.
+    extensions:
+      display:
+        x: 98
+        'y': -68
+        colour: '#7c3aed'
+      custom:
+        relate-examples:
+          ask: a person's name as a record captured it, usually masked with asterisks, such as Carlos M***z or David K**; the name on the record, not the record ID
+          proper: true
+    description: 'A person''s name as captured, shared by every identity recorded under exactly that name. Deliberately a descriptor rather than an identifier: names are far too common to be evidence of a match on their own, so this node corroborates a candidate found through real identifiers and is expected never to generate candidates by itself.'
+  Phone:
+    label: Phone
+    properties:
+      phoneNumber:
+        type: STRING
+        key: true
+        description: The telephone number in one fixed format. Convergence depends on exact string equality, so the same number written with different punctuation or spacing forms a separate node — normalisation to a single format is expected upstream, as the reference ontology performs none. e.g. `555-479-7140`.
+        pattern: ^[0-9]{3}-[0-9]{3}-[0-9]{4}$
+    extensions:
+      display:
+        x: 128
+        'y': 0
+        colour: '#059669'
+      custom:
+        relate-examples:
+          ask: a telephone number on a record, three groups of digits joined by hyphens, such as 555-904-9125
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: placeholder-phone-detection
+            question: Placeholder Phone Detection
+            description: Flags filler phone values such as "999-999-9999" with a :Placeholder label, so they cannot act as a shared identifier in any matching query.
+            cypher: |-
+              WITH ['999-999-9999', '000-000-0000', '555-555-5555'] AS knownPlaceholderPhones
+              MATCH (p:Phone)
+              WHERE p.phoneNumber IN knownPlaceholderPhones
+              SET p:Placeholder
+              RETURN p.phoneNumber AS flaggedPhone
+              ORDER BY flaggedPhone;
+            parameters: []
+            category: writes
+            teaches: 'Run before any matching query, alongside Placeholder Email Detection. Extend the literal list knownPlaceholderPhones per source system. Add an equivalent check for SSN where the data holds unmasked values: numbers starting 000, 666 or 900–999 are never issued.'
+            returns: 'One row per flagged Phone: flaggedPhone, in order.'
+            prerequisites: 'Writes a label (no data change): confirm the target database first. Equivalent to SETUP.md statement 3 — run it once, here or there, not both.'
+            tags:
+              - placeholder
+              - data-quality
+              - phone
+              - setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Placeholder Phone Detection
+              sample: 'Bundled sample data only: returns 1 row — 999-999-9999, shared by three otherwise-unrelated identities.'
+          - type: canonicalQuery
+            name: cross-channel-profile-assembly
+            question: Cross-Channel Profile Assembly
+            description: 'The operational query that follows matching: given one known phone number, pulls every Identity that carries it and assembles each record''s attributes side by side across source systems.'
+            cypher: |-
+              MATCH (p:Phone {phoneNumber: $phoneNumber})<-[:HAS_PHONE]-(i:Identity)
+              OPTIONAL MATCH (i)-[:HAS_NAME]->(n:PersonName)
+              OPTIONAL MATCH (i)-[:HAS_EMAIL]->(e:Email)
+              OPTIONAL MATCH (i)-[:HAS_SSN]->(s:SSN)
+              OPTIONAL MATCH (i)-[:HAS_ADDRESS]->(a:Address)
+              OPTIONAL MATCH (i)-[:HAS_DOB]->(d:DOB)
+              OPTIONAL MATCH (i)-[:HAS_IP]->(ip:IPAddress)
+              RETURN i.identityId AS identity,
+                     i.sourceSystem AS sourceSystem,
+                     n.fullName AS name,
+                     e.email AS email,
+                     s.ssn AS ssn,
+                     a.address AS address,
+                     d.dob AS dob,
+                     ip.ip AS ip
+              ORDER BY sourceSystem;
+            parameters:
+              - name: phoneNumber
+                type: STRING
+                description: Phone.phoneNumber of the known identifier, in the stored format. Ask the user, or take one from a cluster that has passed review.
+                example: 555-904-9125
+            category: query
+            teaches: 'Assemble a profile only for clusters that have passed a confidence threshold and review — presenting an unreviewed low-confidence merge as one person is the failure to avoid. The nulls are the point: no single record is complete.'
+            returns: 'One row per identity carrying the phone: identity, sourceSystem, name, email, ssn, address, dob and ip, ordered by sourceSystem. A missing attribute returns null rather than dropping the row.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - profile
+              - assembly
+              - cross-channel
+              - operational
+            upstream:
+              file: QUERIES.md
+              heading: Cross-Channel Profile Assembly
+              sample: 'Bundled sample data only: $phoneNumber = ''555-201-8823'' returns 3 rows — ID-1001 (CRM), ID-1003 (CallCenter) and ID-1002 (MobileApp); ID-1002 has no SSN, address or DOB, and ID-1003 no email.'
+          - type: canonicalQuery
+            name: cross-channel-profile-as-a-graph
+            question: Cross-Channel Profile as a Graph
+            description: 'The assembled profile as paths: every record carrying the phone number and every attribute each one holds, drawn as one connected picture around the shared identifier.'
+            cypher: |-
+              MATCH (:Phone {phoneNumber: $phoneNumber})<-[:HAS_PHONE]-(i:Identity)
+              MATCH path = (i)-[:HAS_NAME|HAS_PHONE|HAS_EMAIL|HAS_SSN|HAS_ADDRESS|HAS_DOB|HAS_IP]->
+                           (attribute)
+              RETURN path;
+            parameters:
+              - name: phoneNumber
+                type: STRING
+                description: Phone.phoneNumber of the known identifier, in the stored format.
+                example: 555-904-9125
+            category: picture
+            teaches: Visual counterpart of Cross-Channel Profile Assembly; the same review caveat applies. Shared attribute nodes are drawn once, so convergence is visible at a glance.
+            returns: Paths Identity → attribute, one per attribute of each identity carrying the phone, for Browser to draw.
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - profile
+              - assembly
+              - cross-channel
+              - visualisation
+            upstream:
+              file: QUERIES.md
+              heading: Cross-Channel Profile as a Graph
+              sample: 'Bundled sample data only: $phoneNumber = ''555-201-8823'' returns 17 paths — 7 from ID-1001, 4 from ID-1002 and 6 from ID-1003.'
+    description: 'A telephone number, shared by every identity recorded with exactly that number. A strong identifier: convergence here is meaningful evidence that two records describe the same person, and is the single most productive match signal in the reference ontology.'
+  Email:
+    label: Email
+    properties:
+      email:
+        type: STRING
+        key: true
+        description: 'The email address in the masked display form, and the key on which identities converge. Exact string equality only: no case folding, and no normalisation of provider-specific aliasing such as dots or plus-addressing. e.g. `nola***@maild.net`.'
+        pattern: ^[A-Za-z0-9._%+*-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$
+    extensions:
+      display:
+        x: 98
+        'y': 68
+        colour: '#0891b2'
+      custom:
+        relate-examples:
+          ask: an email address on a record, usually masked before the @ sign, such as will***@maild.net
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: placeholder-email-detection
+            question: Placeholder Email Detection
+            description: Flags filler email values — the non-null junk a source system stores when the real value is unknown, such as "none@none.com" — with a :Placeholder label, so they cannot act as a shared identifier in any matching query. Left alone, one filler value links every unrelated record that carries it.
+            cypher: |-
+              WITH ['none@none.com', 'n/a', 'test@test.com', 'unknown@unknown.com'] AS knownPlaceholderEmails
+              MATCH (e:Email)
+              WHERE toLower(e.email) IN knownPlaceholderEmails
+                 OR e.email =~ '(?i).*\\b(none|n/a|test|unknown)\\b.*'
+              SET e:Placeholder
+              RETURN e.email AS flaggedEmail
+              ORDER BY flaggedEmail;
+            parameters: []
+            category: writes
+            teaches: 'Run before any matching query, and again whenever a new source system is onboarded. The literal list knownPlaceholderEmails and the word-boundary pattern are illustrative, not exhaustive: extend both with each source system''s own filler conventions.'
+            returns: 'One row per flagged Email: flaggedEmail, in order.'
+            prerequisites: 'Writes a label (no data change): confirm the target database first. Equivalent to SETUP.md statement 2 — run it once, here or there, not both.'
+            tags:
+              - placeholder
+              - data-quality
+              - email
+              - setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Placeholder Email Detection
+              sample: 'Bundled sample data only: returns 2 rows — none@none.com and test@test.com, each shared by two otherwise-unrelated identities.'
+    description: An email address, shared by every identity recorded with exactly that address. A strong identifier, subject to the same exact-equality caveat as any other.
+  SSN:
+    label: SSN
+    properties:
+      ssn:
+        type: STRING
+        key: true
+        description: The social security number, masked to its final digits and held in one fixed format. Convergence depends on exact string equality; a near-miss is deliberately a different node, since detecting near-misses is a separate query rather than a merge. e.g. `XXX-XX-6624`.
+        pattern: ^XXX-XX-[0-9]{4}$
+    extensions:
+      display:
+        x: -98
+        'y': 68
+        colour: '#dc2626'
+      custom:
+        relate-examples:
+          ask: a social security number on a record, masked to its last four digits, such as XXX-XX-4598; the number itself, not the word SSN
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: near-duplicate-ssn-synthetic-identity-signal
+            question: Near-Duplicate SSN (Synthetic Identity Signal)
+            description: 'The synthetic-identity signature: two SSNs one edit apart, held by identities that also share a genuine contact identifier. A fraudster reuses a victim''s contact details so the application looks legitimate, but alters one digit of the SSN so it never collides under exact-match deduplication — which the fan-out and confidence queries therefore cannot see.'
+            cypher: |-
+              MATCH (s:SSN)
+              WITH s, replace(s.ssn, '-', '\\-') AS escapedSsn
+              CALL db.index.fulltext.queryNodes('ssnFuzzyIndex', escapedSsn + '~1') YIELD node, score
+              WHERE s.ssn < node.ssn
+              MATCH (i1:Identity)-[:HAS_SSN]->(s)
+              MATCH (i2:Identity)-[:HAS_SSN]->(node)
+              MATCH (i1)-[rc1:HAS_PHONE|HAS_EMAIL|HAS_ADDRESS]->(corrob)
+                    <-[rc2:HAS_PHONE|HAS_EMAIL|HAS_ADDRESS]-(i2)
+              WHERE NOT corrob:Placeholder
+              RETURN i1.identityId AS identity1,
+                     s.ssn AS ssn1,
+                     i2.identityId AS identity2,
+                     node.ssn AS ssn2,
+                     score,
+                     type(rc1) AS corroboratingSignal
+              ORDER BY score DESC;
+            parameters: []
+            category: query
+            teaches: 'The literal ~1 fuzzy operator allows one edit; ~2 widens it, and Lucene caps it at 2. The - in each SSN is escaped before it reaches the Lucene parser, where it is reserved. The fuzzy lookup is cheap; the corroboration match is what removes noise. SSNs masked to their last four digits have only 10,000 possible values, so coincidental one-edit pairs grow quickly with population size — never drop the corroboration. A near-duplicate can also be an honest typo: treat a hit as a lead for review.'
+            returns: 'One row per near-duplicate SSN pair and corroborating attribute: identity1, ssn1, identity2, ssn2 (ssn1 the lower), score (the Lucene relevance score) and corroboratingSignal (the shared relationship type).'
+            prerequisites: The ssnFuzzyIndex fulltext index with the 'keyword' analyzer (SETUP.md statement 1) — the query fails without it. Placeholder flags applied first.
+            tags:
+              - synthetic-identity
+              - fraud
+              - fuzzy
+              - ssn
+              - fulltext
+            requires:
+              - index
+            upstream:
+              file: QUERIES.md
+              heading: Near-Duplicate SSN (Synthetic Identity Signal)
+              sample: 'Bundled sample data only: returns 3 rows — XXX-XX-4508 / XXX-XX-4598 (ID-7002 / ID-7001), XXX-XX-4821 / XXX-XX-4831 (ID-4001 / ID-4002) and XXX-XX-8017 / XXX-XX-8517 (ID-7004 / ID-7003), each corroborated by HAS_PHONE.'
+          - type: canonicalQuery
+            name: near-duplicate-ssn-as-a-graph
+            question: Near-Duplicate SSN as a Graph
+            description: 'The same synthetic-identity detection returned as paths: the two identities, their near-duplicate SSNs, and the shared contact attribute that corroborates the link.'
+            cypher: |-
+              MATCH (s:SSN)
+              WITH s, replace(s.ssn, '-', '\\-') AS escapedSsn
+              CALL db.index.fulltext.queryNodes('ssnFuzzyIndex', escapedSsn + '~1') YIELD node
+              WHERE s.ssn < node.ssn
+              MATCH (i1:Identity)-[:HAS_SSN]->(s)
+              MATCH (i2:Identity)-[:HAS_SSN]->(node)
+              MATCH corroborationPath = (i1)-[:HAS_PHONE|HAS_EMAIL|HAS_ADDRESS]->(corrob)
+                                        <-[:HAS_PHONE|HAS_EMAIL|HAS_ADDRESS]-(i2)
+              WHERE NOT corrob:Placeholder
+              MATCH ssnPath1 = (i1)-[:HAS_SSN]->(s)
+              MATCH ssnPath2 = (i2)-[:HAS_SSN]->(node)
+              RETURN corroborationPath, ssnPath1, ssnPath2;
+            parameters: []
+            category: picture
+            teaches: Visual counterpart of the tabular query — the view for a demo. Tuning and caveats are the same.
+            returns: 'One row per near-duplicate SSN pair and corroborating attribute: corroborationPath, ssnPath1 and ssnPath2, which Browser merges into one picture per row.'
+            prerequisites: 'As Near-Duplicate SSN (Synthetic Identity Signal): the ssnFuzzyIndex fulltext index and the placeholder flags.'
+            tags:
+              - synthetic-identity
+              - fraud
+              - visualisation
+              - ssn
+              - fulltext
+            requires:
+              - index
+            upstream:
+              file: QUERIES.md
+              heading: Near-Duplicate SSN as a Graph
+              sample: 'Bundled sample data only: returns 3 rows, one per pair found by the tabular query, each corroborated by a shared Phone.'
+    description: A social security number, shared by every identity recorded with exactly that number. The strongest identifier in the reference ontology when it matches exactly — and, when two differ by a single character, the near-miss that most often marks a synthetic identity built by perturbing a real one.
+    aliases:
+      - Social Security number
+  Address:
+    label: Address
+    properties:
+      addressId:
+        type: STRING
+        key: true
+        description: Canonical concatenation of `address`, `city`, `state` and `zipcode`, and the key on which identities converge. Exists only because the import flow requires a single identifying property and cannot infer one from a composite; because it is derived from exactly the four values it replaces, convergence behaves identically to a composite key. e.g. `7658 Elizabeth Knoll, Seattle, WA 98104`.
+      address:
+        type: STRING
+        must_exist: true
+        description: Street portion of the address as captured, including any suite or apartment detail. Held for querying and display; identity is carried by `addressId`. e.g. `7658 Elizabeth Knoll`.
+      city:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the town or city of the street address, such as Columbus or Austin
+        description: Town or city portion of the address. A descriptor — far too common to be evidence of a match on its own. e.g. `Seattle`.
+      state:
+        type: STRING
+        must_exist: true
+        description: State portion of the address, as a two-letter postal abbreviation. A descriptor. e.g. `WA`.
+      zipcode:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the five-digit ZIP code of the street address, such as 43201
+        description: Postal code portion of the address, as captured and not extended to a full plus-four form. e.g. `98104`.
+    extensions:
+      display:
+        x: -128
+        'y': 0
+        colour: '#d97706'
+      custom:
+        relate-examples:
+          ask: a street address on a record, a house number and street name such as 5169 Ramirez Roads or 19 Birchwood Ct; the street itself, not its city, state or ZIP code, and not its geocoded point
+          proper: true
+    description: A postal address, shared by every identity recorded at exactly that address. Identified by the raw street string together with city, state and zipcode rather than by a geocoder-standardised form, specifically so that a suite or apartment number captured by one system is not normalised away.
+  DOB:
+    label: DOB
+    properties:
+      dateHash:
+        type: STRING
+        key: true
+        description: Keyed hash of the full unmasked birthdate — an HMAC-SHA256 computed once at load time and stored truncated — and the key on which identities converge. Never displayed. Because it is keyed, identical birthdates converge only within one deployment's secret; the hash is expected to be recomputed if that secret changes. e.g. `fa96e48c09892858`.
+        pattern: ^[0-9a-f]{16}$
+      dob:
+        type: STRING
+        must_exist: true
+        description: 'The birthdate in masked, year-only display form. Display only, and deliberately not the key: its entropy is far too low to identify a person. e.g. `1975-XX-XX`.'
+    extensions:
+      display:
+        x: -98
+        'y': -68
+        colour: '#db2777'
+      custom:
+        relate-examples:
+          ask: a date of birth on a record, named by the hash it is compared by, sixteen hex characters such as 74c352df9e9cea5f; not the masked birth year
+          proper: true
+          propose: true
+    description: 'A date of birth, shared by every identity with exactly that birthdate. Keyed on a hash of the full date rather than on the masked value that is displayed: keying on the masked year would converge everyone born in the same year onto one node, which is a coincidence rather than a match.'
+    aliases:
+      - Date of birth
+  IPAddress:
+    label: IPAddress
+    properties:
+      ip:
+        type: STRING
+        key: true
+        description: The IP address as captured. Exact string equality only, with no normalisation between notations and no grouping into subnets. e.g. `192.0.2.170`.
+        pattern: ^[0-9]{1,3}([.][0-9]{1,3}){3}$
+    extensions:
+      display:
+        x: 0
+        'y': -120
+        colour: '#4f46e5'
+      custom:
+        relate-examples:
+          ask: an IP address a record was submitted or seen from, four numbers joined by dots, such as 198.51.100.55
+          proper: true
+          propose: true
+    description: An IP address a profile was seen from, shared by every identity recorded with exactly that address. Treated as a device or channel signal rather than a property of a person — a shared address is meaningful evidence, but one that shared infrastructure explains innocently far more often than a shared phone number does.
+  Location:
+    label: Location
+    properties:
+      locationId:
+        type: STRING
+        key: true
+        description: Canonical form of the coordinate pair, and the key on which addresses converge. Exists because the import flow requires a single identifying property. When a real geocoding provider is used, its own stable place identifier is expected to replace this, since repeated lookups of one place can return coordinates differing in the last decimal and would then fail to converge. e.g. `47.615671,-122.327894`.
+        pattern: ^-?[0-9]{1,3}[.][0-9]+,-?[0-9]{1,3}[.][0-9]+$
+      latitude:
+        type: FLOAT
+        must_exist: true
+        description: Latitude of the point in decimal degrees on WGS 84, positive northwards. This and `longitude` are what proximity queries actually read; the reference ontology stores no point value, which is derived after load. e.g. `47.615671`.
+      longitude:
+        type: FLOAT
+        must_exist: true
+        description: Longitude of the point in decimal degrees on WGS 84, positive eastwards. e.g. `-122.327894`.
+    extensions:
+      display:
+        x: -268
+        'y': 0
+        colour: '#65a30d'
+      custom:
+        relate-examples:
+          ask: a geocoded point that an address resolves to, a latitude and longitude pair in decimal degrees such as 40.003812,-82.996425; never a city, a street or a postal address
+          proper: true
+          propose: true
+    description: 'A geographic point that one or more addresses resolve to, one hop past the address. This is where standardisation pays off: two differently written addresses that a geocoder treats as the same place converge here even though their address nodes stay distinct.'
+relationships:
+  hasName:
+    type: HAS_NAME
+    from:
+      node: Identity
+      max_count: 1
+    to:
+      node: PersonName
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is in the name of
+    description: Attaches the name captured on this profile record. At most one name per identity, and an identity that has none simply carries no such link rather than a null value; a name may be shared by several identities. Shared names corroborate a candidate match but are expected never to generate one.
+  hasPhone:
+    type: HAS_PHONE
+    from:
+      node: Identity
+      max_count: 1
+    to:
+      node: Phone
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is reachable on
+    description: Attaches a telephone number captured on this profile record. At most one phone per identity, and a missing phone is modelled by the absence of this link; a phone may be shared by several identities, and that convergence is the match signal.
+  hasEmail:
+    type: HAS_EMAIL
+    from:
+      node: Identity
+      max_count: 1
+    to:
+      node: Email
+    extensions:
+      custom:
+        relate-examples:
+          phrase: uses
+    description: Attaches an email address captured on this profile record. At most one email per identity, and a missing email is modelled by the absence of this link; an email may be shared by several identities.
+  hasSsn:
+    type: HAS_SSN
+    from:
+      node: Identity
+      max_count: 1
+    to:
+      node: SSN
+    extensions:
+      custom:
+        relate-examples:
+          phrase: declares
+    description: Attaches a social security number captured on this profile record. At most one SSN per identity, and a missing SSN is modelled by the absence of this link; an SSN may be shared by several identities — legitimately where records genuinely match, and suspiciously where they do not.
+  hasAddress:
+    type: HAS_ADDRESS
+    from:
+      node: Identity
+      max_count: 1
+    to:
+      node: Address
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is registered at
+    description: Attaches a postal address captured on this profile record. At most one address per identity, and a missing address is modelled by the absence of this link; an address may be shared by several identities, which is expected at a household and unremarkable on its own.
+  hasDob:
+    type: HAS_DOB
+    from:
+      node: Identity
+      max_count: 1
+    to:
+      node: DOB
+    extensions:
+      custom:
+        relate-examples:
+          phrase: carries the date of birth
+    description: Attaches the date of birth captured on this profile record. At most one date of birth per identity, and a missing one is modelled by the absence of this link; a birthdate may be shared by several identities, so it corroborates a match rather than establishing one.
+  hasIp:
+    type: HAS_IP
+    from:
+      node: Identity
+      max_count: 1
+    to:
+      node: IPAddress
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was submitted from
+    description: Attaches an IP address the profile record was seen from. At most one address per identity, and a missing one is modelled by the absence of this link; an address may be shared by several identities.
+  geocodedTo:
+    type: GEOCODED_TO
+    from:
+      node: Address
+      max_count: 1
+    to:
+      node: Location
+    extensions:
+      custom:
+        relate-examples:
+          phrase: geocodes to
+    description: Resolves a postal address to the geographic point a geocoder placed it at. At most one point per address; a point may be shared by several addresses, which is what makes differently written forms of one place converge. An address that failed to geocode carries no such link, and that absence — rather than any enumeration of malformed forms — is the implausible-address signal.
+extensions:
+  data_source_tables:
+    identities.csv:
+      source: local
+      columns:
+        - name: identityId
+          type: string
+        - name: sourceSystem
+          type: string
+    names.csv:
+      source: local
+      columns:
+        - name: identityId
+          type: string
+        - name: fullName
+          type: string
+        - name: firstName
+          type: string
+        - name: lastName
+          type: string
+    phones.csv:
+      source: local
+      columns:
+        - name: identityId
+          type: string
+        - name: phoneNumber
+          type: string
+    emails.csv:
+      source: local
+      columns:
+        - name: identityId
+          type: string
+        - name: email
+          type: string
+    ssns.csv:
+      source: local
+      columns:
+        - name: identityId
+          type: string
+        - name: ssn
+          type: string
+    addresses.csv:
+      source: local
+      columns:
+        - name: identityId
+          type: string
+        - name: addressId
+          type: string
+        - name: address
+          type: string
+        - name: city
+          type: string
+        - name: state
+          type: string
+        - name: zipcode
+          type: string
+    dobs.csv:
+      source: local
+      columns:
+        - name: identityId
+          type: string
+        - name: dob
+          type: string
+        - name: dateHash
+          type: string
+    ip_addresses.csv:
+      source: local
+      columns:
+        - name: identityId
+          type: string
+        - name: ip
+          type: string
+    locations.csv:
+      source: local
+      columns:
+        - name: addressId
+          type: string
+        - name: locationId
+          type: string
+        - name: latitude
+          type: string
+        - name: longitude
+          type: string
+  data_source_mappings:
+    mapping0:
+      - type: NODE
+        node: Identity
+        table: identities.csv
+        mode: MERGE
+        key:
+          - identityId
+        properties:
+          identityId:
+            column: identityId
+          sourceSystem:
+            column: sourceSystem
+      - type: NODE
+        node: PersonName
+        table: names.csv
+        mode: MERGE
+        key:
+          - fullName
+        properties:
+          fullName:
+            column: fullName
+          firstName:
+            column: firstName
+          lastName:
+            column: lastName
+      - type: RELATIONSHIP
+        relationship: hasName
+        table: names.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Identity
+          properties:
+            identityId:
+              column: identityId
+        to_node:
+          label: PersonName
+          properties:
+            fullName:
+              column: fullName
+      - type: NODE
+        node: Phone
+        table: phones.csv
+        mode: MERGE
+        key:
+          - phoneNumber
+        properties:
+          phoneNumber:
+            column: phoneNumber
+      - type: RELATIONSHIP
+        relationship: hasPhone
+        table: phones.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Identity
+          properties:
+            identityId:
+              column: identityId
+        to_node:
+          label: Phone
+          properties:
+            phoneNumber:
+              column: phoneNumber
+      - type: NODE
+        node: Email
+        table: emails.csv
+        mode: MERGE
+        key:
+          - email
+        properties:
+          email:
+            column: email
+      - type: RELATIONSHIP
+        relationship: hasEmail
+        table: emails.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Identity
+          properties:
+            identityId:
+              column: identityId
+        to_node:
+          label: Email
+          properties:
+            email:
+              column: email
+      - type: NODE
+        node: SSN
+        table: ssns.csv
+        mode: MERGE
+        key:
+          - ssn
+        properties:
+          ssn:
+            column: ssn
+      - type: RELATIONSHIP
+        relationship: hasSsn
+        table: ssns.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Identity
+          properties:
+            identityId:
+              column: identityId
+        to_node:
+          label: SSN
+          properties:
+            ssn:
+              column: ssn
+      - type: NODE
+        node: Address
+        table: addresses.csv
+        mode: MERGE
+        key:
+          - addressId
+        properties:
+          addressId:
+            column: addressId
+          address:
+            column: address
+          city:
+            column: city
+          state:
+            column: state
+          zipcode:
+            column: zipcode
+      - type: RELATIONSHIP
+        relationship: hasAddress
+        table: addresses.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Identity
+          properties:
+            identityId:
+              column: identityId
+        to_node:
+          label: Address
+          properties:
+            addressId:
+              column: addressId
+      - type: NODE
+        node: DOB
+        table: dobs.csv
+        mode: MERGE
+        key:
+          - dateHash
+        properties:
+          dateHash:
+            column: dateHash
+          dob:
+            column: dob
+      - type: RELATIONSHIP
+        relationship: hasDob
+        table: dobs.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Identity
+          properties:
+            identityId:
+              column: identityId
+        to_node:
+          label: DOB
+          properties:
+            dateHash:
+              column: dateHash
+      - type: NODE
+        node: IPAddress
+        table: ip_addresses.csv
+        mode: MERGE
+        key:
+          - ip
+        properties:
+          ip:
+            column: ip
+      - type: RELATIONSHIP
+        relationship: hasIp
+        table: ip_addresses.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Identity
+          properties:
+            identityId:
+              column: identityId
+        to_node:
+          label: IPAddress
+          properties:
+            ip:
+              column: ip
+      - type: NODE
+        node: Location
+        table: locations.csv
+        mode: MERGE
+        key:
+          - locationId
+        properties:
+          locationId:
+            column: locationId
+          latitude:
+            column: latitude
+          longitude:
+            column: longitude
+      - type: RELATIONSHIP
+        relationship: geocodedTo
+        table: locations.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Address
+          properties:
+            addressId:
+              column: addressId
+        to_node:
+          label: Location
+          properties:
+            locationId:
+              column: locationId
+  custom:
+    relate-examples:
+      family: studio
+      source:
+        repository: neo4j/studio-agent-use-cases
+        commit: b76f767e85c5853b7d70eb2bb3b10879d0e394a9
+        package: identity-validation
+        files:
+          - ONTOLOGY.json
+          - QUERIES.md
+          - human_description.md
+      card:
+        title: Identity Validation
+        category: Industry Agnostic
+        description: Resolve one person across systems and channels, and surface near-duplicate identifiers that signal synthetic identity fraud.
+      industry: Industry Agnostic
+      about: data/ontologies/studio/identity-validation/human_description.md

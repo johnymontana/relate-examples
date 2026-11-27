@@ -1,30 +1,36 @@
 {
   "entities": [
-    {"name": "Daniel Achebe", "type": "Person"},
-    {"name": "Corrin Logistics", "type": "Organization"},
-    {"name": "Rotterdam", "type": "Location"},
-    {"name": "IR-2026-077 incident", "type": "Incident"},
-    {"name": "AL-90455 alert", "type": "Alert"},
-    {"name": "Kyiv", "type": "Location"},
-    {"name": "MAIL-GW-03 server", "type": "Asset"},
-    {"name": "VULN-1182", "type": "Vulnerability"},
-    {"name": "Sofia Marin", "type": "Person"},
-    {"name": "Velvet Sextant", "type": "ThreatActor"},
-    {"name": "CTL-31 control", "type": "Control"},
-    {"name": "ARCHIVE-01 server", "type": "Asset"}
+    {"name": "Nadia Rahman", "type": "Analyst"},
+    {"name": "Owen Mbeki", "type": "Analyst"},
+    {"name": "CVE-2024-3400", "type": "Vulnerability"},
+    {"name": "FW-EDGE-01", "type": "Asset"},
+    {"name": "FW-EDGE-02", "type": "Asset"},
+    {"name": "FW-LAB-01", "type": "Asset"},
+    {"name": "T1190", "type": "Technique", "aliases": ["Exploit Public-Facing Application"]},
+    {"name": "T1059.004", "type": "Technique", "aliases": ["Unix Shell"]},
+    {"name": "ALR-40218", "type": "Alert"},
+    {"name": "203.0.113.61", "type": "Indicator"},
+    {"name": "CTL-022", "type": "Control"},
+    {"name": "CTL-035", "type": "Control"}
   ],
   "relations": [
-    {"source": "Daniel Achebe", "target": "Corrin Logistics", "type": "WORKS_FOR"},
-    {"source": "Corrin Logistics", "target": "Rotterdam", "type": "LOCATED_AT"},
-    {"source": "IR-2026-077 incident", "target": "Daniel Achebe", "type": "ASSIGNED_TO"},
-    {"source": "AL-90455 alert", "target": "Kyiv", "type": "ORIGINATES_FROM"},
-    {"source": "AL-90455 alert", "target": "MAIL-GW-03 server", "type": "TARGETS"},
-    {"source": "AL-90455 alert", "target": "IR-2026-077 incident", "type": "TRIGGERED"},
-    {"source": "VULN-1182", "target": "MAIL-GW-03 server", "type": "AFFECTS"},
-    {"source": "Sofia Marin", "target": "MAIL-GW-03 server", "type": "OWNS"},
-    {"source": "MAIL-GW-03 server", "target": "Corrin Logistics", "type": "BELONGS_TO"},
-    {"source": "IR-2026-077 incident", "target": "Velvet Sextant", "type": "ATTRIBUTED_TO"},
-    {"source": "CTL-31 control", "target": "VULN-1182", "type": "MITIGATES"},
-    {"source": "CTL-31 control", "target": "MAIL-GW-03 server", "type": "PROTECTS"}
+    {"source": "CVE-2024-3400", "target": "FW-EDGE-01", "type": "AFFECTS", "how": "list"},
+    {"source": "CVE-2024-3400", "target": "FW-EDGE-02", "type": "AFFECTS", "how": "list"},
+    {"source": "ALR-40218", "target": "FW-EDGE-02", "type": "FIRED_ON", "how": "plain"},
+    {"source": "ALR-40218", "target": "T1190", "type": "DETECTED", "how": "plain"},
+    {"source": "ALR-40218", "target": "Owen Mbeki", "type": "TRIAGED_BY", "how": "passive"},
+    {"source": "CTL-022", "target": "CVE-2024-3400", "type": "MITIGATES", "how": "plain"},
+    {"source": "CTL-022", "target": "FW-EDGE-01", "type": "PROTECTS", "how": "list"},
+    {"source": "CTL-022", "target": "FW-EDGE-02", "type": "PROTECTS", "how": "list"}
+  ],
+  "distractors": [
+    {"source": "CVE-2024-3400", "target": "FW-LAB-01", "type": "AFFECTS", "family": "negation"},
+    {"source": "CTL-035", "target": "CVE-2024-3400", "type": "MITIGATES", "family": "retracted"},
+    {"source": "CTL-022", "target": "FW-LAB-01", "type": "PROTECTS", "family": "future"}
+  ],
+  "properties": [
+    {"entity": "CVE-2024-3400", "property": "cvssScore", "text": "10.0", "value": 10.0, "how": "plain"},
+    {"entity": "ALR-40218", "property": "severity", "text": "medium", "value": "medium", "how": "plain"},
+    {"entity": "ALR-40218", "property": "source", "text": "firewall", "value": "firewall", "how": "plain"}
   ]
 }

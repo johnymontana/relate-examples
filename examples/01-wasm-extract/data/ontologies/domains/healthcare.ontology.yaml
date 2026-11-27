@@ -1,0 +1,612 @@
+# Healthcare: example 01's curated ontology for clinical documents (discharge summaries, referral
+# and clinic letters) (D20). Written for this repository from create-context-graph's healthcare.yaml
+# at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O
+# base (Person, Organization, Location, Event, Object) is gone, and every kind is named for what a
+# clinician calls it (Patient, Clinician, Facility, Encounter, Diagnosis, Procedure, Medication,
+# LabTest, Allergy).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept (schema.org, or the HL7 FHIR R4 resource where schema.org has none),
+# realistic properties (identifiers with patterns, vocabularies with one_of), and under
+# extensions.custom.relate-examples the words the model reads (ask) and whether its mentions are
+# proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link says its
+# direction and cardinality and carries the phrase the model reads. The tools are the ontology's
+# competency questions, written for the graph the page extracts: entities carry name, display, key
+# and their key property; relationships carry p, claims, sentences and docs, and the trace
+# (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: healthcare
+name: Healthcare
+description: >-
+  Clinical care as hospital and clinic letters record it: the patients, the clinicians who treat
+  them and the facilities they work at, the encounters (emergency visits, admissions and clinic
+  appointments) in which care happens, and what each encounter finds and does: diagnoses, procedures,
+  laboratory results, medications and allergies. It answers what a patient has been diagnosed with,
+  which medications they take and who prescribed them, which recorded allergy rules a drug out, which
+  procedures were performed, by whom and during which encounter, which test results point to a
+  diagnosis, who a patient was referred to, and what the source text says about each fact. Doses,
+  vital signs, imaging findings, billing and insurance are out of scope, and so is the timeline of a
+  stay: a document states them, the extractor does not keep them.
+nodes:
+  Patient:
+    label: Patient
+    description: >-
+      A person receiving care, named in full in a document's header ("Leonard Haskett") and by title
+      and surname after that ("Mr. Haskett"). A patient is the subject of the record, never one of the
+      clinicians who write it.
+    aliases: [inpatient, outpatient, case, service user]
+    reference: https://schema.org/Patient
+    properties:
+      name: {type: STRING, key: true, description: "The patient's full name as the documents write it."}
+      mrn: {type: STRING, pattern: "^[0-9]{7,10}$", description: "The medical record number at the treating hospital, seven to ten digits."}
+      dateOfBirth: {type: DATE, description: "The patient's date of birth."}
+      sex: {type: STRING, one_of: [female, male, other, unknown], description: "The administrative sex recorded for the patient (FHIR administrative gender)."}
+    extensions:
+      display: {x: -160, y: 0, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "the person receiving care whom the record is about, named in full or as Mr. or Ms. and surname, such as Mr. Haskett", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-patient
+            category: lookup
+            question: Who is this patient, and what does the store connect to them?
+            description: Finds patients whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (p:Patient) WHERE toLower(p.name) CONTAINS toLower($patient)
+              OPTIONAL MATCH (p)-[r]-(x:_Entity)
+              RETURN p.name AS patient, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY patient, link, other
+            parameters:
+              - {name: patient, type: STRING, description: "Part of the patient's name.", example: Haskett}
+          - type: canonicalQuery
+            name: problem-list-of-a-patient
+            category: neighbourhood
+            question: What has this patient been diagnosed with, what do they take, and what are they allergic to?
+            description: The patient's diagnoses, medications and allergies, each as a list.
+            teaches: Three OPTIONAL MATCHes from one node, each collected DISTINCT, give a summary row even when one list is empty.
+            cypher: |-
+              MATCH (p:Patient) WHERE toLower(p.name) CONTAINS toLower($patient)
+              OPTIONAL MATCH (p)-[:DIAGNOSED_WITH]->(d:Diagnosis)
+              OPTIONAL MATCH (p)-[:TAKES]->(m:Medication)
+              OPTIONAL MATCH (p)-[:HAS_ALLERGY]->(a:Allergy)
+              RETURN p.name AS patient, collect(DISTINCT d.name) AS diagnoses,
+                     collect(DISTINCT m.name) AS medications, collect(DISTINCT a.name) AS allergies
+              ORDER BY patient
+            parameters:
+              - {name: patient, type: STRING, description: "Part of the patient's name.", example: Leonard Haskett}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Haskett}
+  Clinician:
+    label: Clinician
+    description: >-
+      A physician, surgeon, nurse, pharmacist or other professional who treats patients, usually named
+      with a title or a credential and often with a specialty ("Dr. Ines Marrow, Cardiology"). A
+      clinician gives care; a patient receives it.
+    aliases: [physician, doctor, provider, practitioner, nurse, pharmacist, attending, consultant]
+    reference: https://hl7.org/fhir/R4/practitioner.html
+    properties:
+      name: {type: STRING, key: true, description: "The clinician's full name, without the title."}
+      role: {type: STRING, one_of: [physician, surgeon, nurse practitioner, physician assistant, nurse, pharmacist], description: "The clinician's profession."}
+      specialty: {type: STRING, description: "The clinician's specialty as a document gives it (cardiology, nephrology, family medicine)."}
+      npi: {type: STRING, pattern: "^[0-9]{10}$", description: "The clinician's National Provider Identifier, ten digits."}
+    extensions:
+      display: {x: 140, y: -180, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a physician, nurse, pharmacist or other health professional who gives care, written with Dr. or a credential such as MD, RN or PharmD", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: care-team-of-a-patient
+            category: neighbourhood
+            question: Which clinicians treated this patient or were sent the patient, and where do they work?
+            description: Every clinician the patient was treated by or referred to, with the facilities they work at.
+            teaches: Two OPTIONAL MATCHes on different link types, then a WHERE, keep each clinician whichever link names them.
+            cypher: |-
+              MATCH (p:Patient), (c:Clinician) WHERE toLower(p.name) CONTAINS toLower($patient)
+              OPTIONAL MATCH (p)-[t:TREATED_BY]->(c)
+              OPTIONAL MATCH (p)-[r:REFERRED_TO]->(c)
+              WITH p, c, t, r WHERE t IS NOT NULL OR r IS NOT NULL
+              OPTIONAL MATCH (c)-[:WORKS_AT]->(f:Facility)
+              RETURN p.name AS patient, c.name AS clinician, t IS NOT NULL AS treated, r IS NOT NULL AS referred,
+                     collect(DISTINCT f.name) AS works_at
+              ORDER BY clinician
+            parameters:
+              - {name: patient, type: STRING, description: "Part of the patient's name.", example: Haskett}
+          - type: canonicalQuery
+            name: clinician-activity
+            category: aggregation
+            question: How many medications, procedures and encounters is each clinician named for?
+            description: Per clinician, the medications they prescribed, the procedures they performed and the encounters they attended.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each medication is counted once per procedure.
+            cypher: |-
+              MATCH (c:Clinician)
+              OPTIONAL MATCH (c)-[:PRESCRIBED]->(m:Medication)
+              OPTIONAL MATCH (pr:Procedure)-[:PERFORMED_BY]->(c)
+              OPTIONAL MATCH (e:Encounter)-[:ATTENDED_BY]->(c)
+              RETURN c.name AS clinician, count(DISTINCT m) AS prescribed, count(DISTINCT pr) AS performed,
+                     count(DISTINCT e) AS attended
+              ORDER BY prescribed DESC, performed DESC, attended DESC, clinician
+          - type: canonicalQuery
+            name: who-prescribed-what
+            category: evidence
+            question: Which sentences say who prescribed each medication?
+            description: Every PRESCRIBED fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (c:Clinician)-[r:PRESCRIBED]->(m:Medication)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN c.name AS clinician, m.name AS medication, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY medication, clinician
+  Facility:
+    label: Facility
+    description: >-
+      A hospital, clinic, medical practice, laboratory or rehabilitation center where care is given,
+      named by its proper name ("Ostrander Memorial Hospital", "Hollis Creek Family Medicine").
+      Clinicians work at facilities, and encounters take place at them.
+    aliases: [hospital, clinic, practice, medical center, health center]
+    reference: https://schema.org/MedicalOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The facility's name."}
+      facilityType: {type: STRING, one_of: [hospital, clinic, practice, laboratory, rehabilitation center, pharmacy], description: "What kind of facility it is."}
+      city: {type: STRING, description: "The city the facility is in."}
+    extensions:
+      display: {x: 400, y: -60, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a hospital, clinic, medical practice or other healthcare facility where care is given, named by its proper name", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: facility-encounters-and-staff
+            category: aggregation
+            question: How many encounters took place at each facility, and who works there?
+            description: Per facility, the number of encounters that took place there and the clinicians who work there.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (f:Facility)
+              OPTIONAL MATCH (e:Encounter)-[:OCCURRED_AT]->(f)
+              OPTIONAL MATCH (c:Clinician)-[:WORKS_AT]->(f)
+              RETURN f.name AS facility, count(DISTINCT e) AS encounters, collect(DISTINCT c.name) AS staff
+              ORDER BY encounters DESC, facility
+  Encounter:
+    label: Encounter
+    description: >-
+      One contact between a patient and the health system (an emergency department visit, an
+      inpatient admission, a clinic or telehealth appointment), identified by its encounter number
+      (ENC-2604417). An encounter takes place at one facility and is led by an attending clinician.
+    aliases: [admission, visit, appointment, attendance, stay]
+    reference: https://hl7.org/fhir/R4/encounter.html
+    properties:
+      encounterId: {type: STRING, key: true, pattern: "^ENC-[0-9]{7}$", description: "The encounter number, ENC- and seven digits."}
+      name: {type: STRING, description: "The encounter as a document names it."}
+      encounterClass: {type: STRING, one_of: [emergency, inpatient, outpatient, telehealth, home], description: "The setting of the encounter.", extensions: {custom: {relate-examples: {extract: true, ask: "the setting of the encounter, emergency, inpatient or outpatient, as the text calls it"}}}}
+      start: {type: DATE, description: "The date the encounter began (admission or visit date).", extensions: {custom: {relate-examples: {extract: true, ask: "the date the encounter began, the admission or visit date, with day, month and year, such as March 9, 2026"}}}}
+      end: {type: DATE, description: "The date the encounter ended (discharge date)."}
+      disposition: {type: STRING, description: "Where the patient went at the end of the encounter (home, skilled nursing facility)."}
+    extensions:
+      display: {x: 180, y: 40, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "an emergency visit, hospital admission or clinic appointment, identified by an encounter number such as ENC-2604417", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: encounter-by-number
+            category: lookup
+            question: What happened in this encounter, where, and under whom?
+            description: The encounter whose number is the parameter, with its patient, facility, attending clinician and procedures.
+            teaches: The key property (encounterId) is filled from the entity's name when the text gives the identifier, so an exact match works here.
+            cypher: |-
+              MATCH (e:Encounter) WHERE e.encounterId = $encounter
+              OPTIONAL MATCH (p:Patient)-[:HAD_ENCOUNTER]->(e)
+              OPTIONAL MATCH (e)-[:OCCURRED_AT]->(f:Facility)
+              OPTIONAL MATCH (e)-[:ATTENDED_BY]->(c:Clinician)
+              OPTIONAL MATCH (pr:Procedure)-[:PERFORMED_DURING]->(e)
+              RETURN e.encounterId AS encounter, collect(DISTINCT p.name) AS patients, collect(DISTINCT f.name) AS facilities,
+                     collect(DISTINCT c.name) AS attending, collect(DISTINCT pr.name) AS procedures
+            parameters:
+              - {name: encounter, type: STRING, description: "An encounter number, ENC- and seven digits.", example: ENC-2604417}
+          - type: canonicalQuery
+            name: facts-in-more-than-one-document
+            category: cross-document
+            question: Which facts do two or more documents both state?
+            description: Every extracted relationship whose evidence spans more than one document, with the documents' titles.
+            teaches: A relationship's docs list holds every document that supports it; size() over it finds the corroborated facts.
+            cypher: |-
+              MATCH (a:_Entity)-[r]->(b:_Entity) WHERE size(r.docs) > 1
+              MATCH (d:_Document) WHERE d.id IN r.docs
+              RETURN a.name AS source, type(r) AS link, b.name AS target, collect(d.title) AS documents
+              ORDER BY link, source, target
+  Diagnosis:
+    label: Diagnosis
+    description: >-
+      A disease, disorder, injury or clinical syndrome a clinician has diagnosed in a patient, written
+      in lower case or as its abbreviation ("type 2 diabetes mellitus", "NSTEMI"), sometimes beside its
+      ICD-10-CM code. A diagnosis is a condition; a lab test is a measurement whose result can point to one.
+    aliases: [condition, problem, disease, disorder, comorbidity]
+    reference: https://schema.org/MedicalCondition
+    properties:
+      name: {type: STRING, key: true, description: "The diagnosis as the documents write it."}
+      icd10: {type: STRING, pattern: "^[A-TV-Z][0-9][0-9A-Z](\\.[0-9A-Z]{1,4})?$", description: "The ICD-10-CM code, a letter, two characters and an optional extension after a dot (I21.4)."}
+      status: {type: STRING, one_of: [active, resolved, suspected, ruled out], description: "The clinical status of the diagnosis at the time of the document."}
+      role: {type: STRING, one_of: [principal, secondary, comorbidity, complication], description: "The diagnosis's role in the encounter the document reports."}
+    extensions:
+      display: {x: -180, y: 260, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a disease, disorder, injury or syndrome diagnosed in a patient, such as type 2 diabetes mellitus or NSTEMI"}
+        tools:
+          - type: canonicalQuery
+            name: medications-for-a-diagnosis
+            category: path
+            question: Which medications treat this diagnosis, who prescribed them, and which patients have it?
+            description: For each diagnosis whose name holds the text, the medications that treat it, their prescribers and the patients diagnosed with it.
+            teaches: A pattern can meet the same node from two sides (Medication and Patient both point at the Diagnosis).
+            cypher: |-
+              MATCH (m:Medication)-[:TREATS]->(d:Diagnosis) WHERE toLower(d.name) CONTAINS toLower($diagnosis)
+              OPTIONAL MATCH (c:Clinician)-[:PRESCRIBED]->(m)
+              OPTIONAL MATCH (p:Patient)-[:DIAGNOSED_WITH]->(d)
+              RETURN d.name AS diagnosis, m.name AS medication, collect(DISTINCT c.name) AS prescribed_by,
+                     collect(DISTINCT p.name) AS patients
+              ORDER BY diagnosis, medication
+            parameters:
+              - {name: diagnosis, type: STRING, description: "Part of the diagnosis's name.", example: diabetes}
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Haskett}
+  Procedure:
+    label: Procedure
+    description: >-
+      A surgical, interventional, diagnostic or imaging procedure performed on a patient, written in
+      lower case or as its abbreviation ("coronary angiography", "percutaneous coronary intervention",
+      "PCI"). A procedure is something done to the patient; a lab test is a measurement on a sample.
+    aliases: [operation, intervention, surgery, scan, imaging study]
+    reference: https://schema.org/MedicalProcedure
+    properties:
+      name: {type: STRING, key: true, description: "The procedure as the documents write it."}
+      cpt: {type: STRING, pattern: "^[0-9]{4}[0-9A-Z]$", description: "The CPT code, five characters."}
+      procedureType: {type: STRING, one_of: [surgical, interventional, diagnostic, imaging, therapeutic], description: "What kind of procedure it is."}
+      performedOn: {type: DATE, description: "The date the procedure was performed.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the procedure was performed, with day, month and year, such as March 10, 2026"}}}}
+    extensions:
+      display: {x: 140, y: 260, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a surgical, interventional, diagnostic or imaging procedure done to a patient, such as coronary angiography or a chest X-ray"}
+        tools:
+          - type: canonicalQuery
+            name: procedures-and-who-did-them
+            category: path
+            question: Which procedures did each patient undergo, who performed them, where, and in which encounter?
+            description: The chain patient, procedure, clinician, with the clinician's facility and the encounter the procedure was part of.
+            teaches: A two-hop pattern reads as a sentence; OPTIONAL MATCH then adds what the text may leave out.
+            cypher: |-
+              MATCH (p:Patient)-[:UNDERWENT]->(pr:Procedure)
+              OPTIONAL MATCH (pr)-[:PERFORMED_BY]->(c:Clinician)
+              OPTIONAL MATCH (c)-[:WORKS_AT]->(f:Facility)
+              OPTIONAL MATCH (pr)-[:PERFORMED_DURING]->(e:Encounter)
+              RETURN p.name AS patient, pr.name AS procedure, collect(DISTINCT c.name) AS performed_by,
+                     collect(DISTINCT f.name) AS facilities, collect(DISTINCT e.encounterId) AS encounters
+              ORDER BY patient, procedure
+  Medication:
+    label: Medication
+    description: >-
+      A drug given or prescribed to a patient, written by its generic name in lower case ("metformin",
+      "ticagrelor"), often with a dose and frequency the extractor does not keep. A medication is the
+      drug itself, never its dose, its class or the condition it treats.
+    aliases: [drug, medicine, prescription, therapy]
+    reference: https://schema.org/Drug
+    properties:
+      name: {type: STRING, key: true, description: "The medication's generic name as the documents write it."}
+      drugClass: {type: STRING, description: "The medication's pharmacological class (P2Y12 inhibitor, SGLT2 inhibitor)."}
+      dose: {type: STRING, description: "The dose and frequency as written (90 mg twice daily)."}
+      route: {type: STRING, one_of: [oral, intravenous, subcutaneous, sublingual, inhaled, topical], description: "How the medication is given."}
+      status: {type: STRING, one_of: [new, continued, changed, resumed, held, stopped], description: "What the document did with the medication (discharge medication reconciliation).", extensions: {custom: {relate-examples: {extract: true, ask: "what the document did with the drug at discharge or in the plan, new, continued, changed, resumed, held or stopped"}}}}
+    extensions:
+      display: {x: -400, y: 100, colour: "#8b5cf6"}
+      custom:
+        relate-examples: {ask: "a drug given or prescribed to a patient, named by its generic name alone, such as metformin or ticagrelor, without the dose"}
+        tools:
+          - type: canonicalQuery
+            name: medications-by-prescriber-count
+            category: aggregation
+            question: Which medications are taken or prescribed most often, and for how many diagnoses?
+            description: Per medication, the patients who take it, the clinicians who prescribed it and the diagnoses it treats.
+            teaches: count(DISTINCT x) per side keeps three independent neighbourhoods from multiplying each other.
+            cypher: |-
+              MATCH (m:Medication)
+              OPTIONAL MATCH (p:Patient)-[:TAKES]->(m)
+              OPTIONAL MATCH (c:Clinician)-[:PRESCRIBED]->(m)
+              OPTIONAL MATCH (m)-[:TREATS]->(d:Diagnosis)
+              RETURN m.name AS medication, count(DISTINCT p) AS patients, count(DISTINCT c) AS prescribers, count(DISTINCT d) AS diagnoses
+              ORDER BY prescribers DESC, diagnoses DESC, medication
+  LabTest:
+    label: LabTest
+    description: >-
+      A laboratory or point-of-care test a document reports a result for, named by the test
+      ("high-sensitivity troponin T", "HbA1c", "creatinine") with the value and unit beside it. The
+      extracted graph keys a test by its name, so one node stands for the test and each patient's
+      result is that patient's HAD_RESULT link to it; the diagnosis a result supports is a separate kind.
+    aliases: [lab result, laboratory test, test result, lab value, blood test, labs]
+    reference: https://hl7.org/fhir/R4/observation.html
+    properties:
+      name: {type: STRING, key: true, description: "The test as the documents name it."}
+      loinc: {type: STRING, pattern: "^[0-9]{1,5}-[0-9]$", description: "The LOINC code of the test, digits, a hyphen and a check digit (4548-4)."}
+      specimen: {type: STRING, one_of: [blood, serum, plasma, urine, sputum, other], description: "The specimen the test is run on."}
+      unit: {type: STRING, description: "The unit the test reports in, as written (mg/dL, ng/L, %)."}
+    extensions:
+      display: {x: -400, y: 300, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "a blood or urine test reported with a value and unit, named by the test, such as HbA1c, creatinine, potassium, troponin or LDL cholesterol"}
+        tools:
+          - type: canonicalQuery
+            name: results-behind-a-diagnosis
+            category: path
+            question: Which test results point to each diagnosis, and is the patient who had them diagnosed with it?
+            description: The chain patient, lab test, diagnosis, and whether the store also says the patient has that diagnosis.
+            teaches: An OPTIONAL MATCH on the closing edge of a triangle, tested with IS NOT NULL, shows whether the graph closes it.
+            cypher: |-
+              MATCH (p:Patient)-[:HAD_RESULT]->(l:LabTest)-[:INDICATES]->(d:Diagnosis)
+              OPTIONAL MATCH (p)-[dx:DIAGNOSED_WITH]->(d)
+              RETURN p.name AS patient, l.name AS result, d.name AS diagnosis, dx IS NOT NULL AS diagnosed
+              ORDER BY patient, diagnosis, result
+  Allergy:
+    label: Allergy
+    description: >-
+      An allergy or intolerance recorded for a patient, written as its substance and the word allergy
+      or intolerance in lower case ("penicillin allergy"). An allergy can rule a medication out; the
+      medication itself is a separate kind.
+    aliases: [allergy, intolerance, adverse reaction, drug allergy]
+    reference: https://hl7.org/fhir/R4/allergyintolerance.html
+    properties:
+      name: {type: STRING, key: true, description: "The allergy as the documents write it."}
+      substance: {type: STRING, description: "The substance the patient reacts to (penicillin)."}
+      reaction: {type: STRING, description: "The reaction recorded (hives, anaphylaxis)."}
+      category: {type: STRING, one_of: [medication, food, environment, biologic], description: "The kind of substance (FHIR allergy category)."}
+      criticality: {type: STRING, one_of: [low, high, unable-to-assess], description: "The risk of a future life-threatening reaction (FHIR criticality)."}
+    extensions:
+      display: {x: -400, y: -140, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "an allergy or intolerance recorded for a patient, named by its substance and the word allergy, such as penicillin allergy"}
+        tools:
+          - type: canonicalQuery
+            name: allergy-conflicts
+            category: path
+            question: Which medications does a patient's allergy rule out, and is the patient still taking or being prescribed one?
+            description: The chain patient, allergy, contraindicated medication, with whether the patient takes it and who prescribed it.
+            teaches: OPTIONAL MATCH after a fixed path checks for a dangerous closing edge without losing the rows where it is absent.
+            cypher: |-
+              MATCH (p:Patient)-[:HAS_ALLERGY]->(a:Allergy)-[:CONTRAINDICATES]->(m:Medication)
+              OPTIONAL MATCH (p)-[t:TAKES]->(m)
+              OPTIONAL MATCH (c:Clinician)-[:PRESCRIBED]->(m)
+              RETURN p.name AS patient, a.name AS allergy, m.name AS ruled_out, t IS NOT NULL AS taking,
+                     collect(DISTINCT c.name) AS prescribed_by
+              ORDER BY patient, allergy, ruled_out
+relationships:
+  patientDiagnosedWith:
+    type: DIAGNOSED_WITH
+    description: >-
+      The patient has been diagnosed with the condition, now or in their history; many to many: a
+      patient has several diagnoses, a diagnosis many patients.
+    aliases: [has, has a history of, was found to have, presented with, suffers from]
+    from: {node: Patient}
+    to: {node: Diagnosis}
+    extensions:
+      custom:
+        relate-examples: {phrase: was diagnosed with}
+  patientHasAllergy:
+    type: HAS_ALLERGY
+    description: >-
+      The patient's record holds the allergy or intolerance; a patient may have several, and an
+      allergy many patients.
+    aliases: [is allergic to, reacts to, cannot tolerate]
+    from: {node: Patient}
+    to: {node: Allergy}
+    extensions:
+      custom:
+        relate-examples: {phrase: has}
+  patientTakesMedication:
+    type: TAKES
+    description: >-
+      The patient takes, or took during the period the document describes, the medication; many to
+      many.
+    aliases: [is on, uses, was discharged on, was started on]
+    from: {node: Patient}
+    to: {node: Medication}
+    extensions:
+      custom:
+        relate-examples: {phrase: takes}
+  patientUnderwentProcedure:
+    type: UNDERWENT
+    description: >-
+      The procedure was performed on the patient; a patient undergoes many procedures, and a named
+      procedure may be performed on many patients.
+    aliases: [had, received, was taken for]
+    from: {node: Patient}
+    to: {node: Procedure}
+    extensions:
+      custom:
+        relate-examples: {phrase: underwent}
+  patientHadResult:
+    type: HAD_RESULT
+    description: >-
+      The test was run on the patient's sample and the document reports its result; a patient has many
+      results, and a test is shared by every patient who had it, so the value belongs on this link.
+    aliases: [had a result of, measured, showed]
+    from: {node: Patient}
+    to: {node: LabTest}
+    properties:
+      value: {type: FLOAT, description: "The reported value, in the unit beside it."}
+      unit: {type: STRING, description: "The unit of the value, as written (mg/dL, ng/L, %)."}
+      flag: {type: STRING, one_of: [normal, high, low, critical], description: "The laboratory's interpretation flag."}
+      collectedOn: {type: DATE, description: "The date the sample was collected."}
+    extensions:
+      custom:
+        relate-examples: {phrase: had}
+  patientHadEncounter:
+    type: HAD_ENCOUNTER
+    description: >-
+      The patient was seen in the encounter; exactly one patient per encounter, many encounters per
+      patient.
+    aliases: [was admitted as, attended, visited, was seen in]
+    from: {node: Patient}
+    to: {node: Encounter, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was seen in}
+  patientTreatedByClinician:
+    type: TREATED_BY
+    description: >-
+      The clinician treated or is responsible for the patient's care; many to many: a patient has a
+      care team, a clinician many patients.
+    aliases: [was under the care of, was admitted under, is followed by, was seen by]
+    from: {node: Patient}
+    to: {node: Clinician}
+    extensions:
+      custom:
+        relate-examples: {phrase: was treated by}
+  patientReferredToClinician:
+    type: REFERRED_TO
+    description: >-
+      The patient was referred to the clinician for an opinion or ongoing care; a patient may be
+      referred to several clinicians, a clinician receives many referrals.
+    aliases: [was sent to, is referred to, was booked with]
+    from: {node: Patient}
+    to: {node: Clinician}
+    extensions:
+      custom:
+        relate-examples: {phrase: was referred to}
+  clinicianPrescribedMedication:
+    type: PRESCRIBED
+    description: >-
+      The clinician prescribed, started or gave the medication; many to many: a medication may have
+      several prescribers in one record.
+    aliases: [started, ordered, gave, added]
+    from: {node: Clinician}
+    to: {node: Medication}
+    extensions:
+      custom:
+        relate-examples: {phrase: prescribed}
+  procedurePerformedByClinician:
+    type: PERFORMED_BY
+    description: >-
+      The clinician performed the procedure; one or more operators per procedure, many procedures per
+      clinician.
+    aliases: [was done by, was carried out by, operator]
+    from: {node: Procedure}
+    to: {node: Clinician}
+    extensions:
+      custom:
+        relate-examples: {phrase: was performed by}
+  procedurePerformedDuringEncounter:
+    type: PERFORMED_DURING
+    description: >-
+      The procedure was performed during the encounter; one encounter per performed procedure, many
+      procedures per encounter.
+    aliases: [was done during, took place during, was part of]
+    from: {node: Procedure}
+    to: {node: Encounter, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was performed during}
+  clinicianWorksAtFacility:
+    type: WORKS_AT
+    description: >-
+      The clinician works at or practices from the facility; a clinician may work at several
+      facilities, a facility employs many clinicians.
+    aliases: [practices at, is based at, is on the staff of, of]
+    from: {node: Clinician}
+    to: {node: Facility}
+    extensions:
+      custom:
+        relate-examples: {phrase: works at}
+  encounterOccurredAtFacility:
+    type: OCCURRED_AT
+    description: >-
+      The encounter took place at the facility; exactly one facility per encounter, many encounters
+      per facility.
+    aliases: [was at, presented to, was admitted to]
+    from: {node: Encounter}
+    to: {node: Facility, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: took place at}
+  encounterAttendedByClinician:
+    type: ATTENDED_BY
+    description: >-
+      The clinician was the attending, the one responsible, for the encounter; usually one per
+      encounter, many encounters per clinician.
+    aliases: [was led by, attending, was under]
+    from: {node: Encounter}
+    to: {node: Clinician}
+    extensions:
+      custom:
+        relate-examples: {phrase: was attended by}
+  labTestIndicatesDiagnosis:
+    type: INDICATES
+    description: >-
+      The test's result supports or confirms the diagnosis; a diagnosis may rest on several tests, and a
+      test may support several diagnoses.
+    aliases: [confirmed, showed, pointed to, was consistent with]
+    from: {node: LabTest}
+    to: {node: Diagnosis}
+    extensions:
+      custom:
+        relate-examples: {phrase: indicated}
+  medicationTreatsDiagnosis:
+    type: TREATS
+    description: >-
+      The medication is given for the diagnosis, its indication; many to many: a drug may treat
+      several conditions and a condition take several drugs.
+    aliases: [treats, is for, is indicated for, was started for]
+    from: {node: Medication}
+    to: {node: Diagnosis}
+    extensions:
+      custom:
+        relate-examples: {phrase: is given for}
+  allergyContraindicatesMedication:
+    type: CONTRAINDICATES
+    description: >-
+      The recorded allergy rules the medication out for the patient; an allergy may rule out several
+      medications, a medication be ruled out by several allergies.
+    aliases: [rules out, excludes, precludes]
+    from: {node: Allergy}
+    to: {node: Medication}
+    extensions:
+      custom:
+        relate-examples: {phrase: contraindicates}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Healthcare & Life Sciences
+      card:
+        title: Healthcare
+        description: Trace patients through their encounters to the diagnoses, procedures, results and medications the record holds, and the clinicians behind each.
+      source:
+        derived_from: create-context-graph's healthcare.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Provider became Clinician; Treatment was split
+          into Procedure and Medication, with the prescriber on its own link; LabTest and Allergy are new
+          kinds (the original kept allergies as a patient property), and a result's value sits on the
+          patient's HAD_RESULT link; Patient, Encounter, Facility and
+          Diagnosis keep their meaning with new descriptions and properties; the links were renamed for
+          their meaning and given cardinalities; the original's provider-to-provider referral became a
+          patient's referral to a clinician, and its medication-to-medication contraindication an
+          allergy's; the tools were written anew for an extracted graph.

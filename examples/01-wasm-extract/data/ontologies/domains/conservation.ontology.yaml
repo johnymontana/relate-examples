@@ -1,0 +1,602 @@
+# Conservation: example 01's curated ontology for habitat-restoration and species-recovery documents
+# (D20). Written for this repository from create-context-graph's conservation.yaml at 707b168
+# (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, Stakeholder became the partner
+# organisations and funders a programme actually has, Funding became the grant, Monitoring became
+# the survey, and the habitats, threats and outcome indicators an impact assessment reports on are
+# kinds of their own.
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Species,
+# habitats, threats and surveys are named in lower case, so they are not proper. Every link says its
+# direction and cardinality and carries the phrase the model reads. The tools are the ontology's
+# competency questions, written for the graph the page extracts: entities carry name, display, key
+# and their key property; relationships carry p, claims, sentences and docs, and the trace
+# (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: conservation
+name: Conservation
+description: >-
+  Habitat restoration and species recovery as programme teams, ecologists and funders write about
+  it: the sites where the work happens and the habitats they contain, the species a programme sets
+  out to recover and the habitats those species depend on, the threats that press on them, the
+  programmes that restore habitat and tackle threats, the partner organisations that lead, manage
+  and monitor the work, the grants and funders that pay for it, and the surveys and outcome
+  indicators that show whether it worked. It answers who leads and who funds a programme, what a
+  site holds and what affects it, which survey measures each indicator and what it recorded, which
+  threats to a target species a programme addresses, and what the source text says about each fact.
+  Counts, areas and measurements over time are out of scope, and so are the people who do the work:
+  a document states them, the extractor keeps only the names and the links between them.
+nodes:
+  Site:
+    label: Site
+    description: >-
+      A named place where conservation work is done (a nature reserve, fen, marsh, washland or farm),
+      named as a place ("Ravensike Fen", "Hollin Carr"). A site is somewhere on a map and contains
+      habitats; a habitat is a kind of ground, not a place.
+    aliases: [reserve, nature reserve, conservation site, protected area, washland]
+    reference: https://schema.org/Place
+    properties:
+      name: {type: STRING, key: true, description: "The site's name as the documents write it."}
+      designation: {type: STRING, one_of: [SSSI, SPA, SAC, Ramsar, NNR, LNR, none], description: "The site's statutory or international designation, if any.", extensions: {custom: {relate-examples: {extract: true, ask: "the statutory designation of a whole site, such as SSSI, SPA, SAC, Ramsar, NNR or LNR"}}}}
+      areaHectares: {type: FLOAT, description: "The site's area in hectares.", extensions: {custom: {relate-examples: {extract: true, ask: "the total area of a whole site in hectares, such as 210 ha, not the area of a habitat or a feature inside it"}}}}
+      gridReference: {type: STRING, pattern: "^[A-Z]{2}[0-9]{4,10}$", description: "An Ordnance Survey grid reference for the site's centre (SE7012)."}
+      status: {type: STRING, one_of: [active, restored, degraded, proposed], description: "Where the site stands in its restoration."}
+    extensions:
+      display: {x: 260, y: 60, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a named place where conservation work is done, such as a nature reserve, marsh, moor or farm, named as on a map, never an organisation", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-site
+            category: lookup
+            question: What is this site, and what does the store connect to it?
+            description: Finds sites whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (s:Site) WHERE toLower(s.name) CONTAINS toLower($site)
+              OPTIONAL MATCH (s)-[r]-(x:_Entity)
+              RETURN s.name AS site, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY site, link, other
+            parameters:
+              - {name: site, type: STRING, description: "Part of the site's name.", example: Ravensike}
+          - type: canonicalQuery
+            name: site-profile
+            category: neighbourhood
+            question: For each site, who manages it, which habitats does it contain, what affects it, and which programmes work there?
+            description: Each site with its manager, its habitats, the threats that affect it and the programmes delivered at it.
+            teaches: Four independent neighbourhoods of one node come back as four collected lists; DISTINCT stops each list repeating once per row of the others.
+            cypher: |-
+              MATCH (s:Site)
+              OPTIONAL MATCH (s)-[:MANAGED_BY]->(m:PartnerOrganisation)
+              OPTIONAL MATCH (s)-[:CONTAINS]->(h:Habitat)
+              OPTIONAL MATCH (t:Threat)-[:AFFECTS]->(s)
+              OPTIONAL MATCH (p:Programme)-[:DELIVERED_AT]->(s)
+              RETURN s.name AS site, collect(DISTINCT m.name) AS managed_by, collect(DISTINCT h.name) AS habitats,
+                     collect(DISTINCT t.name) AS threats, collect(DISTINCT p.name) AS programmes
+              ORDER BY site
+  Species:
+    label: Species
+    description: >-
+      A species of animal or plant, named by its common name (often in lower case, as "water vole")
+      or its Latin binomial ("Arvicola amphibius"). A species is what a programme sets out to recover
+      or a survey records; an invasive species named as a pressure ("mink predation") is a threat.
+    aliases: [taxon, target species, priority species, bird, mammal, plant]
+    reference: https://schema.org/Taxon
+    properties:
+      name: {type: STRING, key: true, description: "The species' common name as the documents write it."}
+      scientificName: {type: STRING, pattern: "^[A-Z][a-z]+ [a-z]+$", description: "The Latin binomial, genus and species (Botaurus stellaris)."}
+      redListCategory: {type: STRING, one_of: [LC, NT, VU, EN, CR, EW, EX], description: "The species' IUCN Red List category."}
+      taxonGroup: {type: STRING, one_of: [bird, mammal, amphibian, reptile, fish, invertebrate, plant], description: "The broad group the species belongs to."}
+    extensions:
+      display: {x: -260, y: 160, colour: "#d97706"}
+      custom:
+        relate-examples: {ask: "a species of animal or plant, named by its whole common name, often in lower case, such as otter, great crested newt or marsh fritillary"}
+        tools:
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: bittern}
+  Habitat:
+    label: Habitat
+    description: >-
+      A type of habitat as ecologists map and restore it (reedbed, lowland fen, wet grassland, open
+      water), named in lower case. A habitat is a kind of ground a site contains and a species depends
+      on; the named place itself is a site.
+    aliases: [habitat type, priority habitat, vegetation type, land cover]
+    properties:
+      name: {type: STRING, key: true, description: "The habitat type as the documents name it."}
+      eunisCode: {type: STRING, pattern: "^[A-J][0-9](\\.[0-9]{1,3})*$", description: "The habitat's EUNIS classification code (C3.21 for common reed beds)."}
+      priority: {type: BOOLEAN, description: "Whether the habitat is a priority habitat under the country's biodiversity strategy."}
+    extensions:
+      display: {x: -40, y: 160, colour: "#65a30d"}
+      custom:
+        relate-examples: {ask: "a type of habitat ecologists map and restore, in lower case, such as reedbed, saltmarsh, heathland or wet grassland, never part of a place's name"}
+        tools:
+          - type: canonicalQuery
+            name: habitat-dependence
+            category: path
+            question: Which species depend on the habitats a programme restores, and which sites contain those habitats?
+            description: Each habitat a programme restores, with the species that depend on it and the sites that contain it.
+            teaches: Two links into one middle node (RESTORES and DEPENDS_ON both end at the habitat) join two kinds that never touch.
+            cypher: |-
+              MATCH (p:Programme)-[:RESTORES]->(h:Habitat)<-[:DEPENDS_ON]-(s:Species)
+              OPTIONAL MATCH (site:Site)-[:CONTAINS]->(h)
+              RETURN h.name AS habitat, collect(DISTINCT s.name) AS species, collect(DISTINCT site.name) AS sites,
+                     collect(DISTINCT p.name) AS restored_by
+              ORDER BY habitat
+  Programme:
+    label: Programme
+    description: >-
+      A named, multi-year programme or project of conservation work ("the Ravensike Wetland
+      Restoration Programme"), often shortened to its initials. A programme has a lead partner, other
+      partners and grants, and runs for years; a survey is one piece of its monitoring.
+    aliases: [project, scheme, initiative, restoration programme, recovery project]
+    reference: https://schema.org/Project
+    properties:
+      name: {type: STRING, key: true, description: "The programme's name."}
+      programmeType: {type: STRING, one_of: [habitat restoration, species recovery, catchment management, invasive species control, community engagement], description: "The kind of work the programme does."}
+      startDate: {type: DATE, description: "The date the programme began.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the programme began, such as 2 October 2023"}}}}
+      endDate: {type: DATE, description: "The date the programme is due to end."}
+      status: {type: STRING, one_of: [planning, active, completed, suspended], description: "Where the programme stands."}
+    extensions:
+      display: {x: 0, y: -60, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a named, multi-year conservation or habitat restoration programme or project, or its initials, with partners and grants", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: programme-partners-and-funding
+            category: neighbourhood
+            question: Who leads this programme, who are its partners, and which grants and funders pay for it?
+            description: The programme with its lead partner, its other partners, the grants that fund it and the funders that awarded them.
+            teaches: A second hop off an OPTIONAL MATCH (grant, then its funder) stays optional, so a grant whose funder the text omits still appears.
+            cypher: |-
+              MATCH (p:Programme) WHERE toLower(p.name) CONTAINS toLower($programme)
+              OPTIONAL MATCH (p)-[:LED_BY]->(lead:PartnerOrganisation)
+              OPTIONAL MATCH (o:PartnerOrganisation)-[:PARTNER_IN]->(p)
+              OPTIONAL MATCH (g:Grant)-[:FUNDS]->(p)
+              OPTIONAL MATCH (g)-[:AWARDED_BY]->(f:Funder)
+              RETURN p.name AS programme, collect(DISTINCT lead.name) AS led_by, collect(DISTINCT o.name) AS partners,
+                     collect(DISTINCT g.name) AS grants, collect(DISTINCT f.name) AS funders
+              ORDER BY programme
+            parameters:
+              - {name: programme, type: STRING, description: "Part of the programme's name.", example: Ravensike}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: RWRP}
+  Grant:
+    label: Grant
+    description: >-
+      An award of money from a funder to a programme, identified by the funder's reference
+      (FCT-2023-0412) and stated with its amount and term. A grant is the award; the funder is the
+      body that made it.
+    aliases: [award, funding, grant award, contribution]
+    reference: https://schema.org/MonetaryGrant
+    properties:
+      grantRef: {type: STRING, key: true, pattern: "^[A-Z]{2,3}-20[0-9]{2}-[0-9]{3,4}$", description: "The funder's grant reference: two or three capitals, the year of award and a three- or four-digit number (FCT-2023-0412)."}
+      name: {type: STRING, description: "The grant as a document names it."}
+      amount: {type: FLOAT, description: "The amount awarded, in pounds sterling.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the sum of money a grant awards, such as £640,000"}}}}
+      startDate: {type: DATE, description: "The first day of the grant's term."}
+      endDate: {type: DATE, description: "The last day of the grant's term."}
+    extensions:
+      display: {x: -200, y: -240, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a grant awarded by a funder, named by its reference code, such as HLF-2022-0915, not a sum of money", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: grant-by-reference
+            category: lookup
+            question: Which grant has this reference, who awarded it, and what does it fund?
+            description: The grant whose reference is the parameter, with its funder and the programme it funds.
+            teaches: The key property (grantRef) is filled from the entity's name when the text gives the reference, so an exact match works here.
+            cypher: |-
+              MATCH (g:Grant) WHERE g.grantRef = $ref
+              OPTIONAL MATCH (g)-[:AWARDED_BY]->(f:Funder)
+              OPTIONAL MATCH (g)-[:FUNDS]->(p:Programme)
+              RETURN g.name AS grant, g.grantRef AS reference, collect(DISTINCT f.name) AS awarded_by, collect(DISTINCT p.name) AS funds
+            parameters:
+              - {name: ref, type: STRING, description: "A grant reference.", example: FCT-2023-0412}
+  Funder:
+    label: Funder
+    description: >-
+      A charitable trust, foundation, lottery distributor, company or public body that awards grants
+      for conservation work, named in full ("the Fenmoor Charitable Trust"). A funder pays for the
+      work; a partner organisation does it.
+    aliases: [donor, sponsor, grant-maker, foundation, trust]
+    reference: https://schema.org/FundingAgency
+    properties:
+      name: {type: STRING, key: true, description: "The funder's name."}
+      funderType: {type: STRING, one_of: [charitable trust, lottery distributor, water company, government, corporate], description: "The kind of body the funder is."}
+      charityNumber: {type: STRING, pattern: "^[0-9]{6,7}$", description: "A charitable funder's registered charity number, six or seven digits."}
+    extensions:
+      display: {x: -400, y: -240, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a charitable trust, foundation, lottery fund, water company or public body that awards grants, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: funding-by-funder
+            category: aggregation
+            question: How many grants has each funder awarded, and to which programmes?
+            description: Per funder, the number of grants it awarded and the programmes those grants fund.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (f:Funder)
+              OPTIONAL MATCH (g:Grant)-[:AWARDED_BY]->(f)
+              OPTIONAL MATCH (g)-[:FUNDS]->(p:Programme)
+              RETURN f.name AS funder, count(DISTINCT g) AS grants, collect(DISTINCT p.name) AS programmes
+              ORDER BY grants DESC, funder
+  PartnerOrganisation:
+    label: PartnerOrganisation
+    description: >-
+      An organisation that leads, delivers, manages or monitors conservation work: a wildlife trust,
+      statutory agency, drainage board, ecological consultancy or landowning business, named in full
+      ("Carrside Wetlands Trust", "the Environment Agency"). It does the work, where a funder pays for
+      it.
+    aliases: [partner, delivery partner, lead partner, stakeholder, contractor, site manager]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The organisation's name."}
+      organisationType: {type: STRING, one_of: [conservation charity, statutory agency, drainage board, consultancy, landowner, university, community group], description: "The kind of organisation."}
+      role: {type: STRING, description: "What the organisation does in the programme (lead partner, site manager, monitoring)."}
+    extensions:
+      display: {x: 240, y: -220, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "an organisation, named in full, that leads, delivers, manages or monitors conservation work, such as a wildlife trust, government agency, drainage board, consultancy or farming company", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: who-does-the-monitoring
+            category: aggregation
+            question: Which organisations carry out the surveys, and how many sites and species do their surveys cover?
+            description: Per organisation, the surveys it carried out, the sites they covered and the species they recorded.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each site is counted once per species.
+            cypher: |-
+              MATCH (o:PartnerOrganisation)<-[:CARRIED_OUT_BY]-(v:Survey)
+              OPTIONAL MATCH (v)-[:COVERED]->(s:Site)
+              OPTIONAL MATCH (v)-[:RECORDED]->(sp:Species)
+              RETURN o.name AS organisation, count(DISTINCT v) AS surveys, count(DISTINCT s) AS sites, count(DISTINCT sp) AS species
+              ORDER BY surveys DESC, organisation
+  Survey:
+    label: Survey
+    description: >-
+      A piece of monitoring fieldwork (a survey, count or sampling round at one or more sites), named
+      by what it counts and often its year ("the 2026 breeding wader survey"). A survey records species
+      and measures indicators; the programme it serves runs for years.
+    aliases: [monitoring, count, census, sampling, transect, fieldwork]
+    properties:
+      name: {type: STRING, key: true, description: "The survey as the documents name it."}
+      method: {type: STRING, one_of: [territory mapping, booming count, latrine survey, point count, water sampling, habitat mapping, eDNA], description: "The field method."}
+      year: {type: INTEGER, description: "The year the fieldwork was done."}
+      dataQuality: {type: STRING, one_of: [high, medium, low], description: "The surveyors' own rating of the data."}
+    extensions:
+      display: {x: 300, y: 280, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a piece of monitoring fieldwork, a survey, count or sampling of a site, named by what it counts and often its year, such as the 2025 otter survey"}
+        tools:
+          - type: canonicalQuery
+            name: what-the-text-says-about-each-survey
+            category: evidence
+            question: Which sentences say where each survey was done, who carried it out, and what it recorded?
+            description: Every fact a survey is the source of (COVERED, CARRIED_OUT_BY, RECORDED), with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words. Leaving the type open (-[r]->) and reading type(r) gathers every link at once.
+            cypher: |-
+              MATCH (v:Survey)-[r]->(x:_Entity)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN v.name AS survey, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY survey, link, other
+  Threat:
+    label: Threat
+    description: >-
+      A pressure that harms species or habitats: predation, an invasive non-native species, nutrient
+      enrichment, drainage, drought, disease or disturbance, named in lower case ("mink predation",
+      "summer drought"). A threat acts on species and sites; the animal behind it is not a target
+      species.
+    aliases: [pressure, risk, impact, invasive species]
+    properties:
+      name: {type: STRING, key: true, description: "The threat as the documents name it."}
+      threatClass: {type: STRING, one_of: [invasive species, problematic native species, pollution, natural system modification, climate change, human disturbance, disease], description: "The threat's class, after the IUCN threats classification."}
+      severity: {type: STRING, one_of: [low, medium, high], description: "How severe the document judges the threat to be."}
+    extensions:
+      display: {x: -380, y: -20, colour: "#b91c1c"}
+      custom:
+        relate-examples: {ask: "a pressure that harms wildlife or habitat, named as a whole phrase, such as gull predation, nutrient enrichment, scrub encroachment, spring drought or a disease"}
+        tools:
+          - type: canonicalQuery
+            name: threats-to-target-species
+            category: path
+            question: Which threats press on the species a programme targets, and does the programme address each one?
+            description: The chain programme, target species, threat, with whether the programme addresses that threat.
+            teaches: An OPTIONAL MATCH on a relationship between two nodes already bound tests whether the link exists; IS NOT NULL turns it into a yes or no.
+            cypher: |-
+              MATCH (p:Programme)-[:TARGETS]->(s:Species)<-[:THREATENS]-(t:Threat)
+              OPTIONAL MATCH (p)-[a:ADDRESSES]->(t)
+              RETURN p.name AS programme, s.name AS species, t.name AS threat, a IS NOT NULL AS addressed
+              ORDER BY species, threat
+  Indicator:
+    label: Indicator
+    description: >-
+      An outcome indicator a programme reports against, identified by its code in the programme's
+      results framework (OI-3) and defined by what it measures ("extent of reedbed in wet condition").
+      An indicator tracks a species or a habitat; a survey is how it is measured.
+    aliases: [outcome indicator, KPI, measure, target, milestone]
+    properties:
+      indicatorCode: {type: STRING, key: true, pattern: "^OI-[0-9]{1,2}$", description: "The indicator's code in the results framework, OI- and one or two digits."}
+      name: {type: STRING, description: "The indicator as a document names it."}
+      unit: {type: STRING, description: "The unit the indicator is counted in (pairs, ha, %, mg/l)."}
+      baseline: {type: FLOAT, description: "The indicator's value at the programme's start."}
+      target: {type: FLOAT, description: "The value the programme aims to reach by its end."}
+    extensions:
+      display: {x: 40, y: 330, colour: "#ca8a04"}
+      custom:
+        relate-examples: {ask: "an outcome indicator a programme reports against, identified by a code such as OI-7", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: indicator-by-code
+            category: lookup
+            question: What does this indicator track, and which survey measures it?
+            description: The indicator whose code is the parameter, with the species or habitats it tracks and the surveys that measure it.
+            teaches: The key property (indicatorCode) is filled from the entity's name when the text states the code, so an exact match works here.
+            cypher: |-
+              MATCH (i:Indicator) WHERE i.indicatorCode = $code
+              OPTIONAL MATCH (i)-[:TRACKS]->(x:_Entity)
+              OPTIONAL MATCH (i)-[:MEASURED_BY]->(v:Survey)
+              RETURN i.name AS indicator, collect(DISTINCT x.name) AS tracks, collect(DISTINCT v.name) AS measured_by
+            parameters:
+              - {name: code, type: STRING, description: "An indicator code.", example: OI-1}
+          - type: canonicalQuery
+            name: from-target-species-to-evidence
+            category: path
+            question: For a species a programme targets, which indicator tracks it, which survey measures that indicator, and who carried the survey out?
+            description: The chain programme, species, indicator, survey, with the organisation that carried out the survey.
+            teaches: A path that turns at the species (TARGETS in, TRACKS in) reads from the programme's aim to the fieldwork that tests it.
+            cypher: |-
+              MATCH (p:Programme)-[:TARGETS]->(s:Species)<-[:TRACKS]-(i:Indicator)-[:MEASURED_BY]->(v:Survey)
+              WHERE toLower(s.name) CONTAINS toLower($species)
+              OPTIONAL MATCH (v)-[:CARRIED_OUT_BY]->(o:PartnerOrganisation)
+              RETURN p.name AS programme, s.name AS species, i.name AS indicator, v.name AS survey, collect(DISTINCT o.name) AS carried_out_by
+              ORDER BY indicator, survey
+            parameters:
+              - {name: species, type: STRING, description: "Part of the species' name.", example: bittern}
+relationships:
+  siteContainsHabitat:
+    type: CONTAINS
+    description: >-
+      The site contains an area of the habitat; many to many: a site holds several habitats, and a
+      habitat occurs at many sites.
+    aliases: [holds, supports, has, comprises]
+    from: {node: Site}
+    to: {node: Habitat}
+    extensions:
+      custom:
+        relate-examples: {phrase: contains}
+  siteManagedByPartner:
+    type: MANAGED_BY
+    description: >-
+      The site is managed day to day by the organisation, as owner, tenant or under agreement; one
+      manager per site, and an organisation may manage several sites.
+    aliases: [is run by, is looked after by, is owned by]
+    from: {node: Site, count: 1}
+    to: {node: PartnerOrganisation}
+    extensions:
+      custom:
+        relate-examples: {phrase: is managed by}
+  programmeDeliveredAtSite:
+    type: DELIVERED_AT
+    description: >-
+      The programme does its work at the site; a programme works at one or more sites, and a site may
+      host several programmes.
+    aliases: [works at, covers, operates at, is carried out at]
+    from: {node: Programme, min_count: 1}
+    to: {node: Site}
+    extensions:
+      custom:
+        relate-examples: {phrase: is delivered at}
+  programmeRestoresHabitat:
+    type: RESTORES
+    description: >-
+      The programme restores, re-creates or improves the habitat; many to many.
+    aliases: [re-creates, re-wets, enhances, improves]
+    from: {node: Programme}
+    to: {node: Habitat}
+    extensions:
+      custom:
+        relate-examples: {phrase: restores}
+  programmeTargetsSpecies:
+    type: TARGETS
+    description: >-
+      The programme sets out to recover or benefit the species, which its outcomes are measured
+      against; many to many.
+    aliases: [aims to recover, is for, benefits, focuses on]
+    from: {node: Programme}
+    to: {node: Species}
+    extensions:
+      custom:
+        relate-examples: {phrase: targets}
+  programmeAddressesThreat:
+    type: ADDRESSES
+    description: >-
+      The programme acts against the threat (controls a predator, cuts a pollutant, stores water
+      against drought); many to many.
+    aliases: [tackles, controls, reduces, mitigates, answers]
+    from: {node: Programme}
+    to: {node: Threat}
+    extensions:
+      custom:
+        relate-examples: {phrase: addresses}
+  programmeLedByPartner:
+    type: LED_BY
+    description: >-
+      The organisation is the programme's lead partner, accountable to its funders; exactly one lead
+      per programme, and an organisation may lead several programmes.
+    aliases: [is run by, is coordinated by, is hosted by]
+    from: {node: Programme, count: 1}
+    to: {node: PartnerOrganisation}
+    extensions:
+      custom:
+        relate-examples: {phrase: is led by}
+  partnerInProgramme:
+    type: PARTNER_IN
+    description: >-
+      The organisation is a partner in the programme, with a role in its delivery or governance; many
+      to many. A contractor paid for one task is not a partner.
+    aliases: [works on, contributes to, sits on the board of, has joined]
+    from: {node: PartnerOrganisation}
+    to: {node: Programme}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a partner in}
+  grantFundsProgramme:
+    type: FUNDS
+    description: >-
+      The grant pays for the programme or part of it; one programme per grant, and a programme may
+      have several grants.
+    aliases: [pays for, covers, supports, finances]
+    from: {node: Grant, count: 1}
+    to: {node: Programme}
+    extensions:
+      custom:
+        relate-examples: {phrase: funds}
+  grantAwardedByFunder:
+    type: AWARDED_BY
+    description: >-
+      The funder awarded the grant; one funder per grant, and a funder awards many grants.
+    aliases: [was made by, came from, was given by]
+    from: {node: Grant, count: 1}
+    to: {node: Funder}
+    extensions:
+      custom:
+        relate-examples: {phrase: was awarded by}
+  surveyCoveredSite:
+    type: COVERED
+    description: >-
+      The survey's fieldwork took place at the site; a survey covers one or more sites, and a site is
+      covered by many surveys.
+    aliases: [was carried out at, surveyed, sampled, took place at]
+    from: {node: Survey, min_count: 1}
+    to: {node: Site}
+    extensions:
+      custom:
+        relate-examples: {phrase: covered}
+  surveyCarriedOutByPartner:
+    type: CARRIED_OUT_BY
+    description: >-
+      The organisation carried out the survey, with its staff, volunteers or contractors; one
+      organisation per survey, and an organisation carries out many.
+    aliases: [was done by, was led by, was conducted by]
+    from: {node: Survey, count: 1}
+    to: {node: PartnerOrganisation}
+    extensions:
+      custom:
+        relate-examples: {phrase: was carried out by}
+  surveyRecordedSpecies:
+    type: RECORDED
+    description: >-
+      The survey recorded the species as present (by sight, sound, field signs or DNA); many to many.
+    aliases: [counted, found, detected, confirmed]
+    from: {node: Survey}
+    to: {node: Species}
+    extensions:
+      custom:
+        relate-examples: {phrase: recorded}
+  indicatorMeasuredBySurvey:
+    type: MEASURED_BY
+    description: >-
+      The survey supplies the indicator's value (its means of verification); one survey per indicator
+      in a reporting year, and a survey may measure several indicators.
+    aliases: [is verified by, comes from, is reported from]
+    from: {node: Indicator, count: 1}
+    to: {node: Survey}
+    extensions:
+      custom:
+        relate-examples: {phrase: is measured by}
+  indicatorTracks:
+    type: TRACKS
+    description: >-
+      The indicator follows the state of the species or the habitat it counts; an indicator tracks one
+      or more species or habitats, and either may be tracked by several indicators.
+    aliases: [counts, measures, monitors, follows]
+    from: {node: Indicator}
+    to: {node: Species}
+    extensions:
+      custom:
+        relate-examples: {phrase: tracks}
+  indicatorTracksHabitat:
+    type: TRACKS
+    description: >-
+      The indicator follows the extent or condition of the habitat; many to many, read as for a
+      species.
+    aliases: [counts, measures, monitors, follows]
+    from: {node: Indicator}
+    to: {node: Habitat}
+    extensions:
+      custom:
+        relate-examples: {phrase: tracks}
+  threatThreatensSpecies:
+    type: THREATENS
+    description: >-
+      The threat harms the species or its breeding success; many to many.
+    aliases: [preys on, harms, endangers, is the main threat to]
+    from: {node: Threat}
+    to: {node: Species}
+    extensions:
+      custom:
+        relate-examples: {phrase: threatens}
+  threatAffectsSite:
+    type: AFFECTS
+    description: >-
+      The threat is present at the site and acts on it; many to many: a site faces several threats,
+      and a threat affects many sites.
+    aliases: [is present at, damages, degrades, reached]
+    from: {node: Threat}
+    to: {node: Site}
+    extensions:
+      custom:
+        relate-examples: {phrase: affects}
+  speciesDependsOnHabitat:
+    type: DEPENDS_ON
+    description: >-
+      The species needs the habitat to breed, feed or shelter; many to many.
+    aliases: [breeds in, feeds in, needs, uses]
+    from: {node: Species}
+    to: {node: Habitat}
+    extensions:
+      custom:
+        relate-examples: {phrase: depends on}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Science & Environment
+      card:
+        title: Conservation
+        description: Follow a restoration programme from its sites, habitats and target species to the partners, grants, surveys and indicators that show what it achieved.
+      source:
+        derived_from: create-context-graph's conservation.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Stakeholder became PartnerOrganisation and
+          Funder, Funding became Grant, Monitoring became Survey, Program is spelt Programme, and Habitat,
+          Threat and Indicator are new kinds; Site and Species keep their meaning with new descriptions and
+          properties; the links were renamed for their meaning and given cardinalities; the tools were
+          written anew for an extracted graph.

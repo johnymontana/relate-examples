@@ -1,0 +1,1027 @@
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
+id: patient-journey
+name: Patient Journey
+description: 'Models a patient''s history as a connected clinical record: encounters in sequence, and the observations taken, conditions diagnosed and drugs prescribed at each one, together with the providers and organisations that delivered the care. Answers what one patient''s pathway looked like over time, and which conditions and treatments recur together across a population.'
+nodes:
+  Patient:
+    label: Patient
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Stable identifier for the patient in the source system, expected to be opaque rather than derived from any identifying detail. e.g. `fd65a941-3fa1-337f-28e2-6c9d3922c1af`.
+      name:
+        type: STRING
+        must_exist: true
+        description: Display name of the patient as held by the source system. Not an identifier — distinct patients may share a name, so it is expected never to be used for matching. e.g. `Gerardo Covarrubias`.
+      birthDate:
+        type: ZONED DATETIME
+        must_exist: true
+        description: Date of birth, as an ISO 8601 zoned datetime. Only the calendar date carries meaning; the time and zone are an artefact of importing a date into a temporal type and should not be read as a time of birth. e.g. `1951-09-13T00:00:00Z`.
+    extensions:
+      display:
+        x: -150
+        'y': 0
+        colour: '#2563eb'
+      custom:
+        relate-examples:
+          ask: the person receiving care whose record the document summarises, named by full name or by Mr or Ms and surname, such as Andrew Krajcik or Mr Krajcik; never a doctor or other clinician
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: available-anchors
+            question: Available anchors
+            description: Enumerates the valid anchor values for the parameterised queries — every patient, condition and provider — so the agent never has to guess or hardcode an ID.
+            cypher: |-
+              MATCH (p:Patient)
+              RETURN 'patient' AS Kind, p.id AS Id, p.name AS Label
+              UNION
+              MATCH (c:Condition)
+              RETURN 'condition' AS Kind, c.code AS Id, c.description AS Label
+              UNION
+              MATCH (pr:Provider)
+              RETURN 'provider' AS Kind, pr.id AS Id, pr.name AS Label;
+            parameters: []
+            category: query
+            teaches: Run before any anchored query when the user has not named an entity, and offer them a few real anchors to choose from. On a large population, filter or page the patient rows rather than showing them all.
+            returns: 'One row per Patient, Condition and Provider: Kind (''patient'', ''condition'' or ''provider''), Id (the node key — Patient.id, Condition.code or Provider.id) and Label (the display name or condition description).'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - anchors
+              - orientation
+              - patient
+              - condition
+              - provider
+            upstream:
+              file: QUERIES.md
+              heading: Available anchors
+              sample: 'Bundled sample data only: returns 3012 rows — 3000 patients, 8 conditions and 4 providers.'
+          - type: canonicalQuery
+            name: reference-ontology-sanity-check-node-counts-by-label
+            question: Reference ontology sanity check — node counts by label
+            description: Counts nodes per label to confirm the import loaded and that shared Condition and Drug nodes merged on their standardised codes.
+            cypher: |-
+              MATCH (n)
+              RETURN labels(n)[0] AS Label, count(*) AS Count
+              ORDER BY Count DESC;
+            parameters: []
+            category: query
+            teaches: Run straight after an import. Condition and Drug counts should be close to the number of distinct codes in the source; a Condition count far larger than that means conditions were imported per row instead of shared, and the comorbidity queries will then return misleading results.
+            returns: 'One row per label: Label and Count, ordered by Count descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - sanity-check
+              - import
+              - orientation
+            upstream:
+              file: QUERIES.md
+              heading: Reference ontology sanity check — node counts by label
+              sample: 'Bundled sample data only: returns 8 rows — 5000 Encounter, 5000 Observation, 3000 Patient, 8 Condition, 6 Drug, 4 Provider, 4 Organisation, 1 Speciality.'
+          - type: canonicalQuery
+            name: patient-s-prescribed-drugs
+            question: Patient's prescribed drugs
+            description: Every drug prescribed to one patient across all of their encounters, following HAS_ENCOUNTER then PRESCRIBED. Also a first-pass check that PRESCRIBED relationships exist.
+            cypher: |-
+              MATCH (p:Patient {id: $patientId})-[:HAS_ENCOUNTER]->(:Encounter)-[:PRESCRIBED]->(d:Drug)
+              RETURN p.name AS Name, collect(DISTINCT d.name) AS `Prescribed Drugs`;
+            parameters:
+              - name: patientId
+                type: STRING
+                description: Patient.id of the patient. Ask the user, or offer one from Available anchors.
+                example: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93
+            category: query
+            teaches: Use for a single patient's medication history. Drug.name conventionally includes strength and form, so different strengths of one medication appear as separate entries.
+            returns: 'One row: Name (the patient''s display name) and `Prescribed Drugs` (distinct Drug.name values). No row when the patient has no prescriptions.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - patient
+              - drug
+              - prescription
+            upstream:
+              file: QUERIES.md
+              heading: Patient's prescribed drugs
+              sample: 'Bundled sample data only: $patientId = ''fd65a941-3fa1-337f-28e2-6c9d3922c1af'' (Gerardo Covarrubias) returns 1 row with 2 drugs — Clopidogrel 75 MG Oral Tablet, Nitroglycerin 0.4 MG/ACTUAT Mucosal Spray.'
+          - type: canonicalQuery
+            name: patient-s-diagnosed-conditions
+            question: Patient's diagnosed conditions
+            description: Every condition diagnosed across one patient's encounters, following HAS_ENCOUNTER then DIAGNOSED. Also checks that coded Condition nodes are populated.
+            cypher: |-
+              MATCH (p:Patient {id: $patientId})-[:HAS_ENCOUNTER]->(:Encounter)-[:DIAGNOSED]->(c:Condition)
+              RETURN p.name AS Name, collect(DISTINCT c.description) AS Conditions;
+            parameters:
+              - name: patientId
+                type: STRING
+                description: Patient.id of the patient. Ask the user, or offer one from Available anchors.
+                example: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93
+            category: query
+            teaches: Use for a single patient's problem list across their journey. Return Condition.code as well when the result will be compared across systems.
+            returns: 'One row: Name (the patient''s display name) and Conditions (distinct Condition.description values). No row when the patient has no diagnoses.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - patient
+              - condition
+              - diagnosis
+            upstream:
+              file: QUERIES.md
+              heading: Patient's diagnosed conditions
+              sample: 'Bundled sample data only: $patientId = ''fd65a941-3fa1-337f-28e2-6c9d3922c1af'' (Gerardo Covarrubias) returns 1 row with 4 conditions — Hypertension, Coronary Heart Disease, Dyspnea (finding), Cough (finding).'
+          - type: canonicalQuery
+            name: comorbidities-of-other-patients-who-share-a-condition-with-a-given-patient
+            question: Comorbidities of other patients who share a condition with a given patient
+            description: 'The core cross-patient pattern: from one patient''s diagnosed conditions, step out through the shared Condition node to every other patient diagnosed with it, then count the other conditions those patients have.'
+            cypher: |-
+              MATCH
+                  (p:Patient {id: $patientId})-[:HAS_ENCOUNTER]->(:Encounter)-[:DIAGNOSED]->(c:Condition),
+                  (c)<-[:DIAGNOSED]-(:Encounter)<-[:HAS_ENCOUNTER]-(other:Patient)
+              WHERE other <> p
+              MATCH (other)-[:HAS_ENCOUNTER]->(:Encounter)-[:DIAGNOSED]->(c2:Condition)
+              WHERE c2 <> c
+              RETURN c2.code AS Code, c2.description AS Description, count(DISTINCT other) AS PatientCount
+              ORDER BY PatientCount DESC;
+            parameters:
+              - name: patientId
+                type: STRING
+                description: Patient.id of the anchor patient. Ask the user, or offer one from Available anchors.
+                example: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93
+            category: query
+            teaches: 'Population-scale: the result grows with the number of patients who share a common condition, so add a LIMIT when presenting it. A condition shared with the anchor can itself appear in the result, reached through another shared condition. An empty result usually means Condition nodes did not merge on code — run the sanity check.'
+            returns: 'One row per co-occurring condition: Code, Description and PatientCount (distinct other patients — the anchor patient excluded — who share one of the anchor''s conditions and also have this one), ordered by PatientCount descending.'
+            prerequisites: Condition nodes shared across patients by standardised code; the same code must appear for more than one patient.
+            tags:
+              - comorbidity
+              - cohort
+              - condition
+              - population
+            upstream:
+              file: QUERIES.md
+              heading: Comorbidities of other patients who share a condition with a given patient
+              sample: 'Bundled sample data only: $patientId = ''fd65a941-3fa1-337f-28e2-6c9d3922c1af'' (Gerardo Covarrubias) returns 8 rows, led by Diabetes mellitus type 2 (disorder) (44054006) with 692 patients, then Hypertension with 541.'
+          - type: canonicalQuery
+            name: single-patient-chronological-pathway-via-the-next-chain
+            question: Single-patient chronological pathway via the NEXT chain
+            description: Reconstructs one patient's encounters in date order by walking the NEXT chain from its first encounter (no incoming NEXT) to its last (no outgoing NEXT).
+            cypher: |-
+              MATCH (p:Patient {id: $patientId})-[:HAS_ENCOUNTER]->(head:Encounter)
+              WHERE NOT (:Encounter)-[:NEXT]->(head)
+              MATCH path = (head)-[:NEXT*0..200]->(tail:Encounter)
+              WHERE NOT (tail)-[:NEXT]->(:Encounter)
+              RETURN [enc IN nodes(path) | toString(enc.date) + ' (' + enc.type + ')'] AS Pathway;
+            parameters:
+              - name: patientId
+                type: STRING
+                description: Patient.id of the patient. Ask the user, or offer one from Available anchors.
+                example: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93
+            category: query
+            teaches: The traversal bound *0..200 is a literal that caps chain length; raise it only for populations with very long histories. Not every encounter is guaranteed to be chained, so more than one row means the patient's chain has gaps — each row is one unbroken segment.
+            returns: 'One row per chain: Pathway, a list of ''<Encounter.date> (<Encounter.type>)'' strings in date order. A patient whose encounters are fully chained returns exactly one row.'
+            prerequisites: NEXT relationships loaded in date order. Encounter.date is a ZONED DATETIME, so the query wraps it in toString() before concatenating.
+            tags:
+              - pathway
+              - patient
+              - encounter
+              - sequence
+            upstream:
+              file: QUERIES.md
+              heading: Single-patient chronological pathway via the NEXT chain
+              sample: 'Bundled sample data only: $patientId = ''fd65a941-3fa1-337f-28e2-6c9d3922c1af'' (Gerardo Covarrubias) returns 1 row with 3 entries — 2005-05-26T00:00:00Z (wellness), 2020-08-05T00:00:00Z (ambulatory), 2022-09-01T00:00:00Z (wellness).'
+          - type: canonicalQuery
+            name: patient-journey-subgraph
+            question: Patient journey subgraph
+            description: 'Visualises everything connected to one patient: their encounters, the NEXT chain between them, and each encounter''s observations, diagnosed conditions, prescribed drugs and attending provider.'
+            cypher: |-
+              MATCH (pat:Patient {id: $patientId})-[:HAS_ENCOUNTER]->(e:Encounter)
+              OPTIONAL MATCH (e)-[r:HAS_OBSERVATION|DIAGNOSED|PRESCRIBED|ATTENDED_BY|NEXT]->(x)
+              RETURN pat, e, r, x;
+            parameters:
+              - name: patientId
+                type: STRING
+                description: Patient.id of the patient. Ask the user, or offer one from Available anchors.
+                example: e2bf66a2-2766-4fa4-978f-f9e8c6e18f93
+            category: picture
+            teaches: Visual, not tabular — for a text answer use the pathway, drug and condition queries instead. Size grows with the patient's number of encounters and observations.
+            returns: Rows of pat (Patient), e (Encounter), r (an outgoing HAS_OBSERVATION, DIAGNOSED, PRESCRIBED, ATTENDED_BY or NEXT relationship) and x (its target node), for Browser or Bloom to draw as one connected subgraph.
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - visualisation
+              - patient
+              - journey
+              - subgraph
+            upstream:
+              file: QUERIES.md
+              heading: Patient journey subgraph
+              sample: 'Bundled sample data only: $patientId = ''fd65a941-3fa1-337f-28e2-6c9d3922c1af'' (Gerardo Covarrubias) draws 1 patient, 3 encounters with 2 NEXT links, 9 observations, 4 conditions, 2 drugs and 1 provider (Sondra Botsford).'
+          - type: canonicalQuery
+            name: node-key-constraints
+            question: Node-key constraints
+            cypher: |-
+              CREATE CONSTRAINT id_Patient_key IF NOT EXISTS
+                FOR (p:Patient) REQUIRE p.id IS NODE KEY;
+              CREATE CONSTRAINT id_Encounter_key IF NOT EXISTS
+                FOR (e:Encounter) REQUIRE e.id IS NODE KEY;
+              CREATE CONSTRAINT id_Observation_key IF NOT EXISTS
+                FOR (o:Observation) REQUIRE o.id IS NODE KEY;
+              CREATE CONSTRAINT code_Condition_key IF NOT EXISTS
+                FOR (c:Condition) REQUIRE c.code IS NODE KEY;
+              CREATE CONSTRAINT code_Drug_key IF NOT EXISTS
+                FOR (d:Drug) REQUIRE d.code IS NODE KEY;
+              CREATE CONSTRAINT id_Provider_key IF NOT EXISTS
+                FOR (pr:Provider) REQUIRE pr.id IS NODE KEY;
+              CREATE CONSTRAINT name_Speciality_key IF NOT EXISTS
+                FOR (s:Speciality) REQUIRE s.name IS NODE KEY;
+              CREATE CONSTRAINT id_Organisation_key IF NOT EXISTS
+                FOR (org:Organisation) REQUIRE org.id IS NODE KEY;
+            parameters: []
+            category: setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Node-key constraints
+              sample: ''
+    description: A person receiving care, and the anchor of a longitudinal record. Every clinical fact in the reference ontology reaches a patient through an encounter rather than attaching to the patient directly, so that when something was recorded is never lost.
+    aliases:
+      - Person
+  Encounter:
+    label: Encounter
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Stable identifier for the encounter in the source system. e.g. `512815bc-0b5c-bac3-ec59-9eb9fc945312`.
+      date:
+        type: ZONED DATETIME
+        must_exist: true
+        description: Date the encounter took place, as an ISO 8601 zoned datetime. Only the calendar date carries meaning; the time and zone are an artefact of importing a date into a temporal type. Ordering on this is what reconstructs a pathway. e.g. `2005-05-26T00:00:00Z`.
+      type:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the class the record gives the encounter, one of wellness, ambulatory, emergency, inpatient or outpatient
+        description: Class of encounter, as a lower-case keyword from the source system's own small vocabulary rather than a coded terminology value. e.g. `wellness`.
+    extensions:
+      display:
+        x: 0
+        'y': 0
+        colour: '#d97706'
+      custom:
+        relate-examples:
+          ask: one episode of care, a visit, attendance or admission, cited as encounter and its eight-character hexadecimal reference, such as encounter 039551b6; the episode, not a medicine, a clinician or a place
+          proper: true
+    description: 'A single episode of care — one visit, admission or consultation. The pivot of the whole reference ontology: observations, diagnoses, prescriptions and the attending provider all hang off the encounter, which is what gives every clinical fact a date and a context.'
+    aliases:
+      - Visit
+  Observation:
+    label: Observation
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Stable identifier for this individual result. e.g. `obs-512815bc-001`.
+        pattern: ^obs-(?:n[0-9]{6}|[0-9a-f]{8}-[0-9]{3})$
+      code:
+        type: STRING
+        must_exist: true
+        description: Code for what was measured, from a standard observation terminology (LOINC in the bundled example). Expected to be the code system's own notation, unchanged. e.g. `8480-6`.
+      description:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: what the result measured, such as systolic blood pressure, diastolic blood pressure or body weight
+        description: Human-readable name of what was measured, corresponding to `code`. Carried alongside the code so results are legible without a terminology lookup. e.g. `Systolic Blood Pressure`.
+      value:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the measured result as a bare number, such as 158 or 81.2, without the unit after it
+        description: The measured result, held as text so that numeric, coded and free-text results can share one property. Numeric comparisons therefore require an explicit cast; the property is expected to carry no unit, which lives in `units`. e.g. `148`.
+      units:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the unit the result is measured in, such as mmHg or kg
+        description: Unit of `value`, in UCUM notation. Expected to be absent or meaningless for non-numeric results. e.g. `mm[Hg]`.
+    extensions:
+      display:
+        x: 100
+        'y': -100
+        colour: '#0891b2'
+      custom:
+        relate-examples:
+          ask: one measurement or test result recorded at an encounter, such as a blood pressure reading, cited by its result ID such as obs-n001985
+          proper: true
+          propose: true
+    description: A single measurement or test result recorded at an encounter — a vital sign or a lab value. Each observation belongs to exactly one encounter and is never shared between patients, which is what distinguishes it from a condition or a drug.
+  Condition:
+    label: Condition
+    properties:
+      code:
+        type: STRING
+        key: true
+        description: The condition's identifier in a standardised clinical terminology (SNOMED CT in the bundled example), and the key on which patients' diagnoses converge. e.g. `59621000`.
+      description:
+        type: STRING
+        must_exist: true
+        description: Human-readable name of the condition, corresponding to `code`. e.g. `Hypertension`.
+    extensions:
+      display:
+        x: 125
+        'y': 0
+        colour: '#dc2626'
+      custom:
+        relate-examples:
+          ask: a diagnosed disease, disorder or clinical finding, such as hypertension or coronary heart disease; the condition itself, not the drug that treats it or the reading that suggests it
+        tools:
+          - type: canonicalQuery
+            name: comorbidities-associated-with-a-condition
+            question: Comorbidities associated with a condition
+            description: 'Condition-centric aggregate: the conditions diagnosed at the same encounter as a given condition, and how often.'
+            cypher: |-
+              MATCH (c1:Condition {code: $conditionCode})<-[:DIAGNOSED]-(:Encounter)-[:DIAGNOSED]->(c2:Condition)
+              WHERE c1 <> c2
+              RETURN c2.code AS Code, c2.description AS Description, count(*) AS Occurrences
+              ORDER BY Occurrences DESC;
+            parameters:
+              - name: conditionCode
+                type: STRING
+                description: Condition.code of the condition, in the standardised clinical terminology the data uses. Ask the user, or offer one from Available anchors.
+                example: '53741008'
+            category: query
+            teaches: 'Same-encounter co-occurrence, not same-patient: two conditions diagnosed for one patient at different encounters are not counted. For lifetime comorbidity, use the patient-anchored comorbidity query instead.'
+            returns: 'One row per co-diagnosed condition: Code, Description and Occurrences (encounters at which both were diagnosed), ordered by Occurrences descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - comorbidity
+              - condition
+              - decision-support
+            upstream:
+              file: QUERIES.md
+              heading: Comorbidities associated with a condition
+              sample: 'Bundled sample data only: $conditionCode = ''59621000'' (Hypertension) returns 7 rows, led by Diabetes mellitus type 2 (disorder) with 537 occurrences, then Cough (finding) with 225 and Coronary Heart Disease with 190.'
+          - type: canonicalQuery
+            name: shared-condition-patient-cluster
+            question: Shared-condition patient cluster
+            description: Visualises the cohort of patients who share a diagnosis, clustered around the Condition node — the clinical analogue of an entity-resolution "ring" view.
+            cypher: |-
+              MATCH path = (p1:Patient)-[:HAS_ENCOUNTER]->(:Encounter)-[:DIAGNOSED]->(c:Condition {code: $conditionCode})<-[:DIAGNOSED]-(:Encounter)<-[:HAS_ENCOUNTER]-(p2:Patient)
+              WHERE elementId(p1) < elementId(p2)
+              RETURN path
+              LIMIT $limit;
+            parameters:
+              - name: conditionCode
+                type: STRING
+                description: Condition.code of the condition. Ask the user, or offer one from Available anchors.
+                example: '59621000'
+              - name: limit
+                type: INTEGER
+                description: Maximum number of patient-pair paths returned. Start at 50 for a readable graph; raise it only as far as the picture stays legible.
+                example: 50
+            category: picture
+            teaches: A common condition yields far more pairs than any limit shows, and LIMIT without ordering picks an arbitrary subset — treat the picture as an illustration of the cluster, not its membership. Pick a rarer code to see a whole cohort.
+            returns: Paths Patient → Encounter → Condition ← Encounter ← Patient, one per patient pair (each pair once), at most $limit of them.
+            prerequisites: The code must be shared by more than one patient to form a cluster.
+            tags:
+              - visualisation
+              - cohort
+              - condition
+              - cluster
+            upstream:
+              file: QUERIES.md
+              heading: Shared-condition patient cluster
+              sample: 'Bundled sample data only: $conditionCode = ''59621000'' (Hypertension), $limit = 50 returns 50 paths drawn from the 1615 patients diagnosed with it.'
+          - type: canonicalQuery
+            name: comorbidity-network
+            question: Comorbidity network
+            description: Population-level visualisation of which conditions are diagnosed together at the same encounter. Ranks condition pairs by how many encounters diagnosed both, keeps the strongest, and draws one connecting encounter per pair with the pair's weight.
+            cypher: |-
+              MATCH (c1:Condition)<-[:DIAGNOSED]-(e:Encounter)-[:DIAGNOSED]->(c2:Condition)
+              WHERE elementId(c1) < elementId(c2)
+              WITH c1, c2, count(e) AS coOccurrences, head(collect(e)) AS example
+              ORDER BY coOccurrences DESC
+              LIMIT $limit
+              MATCH path = (c1)<-[:DIAGNOSED]-(example)-[:DIAGNOSED]->(c2)
+              RETURN path, coOccurrences
+              ORDER BY coOccurrences DESC;
+            parameters:
+              - name: limit
+                type: INTEGER
+                description: Maximum number of condition pairs returned, strongest first. Start at 50 for a readable graph; lower it to see only the dominant comorbidities.
+                example: 50
+            category: picture
+            teaches: Same-encounter co-occurrence. The drawn encounter is an example only; the weight is in coOccurrences. Each pair is counted once. Aggregates every co-diagnosis in the database, so on a large population expect it to take longer than the anchored queries.
+            returns: 'One row per condition pair: path (Condition ← Encounter → Condition, through one representative encounter) and coOccurrences (encounters at which both were diagnosed), ordered by coOccurrences descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - visualisation
+              - comorbidity
+              - condition
+              - population
+            upstream:
+              file: QUERIES.md
+              heading: Comorbidity network
+              sample: 'Bundled sample data only: $limit = 50 returns all 28 condition pairs, led by Diabetes mellitus type 2 (disorder) – Hypertension with 537, then Cough (finding) – Hypertension with 225.'
+          - type: canonicalQuery
+            name: care-network-around-a-condition
+            question: Care network around a condition
+            description: 'Visualises the delivery network for a diagnosis: Condition ← Encounter (DIAGNOSED) → Provider (ATTENDED_BY) → Organisation (BELONGS_TO).'
+            cypher: |-
+              MATCH path = (c:Condition {code: $conditionCode})<-[:DIAGNOSED]-(:Encounter)-[:ATTENDED_BY]->(:Provider)-[:BELONGS_TO]->(:Organisation)
+              RETURN path
+              LIMIT $limit;
+            parameters:
+              - name: conditionCode
+                type: STRING
+                description: Condition.code of the condition. Ask the user, or offer one from Available anchors.
+                example: '53741008'
+              - name: limit
+                type: INTEGER
+                description: Maximum number of paths returned. Start at 50 for a readable graph; raise it until every provider of interest appears.
+                example: 50
+            category: picture
+            teaches: One path per encounter, so a common condition needs a high limit before every provider appears; LIMIT without ordering picks an arbitrary subset of encounters. For counts per provider, aggregate rather than draw.
+            returns: Paths Condition ← Encounter → Provider → Organisation, at most $limit of them.
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - visualisation
+              - care-delivery
+              - provider
+              - organisation
+              - condition
+            upstream:
+              file: QUERIES.md
+              heading: Care network around a condition
+              sample: 'Bundled sample data only: $conditionCode = ''59621000'' (Hypertension), $limit = 50 returns 50 of 2395 possible paths; all 4 providers and their 4 organisations treat it.'
+    description: A clinical condition, shared across the whole population rather than owned by a patient. One node per standardised code, so that every patient diagnosed with it connects to the same node — which is precisely what makes cross-patient comorbidity analysis a traversal. If source data carries local codes instead, these nodes will not merge and population queries silently mislead.
+    aliases:
+      - Diagnosis
+  Drug:
+    label: Drug
+    properties:
+      code:
+        type: STRING
+        key: true
+        description: The drug's identifier in a standardised medication terminology (RxNorm in the bundled example), and the key on which patients' prescriptions converge. e.g. `309362`.
+      name:
+        type: STRING
+        must_exist: true
+        description: Human-readable name of the medication, corresponding to `code` and conventionally including strength and form. e.g. `Clopidogrel 75 MG Oral Tablet`.
+    extensions:
+      display:
+        x: 100
+        'y': 100
+        colour: '#7c3aed'
+      custom:
+        relate-examples:
+          ask: a prescribed medicine, named by its non-proprietary name such as lisinopril or by its record name with strength and form such as Clopidogrel 75 MG Oral Tablet; the medicine, never a code or an encounter reference
+        tools:
+          - type: canonicalQuery
+            name: drug-co-prescription-network
+            question: Drug co-prescription network
+            description: Population-level visualisation of medications prescribed together at the same encounter. Ranks drug pairs by how many encounters prescribed both, keeps the strongest, and draws one connecting encounter per pair with the pair's weight.
+            cypher: |-
+              MATCH (d1:Drug)<-[:PRESCRIBED]-(e:Encounter)-[:PRESCRIBED]->(d2:Drug)
+              WHERE elementId(d1) < elementId(d2)
+              WITH d1, d2, count(e) AS coPrescriptions, head(collect(e)) AS example
+              ORDER BY coPrescriptions DESC
+              LIMIT $limit
+              MATCH path = (d1)<-[:PRESCRIBED]-(example)-[:PRESCRIBED]->(d2)
+              RETURN path, coPrescriptions
+              ORDER BY coPrescriptions DESC;
+            parameters:
+              - name: limit
+                type: INTEGER
+                description: Maximum number of drug pairs returned, strongest first. Start at 50 for a readable graph; lower it to see only the dominant pairings.
+                example: 50
+            category: picture
+            teaches: Same-encounter co-prescription. Drug nodes are one per code, and codes conventionally distinguish strength and form, so two strengths of one medication count as different drugs. The drawn encounter is an example only. Pairs that recur usually share an indication — a lead for review, not a safety finding.
+            returns: 'One row per drug pair: path (Drug ← Encounter → Drug, through one representative encounter) and coPrescriptions (encounters at which both were prescribed), ordered by coPrescriptions descending.'
+            prerequisites: Drug nodes shared across patients by standardised code.
+            tags:
+              - visualisation
+              - drug
+              - co-prescription
+              - population
+            upstream:
+              file: QUERIES.md
+              heading: Drug co-prescription network
+              sample: 'Bundled sample data only: $limit = 50 returns all 15 drug pairs, led by Hydrochlorothiazide 25 MG Oral Tablet – Lisinopril 10 MG Oral Tablet with 1155.'
+    description: A medication, shared across the whole population rather than owned by a patient. One node per standardised code, so that co-prescription and treatment-pattern analysis across patients becomes a traversal. The same caution about local codes applies as for conditions.
+    aliases:
+      - Medication
+  Provider:
+    label: Provider
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Stable identifier for the provider in the source system. e.g. `6e73bd55-65e7-325b-a8c1-e4f8547461b3`.
+      name:
+        type: STRING
+        must_exist: true
+        description: Display name of the provider. Not an identifier. e.g. `Sondra Botsford`.
+    extensions:
+      display:
+        x: 0
+        'y': 133
+        colour: '#059669'
+      custom:
+        relate-examples:
+          ask: a doctor or other clinician who attended encounters, named by full name, often with Dr, such as Dr Wilton Pollich; the clinician treating the patient, not the patient or the organisation
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: provider-workload
+            question: Provider workload
+            description: 'Pivots to the provider dimension: which patients a provider has seen, and at how many encounters, following ATTENDED_BY (Encounter → Provider) and HAS_ENCOUNTER back to the patient.'
+            cypher: |-
+              MATCH (p:Provider {id: $providerId})<-[:ATTENDED_BY]-(:Encounter)<-[:HAS_ENCOUNTER]-(pt:Patient)
+              RETURN pt.id AS PatientId, pt.name AS `Patient Name`, count(*) AS Encounters
+              ORDER BY Encounters DESC;
+            parameters:
+              - name: providerId
+                type: STRING
+                description: Provider.id of the provider. Ask the user, or offer one from Available anchors.
+                example: e2edaa6b-9fea-3a37-8581-df6a8b8f64f5
+            category: query
+            teaches: For resource-allocation and care-coordination analysis. Returns one row per patient, so a busy provider produces a long result — summarise it or add a LIMIT when presenting.
+            returns: 'One row per patient seen: PatientId, `Patient Name` and Encounters (encounters this provider attended for that patient), ordered by Encounters descending.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - provider
+              - workload
+              - care-delivery
+            upstream:
+              file: QUERIES.md
+              heading: Provider workload
+              sample: 'Bundled sample data only: $providerId = ''e2edaa6b-9fea-3a37-8581-df6a8b8f64f5'' (Wilton Pollich) returns 1125 rows covering 1276 encounters, at most 4 encounters per patient.'
+    description: A clinician who delivers care at encounters. Held as an entity so that workload and referral patterns can be measured across encounters and patients.
+    aliases:
+      - Healthcare professional
+  Speciality:
+    label: Speciality
+    properties:
+      name:
+        type: STRING
+        key: true
+        description: Name of the speciality as the source system records it, and the key on which providers converge. e.g. `General Practice`.
+    extensions:
+      display:
+        x: 100
+        'y': 200
+        colour: '#65a30d'
+      custom:
+        relate-examples:
+          ask: a clinician's field of practice as the record names it, such as General Practice or Cardiology
+          proper: true
+    description: A field of clinical practice, shared by every provider who works in it. Keyed on the speciality's name rather than on a code, so providers converge only when the source system spells the speciality identically.
+  Organisation:
+    label: Organisation
+    properties:
+      id:
+        type: STRING
+        key: true
+        description: Stable identifier for the organisation in the source system. e.g. `be4c63f3-8d38-3fa9-a183-62045b5c85f6`.
+      name:
+        type: STRING
+        must_exist: true
+        description: Name of the organisation as published. e.g. `VA Boston Healthcare System`.
+      address:
+        type: STRING
+        description: Postal address of the organisation as a single unparsed line, with no separate town, region or postcode fields and no geocoding. e.g. `150 South Huntington Avenue Jamaica Plain MA`.
+    extensions:
+      display:
+        x: -100
+        'y': 200
+        colour: '#db2777'
+      custom:
+        relate-examples:
+          ask: a healthcare organisation or practice that clinicians work at, named such as Milford Regional Medical Center or by a practice code such as PCP1477
+          proper: true
+    description: A healthcare facility or provider organisation that clinicians belong to — the institutional level above the individual provider.
+    aliases:
+      - Healthcare institution
+      - Facility
+relationships:
+  hasEncounter:
+    type: HAS_ENCOUNTER
+    from:
+      node: Patient
+    to:
+      node: Encounter
+      count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was seen at
+    description: Attaches an episode of care to the patient who received it. Exactly one patient per encounter; a patient may have many encounters, or none. Every clinical fact in the reference ontology reaches its patient along this link.
+  next:
+    type: NEXT
+    from:
+      node: Encounter
+      max_count: 1
+    to:
+      node: Encounter
+      max_count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was followed by
+    description: Chains an encounter to the one that followed it for the same patient, in date order — the explicit sequence that makes a care pathway walkable without sorting. At most one following encounter and at most one preceding encounter, so the chain is a simple line per patient and never branches. Not every encounter is chained, so the absence of this link does not mean an encounter was the patient's last; traversals along it are expected to be bounded by an explicit maximum depth.
+  hasObservation:
+    type: HAS_OBSERVATION
+    from:
+      node: Encounter
+    to:
+      node: Observation
+      count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: recorded
+    description: Records that this measurement was taken at this encounter. Exactly one encounter per observation; an encounter may carry several observations, or none.
+  diagnosed:
+    type: DIAGNOSED
+    from:
+      node: Encounter
+    to:
+      node: Condition
+    extensions:
+      custom:
+        relate-examples:
+          phrase: diagnosed
+    description: Records that this condition was diagnosed at this encounter. An encounter may diagnose several conditions, or none; a condition, being shared across the population, is diagnosed at many encounters. Two patients meet at the condition node, which is what comorbidity analysis traverses.
+  prescribed:
+    type: PRESCRIBED
+    from:
+      node: Encounter
+    to:
+      node: Drug
+    extensions:
+      custom:
+        relate-examples:
+          phrase: prescribed
+    description: Records that this medication was prescribed at this encounter. An encounter may prescribe several drugs, or none; a drug, being shared across the population, is prescribed at many encounters. Repeated pairs of drugs reached this way are what co-prescription analysis counts.
+  attendedBy:
+    type: ATTENDED_BY
+    from:
+      node: Encounter
+      count: 1
+    to:
+      node: Provider
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was attended by
+    description: Records the clinician who delivered this encounter. Exactly one attending provider per encounter; a provider attends many encounters, or none. Counting along this link gives provider workload.
+  hasSpeciality:
+    type: HAS_SPECIALITY
+    from:
+      node: Provider
+      count: 1
+    to:
+      node: Speciality
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is listed under
+    description: Places a provider in their field of practice. Exactly one speciality per provider; a speciality is shared by many providers, or by none. The reference ontology records a provider's current speciality only, not a history of it.
+  belongsTo:
+    type: BELONGS_TO
+    from:
+      node: Provider
+      count: 1
+    to:
+      node: Organisation
+    extensions:
+      custom:
+        relate-examples:
+          phrase: works at
+    description: Places a provider within the organisation they practise at. Exactly one organisation per provider, so a clinician working across several sites cannot be represented without extending the reference ontology; an organisation may have many providers, or none.
+extensions:
+  data_source_tables:
+    patients.csv:
+      source: local
+      columns:
+        - name: id
+          type: string
+        - name: name
+          type: string
+        - name: birthDate
+          type: string
+    encounters.csv:
+      source: local
+      columns:
+        - name: id
+          type: string
+        - name: patientId
+          type: string
+        - name: providerId
+          type: string
+        - name: date
+          type: string
+        - name: type
+          type: string
+        - name: nextEncounterId
+          type: string
+    observations.csv:
+      source: local
+      columns:
+        - name: id
+          type: string
+        - name: encounterId
+          type: string
+        - name: code
+          type: string
+        - name: description
+          type: string
+        - name: value
+          type: string
+        - name: units
+          type: string
+    conditions.csv:
+      source: local
+      columns:
+        - name: code
+          type: string
+        - name: description
+          type: string
+        - name: encounterId
+          type: string
+    drugs.csv:
+      source: local
+      columns:
+        - name: code
+          type: string
+        - name: name
+          type: string
+        - name: encounterId
+          type: string
+    providers.csv:
+      source: local
+      columns:
+        - name: id
+          type: string
+        - name: name
+          type: string
+        - name: speciality
+          type: string
+        - name: organisationId
+          type: string
+    organisations.csv:
+      source: local
+      columns:
+        - name: id
+          type: string
+        - name: name
+          type: string
+        - name: address
+          type: string
+  data_source_mappings:
+    mapping0:
+      - type: NODE
+        node: Patient
+        table: patients.csv
+        mode: MERGE
+        key:
+          - id
+        properties:
+          id:
+            column: id
+          name:
+            column: name
+          birthDate:
+            column: birthDate
+      - type: NODE
+        node: Encounter
+        table: encounters.csv
+        mode: MERGE
+        key:
+          - id
+        properties:
+          id:
+            column: id
+          date:
+            column: date
+          type:
+            column: type
+      - type: NODE
+        node: Observation
+        table: observations.csv
+        mode: MERGE
+        key:
+          - id
+        properties:
+          id:
+            column: id
+          code:
+            column: code
+          description:
+            column: description
+          value:
+            column: value
+          units:
+            column: units
+      - type: NODE
+        node: Condition
+        table: conditions.csv
+        mode: MERGE
+        key:
+          - code
+        properties:
+          code:
+            column: code
+          description:
+            column: description
+      - type: NODE
+        node: Drug
+        table: drugs.csv
+        mode: MERGE
+        key:
+          - code
+        properties:
+          code:
+            column: code
+          name:
+            column: name
+      - type: NODE
+        node: Provider
+        table: providers.csv
+        mode: MERGE
+        key:
+          - id
+        properties:
+          id:
+            column: id
+          name:
+            column: name
+      - type: NODE
+        node: Speciality
+        table: providers.csv
+        mode: MERGE
+        key:
+          - name
+        properties:
+          name:
+            column: speciality
+      - type: NODE
+        node: Organisation
+        table: organisations.csv
+        mode: MERGE
+        key:
+          - id
+        properties:
+          id:
+            column: id
+          name:
+            column: name
+          address:
+            column: address
+      - type: RELATIONSHIP
+        relationship: hasEncounter
+        table: encounters.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Patient
+          properties:
+            id:
+              column: patientId
+        to_node:
+          label: Encounter
+          properties:
+            id:
+              column: id
+      - type: RELATIONSHIP
+        relationship: next
+        table: encounters.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Encounter
+          properties:
+            id:
+              column: id
+        to_node:
+          label: Encounter
+          properties:
+            id:
+              column: nextEncounterId
+      - type: RELATIONSHIP
+        relationship: hasObservation
+        table: observations.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Encounter
+          properties:
+            id:
+              column: encounterId
+        to_node:
+          label: Observation
+          properties:
+            id:
+              column: id
+      - type: RELATIONSHIP
+        relationship: diagnosed
+        table: conditions.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Encounter
+          properties:
+            id:
+              column: encounterId
+        to_node:
+          label: Condition
+          properties:
+            code:
+              column: code
+      - type: RELATIONSHIP
+        relationship: prescribed
+        table: drugs.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Encounter
+          properties:
+            id:
+              column: encounterId
+        to_node:
+          label: Drug
+          properties:
+            code:
+              column: code
+      - type: RELATIONSHIP
+        relationship: attendedBy
+        table: encounters.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Encounter
+          properties:
+            id:
+              column: id
+        to_node:
+          label: Provider
+          properties:
+            id:
+              column: providerId
+      - type: RELATIONSHIP
+        relationship: hasSpeciality
+        table: providers.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Provider
+          properties:
+            id:
+              column: id
+        to_node:
+          label: Speciality
+          properties:
+            name:
+              column: speciality
+      - type: RELATIONSHIP
+        relationship: belongsTo
+        table: providers.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Provider
+          properties:
+            id:
+              column: id
+        to_node:
+          label: Organisation
+          properties:
+            id:
+              column: organisationId
+  custom:
+    relate-examples:
+      family: studio
+      source:
+        repository: neo4j/studio-agent-use-cases
+        commit: b76f767e85c5853b7d70eb2bb3b10879d0e394a9
+        package: patient-journey
+        files:
+          - ONTOLOGY.json
+          - QUERIES.md
+          - human_description.md
+      card:
+        title: Patient Journey
+        category: Healthcare & Life Sciences
+        description: Map longitudinal care pathways and discover comorbidities across a connected clinical graph.
+      industry: Healthcare & Life Sciences
+      about: data/ontologies/studio/patient-journey/human_description.md

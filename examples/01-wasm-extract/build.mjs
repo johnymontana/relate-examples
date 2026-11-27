@@ -31,16 +31,18 @@
  *                                   Apache-2.0 text, data/ontology-spec/LICENSE-graph-spec.txt) and
  *                                   THIRD_PARTY.txt (the Kotlin libraries compiled into it)
  *   assets/lib-<sha8>/              lib/replay.mjs, lib/relate_wasm.mjs and lib/ogs.mjs as replay.js, relate_wasm.js and ogs.js
- *   data/ontologies/ogs/            the 27 bundled ontologies as Ontology Graph Spec v1 documents (ogs/ccg/*.ontology.yaml;
- *                                   harness/convert.mjs) and SOURCE.md: what the picker loads
+ *   data/ontologies/domains/        the curated domains (D20), as written, and SOURCE.md
+ *   data/ontologies/ogs/studio/     the solution packages with their overlays applied (D21, harness/convert.mjs),
+ *                                   ogs/SOURCE.md; data/ontologies/studio/<package>/ human_description.md and
+ *                                   NOTICE.md beside them, studio/SOURCE.md and manifest.json: what the picker loads
  *   data/ontologies/ccg/            _base.yaml (verbatim: a pasted or uploaded create-context-graph file inherits it),
  *                                   SOURCE.md and LICENSE-create-context-graph.txt; the 27 originals are not shipped
- *   data/ontologies/index.json      {bases: {_base: 'ccg/_base.yaml'}, groups: [{id: 'ccg', label, files}]}: the
- *                                   picker's groups in order, files sorted
+ *   data/ontologies/index.json      {bases: {_base: 'ccg/_base.yaml'}, groups: [{id: 'domains' | 'studio', label, files}]}:
+ *                                   the picker's groups in order, files sorted
  *   data/ontology-spec/             the spec's JSON Schema, its LICENSE-graph-spec.txt and SOURCE.md
- *   data/samples/                   samples.json and the samples it lists (ccg/<x>.md: a sample may sit one
- *                                   directory down); data/LICENSE-edgextract.txt and data/SOURCE.md (the ported
- *                                   splitter and name rules are edgextract's)
+ *   data/samples/                   samples.json and the samples it lists (domains/<id>/<x>.md, studio/<id>/<x>.md);
+ *                                   data/LICENSE-edgextract.txt and data/SOURCE.md (the ported splitter and name
+ *                                   rules are edgextract's)
  *   queries/                        the saved queries (queries/*.cypher) and index.json
  *   THIRD_PARTY.md
  *

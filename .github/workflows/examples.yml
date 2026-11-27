@@ -148,6 +148,17 @@ jobs:
         with:
           path: .cache/gliner
           key: ${{ steps.gliner.outputs.cache-primary-key }}
+      # Example 01's harness answers (D24): one file per model call, named by the call's request, so an
+      # older cache answers only what it holds and the rest is asked; run.mjs asks every 33rd cached answer
+      # again and fails on any difference. Restored from the newest earlier run, saved after this one.
+      - name: Restore example 01's inference cache
+        id: ex01-infer
+        if: steps.plan.outputs.ex01 == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/ex01-infer
+          key: ex01-infer-${{ github.sha }}
+          restore-keys: ex01-infer-
 
       # 01's own package-lock.json: @relate/relate-wasm (the Relate WASM bundle, its sha512
       # integrity pinned there), NVL 2.0.0, js-yaml, esbuild, playwright 1.63.0; --omit=peer
@@ -232,3 +243,9 @@ jobs:
             echo "| $name | $result | $((SECONDS - start)) |" >> "$GITHUB_STEP_SUMMARY"
           done
           if (( ${#failed[@]} > 0 )); then echo "failed: ${failed[*]}"; exit 1; fi
+      - name: Save example 01's inference cache
+        if: always() && steps.plan.outputs.ex01 == 'true' && steps.ex01-infer.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/ex01-infer
+          key: ${{ steps.ex01-infer.outputs.cache-primary-key }}

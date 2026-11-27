@@ -1,0 +1,641 @@
+{
+  "entities": [
+    {
+      "name": "Ravensike Wetland Restoration Programme",
+      "type": "Programme",
+      "aliases": [
+        "RWRP"
+      ]
+    },
+    {
+      "name": "Carrside Wetlands Trust",
+      "type": "PartnerOrganisation"
+    },
+    {
+      "name": "Environment Agency",
+      "type": "PartnerOrganisation"
+    },
+    {
+      "name": "Thornholme Internal Drainage Board",
+      "type": "PartnerOrganisation"
+    },
+    {
+      "name": "Wraydale Farms Ltd",
+      "type": "PartnerOrganisation"
+    },
+    {
+      "name": "Marram Ecology Ltd",
+      "type": "PartnerOrganisation"
+    },
+    {
+      "name": "Ravensike Fen",
+      "type": "Site"
+    },
+    {
+      "name": "Hollin Carr",
+      "type": "Site"
+    },
+    {
+      "name": "Blackwater Ings",
+      "type": "Site"
+    },
+    {
+      "name": "reedbed",
+      "type": "Habitat"
+    },
+    {
+      "name": "lowland fen",
+      "type": "Habitat"
+    },
+    {
+      "name": "open water",
+      "type": "Habitat"
+    },
+    {
+      "name": "wet grassland",
+      "type": "Habitat"
+    },
+    {
+      "name": "bittern",
+      "type": "Species",
+      "aliases": [
+        "Botaurus stellaris"
+      ]
+    },
+    {
+      "name": "lapwing",
+      "type": "Species",
+      "aliases": [
+        "Vanellus vanellus"
+      ]
+    },
+    {
+      "name": "redshank",
+      "type": "Species",
+      "aliases": [
+        "Tringa totanus"
+      ]
+    },
+    {
+      "name": "water vole",
+      "type": "Species",
+      "aliases": [
+        "Arvicola amphibius"
+      ]
+    },
+    {
+      "name": "marsh harrier",
+      "type": "Species"
+    },
+    {
+      "name": "common crane",
+      "type": "Species"
+    },
+    {
+      "name": "summer drought",
+      "type": "Threat"
+    },
+    {
+      "name": "fox predation",
+      "type": "Threat"
+    },
+    {
+      "name": "mink predation",
+      "type": "Threat"
+    },
+    {
+      "name": "nutrient enrichment",
+      "type": "Threat"
+    },
+    {
+      "name": "avian influenza",
+      "type": "Threat"
+    },
+    {
+      "name": "FCT-2023-0412",
+      "type": "Grant"
+    },
+    {
+      "name": "BW-2024-117",
+      "type": "Grant"
+    },
+    {
+      "name": "LF-2026-031",
+      "type": "Grant"
+    },
+    {
+      "name": "Fenmoor Charitable Trust",
+      "type": "Funder"
+    },
+    {
+      "name": "Brackenford Water plc",
+      "type": "Funder"
+    },
+    {
+      "name": "Linnet Foundation",
+      "type": "Funder"
+    },
+    {
+      "name": "2026 habitat mapping survey",
+      "type": "Survey"
+    },
+    {
+      "name": "2026 bittern survey",
+      "type": "Survey"
+    },
+    {
+      "name": "2026 breeding wader survey",
+      "type": "Survey"
+    },
+    {
+      "name": "2026 water vole survey",
+      "type": "Survey"
+    },
+    {
+      "name": "water quality sampling",
+      "type": "Survey"
+    },
+    {
+      "name": "OI-1",
+      "type": "Indicator"
+    },
+    {
+      "name": "OI-2",
+      "type": "Indicator"
+    },
+    {
+      "name": "OI-3",
+      "type": "Indicator"
+    },
+    {
+      "name": "OI-4",
+      "type": "Indicator"
+    },
+    {
+      "name": "OI-5",
+      "type": "Indicator"
+    }
+  ],
+  "relations": [
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "Carrside Wetlands Trust",
+      "type": "LED_BY",
+      "how": "passive"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "Ravensike Fen",
+      "type": "DELIVERED_AT",
+      "how": "list"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "Hollin Carr",
+      "type": "DELIVERED_AT",
+      "how": "list"
+    },
+    {
+      "source": "Ravensike Fen",
+      "target": "Carrside Wetlands Trust",
+      "type": "MANAGED_BY",
+      "how": "plain"
+    },
+    {
+      "source": "Hollin Carr",
+      "target": "Wraydale Farms Ltd",
+      "type": "MANAGED_BY",
+      "how": "passive"
+    },
+    {
+      "source": "Environment Agency",
+      "target": "Ravensike Wetland Restoration Programme",
+      "type": "PARTNER_IN",
+      "how": "list"
+    },
+    {
+      "source": "Thornholme Internal Drainage Board",
+      "target": "Ravensike Wetland Restoration Programme",
+      "type": "PARTNER_IN",
+      "how": "list"
+    },
+    {
+      "source": "Wraydale Farms Ltd",
+      "target": "Ravensike Wetland Restoration Programme",
+      "type": "PARTNER_IN",
+      "how": "list"
+    },
+    {
+      "source": "FCT-2023-0412",
+      "target": "Ravensike Wetland Restoration Programme",
+      "type": "FUNDS",
+      "how": "alias"
+    },
+    {
+      "source": "BW-2024-117",
+      "target": "Ravensike Wetland Restoration Programme",
+      "type": "FUNDS",
+      "how": "alias"
+    },
+    {
+      "source": "FCT-2023-0412",
+      "target": "Fenmoor Charitable Trust",
+      "type": "AWARDED_BY",
+      "how": "apposition"
+    },
+    {
+      "source": "BW-2024-117",
+      "target": "Brackenford Water plc",
+      "type": "AWARDED_BY",
+      "how": "passive"
+    },
+    {
+      "source": "Ravensike Fen",
+      "target": "reedbed",
+      "type": "CONTAINS",
+      "how": "list"
+    },
+    {
+      "source": "Ravensike Fen",
+      "target": "lowland fen",
+      "type": "CONTAINS",
+      "how": "list"
+    },
+    {
+      "source": "Ravensike Fen",
+      "target": "open water",
+      "type": "CONTAINS",
+      "how": "list"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "reedbed",
+      "type": "RESTORES",
+      "how": "alias"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "lowland fen",
+      "type": "RESTORES",
+      "how": "list"
+    },
+    {
+      "source": "2026 habitat mapping survey",
+      "target": "Carrside Wetlands Trust",
+      "type": "CARRIED_OUT_BY",
+      "how": "apposition"
+    },
+    {
+      "source": "2026 habitat mapping survey",
+      "target": "Ravensike Fen",
+      "type": "COVERED",
+      "how": "plain"
+    },
+    {
+      "source": "Hollin Carr",
+      "target": "wet grassland",
+      "type": "CONTAINS",
+      "how": "nominal"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "wet grassland",
+      "type": "RESTORES",
+      "how": "alias"
+    },
+    {
+      "source": "summer drought",
+      "target": "Ravensike Fen",
+      "type": "AFFECTS",
+      "how": "passive"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "summer drought",
+      "type": "ADDRESSES",
+      "how": "coreference"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "bittern",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "lapwing",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "redshank",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "water vole",
+      "type": "TARGETS",
+      "how": "list"
+    },
+    {
+      "source": "bittern",
+      "target": "reedbed",
+      "type": "DEPENDS_ON",
+      "how": "plain"
+    },
+    {
+      "source": "lapwing",
+      "target": "wet grassland",
+      "type": "DEPENDS_ON",
+      "how": "list"
+    },
+    {
+      "source": "redshank",
+      "target": "wet grassland",
+      "type": "DEPENDS_ON",
+      "how": "list"
+    },
+    {
+      "source": "2026 bittern survey",
+      "target": "Ravensike Fen",
+      "type": "COVERED",
+      "how": "apposition"
+    },
+    {
+      "source": "2026 bittern survey",
+      "target": "Marram Ecology Ltd",
+      "type": "CARRIED_OUT_BY",
+      "how": "apposition"
+    },
+    {
+      "source": "2026 bittern survey",
+      "target": "bittern",
+      "type": "RECORDED",
+      "how": "plain"
+    },
+    {
+      "source": "2026 bittern survey",
+      "target": "marsh harrier",
+      "type": "RECORDED",
+      "how": "plain"
+    },
+    {
+      "source": "2026 breeding wader survey",
+      "target": "Hollin Carr",
+      "type": "COVERED",
+      "how": "plain"
+    },
+    {
+      "source": "2026 breeding wader survey",
+      "target": "lapwing",
+      "type": "RECORDED",
+      "how": "list"
+    },
+    {
+      "source": "2026 breeding wader survey",
+      "target": "redshank",
+      "type": "RECORDED",
+      "how": "list"
+    },
+    {
+      "source": "2026 breeding wader survey",
+      "target": "Marram Ecology Ltd",
+      "type": "CARRIED_OUT_BY",
+      "how": "plain"
+    },
+    {
+      "source": "fox predation",
+      "target": "lapwing",
+      "type": "THREATENS",
+      "how": "plain"
+    },
+    {
+      "source": "fox predation",
+      "target": "redshank",
+      "type": "THREATENS",
+      "how": "list"
+    },
+    {
+      "source": "fox predation",
+      "target": "Hollin Carr",
+      "type": "AFFECTS",
+      "how": "plain"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "fox predation",
+      "type": "ADDRESSES",
+      "how": "coreference"
+    },
+    {
+      "source": "mink predation",
+      "target": "water vole",
+      "type": "THREATENS",
+      "how": "nominal"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "mink predation",
+      "type": "ADDRESSES",
+      "how": "alias"
+    },
+    {
+      "source": "2026 water vole survey",
+      "target": "Carrside Wetlands Trust",
+      "type": "CARRIED_OUT_BY",
+      "how": "coreference"
+    },
+    {
+      "source": "2026 water vole survey",
+      "target": "Ravensike Fen",
+      "type": "COVERED",
+      "how": "list"
+    },
+    {
+      "source": "2026 water vole survey",
+      "target": "Hollin Carr",
+      "type": "COVERED",
+      "how": "list"
+    },
+    {
+      "source": "2026 water vole survey",
+      "target": "water vole",
+      "type": "RECORDED",
+      "how": "plain"
+    },
+    {
+      "source": "nutrient enrichment",
+      "target": "Ravensike Fen",
+      "type": "AFFECTS",
+      "how": "passive"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "nutrient enrichment",
+      "type": "ADDRESSES",
+      "how": "alias"
+    },
+    {
+      "source": "water quality sampling",
+      "target": "Environment Agency",
+      "type": "CARRIED_OUT_BY",
+      "how": "nominal"
+    },
+    {
+      "source": "water quality sampling",
+      "target": "Hollin Carr",
+      "type": "COVERED",
+      "how": "plain"
+    },
+    {
+      "source": "OI-1",
+      "target": "bittern",
+      "type": "TRACKS",
+      "how": "table"
+    },
+    {
+      "source": "OI-1",
+      "target": "2026 bittern survey",
+      "type": "MEASURED_BY",
+      "how": "table"
+    },
+    {
+      "source": "OI-2",
+      "target": "lapwing",
+      "type": "TRACKS",
+      "how": "table"
+    },
+    {
+      "source": "OI-2",
+      "target": "redshank",
+      "type": "TRACKS",
+      "how": "table"
+    },
+    {
+      "source": "OI-2",
+      "target": "2026 breeding wader survey",
+      "type": "MEASURED_BY",
+      "how": "table"
+    },
+    {
+      "source": "OI-3",
+      "target": "reedbed",
+      "type": "TRACKS",
+      "how": "table"
+    },
+    {
+      "source": "OI-3",
+      "target": "2026 habitat mapping survey",
+      "type": "MEASURED_BY",
+      "how": "table"
+    },
+    {
+      "source": "OI-4",
+      "target": "water vole",
+      "type": "TRACKS",
+      "how": "table"
+    },
+    {
+      "source": "OI-4",
+      "target": "2026 water vole survey",
+      "type": "MEASURED_BY",
+      "how": "table"
+    },
+    {
+      "source": "OI-5",
+      "target": "water quality sampling",
+      "type": "MEASURED_BY",
+      "how": "table"
+    }
+  ],
+  "distractors": [
+    {
+      "source": "Marram Ecology Ltd",
+      "target": "Ravensike Wetland Restoration Programme",
+      "type": "PARTNER_IN",
+      "family": "negation"
+    },
+    {
+      "source": "avian influenza",
+      "target": "Ravensike Fen",
+      "type": "AFFECTS",
+      "family": "negation"
+    },
+    {
+      "source": "2026 bittern survey",
+      "target": "common crane",
+      "type": "RECORDED",
+      "family": "hedge"
+    },
+    {
+      "source": "mink predation",
+      "target": "lapwing",
+      "type": "THREATENS",
+      "family": "retracted"
+    },
+    {
+      "source": "LF-2026-031",
+      "target": "Ravensike Wetland Restoration Programme",
+      "type": "FUNDS",
+      "family": "conditional"
+    },
+    {
+      "source": "LF-2026-031",
+      "target": "Linnet Foundation",
+      "type": "AWARDED_BY",
+      "family": "conditional"
+    },
+    {
+      "source": "Ravensike Wetland Restoration Programme",
+      "target": "Blackwater Ings",
+      "type": "DELIVERED_AT",
+      "family": "future"
+    }
+  ],
+  "properties": [
+    {
+      "entity": "Ravensike Wetland Restoration Programme",
+      "property": "startDate",
+      "text": "2 October 2023",
+      "value": "2023-10-02",
+      "how": "alias"
+    },
+    {
+      "entity": "FCT-2023-0412",
+      "property": "amount",
+      "text": "£640,000",
+      "value": 640000,
+      "how": "apposition"
+    },
+    {
+      "entity": "BW-2024-117",
+      "property": "amount",
+      "text": "£185,000",
+      "value": 185000,
+      "how": "apposition"
+    },
+    {
+      "entity": "Ravensike Fen",
+      "property": "designation",
+      "text": "SSSI",
+      "value": "SSSI",
+      "how": "apposition"
+    },
+    {
+      "entity": "Ravensike Fen",
+      "property": "areaHectares",
+      "text": "210 ha",
+      "value": 210,
+      "how": "apposition"
+    },
+    {
+      "entity": "Blackwater Ings",
+      "property": "areaHectares",
+      "text": "40 ha",
+      "value": 40,
+      "how": "apposition"
+    }
+  ]
+}
