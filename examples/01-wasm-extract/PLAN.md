@@ -85,9 +85,11 @@ and "GmbH." do).
 **Deferred to a later pass** (agreed 2026-11-27; each changes scope or `score.txt`, so each is a
 decision, not a fix):
 - **The run's budget** (Phase 8). A full `./run.sh` takes about an hour against the 25-minute
-  target, which CI pays on every push to `main`. Likely route: the per-setting grids and the
-  "how the model is asked" comparison on a fixed subset of documents (as the floor invariant
-  already uses one), with `score.txt` saying which. The dev and held-out scores stay on everything.
+  target, which CI pays on every push to `main` (its job timeout is raised from 60 to 240 minutes
+  as a stopgap; with every model answer cached, `run.mjs` takes about 51 minutes on a laptop, the
+  scores and their grids most of it, and the browser section 13). Likely route: the per-setting
+  grids and the "how the model is asked" comparison on a fixed subset of documents (as the floor
+  invariant already uses one), with `score.txt` saying which. The dev and held-out scores stay on everything.
 - **Tools that find nothing** (Phase 6, "Done means"). Curated tools return rows for 292 of 386 on
   their stores: revise the tools (or their documents) that a reader would expect to answer. The
   packages' queries (28 of 133) are verbatim and written for their CSV data: restate the goal for

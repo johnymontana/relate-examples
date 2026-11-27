@@ -77,14 +77,14 @@ import { canon, cmp, dump, sha256 } from '../../../lib/replay.mjs';
  *                 0.800), 0.931 at 0.80: on real prose the model names many things that are not entities
  *                 of the domain, and a wrong node costs more than a right one left in review
  *   entDrop 0.30  the drop cutoffs decide only what waits in review (no kept fact moves)
- *   relKeep 0.20  relation precision 0.903 at 0.20 (recall 0.262, the best F1 too), 0.923 at 0.25 (0.231),
- *                 0.959 at 0.35 (0.169): 0.20 is the precision-first pick, with the drop moved below it.
- *                 Lists (20 of 531) and table rows (1 of 441) are where the facts are lost: the model
+ *   relKeep 0.20  relation precision 0.917 at 0.20 (recall 0.221, the best F1 too), 0.932 at 0.25 (0.196),
+ *                 0.960 at 0.35 (0.148): 0.20 is the precision-first pick, with the drop moved below it.
+ *                 Lists (53 of 531) and table rows (7 of 441) are where the facts are lost: the model
  *                 returns a whole list or row as one end, which no cutoff recovers
  *   relDrop 0.15  below the keep, so claims between them wait in review
  *   typeMargin 0.05, relMargin 0.05  entity and relation F1 move by at most 0.001 between 0 and 0.15
  *   poleMargin 0.25  rule 2's POLE preference, for create-context-graph's documents only (no bundled one)
- *   attrKeep 0.50, attrDrop 0.30  values (D27): P 0.905 R 0.670 at 0.50
+ *   attrKeep 0.50, attrDrop 0.30  values (D27): P 0.918 R 0.642 at 0.50
  * The margins are the page's (state.gate), the same for every model. (Earlier builds' defaults: 0.50/0.30
  * and 0.35/0.20 on create-context-graph's samples, 0.75/0.20 and 0.60/0.20 before those were rewritten;
  * edgextract's format had 0.85/0.70 from its golden set, LEGACY_DEFAULTS.)

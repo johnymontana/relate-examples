@@ -15,13 +15,19 @@ dependency fails the run instead of printing `SKIP`.
 
 | Started by | Examples run | Takes about |
 |---|---|---|
-| a push to `main`, or by hand (`workflow_dispatch`, on any branch) | every example | 19 minutes, 16.5 of them example 01 |
-| a pull request that changes example 01, or anything shared | every example | 19 minutes |
+| a push to `main`, or by hand (`workflow_dispatch`, on any branch) | every example | over an hour (19 minutes before example 01's curated corpus; below) |
+| a pull request that changes example 01, or anything shared | every example | over an hour |
 | a pull request that changes only example 02 or 03 | that example | 3 minutes |
 | a pull request that changes only docs, the site's page or `lib/tests/` | none; `pytest` only | 2 minutes |
 
-The first two times are measured; the last two are estimates from the steps that remain, until
-such a pull request has run.
+The 19 minutes was measured, before the curated corpus; the last two are estimates from the steps
+that remain, until such a pull request has run.
+
+Example 01's curated corpus (ADR-0019, ADR-0020: 40 ontologies, 61 documents) made its run much
+longer. On a laptop (6 worker threads), with every one of its 6,903 model answers taken from the
+inference cache (step 5), `harness/run.mjs` takes about 51 minutes, most of it the scores and their
+per-setting grids, and the browser section about 13. A cold cache asks the model for each answer on
+top of that. Neither has been timed on CI yet; cutting the run back is planned work.
 
 A pull request's first step, "Which examples to run", gives the paths it changes to
 [`ci/changed-examples.sh`](changed-examples.sh), which prints the examples to run: the example a
@@ -78,10 +84,10 @@ the run. No `.env` and no network beyond the downloads below.
    `run.sh` of each example this run needs ("What runs when"), with a per-example result table in
    the job summary; the job fails if any example fails.
 
-The job has a 60-minute timeout. A cold cache adds the gliner-rs build, 304 MB of weights and
-Chromium before example 01's own run, which takes about 10 minutes. Example 02 adds about a minute
-and example 03 a few seconds.
-The first two runs took 27 and 24 minutes. The linux CLI runs on ubuntu-24.04's glibc.
+The job has a 240-minute timeout (60 before example 01's curated corpus). A cold cache adds the
+gliner-rs build, 304 MB of weights, Chromium and every model answer before example 01's own run
+finishes. Example 02 adds about a minute and example 03 a few seconds. Before the curated corpus,
+the first two runs took 27 and 24 minutes. The linux CLI runs on ubuntu-24.04's glibc.
 
 ## `pages.yml`: the site
 

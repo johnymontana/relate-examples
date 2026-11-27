@@ -28,8 +28,10 @@ jobs:
   run:
     runs-on: ubuntu-24.04
     # On a cold cache example 01 adds a gliner-rs build (cargo install of wasm-pack and
-    # wasm-bindgen, then the crate), 304 MB of weights and Chromium, before its own run.
-    timeout-minutes: 60
+    # wasm-bindgen, then the crate), 304 MB of weights and Chromium, before its own run. That run
+    # takes over an hour since the curated corpus (ADR-0019), and longer with a cold inference
+    # cache: 240 minutes until it is cut back (ci/README.md).
+    timeout-minutes: 240
     env:
       # In this job a missing optional dependency FAILS instead of printing SKIP and passing.
       EXAMPLES_REQUIRE: wasm,gliner,browser   # 01's keys; 02's and 03's (wasm, browser) are among them

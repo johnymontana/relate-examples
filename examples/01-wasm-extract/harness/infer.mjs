@@ -1,7 +1,7 @@
 // @ts-check
 /**
  * harness/infer.mjs: gliner-rs on a pool of worker threads, for harness/run.mjs. gliner-rs is
- * synchronous and single-threaded, and run.mjs asks it about a thousand questions (every sentence of
+ * synchronous and single-threaded, and run.mjs asks it about 7,000 questions (every sentence of
  * every sample and fixture under its ontology's schema, the samples again as the example asked before
  * experiment B, and the floor invariant's sweep), so it asks them all up front, spread over worker threads that each load
  * the model, and then answers every model call from the results (cachedModel). The answers are

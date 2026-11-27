@@ -95,7 +95,7 @@ npx playwright install chromium                     # Playwright 1.63.0's Chromi
 - **A new Relate release.** It moves with the repository's other pins (ADR-0005; AGENTS.md,
   "Engine pins move together"); then re-run the probes and re-check every NOTES.md row.
 - **Node** 20 or later (CI uses 22).
-- **Time and memory.** The Node pipeline asks gliner-rs about 1,000 questions. `harness/infer.mjs`
+- **Time and memory.** A full run asks gliner-rs 6,903 questions. `harness/infer.mjs`
   asks them all first on up to 6 worker threads, each holding the model (about 700 MB of WASM
   memory); `EX01_INFER_THREADS` sets the count. Keep a laptop awake for a full run
   (`caffeinate -i ./run.sh` on macOS). Never run two `run.sh` in this directory at once: each starts
@@ -137,7 +137,7 @@ that section was skipped, so `native.txt` is the same either way.
 |---|---|---|
 | `probes.txt` | `harness/probes.mjs` | The Relate WASM surface the example relies on, one section per NOTES.md row R1-R19: the version, no transaction control, null and missing parameters, the result envelope, number binding, column names, dynamic labels, what is compiled out, indexes and plans, traps, read-only refusals, `timestamp()`. |
 | `model.txt` | `harness/model.mjs` | gliner-rs against the Python reference on 8 cases (same span and edge sets, scores within 1e-5, G7), a repeated call byte-identical, code-point offsets and one span under two labels (G11), and the long-input collapse (24 of 64 at 736 tokens, G10: a pin that fails once fixed). |
-| `ontology.txt` | `harness/ontology.mjs` | The Ontology Graph Spec 1.1 reader against ajv and the SDK on the 40 bundled documents, create-context-graph's 27 converted and 46 tampered or edge-case ones; the vendored packages against their manifest, each overlay stripping back to its package and each conversion fresh; each bundled ontology's bar (D23); the relate-examples extension and the schema budget on tampered documents (D22, D25-D27); the SDK's YAML decoder findings (Y1, Y2); the draft format converted (`fromDraft`) and a draft build's store migrated on open; create-context-graph's conversion lossless; where each of the 220 tools lands; what each domain is asked; graph types and their refusals (R16); a generic document end to end; the example's 17 limits; the `db.ontology.*` canary (R17); the ported splitter (57 of 57 documents) and names (677 of 677) against edgextract's own WASM. |
+| `ontology.txt` | `harness/ontology.mjs` | The Ontology Graph Spec 1.1 reader against ajv and the SDK on the 40 bundled documents, create-context-graph's 27 converted and 46 tampered or edge-case ones; the vendored packages against their manifest, each overlay stripping back to its package and each conversion fresh; each bundled ontology's bar (D23); the relate-examples extension and the schema budget on tampered documents (D22, D25-D27); the SDK's YAML decoder findings (Y1, Y2); the draft format converted (`fromDraft`) and a draft build's store migrated on open; create-context-graph's conversion lossless; where each of the 220 tools lands; what each domain is asked; graph types and their refusals (R16); a generic document end to end; the example's 17 limits; the `db.ontology.*` canary (R17); the ported splitter (79 of 79 documents) and names (5,019 of 5,019) against edgextract's own WASM. |
 | `extract.txt` | `harness/run.mjs` | Every mention and claim with its band, rule and score: the 12 edge-case fixtures (`harness/fixtures.mjs`) and the 49 documents, each ontology in its own store; the published graphs; a second pass with 0 inferences; stop, crash and resume (D9). |
 | `gate.txt` | `harness/run.mjs` | The floor invariant (the store thresholded at t equals a fresh model call at t for 412 of 480 pairs; the 68 exceptions are the model's own decoding); the Cypher gate equal to a plain-JS gate on every store under every rule configuration; a scripted model for the rules' exact boundaries. |
 | `audit.txt` | `harness/run.mjs` | Six 0-row audits (`queries/audit-*.cypher`) on every store; an illegal publish refused by the graph type; saved-query row counts; dumps reloaded with equal content digests; every ontology tool run on its domain's sample store against the page's prediction; the console's bookkeeping filter. |
@@ -205,10 +205,10 @@ console worker: console.js                     RelateDb.open(uri, readOnly = tru
   keys `ex01.*`, the channel `ex01-stores`.
 - **The build** (`build.mjs`, D13). `dist/` is deterministic, uses relative URLs only, and serves
   fixed bytes under versioned directories: `assets/relate-1.3.0/`, `assets/gliner-rs-4fa741e/`,
-  `assets/nvl-2.0.0/`, `assets/js-yaml-4.3.2/` and `assets/lib-<sha8>/` (`lib/replay.mjs`,
-  `lib/relate_wasm.mjs`). The modules keep Node-style import specifiers, which `build.mjs` rewrites
-  to those paths; an import map is not an option, because the CSP allows no inline script and
-  module workers ignore import maps.
+  `assets/nvl-2.0.0/`, `assets/js-yaml-4.3.2/`, `assets/ontology-graph-spec-0.13.0/` and
+  `assets/lib-<sha8>/` (`lib/replay.mjs`, `lib/relate_wasm.mjs`, `lib/ogs.mjs`). The modules keep
+  Node-style import specifiers, which `build.mjs` rewrites to those paths; an import map is not an
+  option, because the CSP allows no inline script and module workers ignore import maps.
 - **The harness's model pool.** Only in Node, `harness/infer.mjs` answers every model question on
   worker threads before the pipeline runs (three are asked again on the main thread and must be
   byte-identical, G7). The page has one model in its worker.
@@ -428,14 +428,14 @@ decodes the JSON of the result: the SDK's own YAML decoder misreads plain YAML (
 - **The bundled 40**, in the picker by industry:
   - **27 curated domains** ([`data/ontologies/domains/`](data/ontologies/domains/), ADR-0019),
     written for this example: kinds named by the role their domain gives them (no POLE+O base),
-    descriptions, aliases, references to public vocabularies, realistic properties, and 8 to 15
+    descriptions, aliases, references to public vocabularies, realistic properties, and 13 to 15
     tools each.
   - **13 of Neo4j's solution packages** (neo4j/studio-agent-use-cases at `b76f767`, ADR-0020),
     vendored verbatim in [`data/ontologies/studio/`](data/ontologies/studio/), each with this
     example's overlay beside it. `node harness/convert.mjs` (or `--only <package>`) writes the page's
     document to `data/ontologies/ogs/studio/`; every run fails on a stale one, and on an overlay
-    that does not strip back to the package exactly. Three packages are written against spec
-    1.0.0, which they read as 1.1 (1.1 adds only property aliases; `ontology.txt` pins the schema
+    that does not strip back to the package exactly. All 13 name spec 1.0.0, which the page reads
+    as 1.1 (1.1 adds only property aliases, which three of them use; `ontology.txt` pins the schema
     difference).
   - create-context-graph's 27 domain files stay in `data/ontologies/ccg/` with their `_base.yaml`:
     the editor still converts a pasted or uploaded one, losslessly (properties, tools, templates and
@@ -462,8 +462,8 @@ decodes the JSON of the result: the SDK's own YAML decoder misreads plain YAML (
     with its implied labels.
   - A link with exactly one legal pair is an edge type of the graph type. A graph type allows one
     source and one target label per relationship type (R16), so a link with several pairs is checked
-    by the gate only. Financial Services has 12 links enforced by the graph type and 0 gate-only;
-    Legal has 16 and 1.
+    by the gate only. Financial Services has 15 links enforced by the graph type and 0 gate-only;
+    Golf Sports has 15 and 1.
   - Other declared properties, cardinalities and constraints stay descriptive: the extractor writes
     only `name`, `display`, `key` and its own bookkeeping.
 - **Extensions it reads:**
@@ -537,14 +537,14 @@ and 27 default views become 220 `canonicalQuery` tools, each on the node its fir
 compared with where that comparison filters the rows (153), else the first labelled node of its
 first `MATCH` (67) (`web/convert.js` `toolAnchor`).
 
-- **The Console tab** lists the open store's tools by element (Financial Services: Person 3,
+- **The Console tab** lists the open store's tools by element (Financial Services: Client 4,
   Account 3, Decision 2), each with its description, Cypher (**Copy**, **Load into editor**),
   parameter inputs and **Run**. Only `canonicalQuery` tools run.
 - **The graph's side panel** lists the tools on a clicked entity's kind. The entity's name goes into
   at most one parameter, one the query compares with a name-like property of that kind
   (`console.js` `prefillChoice`); a tool whose parameters then all have a value runs (**Run with
-  $query = "Dana Whitlock"**), and one with an empty parameter opens its card and asks
-  (**Open: fill $id**).
+  $client = "Arjun Mehta"**), and one with an empty parameter opens its card and asks
+  (**Open: fill $accountId**).
 - **Before running** (`toolArgs`): every parameter without a default is required (a missing or empty
   value is refused, never sent as null: R3), values are typed by their token (a STRING read only
   through `toInteger()` must be a whole number), `one_of` must hold, and an undeclared `$name` is
@@ -710,8 +710,8 @@ not the model's or the engine's.
   Photovoltaics Plc. in Gateshead employs Rhys Penhallow." becomes two sentences, and a relation
   across the split is never asked, because the model reads one sentence at a time.
 - **A link with many legal pairs makes a long question** (D22). It is asked once per pair, joined
-  by " or " (see "What the model is asked"): a link legal for 25 kind pairs is 776 characters of
-  the 2,000. The budget shortens kind descriptions only; a link's ask is never cut, so a link with
+  by " or " (see "What the model is asked"). No bundled link has more than 3 pairs (at most 92
+  characters), but a pasted ontology's link legal for 25 pairs spends several hundred of the 2,000. The budget shortens kind descriptions only; a link's ask is never cut, so a link with
   many pairs leaves less room for the kinds' descriptions.
 - **Rule 2b keeps one kind per name** (the gate). For example, "Mercury" kept as a Planet and as a
   Company keeps one of them; the other's mentions go to review as `other-kind`. The gate cannot
@@ -761,7 +761,7 @@ the site ships it too, linked from the page's footer, with each licence beside w
 |---|---|
 | `run.sh` | the sections, modes and diffs |
 | `NOTES.md` | the Relate 1.3.0 behaviours (R1-R24) and the design ids |
-| `web/` | the page: `index.html`, `style.css`, `app.js`; `worker.js` (engine worker); `console.js` (console worker, and the tools' checks and the bookkeeping filter); `pipeline.js`, `store.js` (the gate), `ontology.js`, `ogs.js` (the reader and writer, on lib/ogs.mjs and the SDK), `convert.js` (create-context-graph to the spec's format, tool placement), `split.js` and `names.js` (edgextract's rules), `gliner.js`, `models.js`, `graphview.js`, `tonvl.js`, `export.js`, `opfs.js`, `tar.js`; `vendor-entry.mjs` (the NVL bundle's entry) |
+| `web/` | the page: `index.html`, `style.css`, `app.js`; `worker.js` (engine worker); `console.js` (console worker, and the tools' checks and the bookkeeping filter); `pipeline.js`, `store.js` (the gate), `ontology.js`, `ogs.js` (the reader and writer, on lib/ogs.mjs and the SDK), `convert.js` (create-context-graph to the spec's format, tool placement), `studio.js` (a solution package and its overlay to a document), `values.js` (property values read from text, parsed by type), `markdown.js` (the About drawer's markdown), `split.js` and `names.js` (edgextract's rules), `gliner.js`, `models.js`, `graphview.js`, `tonvl.js`, `export.js`, `opfs.js`, `tar.js`; `vendor-entry.mjs` (the NVL bundle's entry) |
 | `build.mjs`, `site.json` | `npm run build` → `dist/`; the site contract |
 | `harness/` | `probes.mjs`, `model.mjs`, `ontology.mjs`, `run.mjs` (the Node sections), `infer.mjs` (the model pool), `fixtures.mjs` (edge-case documents and the generic document; `fixtures/`: two draft-format documents of the last draft build); `convert.mjs` (writes `data/ontologies/ogs/studio/`, `--check`, `--only <package>`); `vendor-studio.mjs` (vendors the solution packages, `--check`); `corpus.mjs` (the corpus: gold v2, lint, scoring, the bar; `--merge`); `domain.mjs` (one ontology end to end: `--lint`, `--show`); `drive.mjs` (Chromium, `--smoke`; with `--screenshot screenshot.png` against a local `./run.sh --site` it retakes the picture on the Pages index); `native.py`; `serve.mjs` (`--dev`; `--site` is lib/serve.mjs); `reference.py` (`--reference`) |
 | `queries/` | `01`-`08` the console's saved queries; `audit-1`…`audit-6` the 0-row audits; `report-keys-displays` a report for `audit.txt`. Each documents its parameters as `// @param name TYPE <json example> description`. |

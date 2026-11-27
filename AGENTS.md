@@ -150,7 +150,8 @@ run is quick enough to run whole; one Node section alone is `node harness/run.mj
   pass a dump through `JSON.parse`/`JSON.stringify`/`postMessage` (send `canon(d)` text).
 - `lib/opfsfmt.py` (stdlib) and its browser twin `examples/01-wasm-extract/web/opfs.js`: the strict
   format guard, pinned by `VERIFIED = "1.3.0"`; exit 3 on anything else.
-- `lib/tests/`: `test_opfsfmt.py`, `test_replay.py`, `test_replay_js.py`, `test_site_build.py`
+- `lib/tests/`: `test_changed_examples.py`, `test_opfsfmt.py`, `test_replay.py`, `test_replay_js.py`,
+  `test_site_build.py`
   (`conftest.py` puts `lib/` on `sys.path`; `lib/` is a plain directory, not a package).
 - `scripts/env.sh`, `scripts/build-gliner-wasm.sh`, `scripts/fetch-gliner.sh` (each `--check` mode
   reads only the cache and prints an `export` line).

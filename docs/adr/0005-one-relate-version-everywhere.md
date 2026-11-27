@@ -2,6 +2,9 @@
 
 Status: accepted · Decided: b26e6cd (example 01's D2) · Scope: repository
 
+The pinned version moves with each upgrade, as decided below: it is now **1.3.0**
+(`ci/relate-1.3.0.sha256`, since `3e887b1`). The text names 1.2.0, the version when this was decided.
+
 The examples compare surfaces against each other. Example 01's download opens in native Relate, the
 browser's results are checked against the CLI's, and example 02's 32 reference queries return the
 same rows natively and in WASM. Comparing surfaces only means something if they are the same
