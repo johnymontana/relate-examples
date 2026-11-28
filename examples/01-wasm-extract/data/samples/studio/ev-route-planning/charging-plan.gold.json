@@ -1,0 +1,57 @@
+{
+  "entities": [
+    {"name": "Paris", "type": "Geo"},
+    {"name": "Lyon", "type": "Geo"},
+    {"name": "Marseille", "type": "Geo"},
+    {"name": "Dijon", "type": "Geo"},
+    {"name": "Strasbourg", "type": "Geo"},
+    {"name": "Valence", "type": "Geo"},
+    {"name": "Montelimar", "type": "Geo"},
+    {"name": "Orange", "type": "Geo"},
+    {"name": "Avignon", "type": "Geo"},
+    {"name": "Villeurbanne", "type": "Geo"},
+    {"name": "CS-A6-01", "type": "ChargingStation"},
+    {"name": "CS-LYON-02", "type": "ChargingStation"},
+    {"name": "CS-A7-01", "type": "ChargingStation"},
+    {"name": "CS-A89-02", "type": "ChargingStation"},
+    {"name": "CS-A31-01", "type": "ChargingStation"},
+    {"name": "CS-A31-02", "type": "ChargingStation"},
+    {"name": "CS-MARSEILLE-03", "type": "ChargingStation"},
+    {"name": "EV-013", "type": "Car"},
+    {"name": "EV-016", "type": "Car"},
+    {"name": "EV-018", "type": "Car"}
+  ],
+  "relations": [
+    {"source": "CS-A6-01", "target": "Paris", "type": "ROAD", "how": "table"},
+    {"source": "Lyon", "target": "CS-A6-01", "type": "ROAD", "how": "table"},
+    {"source": "Lyon", "target": "CS-LYON-02", "type": "ROAD", "how": "table"},
+    {"source": "Lyon", "target": "CS-A7-01", "type": "ROAD", "how": "table"},
+    {"source": "CS-A7-01", "target": "Marseille", "type": "ROAD", "how": "table"},
+    {"source": "CS-A89-02", "target": "Lyon", "type": "ROAD", "how": "plain"},
+    {"source": "CS-A31-01", "target": "Paris", "type": "ROAD", "how": "plain"},
+    {"source": "Dijon", "target": "CS-A31-01", "type": "ROAD", "how": "coreference"},
+    {"source": "Dijon", "target": "CS-A31-02", "type": "ROAD", "how": "plain"},
+    {"source": "CS-A31-02", "target": "Lyon", "type": "ROAD", "how": "plain"},
+    {"source": "Lyon", "target": "Valence", "type": "ROAD", "how": "plain"},
+    {"source": "Montelimar", "target": "Valence", "type": "ROAD", "how": "coreference"},
+    {"source": "Montelimar", "target": "Orange", "type": "ROAD", "how": "coreference"},
+    {"source": "Avignon", "target": "Orange", "type": "ROAD", "how": "plain"},
+    {"source": "Avignon", "target": "Marseille", "type": "ROAD", "how": "passive"},
+    {"source": "Marseille", "target": "CS-MARSEILLE-03", "type": "ROAD", "how": "plain"}
+  ],
+  "distractors": [
+    {"source": "CS-A7-01", "target": "Valence", "type": "ROAD", "family": "negation"},
+    {"source": "Villeurbanne", "target": "CS-LYON-02", "type": "ROAD", "family": "hedge"},
+    {"source": "Montelimar", "target": "CS-A7-01", "type": "ROAD", "family": "future"},
+    {"source": "Dijon", "target": "CS-A6-01", "type": "ROAD", "family": "retracted"},
+    {"source": "Valence", "target": "CS-LYON-02", "type": "ROAD", "family": "alleged"}
+  ],
+  "properties": [
+    {"entity": "EV-013", "property": "battery_capacity_kwh", "text": "77.0", "value": 77, "how": "table"},
+    {"entity": "EV-013", "property": "max_charge_power_kw", "text": "150", "value": 150, "how": "table"},
+    {"entity": "CS-A6-01", "property": "power_kw", "text": "150", "value": 150, "how": "table"},
+    {"entity": "CS-LYON-02", "property": "power_kw", "text": "50", "value": 50, "how": "plain"},
+    {"entity": "CS-A7-01", "property": "power_kw", "text": "300", "value": 300, "how": "plain"},
+    {"entity": "CS-MARSEILLE-03", "property": "power_kw", "text": "200", "value": 200, "how": "apposition"}
+  ]
+}

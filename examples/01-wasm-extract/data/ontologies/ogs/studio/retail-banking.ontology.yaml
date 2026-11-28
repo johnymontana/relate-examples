@@ -1,0 +1,1818 @@
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '2'
+id: retail-banking
+name: Retail Banking Fraud
+description: 'Models retail banking as one graph of money, identity and digital access: customers and the accounts they hold, payments as transaction nodes between accounts, the identifiers customers share, and the sessions, devices and IP addresses they bank from. Answers whether money moves round closed rings, which customers share identifiers or devices, whether a session from a new device or country is followed by a payment to a new beneficiary, which new accounts pass money straight through, and whether funds reach a high-risk jurisdiction. The structure follows Neo4j''s Transaction and Account Data Model. Descriptions, aliases and references draw on FIBO (Financial Industry Business Ontology), https://github.com/edmcouncil/fibo, Copyright (c) 2013-2026 EDM Association dba EDM Council, Inc. and Copyright (c) 2013-2025 Object Management Group, Inc., used under the MIT License (https://opensource.org/licenses/MIT). A simplification for demonstration, not FIBO itself, and not endorsed by the EDM Council or the Object Management Group.'
+nodes:
+  Customer:
+    label: Customer
+    properties:
+      customerId:
+        type: STRING
+        key: true
+        description: Identifier for the customer record, unique across the institution and stable for the life of the relationship. e.g. `CUS10001`.
+        pattern: ^CUS[0-9]{5}$
+      firstName:
+        type: STRING
+        description: 'The customer''s given name as recorded at onboarding. A descriptor, not an identifier: names are too common to link customers on their own. e.g. `Jessica`.'
+      lastName:
+        type: STRING
+        description: The customer's family name as recorded at onboarding. A descriptor, not an identifier. e.g. `Murray`.
+      dateOfBirth:
+        type: ZONED DATETIME
+        description: Date of birth as recorded at onboarding, as an ISO 8601 zoned datetime at midnight UTC; only the calendar date carries meaning. e.g. `1989-04-18T00:00:00Z`.
+    extensions:
+      display:
+        x: 0
+        'y': 0
+        colour: '#2563eb'
+      custom:
+        relate-examples:
+          ask: a bank customer who holds an account, named by full name, such as Priya Collins; a person, never an account, a device or a bank
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: graph-census
+            question: Graph census
+            description: Counts the nodes of every label in the reference ontology to confirm the import landed before running anything else.
+            cypher: |-
+              RETURN COUNT { (:Customer) } AS customers,
+                     COUNT { (:Account) } AS accounts,
+                     COUNT { (:Transaction) } AS transactions,
+                     COUNT { (:Country) } AS countries,
+                     COUNT { (:Email) } AS emails,
+                     COUNT { (:Phone) } AS phones,
+                     COUNT { (:Address) } AS addresses,
+                     COUNT { (:Passport) } AS passports,
+                     COUNT { (:DrivingLicense) } AS drivingLicenses,
+                     COUNT { (:Session) } AS sessions,
+                     COUNT { (:Device) } AS devices,
+                     COUNT { (:IP) } AS ips;
+            parameters: []
+            category: query
+            teaches: Run straight after an import. A zero means that label's table did not load. The census counts nodes only; a payment whose account columns did not resolve still counts as a Transaction but sits on no path, and a session whose device did not resolve still counts but links to no device.
+            returns: 'One row with a count per label: customers, accounts, transactions, countries, emails, phones, addresses, passports, drivingLicenses, sessions, devices and ips.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - sanity-check
+              - import
+              - orientation
+            upstream:
+              file: QUERIES.md
+              heading: Graph census
+              sample: 'Bundled sample data only: returns 1 row — customers 1266, accounts 1892, transactions 7906, countries 21, emails 1376, phones 1285, addresses 986, passports 542, drivingLicenses 699, sessions 7432, devices 1748, ips 956.'
+          - type: canonicalQuery
+            name: synthetic-identity-clusters
+            question: Synthetic identity clusters
+            description: 'Pairs of customers who share at least a given number of distinct identifier types — Email, Phone, Address, Passport, DrivingLicense — together with the money behind them: the accounts the pair holds, when the newest was opened, and what those accounts have sent. Identities assembled from shared contact details and reused documents converge on the same identifier nodes; their accounts show what the cluster does with money.'
+            cypher: |-
+              MATCH (c1:Customer)-[:HAS_EMAIL|HAS_PHONE|HAS_ADDRESS|HAS_PASSPORT|HAS_DRIVING_LICENSE]->(identifier)
+                    <-[:HAS_EMAIL|HAS_PHONE|HAS_ADDRESS|HAS_PASSPORT|HAS_DRIVING_LICENSE]-(c2:Customer)
+              WHERE elementId(c1) < elementId(c2)
+              WITH c1, c2, collect(DISTINCT head(labels(identifier))) AS sharedTypes
+              WHERE size(sharedTypes) >= $minSharedTypes
+              UNWIND [c1, c2] AS holder
+              OPTIONAL MATCH (holder)-[:HAS_ACCOUNT]->(a:Account)
+              WITH DISTINCT c1, c2, sharedTypes, a
+              OPTIONAL MATCH (a)-[:PERFORMS]->(t:Transaction)
+              WITH c1, c2, sharedTypes,
+                   collect(DISTINCT a.accountNumber) AS accounts,
+                   max(a.openedDate) AS newestOpened,
+                   count(t) AS paymentsSent,
+                   sum(t.amount) AS totalSent
+              RETURN c1.customerId AS customer1,
+                     c2.customerId AS customer2,
+                     sharedTypes,
+                     size(sharedTypes) AS sharedTypeCount,
+                     accounts,
+                     date(newestOpened) AS newestAccountOpened,
+                     paymentsSent,
+                     round(totalSent, 2) AS amountSent
+              ORDER BY sharedTypeCount DESC, newestAccountOpened DESC, customer1, customer2
+              LIMIT 50;
+            parameters:
+              - name: minSharedTypes
+                type: INTEGER
+                description: 'Minimum number of distinct identifier types the two customers share. Integer. Start at 2: one shared identifier, an address above all, is ordinary among family and flatmates. Raise to 3 to separate households, which commonly share an address and a landline, from identities assembled from shared details.'
+                example: 2
+            category: query
+            teaches: A shared passport or driving licence is the strongest signal; a shared address alone is the weakest. HAS_ADDRESS includes previous addresses (isCurrent false), so two people who lived at one address years apart still pair — add WHERE r.isCurrent where that matters. A recently opened account in a strongly linked pair is the bust-out pattern to look at first. The literal LIMIT 50 keeps the list reviewable; raise minSharedTypes rather than the limit. For clusters larger than a pair, use the GDS section.
+            returns: 'One row per customer pair: customer1 and customer2 (customerId), sharedTypes (the identifier labels shared), sharedTypeCount, accounts (accountNumber of every account either holds), newestAccountOpened (a date), paymentsSent and amountSent (count and total of payments those accounts performed, in their recorded currencies). Ordered by sharedTypeCount, then newest account first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - synthetic-identity
+              - shared-identifier
+              - first-party-fraud
+            upstream:
+              file: QUERIES.md
+              heading: Synthetic identity clusters
+              sample: 'Bundled sample data only: $minSharedTypes = 2 returns 44 rows, 6 of them sharing three or more types; the first pairs CUS10469 and CUS11143, sharing Address, Email, Passport and Phone. $minSharedTypes = 3 returns those 6.'
+          - type: canonicalQuery
+            name: project-identity-links-requires-gds
+            question: Project identity links (requires GDS)
+            description: 'Projects an in-memory, undirected graph named identity-links: one node per customer who shares at least a given number of identifier types with another customer, one relationship per such pair.'
+            cypher: |-
+              MATCH (c1:Customer)-[:HAS_EMAIL|HAS_PHONE|HAS_ADDRESS|HAS_PASSPORT|HAS_DRIVING_LICENSE]->(identifier)
+                    <-[:HAS_EMAIL|HAS_PHONE|HAS_ADDRESS|HAS_PASSPORT|HAS_DRIVING_LICENSE]-(c2:Customer)
+              WHERE elementId(c1) < elementId(c2)
+              WITH c1, c2, count(DISTINCT head(labels(identifier))) AS sharedTypes
+              WHERE sharedTypes >= $minSharedTypes
+              WITH gds.graph.project('identity-links', c1, c2, {}, {undirectedRelationshipTypes: ['*']}) AS g
+              RETURN g.graphName AS graph, g.nodeCount AS customers, g.relationshipCount AS links;
+            parameters:
+              - name: minSharedTypes
+                type: INTEGER
+                description: As in Synthetic identity clusters. Integer. Start at 2; use the same value as there so the clusters and the pairs agree.
+                example: 2
+            category: graph data science
+            teaches: Run before Identity clusters with WCC, and drop the projection afterwards. Customers with no qualifying link are not projected, so every cluster has at least two members.
+            returns: 'One row: graph (name), customers (nodeCount) and links (relationshipCount, which counts each undirected link in both directions).'
+            prerequisites: GDS plugin. No projection named identity-links exists.
+            tags:
+              - gds
+              - projection
+              - synthetic-identity
+            requires:
+              - gds
+            upstream:
+              file: QUERIES.md
+              heading: Project identity links (requires GDS)
+              sample: 'Bundled sample data only: $minSharedTypes = 2 projects 49 customers.'
+          - type: canonicalQuery
+            name: identity-clusters-with-wcc-requires-gds
+            question: Identity clusters with WCC (requires GDS)
+            description: 'Streams Weakly Connected Components over identity-links: each component is a group of customers joined, directly or through one another, by shared identifiers.'
+            cypher: |-
+              CALL gds.wcc.stream('identity-links')
+              YIELD nodeId, componentId
+              WITH componentId, collect(gds.util.asNode(nodeId).customerId) AS customers
+              WHERE size(customers) >= $minClusterSize
+              RETURN componentId, size(customers) AS clusterSize, customers
+              ORDER BY clusterSize DESC, componentId
+              LIMIT 50;
+            parameters:
+              - name: minClusterSize
+                type: INTEGER
+                description: 'Minimum customers in a cluster. Integer. Start at 3: pairs are already listed by Synthetic identity clusters.'
+                example: 3
+            category: graph data science
+            teaches: A household that shares an address and a landline forms a small cluster of its own; a cluster of unrelated names around one phone or document is the synthetic-identity pattern. Read each cluster's accounts with Synthetic identity clusters. The literal LIMIT 50 caps the list.
+            returns: 'One row per cluster: componentId (arbitrary, valid only for this run), clusterSize and customers (customerId), largest first.'
+            prerequisites: GDS plugin; Project identity links run first.
+            tags:
+              - gds
+              - wcc
+              - synthetic-identity
+              - cluster
+            requires:
+              - gds
+            upstream:
+              file: QUERIES.md
+              heading: Identity clusters with WCC (requires GDS)
+              sample: 'Bundled sample data only: $minClusterSize = 3 returns 8 clusters, three of four customers and five of three.'
+          - type: canonicalQuery
+            name: drop-identity-links-projection-requires-gds
+            question: Drop identity links projection (requires GDS)
+            description: Removes the identity-links projection from memory.
+            cypher: |-
+              CALL gds.graph.drop('identity-links', false)
+              YIELD graphName
+              RETURN graphName;
+            parameters: []
+            category: graph data science
+            teaches: Run after Identity clusters with WCC, and before projecting again under the same name.
+            returns: 'One row: graphName, or no row when no projection of that name exists.'
+            prerequisites: GDS plugin.
+            tags:
+              - gds
+              - projection
+              - cleanup
+            requires:
+              - gds
+            upstream:
+              file: QUERIES.md
+              heading: Drop identity links projection (requires GDS)
+              sample: ''
+          - type: canonicalQuery
+            name: node-key-constraints
+            question: Node-key constraints
+            cypher: |-
+              CREATE CONSTRAINT customerId_Customer_key IF NOT EXISTS
+                FOR (c:Customer) REQUIRE c.customerId IS NODE KEY;
+              CREATE CONSTRAINT accountNumber_Account_key IF NOT EXISTS
+                FOR (a:Account) REQUIRE a.accountNumber IS NODE KEY;
+              CREATE CONSTRAINT transactionId_Transaction_key IF NOT EXISTS
+                FOR (t:Transaction) REQUIRE t.transactionId IS NODE KEY;
+              CREATE CONSTRAINT code_Country_key IF NOT EXISTS
+                FOR (c:Country) REQUIRE c.code IS NODE KEY;
+              CREATE CONSTRAINT address_Email_key IF NOT EXISTS
+                FOR (e:Email) REQUIRE e.address IS NODE KEY;
+              CREATE CONSTRAINT phoneNumber_Phone_key IF NOT EXISTS
+                FOR (p:Phone) REQUIRE p.phoneNumber IS NODE KEY;
+              CREATE CONSTRAINT addressId_Address_key IF NOT EXISTS
+                FOR (a:Address) REQUIRE a.addressId IS NODE KEY;
+              CREATE CONSTRAINT passportId_Passport_key IF NOT EXISTS
+                FOR (p:Passport) REQUIRE p.passportId IS NODE KEY;
+              CREATE CONSTRAINT licenseId_DrivingLicense_key IF NOT EXISTS
+                FOR (d:DrivingLicense) REQUIRE d.licenseId IS NODE KEY;
+              CREATE CONSTRAINT sessionId_Session_key IF NOT EXISTS
+                FOR (s:Session) REQUIRE s.sessionId IS NODE KEY;
+              CREATE CONSTRAINT deviceId_Device_key IF NOT EXISTS
+                FOR (d:Device) REQUIRE d.deviceId IS NODE KEY;
+              CREATE CONSTRAINT ipAddress_IP_key IF NOT EXISTS
+                FOR (i:IP) REQUIRE i.ipAddress IS NODE KEY;
+            parameters: []
+            category: setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Node-key constraints
+              sample: ''
+    description: A person who holds one or more of the institution's accounts, as primary or secondary holder. Identifiers and digital sessions attach to the customer, so it is where identity, device use and money meet. Expected to be one node per real person, after the institution's own identity resolution.
+    aliases:
+      - Client
+      - Retail customer
+    reference: https://spec.edmcouncil.org/fibo/ontology/FND/ProductsAndServices/ProductsAndServices/Customer
+  Account:
+    label: Account
+    properties:
+      accountNumber:
+        type: STRING
+        key: true
+        description: 'Identifier for the account as the institution records it: for a UK account the sort code and account number, `NN-NN-NN NNNNNNNN`; for an account abroad its IBAN, without spaces. Text, so leading zeros survive. Unique across internal and external accounts. e.g. `12-34-56 10097783`.'
+        pattern: ^(?:[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{8}|[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30})$
+      accountScope:
+        type: STRING
+        must_exist: true
+        description: Whether the account is held at this institution (`INTERNAL`) or at another one (`EXTERNAL`). Stands in for the base model's `Internal` and `External` labels; a payment from an internal to an external account is money leaving the institution. e.g. `INTERNAL`.
+        one_of:
+          - INTERNAL
+          - EXTERNAL
+      accountType:
+        type: STRING
+        description: Product type of an internal account as the institution names it, for example `CURRENT` (FIBO's demand deposit account), `SAVINGS` or `BUSINESS`; a fixed-term account is FIBO's time deposit account. An open list. Empty for external accounts. e.g. `CURRENT`.
+      openedDate:
+        type: ZONED DATETIME
+        description: Instant the account was opened, as an ISO 8601 zoned datetime. Account age at the time of a payment is measured from it. Empty for external accounts. e.g. `2019-08-15T17:57:34Z`.
+    extensions:
+      display:
+        x: 120
+        'y': 0
+        colour: '#d97706'
+      custom:
+        relate-examples:
+          ask: a bank account, named by sort code and number, such as 12-34-56 24563467, or by IBAN, such as LT169404837175302881
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: directed-ring-basic
+            question: Directed ring (basic)
+            description: 'First pass: proves directed rings exist at all. Follows money out of an account through PERFORMS to a Transaction and on through BENEFITS_TO to the beneficiary account, three to six times, ending back at the starting account.'
+            cypher: |-
+              MATCH path =
+                (start:Account)
+                (()-[:PERFORMS]->()-[:BENEFITS_TO]->()){3,6}
+                (start)
+              RETURN path;
+            parameters: []
+            category: query
+            teaches: 'The hop bound {3,6} is a literal — Cypher rejects a parameter inside a quantifier, so changing it means editing the query text. Three is the shortest ring that is not a two-account round trip; widen the upper bound one step at a time, because cost grows quickly with ring length on a dense graph, and never remove it. A bare cycle is a weak signal: use this to show rings exist, then tighten with the queries below.'
+            returns: 'One row per ring and starting account: path, alternating Account and Transaction nodes from the starting account back to it. A ring of n accounts is returned n times, once rotated to start at each of its accounts.'
+            prerequisites: None beyond the imported reference ontology and Neo4j 5.9+.
+            tags:
+              - ring
+              - cycle
+              - layering
+              - fraud
+            upstream:
+              file: QUERIES.md
+              heading: Directed ring (basic)
+              sample: 'Bundled sample data only: returns 132 paths covering 33 distinct rings, among them 12-34-57 43064339 → 12-34-58 25868819 → 12-34-56 28166225 → 12-34-58 39026094 → back to the start, once rotated to start at each of its accounts.'
+          - type: canonicalQuery
+            name: directed-ring-with-distinct-accounts-requires-apoc
+            question: Directed ring with distinct accounts (requires APOC)
+            description: The basic directed ring, keeping only rings whose paying accounts are all different. Drops rings that revisit an intermediate account, which are usually legitimate back-and-forth activity rather than layering.
+            cypher: |-
+              MATCH path =
+                (start:Account)
+                ((source)-[:PERFORMS]->(tx)-[:BENEFITS_TO]->(target)){3,6}
+                (start)
+              WHERE size(apoc.coll.toSet(source)) = size(source)
+              RETURN path;
+            parameters: []
+            category: query
+            teaches: On real payments data this is the filter that does the most work. It uses the same literal {3,6} hop bound as the basic query. Without APOC, replace size(apoc.coll.toSet(source)) = size(source) with a reduce-based distinctness check, or accept the repeats and filter downstream.
+            returns: 'One row per ring and starting account: path, as for the basic directed ring, restricted to rings with no repeated account.'
+            prerequisites: APOC (apoc.coll.toSet) and Neo4j 5.9+.
+            tags:
+              - ring
+              - cycle
+              - layering
+              - fraud
+              - apoc
+            requires:
+              - apoc
+            upstream:
+              file: QUERIES.md
+              heading: Directed ring with distinct accounts (requires APOC)
+              sample: 'Bundled sample data only: returns 55 paths covering 15 rings, among them the ring through 12-34-57 43064339 once per account; the other 18 rings from Directed ring (basic) revisit an account.'
+          - type: canonicalQuery
+            name: chronological-and-amount-decay-ring-requires-apoc
+            question: Chronological and amount-decay ring (requires APOC)
+            description: 'The strictest check: a ring of distinct accounts in which each payment executes after the one before it (Transaction.date, the execution timestamp) and carries 80–100% of the previous payment''s amount (Transaction.amount, in major currency units) — the signature of a cut being taken at every hop.'
+            cypher: |-
+              MATCH path =
+                (start:Account)-[:PERFORMS]->(firstTx)
+                (
+                  (previousTx)-[:BENEFITS_TO]->(middleAccount)-[:PERFORMS]->(nextTx)
+                  WHERE previousTx.date < nextTx.date
+                    AND 0.80 <= nextTx.amount / previousTx.amount <= 1.00
+                ){2,5}
+                (lastTx)-[:BENEFITS_TO]->(start)
+              WHERE size(apoc.coll.toSet([start] + middleAccount)) = size([start] + middleAccount)
+              RETURN path;
+            parameters: []
+            category: query
+            teaches: 'The ratio band 0.80–1.00 is a literal, computed as next amount divided by previous amount: it accepts a loss of up to 20% per hop — the fee commonly taken as money passes through a ring — and rejects any growth. Narrow it towards 1.00 to target small skims; widen it only with a reason, since ordinary commerce passes a wide band. Validate the direction on a known example: inverting the ratio silently returns amount-growth rings. The repetition bound {2,5} is also a literal: two to five intermediate accounts, so rings of three to six accounts, matching the other ring queries. Its lower bound keeps two-account round trips such as refunds and loan repayments out. Partial payments and currency conversion break the ratio assumption.'
+            returns: 'One row per qualifying ring: path, from the starting account through each payment and intermediate account back to it. Only the rotation that starts with the ring''s earliest payment can qualify, since every other rotation steps back in time.'
+            prerequisites: 'APOC (apoc.coll.toSet) and Neo4j 5.9+. Every payment on a ring in one currency: the reference ontology performs no conversion.'
+            tags:
+              - ring
+              - chronology
+              - amount-decay
+              - layering
+              - fraud
+              - apoc
+            requires:
+              - apoc
+            upstream:
+              file: QUERIES.md
+              heading: Chronological and amount-decay ring (requires APOC)
+              sample: 'Bundled sample data only: returns 6 paths, one per ring, among them the ring anchored at account 12-34-57 43064339, amounts 1000.00 → 900.00 → 810.00 → 729.00 on consecutive days.'
+          - type: canonicalQuery
+            name: mule-account
+            question: Mule account
+            description: 'Internal accounts that, soon after opening, receive money from several unrelated senders and pass it on quickly: the fan-in and short dwell time of a money mule. A sender is unrelated when no customer holds both accounts, so a customer moving money between their own accounts never counts.'
+            cypher: |-
+              MATCH (m:Account {accountScope: 'INTERNAL'})<-[:BENEFITS_TO]-(inTx:Transaction)<-[:PERFORMS]-(sender:Account)
+              WHERE inTx.date < m.openedDate + duration({days: $maxAccountAgeDays})
+                AND NOT EXISTS { (m)<-[:HAS_ACCOUNT]-(:Customer)-[:HAS_ACCOUNT]->(sender) }
+              WITH m, collect(inTx) AS inflows, count(DISTINCT sender) AS senders
+              WHERE senders >= $minSenders
+              UNWIND inflows AS inTx
+              OPTIONAL MATCH (m)-[:PERFORMS]->(outTx:Transaction)
+              WHERE inTx.date <= outTx.date <= inTx.date + duration({hours: $maxDwellHours})
+              WITH m, senders, inflows, collect(DISTINCT outTx) AS quickOutflows
+              WITH m, senders,
+                   reduce(total = 0.0, t IN inflows | total + t.amount) AS inflowTotal,
+                   reduce(total = 0.0, t IN quickOutflows | total + t.amount) AS quickOutflowTotal,
+                   size(quickOutflows) AS quickOutflowCount
+              WHERE quickOutflowTotal >= $minPassThrough * inflowTotal
+              RETURN m.accountNumber AS account,
+                     date(m.openedDate) AS opened,
+                     senders,
+                     round(inflowTotal, 2) AS inflowTotal,
+                     round(quickOutflowTotal, 2) AS quickOutflowTotal,
+                     round(quickOutflowTotal / inflowTotal, 2) AS passThrough,
+                     quickOutflowCount
+              ORDER BY passThrough DESC, senders DESC, account
+              LIMIT 50;
+            parameters:
+              - name: maxAccountAgeDays
+                type: INTEGER
+                description: Only inflows that arrive within this many days of Account.openedDate count. Integer. Start at 90; a starting point with no strong prior. Widen it to see established accounts that behave the same way.
+                example: 90
+              - name: minSenders
+                type: INTEGER
+                description: Minimum distinct unrelated sender accounts. Integer. Start at 5, more unrelated payers than a new personal account normally has; no strong prior.
+                example: 5
+              - name: maxDwellHours
+                type: INTEGER
+                description: An outgoing payment counts as quick when it executes within this many hours after a counted inflow. Integer. Start at 48; widen to 168 to include weekly payers.
+                example: 48
+              - name: minPassThrough
+                type: FLOAT
+                description: Minimum share of the counted inflows that left again in quick outgoing payments. Float. Start at 0.5 and raise towards 0.9 for near-total pass-through.
+                example: 0.5
+            category: query
+            teaches: Amounts are summed as recorded, so mixed currencies on one account distort passThrough. A pass-through above 1 means the account pays out more than these inflows brought in — typically a business funded from elsewhere, not a mule. Fan-in alone is ordinary for a trader or a club treasurer; the combination with a new account and fast pass-through is what separates a mule. Follow a hit's outgoing payments with Payment to a high-risk jurisdiction, and its senders with Account takeover. The literal LIMIT 50 keeps the list reviewable.
+            returns: 'One row per account: account (accountNumber), opened (a date), senders, inflowTotal, quickOutflowTotal, passThrough (quickOutflowTotal / inflowTotal) and quickOutflowCount, highest pass-through first.'
+            prerequisites: None beyond the imported reference ontology. Accounts without openedDate are skipped.
+            tags:
+              - mule
+              - fan-in
+              - fan-out
+              - dwell-time
+              - account-age
+            upstream:
+              file: QUERIES.md
+              heading: Mule account
+              sample: 'Bundled sample data only: $maxAccountAgeDays = 90, $minSenders = 5, $maxDwellHours = 48, $minPassThrough = 0.5 returns 2 rows; the first is 12-34-56 24563467, opened 2023-11-02, with 7 senders and passThrough 0.95.'
+          - type: canonicalQuery
+            name: cross-layer-ring
+            question: Cross-layer ring
+            description: 'Transaction rings of distinct accounts whose holders are also linked outside the money: two holders who banked from the same device, or who share an email, phone, address, passport or driving licence. A ring whose members are connected people is one operation, not a coincidence of payments.'
+            cypher: |-
+              MATCH (start:Account)
+                ((source:Account)-[:PERFORMS]->(:Transaction)-[:BENEFITS_TO]->(:Account)){3,6}
+                (start)
+              WHERE all(i IN range(0, size(source) - 2) WHERE NOT source[i] IN source[i + 1..])
+                AND all(a IN source WHERE elementId(start) <= elementId(a))
+              WITH DISTINCT source AS ring
+              UNWIND ring AS account
+              MATCH (holder:Customer)-[:HAS_ACCOUNT]->(account)
+              WITH ring, collect(DISTINCT holder) AS holders
+              UNWIND holders AS c1
+              UNWIND holders AS c2
+              WITH ring, holders, c1, c2
+              WHERE elementId(c1) < elementId(c2)
+              WITH ring, holders, c1, c2,
+                   CASE WHEN EXISTS {
+                     (c1)-[:HAS_SESSION]->(:Session)-[:SESSION_USES_DEVICE]->(:Device)<-[:SESSION_USES_DEVICE]-(:Session)<-[:HAS_SESSION]-(c2)
+                   } THEN ['Device'] ELSE [] END
+                   + COLLECT {
+                     MATCH (c1)-[:HAS_EMAIL|HAS_PHONE|HAS_ADDRESS|HAS_PASSPORT|HAS_DRIVING_LICENSE]->(shared)
+                           <-[:HAS_EMAIL|HAS_PHONE|HAS_ADDRESS|HAS_PASSPORT|HAS_DRIVING_LICENSE]-(c2)
+                     RETURN DISTINCT head(labels(shared))
+                   } AS links
+              WHERE size(links) > 0
+              WITH ring, holders,
+                   collect({customers: [c1.customerId, c2.customerId], links: links}) AS linkedPairs,
+                   collect(links) AS linkLists
+              WITH ring, holders, linkedPairs,
+                   reduce(acc = [], l IN linkLists | acc + [x IN l WHERE NOT x IN acc]) AS linkTypes
+              WHERE size(linkTypes) >= $minLinkTypes
+              RETURN [a IN ring | a.accountNumber] AS ringAccounts,
+                     [h IN holders | h.customerId] AS holders,
+                     linkTypes,
+                     size(linkTypes) AS linkTypeCount,
+                     linkedPairs
+              ORDER BY linkTypeCount DESC, size(linkedPairs) DESC, ringAccounts
+              LIMIT 25;
+            parameters:
+              - name: minLinkTypes
+                type: INTEGER
+                description: Minimum distinct link kinds (Device, Email, Phone, Address, Passport, DrivingLicense) found among the ring's holders. Integer. Start at 1 to see every ring with any link; raise to 2 to drop rings joined only by a shared household address.
+                example: 1
+            category: query
+            teaches: The ring uses the same literal {3,6} bound and distinct- account rule as Directed ring with distinct accounts, and each ring is returned once, not once per rotation. Device links come from sessions of any status. A shared address alone is the weakest link — a family moving money round is not fraud — while a shared device or document is the strongest. Check the ring itself with Chronological and amount-decay ring. The literal LIMIT 25 keeps the list reviewable.
+            returns: 'One row per ring: ringAccounts (accountNumber, in payment order), holders (customerId), linkTypes, linkTypeCount and linkedPairs (each linked pair of holders with its links).'
+            prerequisites: 'None beyond the imported reference ontology and Neo4j 5.9+. Plain Cypher: distinctness is checked without APOC.'
+            tags:
+              - ring
+              - cross-layer
+              - shared-identifier
+              - device
+              - fraud
+            upstream:
+              file: QUERIES.md
+              heading: Cross-layer ring
+              sample: 'Bundled sample data only: $minLinkTypes = 1 returns 3 rows; $minLinkTypes = 2 returns 2, the five-account ring through 12-34-56 42536850 (Device, Phone) and the four-account ring through 12-34-56 47357986 (Address, Email).'
+    description: 'A bank account that sends or receives payments: held at this institution (accountScope `INTERNAL`) or elsewhere and known only as a payment''s counterparty (`EXTERNAL`). Internal accounts have holders, an opening date and a product type; external accounts carry only their identifier and country. The people behind an account are reached through HAS_ACCOUNT.'
+    aliases:
+      - Bank account
+      - Deposit account
+    reference: https://spec.edmcouncil.org/fibo/ontology/FBC/ProductsAndServices/ClientsAndAccounts/DepositAccount
+  Transaction:
+    label: Transaction
+    properties:
+      transactionId:
+        type: STRING
+        key: true
+        description: Identifier for the payment, unique across the institution. Expected to be the source system's own transaction reference. e.g. `TXN3005`.
+        pattern: ^TXN[0-9]{3,6}$
+      amount:
+        type: FLOAT
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              parse: MONEY
+              ask: the sum of money the payment moved, such as £4,800.00
+        description: 'Value of money moved by this payment, in the major units of `currency` rather than in minor units — a value of 1000.00 on a GBP payment is one thousand pounds, not one thousand pence. Always positive: direction is carried by the relationships, not by the sign. e.g. `105.11`.'
+      currency:
+        type: STRING
+        must_exist: true
+        description: ISO 4217 alphabetic currency code of `amount`, recorded in whatever case the source system supplies rather than normalised to upper case. A single ring is only comparable on amount when every payment in it shares one currency; the reference ontology performs no conversion. e.g. `gbp`.
+        pattern: ^[A-Za-z]{3}$
+      date:
+        type: ZONED DATETIME
+        must_exist: true
+        description: Instant at which the payment was executed, as an ISO 8601 zoned datetime. Ordering payments on this is what separates a ring that moves money forwards in time from an arbitrary cycle, so it is expected to be a true execution timestamp rather than a posting or value date. e.g. `2023-10-21T12:25:00Z`.
+      type:
+        type: STRING
+        description: Payment method or scheme, as the source system names it, for example `FASTER_PAYMENT`, `BACS`, `SWIFT`, `CARD`, `DIRECT_DEBIT` or `STANDING_ORDER`. An open list that varies by country. Push payments instructed on the spot (`FASTER_PAYMENT`, `SWIFT`) are what a fraudster controlling an account can use. e.g. `FASTER_PAYMENT`.
+    extensions:
+      display:
+        x: 245
+        'y': 0
+        colour: '#dc2626'
+      custom:
+        relate-examples:
+          ask: a single payment between two accounts, named by its transaction reference, such as TXN4719
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: account-takeover
+            question: Account takeover
+            description: A successful session from a device, or from an IP address in a country, that none of the customer's earlier successful sessions used, followed within a bounded window by a push payment from one of the customer's accounts to an account none of them has paid before. The reference ontology has no link between a session and a payment, so the two are correlated by time on the same customer.
+            cypher: |-
+              MATCH (c:Customer)-[:HAS_SESSION]->(s:Session {status: 'success'})-[:SESSION_USES_DEVICE]->(d:Device),
+                    (s)-[:USES_IP]->(:IP)-[:LOCATED_IN]->(country:Country)
+              WHERE COUNT { (c)-[:HAS_SESSION]->(p:Session {status: 'success'}) WHERE p.createdAt < s.createdAt } >= $minPriorSessions
+              WITH c, s, d, country,
+                   NOT EXISTS { (c)-[:HAS_SESSION]->(p:Session {status: 'success'})-[:SESSION_USES_DEVICE]->(d) WHERE p.createdAt < s.createdAt } AS newDevice,
+                   NOT EXISTS { (c)-[:HAS_SESSION]->(p:Session {status: 'success'})-[:USES_IP]->(:IP)-[:LOCATED_IN]->(country) WHERE p.createdAt < s.createdAt } AS newCountry
+              WHERE newDevice OR newCountry
+              MATCH (c)-[:HAS_ACCOUNT]->(a:Account)-[:PERFORMS]->(t:Transaction)-[:BENEFITS_TO]->(b:Account)
+              WHERE s.createdAt <= t.date <= s.createdAt + duration({hours: $windowHours})
+                AND t.type IN $paymentTypes
+                AND NOT EXISTS { (c)-[:HAS_ACCOUNT]->(b) }
+                AND NOT EXISTS {
+                  MATCH (c)-[:HAS_ACCOUNT]->(:Account)-[:PERFORMS]->(earlier:Transaction)-[:BENEFITS_TO]->(b)
+                  WHERE earlier.date < t.date
+                }
+              RETURN c.customerId AS customer,
+                     s.sessionId AS session,
+                     s.createdAt AS sessionAt,
+                     d.deviceId AS device,
+                     newDevice,
+                     country.code AS sessionCountry,
+                     newCountry,
+                     t.transactionId AS payment,
+                     t.date AS paidAt,
+                     t.amount AS amount,
+                     t.currency AS currency,
+                     a.accountNumber AS fromAccount,
+                     b.accountNumber AS toAccount,
+                     duration.inSeconds(s.createdAt, t.date).minutes AS minutesAfterLogin
+              ORDER BY paidAt, customer
+              LIMIT 50;
+            parameters:
+              - name: windowHours
+                type: INTEGER
+                description: 'Hours after the session within which the payment must execute. Integer. Start at 24: a takeover is cashed out before the customer notices, usually the same day; narrow towards 1 to keep only the fastest.'
+                example: 24
+              - name: minPriorSessions
+                type: INTEGER
+                description: 'Minimum successful sessions the customer had before this one. Integer. Start at 3: with fewer there is no history against which a device or country is new. A starting point with no strong prior.'
+                example: 3
+              - name: paymentTypes
+                type: STRING
+                description: Transaction.type values that count as push payments the session could have instructed. List of strings. Start with the push-payment methods in the user's data — for UK data ['FASTER_PAYMENT', 'SWIFT'] — after listing the distinct type values present.
+                example:
+                  - FASTER_PAYMENT
+                  - SWIFT
+            category: query
+            teaches: '"Earlier" means earlier successful sessions only, so an attacker''s failed attempts from the same device do not make it look familiar. Without minPriorSessions every customer''s first logins qualify. A new device alone is common (a new phone) and so is a first payment to a friend; the pattern is both, close together, followed by a beneficiary that then moves the money on — check the beneficiary with Mule account. On a large estate, restrict s.createdAt to a recent period first. The literal LIMIT 50 keeps the list reviewable.'
+            returns: 'One row per qualifying session and payment: customer, session, sessionAt, device, newDevice, sessionCountry, newCountry, payment, paidAt, amount, currency, fromAccount, toAccount and minutesAfterLogin.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - account-takeover
+              - session
+              - device
+              - new-payee
+            upstream:
+              file: QUERIES.md
+              heading: Account takeover
+              sample: 'Bundled sample data only: $windowHours = 24, $minPriorSessions = 3, $paymentTypes = [''FASTER_PAYMENT'', ''SWIFT''] returns 4 rows; the first is CUS10596''s session SESS004513 from a new device in RO, followed 25 minutes later by TXN4719, 4800.00 to 12-34-56 24563467.'
+          - type: canonicalQuery
+            name: payment-to-a-high-risk-jurisdiction
+            question: Payment to a high-risk jurisdiction
+            description: Payments in a review window to accounts hosted in a country with isHighRiskJurisdiction true, each traced back through up to three earlier payments to an internal origin account. Every payment on the chain executes after the one before it, inside the window, and carries an amount within a band of the final payment — the same money layered through intermediaries before it leaves.
+            cypher: |-
+              WITH datetime($windowEnd) AS windowEnd,
+                   datetime($windowEnd) - duration({days: $windowDays}) AS windowStart
+              MATCH (lastTx:Transaction)-[:BENEFITS_TO]->(dest:Account)-[:IS_HOSTED]->(hrj:Country {isHighRiskJurisdiction: true})
+              WHERE windowStart <= lastTx.date < windowEnd
+              MATCH path = (origin:Account {accountScope: 'INTERNAL'})-[:PERFORMS]->(firstTx:Transaction)
+                (
+                  (prevTx:Transaction)-[:BENEFITS_TO]->(mid:Account)-[:PERFORMS]->(nextTx:Transaction)
+                  WHERE prevTx.date < nextTx.date
+                ){0,3}
+                (lastTx)
+              WHERE all(t IN prevTx WHERE t.date >= windowStart
+                                      AND $minRatio * lastTx.amount <= t.amount <= $maxRatio * lastTx.amount)
+              WITH lastTx, dest, hrj, path, origin, firstTx, size(mid) AS hops
+              ORDER BY hops DESC, firstTx.date DESC, origin.accountNumber
+              WITH lastTx, dest, hrj, collect({path: path, origin: origin, hops: hops})[0] AS longest
+              WHERE longest.hops >= $minIntermediaries
+              RETURN hrj.code AS country,
+                     dest.accountNumber AS beneficiary,
+                     lastTx.transactionId AS payment,
+                     lastTx.date AS paidAt,
+                     lastTx.amount AS amount,
+                     longest.origin.accountNumber AS origin,
+                     longest.hops AS intermediaries,
+                     [n IN nodes(longest.path) WHERE n:Account | n.accountNumber] AS accounts,
+                     [n IN nodes(longest.path) WHERE n:Transaction | n.amount] AS amounts,
+                     longest.path AS path
+              ORDER BY intermediaries DESC, paidAt
+              LIMIT 50;
+            parameters:
+              - name: windowEnd
+                type: STRING
+                description: End of the review window, an ISO 8601 datetime string. On a live system, now; on a static extract, the latest payment date (MATCH (t:Transaction) RETURN max(t.date)).
+                example: '2023-12-19T00:00:00Z'
+              - name: windowDays
+                type: INTEGER
+                description: Length of the window in days. Integer. Start at 30, the rolling period of the source monitoring rule.
+                example: 30
+              - name: minRatio
+                type: FLOAT
+                description: Lower bound of each earlier payment's amount as a fraction of the final payment's. Float. Start at 0.9, the source rule's band.
+                example: 0.9
+              - name: maxRatio
+                type: FLOAT
+                description: Upper bound, as above. Float. Start at 1.1.
+                example: 1.1
+              - name: minIntermediaries
+                type: INTEGER
+                description: 'Minimum accounts between the origin and the beneficiary. Integer. Start at 1: layering needs at least one intermediary; 0 also lists every direct payment to a flagged country.'
+                example: 1
+            category: query
+            teaches: 'The chain bound {0,3} is a literal: up to three earlier payments, four in all. Where several chains qualify, the longest is kept, then the one whose first payment is latest. The band compares single payments; the source rule compares totals per account pair, which also catches money split into several payments. A chain whose first payment is from an external account starts at the first internal account instead. Direct remittances to family in a flagged country are ordinary; a chain through new or unrelated accounts is not. The literal LIMIT 50 keeps the list reviewable.'
+            returns: 'One row per payment to a high-risk jurisdiction whose longest qualifying chain has enough intermediaries: country, beneficiary, payment, paidAt, amount, origin, intermediaries, accounts and amounts along the chain, and path.'
+            prerequisites: Country.isHighRiskJurisdiction set from the institution's own policy list. Neo4j 5.9+ for the quantified path.
+            tags:
+              - high-risk-jurisdiction
+              - layering
+              - aml
+              - transaction-monitoring
+            upstream:
+              file: QUERIES.md
+              heading: Payment to a high-risk jurisdiction
+              sample: 'Bundled sample data only: $windowEnd = ''2024-01-01T00:00:00Z'', $windowDays = 30, $minRatio = 0.9, $maxRatio = 1.1, $minIntermediaries = 1 returns 3 rows; the first is TXN6716, 9400.00 to an MC account, from origin 12-34-57 69122237 through 2 intermediaries.'
+    description: A single payment moving money from one account to another. Modelled as a node rather than as a relationship so that it can carry its own amount and timestamp and be traversed from either endpoint — which is what makes the chronological-order and amount-decay checks in ring detection expressible at all.
+    aliases:
+      - Payment
+      - Transfer
+    reference: https://spec.edmcouncil.org/fibo/ontology/FBC/ProductsAndServices/ClientsAndAccounts/IndividualTransaction
+  Country:
+    label: Country
+    properties:
+      code:
+        type: STRING
+        key: true
+        description: ISO 3166-1 alpha-2 country code, upper case. e.g. `GB`.
+        pattern: ^[A-Z]{2}$
+      name:
+        type: STRING
+        description: Country name in English. e.g. `United Kingdom`.
+      isHighRiskJurisdiction:
+        type: BOOLEAN
+        must_exist: true
+        description: Whether the institution's risk policy classifies the country as a high-risk jurisdiction for money laundering, typically by reference to the FATF lists and the regulator's own. A policy setting, not a fact about the country. Stands in for the base model's `HighRiskJurisdiction` account label, reached through IS_HOSTED. e.g. `false`.
+    extensions:
+      display:
+        x: 120
+        'y': 120
+        colour: '#0891b2'
+      custom:
+        relate-examples:
+          ask: a country where an account is held or an address or IP address is located, such as Lithuania or the United Kingdom
+          proper: true
+    description: 'A country, by ISO 3166-1 alpha-2 code: where an account is held, an address is, or an IP address geolocates. Carries the institution''s high-risk-jurisdiction classification, one hop from a beneficiary account.'
+  Email:
+    label: Email
+    properties:
+      address:
+        type: STRING
+        key: true
+        description: The full email address, lower-cased. Customers converge on one node only when the text is identical, so normalisation is expected upstream. e.g. `jessica.murray126@example.net`.
+        pattern: ^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$
+      domain:
+        type: STRING
+        description: Domain part of the address, after the `@`, lower-cased. e.g. `example.net`.
+    extensions:
+      display:
+        x: -140
+        'y': -85
+        colour: '#7c3aed'
+      custom:
+        relate-examples:
+          ask: an email address a customer gave the bank, such as priya.collins10@example.net
+          proper: true
+          propose: true
+    description: 'An email address recorded against one or more customers. A shared identifier: the same address on several customers links them, legitimately (a family) or not (identities built from shared contact details).'
+    aliases:
+      - Email address
+      - E-mail address
+    reference: https://spec.edmcouncil.org/fibo/ontology/FND/Places/VirtualPlaces/ElectronicMailAddress
+  Phone:
+    label: Phone
+    properties:
+      phoneNumber:
+        type: STRING
+        key: true
+        description: 'The number in E.164 form: a plus sign, country calling code and national number, no spaces or trunk zero. Customers converge only on identical text. The base model''s constraint calls this `number`; its property list says `phoneNumber`, followed here. e.g. `+447700900797`.'
+        pattern: ^\+[1-9][0-9]{6,14}$
+      countryCode:
+        type: STRING
+        description: International calling code of the number, with its plus sign. e.g. `+44`.
+        pattern: ^\+[1-9][0-9]{0,2}$
+    extensions:
+      display:
+        x: -155
+        'y': -15
+        colour: '#db2777'
+      custom:
+        relate-examples:
+          ask: a telephone number a customer gave the bank, written in international form, such as +44 7700 900561
+          proper: true
+    description: 'A telephone number recorded against one or more customers: a personal mobile, or a landline a household shares. A shared identifier, like Email.'
+    aliases:
+      - Telephone number
+      - Phone number
+    reference: https://spec.edmcouncil.org/fibo/ontology/FND/Places/VirtualPlaces/TelephoneNumber
+  Address:
+    label: Address
+    properties:
+      addressId:
+        type: STRING
+        key: true
+        description: 'Surrogate for the base model''s composite key (`addressLine1`, `postTown`, `postCode`), which Import cannot use: the three values trimmed, whitespace collapsed, commas removed, upper-cased and joined with `, `. Built from exactly those parts, so addresses converge under MERGE as with the composite key, including flats sharing a street number unless the flat is in `addressLine1`. e.g. `1 SYCAMORE ROAD, LEEDS, LS1 2PU`.'
+        pattern: ^[^,a-z]+, [^,a-z]+, [^,a-z]+$
+      addressLine1:
+        type: STRING
+        description: 'First line of the address: house or building number and street name. Part of the key. e.g. `1 Sycamore Road`.'
+      addressLine2:
+        type: STRING
+        description: 'Optional second line: flat number, building name or estate. Not part of the key. e.g. `Flat 17`.'
+      postTown:
+        type: STRING
+        description: Post town for postal delivery, as Royal Mail defines it for UK addresses, in upper case. Part of the key. e.g. `LEEDS`.
+      postCode:
+        type: STRING
+        description: Postcode in its standard upper-case form with a single space before the inward code. Part of the key. e.g. `LS1 2PU`.
+    extensions:
+      display:
+        x: 0
+        'y': 120
+        colour: '#059669'
+      custom:
+        relate-examples:
+          ask: a postal address where a customer lives, with house number, street, town and postcode, such as 78 Ivy Court, Nottingham NG2 5EW
+          proper: true
+    description: 'A postal address where customers live or have lived. A shared identifier: people at one address are linked, which is ordinary for a household and suspicious when unrelated identities converge on it.'
+    aliases:
+      - Postal address
+      - Residential address
+    reference: https://spec.edmcouncil.org/fibo/ontology/FND/Places/Addresses/PhysicalAddress
+  Passport:
+    label: Passport
+    properties:
+      passportId:
+        type: STRING
+        key: true
+        description: 'Surrogate for the base model''s composite key (`passportNumber`, `issuingCountry`), which Import cannot use: `<issuingCountry>:<passportNumber>`, the number upper-cased without spaces or hyphens. Built from exactly those parts, so passports converge under MERGE as with the composite key. e.g. `GB:686489834`.'
+        pattern: ^[A-Z]{2}:[A-Z0-9]+$
+      passportNumber:
+        type: STRING
+        description: Passport number as printed on the document. Unique only within the issuing country. e.g. `686489834`.
+      issuingCountry:
+        type: STRING
+        description: ISO 3166-1 alpha-2 code of the government that issued the passport. e.g. `GB`.
+        pattern: ^[A-Z]{2}$
+      issueDate:
+        type: ZONED DATETIME
+        description: Date the passport was issued, as an ISO 8601 zoned datetime at midnight UTC; only the calendar date carries meaning. e.g. `2023-03-02T00:00:00Z`.
+      expiryDate:
+        type: ZONED DATETIME
+        description: Date the passport expires, as an ISO 8601 zoned datetime at midnight UTC; only the calendar date carries meaning. e.g. `2033-03-01T00:00:00Z`.
+    extensions:
+      display:
+        x: -155
+        'y': 55
+        colour: '#65a30d'
+      custom:
+        relate-examples:
+          ask: a passport presented as proof of identity, named by issuing country and number, such as GB:983208276
+          proper: true
+    description: 'A passport presented as proof of identity. A shared identifier of the strongest kind: one passport on two customers means one document behind two identities.'
+    reference: https://spec.edmcouncil.org/fibo/ontology/FND/AgentsAndPeople/People/Passport
+  DrivingLicense:
+    label: DrivingLicense
+    properties:
+      licenseId:
+        type: STRING
+        key: true
+        description: 'Surrogate for the base model''s composite key (`licenseNumber`, `issuingCountry`), which Import cannot use: `<issuingCountry>:<licenseNumber>`, the number upper-cased without spaces or hyphens. Built from exactly those parts, so licences converge under MERGE as with the composite key. e.g. `GB:MURRA854189J99UV`.'
+        pattern: ^[A-Z]{2}:[A-Z0-9]+$
+      licenseNumber:
+        type: STRING
+        description: Licence number as printed on the document. Unique only within the issuing country. e.g. `MURRA854189J99UV`.
+      issuingCountry:
+        type: STRING
+        description: ISO 3166-1 alpha-2 code of the authority that issued the licence. e.g. `GB`.
+        pattern: ^[A-Z]{2}$
+      issueDate:
+        type: ZONED DATETIME
+        description: Date the licence was issued, as an ISO 8601 zoned datetime at midnight UTC; only the calendar date carries meaning. e.g. `2017-07-16T00:00:00Z`.
+      expiryDate:
+        type: ZONED DATETIME
+        description: Date the licence expires, as an ISO 8601 zoned datetime at midnight UTC; only the calendar date carries meaning. e.g. `2027-07-16T00:00:00Z`.
+    extensions:
+      display:
+        x: -105
+        'y': 105
+        colour: '#ca8a04'
+      custom:
+        relate-examples:
+          ask: a driving licence presented as proof of identity, named by its licence number, such as ELLIS012181I99DJ
+          proper: true
+    description: 'A driving licence presented as proof of identity. A shared identifier like Passport: one licence on two customers means one document behind two identities. The label keeps the base model''s spelling.'
+    aliases:
+      - Driving licence
+      - Driver's license
+    reference: https://spec.edmcouncil.org/fibo/ontology/FND/AgentsAndPeople/People/DriversLicense
+  Session:
+    label: Session
+    properties:
+      sessionId:
+        type: STRING
+        key: true
+        description: Identifier for the session, unique across the channel. e.g. `SESS001804`.
+        pattern: ^SESS[0-9]{6}$
+      status:
+        type: STRING
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: how the login ended, one of success, failed, suspicious or timeout
+        description: 'Outcome of the session, lower case: `success` (logged in), `failed` (credentials rejected), `suspicious` (blocked or challenged by the channel''s own controls) or `timeout`. Only a successful session gives access to the customer''s accounts. e.g. `success`.'
+        one_of:
+          - success
+          - failed
+          - suspicious
+          - timeout
+      createdAt:
+        type: ZONED DATETIME
+        must_exist: true
+        description: Instant the session started, as an ISO 8601 zoned datetime. Ordering a customer's sessions on it is what makes a device or a country new to that customer. e.g. `2023-10-01T01:00:21Z`.
+    extensions:
+      display:
+        x: 120
+        'y': -105
+        colour: '#334155'
+      custom:
+        relate-examples:
+          ask: one login or login attempt on online or mobile banking, named by its session number, such as SESS004521
+          proper: true
+          propose: true
+    description: 'One login or login attempt on the digital channel, against one customer, from one device and one IP address. Sessions are the record of device and location use: a device or country appears in a customer''s history only through them.'
+    aliases:
+      - Login
+      - Login attempt
+  Device:
+    label: Device
+    properties:
+      deviceId:
+        type: STRING
+        key: true
+        description: Fingerprint or identifier the digital channel assigns to the device, stable across sessions. e.g. `DEV-0018bc528d`.
+        pattern: ^DEV-[0-9a-f]{10}$
+      deviceType:
+        type: STRING
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: what kind of device it is, one of mobile, desktop or tablet
+        description: 'Category of device, lower case: `mobile`, `desktop`, `tablet`, or `unknown` when the channel cannot tell. e.g. `mobile`.'
+        one_of:
+          - mobile
+          - desktop
+          - tablet
+          - unknown
+      userAgent:
+        type: STRING
+        description: 'Browser or app user agent string the device reported. Descriptive only: it is easily spoofed. e.g. `Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Mobile Safari/537.36 BankApp/8.3`.'
+    extensions:
+      display:
+        x: 245
+        'y': -105
+        colour: '#9333ea'
+      custom:
+        relate-examples:
+          ask: a phone, computer or tablet a customer banks from, named by its device fingerprint, such as DEV-45b24a72d3
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: device-sharing
+            question: Device sharing
+            description: Devices that sessions of several different customers ran on, expanded to each of those customers and the accounts they hold. One device logging in as many customers is the footprint of credential stuffing, of a mule herder operating recruited accounts, or of one person behind several identities.
+            cypher: |-
+              MATCH (d:Device)<-[:SESSION_USES_DEVICE]-(:Session)<-[:HAS_SESSION]-(c:Customer)
+              WITH d, collect(DISTINCT c) AS customers
+              WHERE size(customers) >= $minCustomers
+              UNWIND customers AS c
+              RETURN d.deviceId AS device,
+                     d.deviceType AS deviceType,
+                     size(customers) AS customersOnDevice,
+                     c.customerId AS customer,
+                     COUNT { (c)-[:HAS_SESSION]->(s:Session)-[:SESSION_USES_DEVICE]->(d) WHERE s.status = 'success' } AS successfulSessions,
+                     COUNT { (c)-[:HAS_SESSION]->(s:Session)-[:SESSION_USES_DEVICE]->(d) WHERE s.status <> 'success' } AS otherSessions,
+                     COLLECT { MATCH (c)-[h:HAS_ACCOUNT]->(a:Account) RETURN a.accountNumber + ' (' + h.role + ')' } AS accounts
+              ORDER BY customersOnDevice DESC, device, customer
+              LIMIT 100;
+            parameters:
+              - name: minCustomers
+                type: INTEGER
+                description: 'Minimum number of distinct customers with a session on the device. Integer. Start at 3: a device shared by a couple is ordinary. Raise until the result is reviewable.'
+                example: 3
+            category: query
+            teaches: 'Device use is read from sessions, any status: a credential-stuffing device shows many failed sessions across customers and success on a few, a mule herder''s device shows successful sessions on every account it runs. A family tablet shared by three people looks like the second at a low threshold; check deviceType and whether the customers share an address. The literal LIMIT 100 keeps the list reviewable.'
+            returns: 'One row per device and customer: device (deviceId), deviceType, customersOnDevice, customer (customerId), successfulSessions and otherSessions (that customer''s sessions on the device by Session.status), and accounts (each held account as "accountNumber (role)").'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - device
+              - digital-footprint
+              - credential-stuffing
+              - mule
+            upstream:
+              file: QUERIES.md
+              heading: Device sharing
+              sample: 'Bundled sample data only: $minCustomers = 3 returns 28 rows over 6 devices; the first, DEV-626ae42f56 (desktop), has sessions from 10 customers.'
+    description: A device a customer banks from (phone, computer or tablet), identified by the fingerprint the digital channel assigns. Reached from customers only through their sessions, which record who used it and when.
+    aliases:
+      - Device fingerprint
+  IP:
+    label: IP
+    properties:
+      ipAddress:
+        type: STRING
+        key: true
+        description: 'The address in standard text form: dotted-quad IPv4 or compressed IPv6. e.g. `198.51.100.1`.'
+        pattern: ^(?:[0-9]{1,3}(?:\.[0-9]{1,3}){3}|[0-9a-f]{1,4}(?::[0-9a-f]{0,4}){2,7})$
+    extensions:
+      display:
+        x: 280
+        'y': 120
+        colour: '#ea580c'
+      custom:
+        relate-examples:
+          ask: a network IP address a login connected from, such as 203.0.113.254 or 2001:db8:5c75:c395::46
+          proper: true
+          propose: true
+    description: An IP address sessions connect from, IPv4 or IPv6. Its geolocation places a session in a country. Addresses are often shared (a household router, a mobile network pooling customers), so a shared IP address is a weak link on its own.
+    aliases:
+      - IP address
+relationships:
+  hasAccount:
+    type: HAS_ACCOUNT
+    from:
+      node: Customer
+    to:
+      node: Account
+    properties:
+      role:
+        type: STRING
+        must_exist: true
+        description: 'The customer''s standing on the account: `PRIMARY` for the primary owner (FIBO''s primary account holder; exactly one per internal account) or `SECONDARY` for a co-owner such as the second name on a joint account (FIBO''s secondary account holder). e.g. `PRIMARY`.'
+        one_of:
+          - PRIMARY
+          - SECONDARY
+      since:
+        type: ZONED DATETIME
+        description: Instant the customer became a holder of the account; for the primary holder, normally the opening date. e.g. `2008-02-11T07:00:39Z`.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: holds
+    description: Records that the customer holds the account. An internal account has exactly one primary holder and may have secondary holders; external accounts have none. A customer may hold many accounts. Holding turns a link between two customers into a link between their money.
+    aliases:
+      - Account holder
+      - Holds account
+    reference: https://spec.edmcouncil.org/fibo/ontology/FBC/ProductsAndServices/ClientsAndAccounts/AccountHolder
+  performs:
+    type: PERFORMS
+    from:
+      node: Account
+    to:
+      node: Transaction
+      count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: sent
+    description: Attributes the payment to the account the money leaves — the originating side of the transfer. Exactly one originating account per payment; an account may perform many payments, or none. Read together with the beneficiary link it gives each payment a direction, which is what makes cycle detection meaningful rather than merely finding connected accounts.
+    aliases:
+      - Payer account
+      - Debtor account
+    reference: https://spec.edmcouncil.org/fibo/ontology/FND/ProductsAndServices/PaymentsAndSchedules/Payer
+  benefitsTo:
+    type: BENEFITS_TO
+    from:
+      node: Transaction
+      count: 1
+    to:
+      node: Account
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was paid to
+    description: Credits the payment to the account that receives the money — the beneficiary side of the transfer. Exactly one beneficiary account per payment; an account may benefit from many payments, or from none. Following this out of a payment and then back out through the beneficiary's own outgoing payments is how a ring is walked.
+    aliases:
+      - Payee account
+      - Beneficiary account
+      - Creditor account
+    reference: https://spec.edmcouncil.org/fibo/ontology/FND/ProductsAndServices/PaymentsAndSchedules/Payee
+  isHosted:
+    type: IS_HOSTED
+    from:
+      node: Account
+      count: 1
+    to:
+      node: Country
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is held in
+    description: 'Records the country the account is held in: `GB` for a UK account, for an IBAN the servicing institution''s country. Exactly one country per account; a country may host many accounts, or none.'
+  hasEmail:
+    type: HAS_EMAIL
+    from:
+      node: Customer
+    to:
+      node: Email
+    properties:
+      since:
+        type: ZONED DATETIME
+        description: Instant the address was first recorded against the customer. e.g. `2008-02-11T07:00:39Z`.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: registered
+    description: Records an email address the customer has given. A customer may have several; an address may belong to several customers, which is the link the identity patterns look for.
+  hasPhone:
+    type: HAS_PHONE
+    from:
+      node: Customer
+    to:
+      node: Phone
+    properties:
+      since:
+        type: ZONED DATETIME
+        description: Instant the number was first recorded against the customer. e.g. `2008-02-11T07:00:39Z`.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: gave
+    description: Records a telephone number the customer has given. A customer may have several; a number may belong to several customers, as a household landline legitimately does.
+  hasAddress:
+    type: HAS_ADDRESS
+    from:
+      node: Customer
+    to:
+      node: Address
+    properties:
+      addedAt:
+        type: ZONED DATETIME
+        description: Instant the address was first linked to the customer. e.g. `2008-02-11T07:00:39Z`.
+      lastChangedAt:
+        type: ZONED DATETIME
+        description: Instant the address details on this link were last updated. e.g. `2008-02-11T07:00:39Z`.
+      isCurrent:
+        type: BOOLEAN
+        description: Whether this is the customer's current residential address; a previous address stays linked with `false`. e.g. `true`.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: lives at
+    description: Records an address the customer lives or has lived at. A customer may have several, current and previous; an address may be shared by several customers, as a household or as converging identities.
+  hasPassport:
+    type: HAS_PASSPORT
+    from:
+      node: Customer
+    to:
+      node: Passport
+    properties:
+      verificationDate:
+        type: ZONED DATETIME
+        description: Instant the institution verified the document against the customer. e.g. `2023-03-15T04:20:15Z`.
+      verificationMethod:
+        type: STRING
+        description: How the document was verified, as the institution names it, for example `BRANCH_VERIFIED`, `DIGITAL_SCAN` or `VIDEO_KYC`. An open list. e.g. `DIGITAL_SCAN`.
+      verificationStatus:
+        type: STRING
+        description: 'Current state of the verification: `VERIFIED`, `PENDING`, `REJECTED`, or `EXPIRED` once the document''s validity has lapsed. e.g. `VERIFIED`.'
+        one_of:
+          - VERIFIED
+          - PENDING
+          - REJECTED
+          - EXPIRED
+    extensions:
+      custom:
+        relate-examples:
+          phrase: presented
+    description: Records a passport the customer presented as proof of identity, with how it was verified. A customer may present several over time; one passport on several customers is a strong sign of identity misuse.
+  hasDrivingLicense:
+    type: HAS_DRIVING_LICENSE
+    from:
+      node: Customer
+    to:
+      node: DrivingLicense
+    properties:
+      verificationDate:
+        type: ZONED DATETIME
+        description: Instant the institution verified the document against the customer. e.g. `2017-07-22T17:15:08Z`.
+      verificationMethod:
+        type: STRING
+        description: How the document was verified, as the institution names it, for example `BRANCH_VERIFIED`, `DIGITAL_SCAN` or `VIDEO_KYC`. An open list. e.g. `DIGITAL_SCAN`.
+      verificationStatus:
+        type: STRING
+        description: 'Current state of the verification: `VERIFIED`, `PENDING`, `REJECTED`, or `EXPIRED` once the document''s validity has lapsed. e.g. `VERIFIED`.'
+        one_of:
+          - VERIFIED
+          - PENDING
+          - REJECTED
+          - EXPIRED
+    extensions:
+      custom:
+        relate-examples:
+          phrase: provided
+    description: Records a driving licence the customer presented as proof of identity, with how it was verified. A customer may present several over time; one licence on several customers is a strong sign of identity misuse.
+  addressLocatedIn:
+    type: LOCATED_IN
+    from:
+      node: Address
+      count: 1
+    to:
+      node: Country
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is located in
+    description: Records the country the address is in. Exactly one country per address; a country may contain many addresses, or none. LOCATED_IN also links an IP address to the country it geolocates to.
+  ipLocatedIn:
+    type: LOCATED_IN
+    from:
+      node: IP
+      max_count: 1
+    to:
+      node: Country
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is located in
+    description: Records the country the IP address geolocates to. At most one country per address, none when geolocation fails; a country may hold many addresses. Replaces the base model's route through Location. LOCATED_IN also links a postal address to its country.
+  hasSession:
+    type: HAS_SESSION
+    from:
+      node: Customer
+    to:
+      node: Session
+      count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: started
+    description: 'Records that the session was a login, or attempted login, to the customer''s digital banking. Exactly one customer per session; a customer may have many, or none. Added: the account-takeover page uses it but the base model does not declare it.'
+  sessionUsesDevice:
+    type: SESSION_USES_DEVICE
+    from:
+      node: Session
+      count: 1
+    to:
+      node: Device
+    extensions:
+      custom:
+        relate-examples:
+          phrase: ran on
+    description: Records the device the session ran on. Exactly one device per session; a device may appear in many sessions, of one customer or of several, which is what device sharing looks for.
+  usesIp:
+    type: USES_IP
+    from:
+      node: Session
+      count: 1
+    to:
+      node: IP
+    extensions:
+      custom:
+        relate-examples:
+          phrase: connected from
+    description: Records the IP address the session connected from. Exactly one address per session; an address may serve many sessions, of one customer or of several.
+extensions:
+  data_source_tables:
+    customers.csv:
+      source: local
+      columns:
+        - name: customerId
+          type: string
+        - name: firstName
+          type: string
+        - name: lastName
+          type: string
+        - name: dateOfBirth
+          type: string
+    countries.csv:
+      source: local
+      columns:
+        - name: code
+          type: string
+        - name: name
+          type: string
+        - name: isHighRiskJurisdiction
+          type: string
+    accounts.csv:
+      source: local
+      columns:
+        - name: accountNumber
+          type: string
+        - name: accountScope
+          type: string
+        - name: accountType
+          type: string
+        - name: openedDate
+          type: string
+        - name: countryCode
+          type: string
+    account_holders.csv:
+      source: local
+      columns:
+        - name: customerId
+          type: string
+        - name: accountNumber
+          type: string
+        - name: role
+          type: string
+        - name: since
+          type: string
+    transactions.csv:
+      source: local
+      columns:
+        - name: transactionId
+          type: string
+        - name: amount
+          type: string
+        - name: currency
+          type: string
+        - name: date
+          type: string
+        - name: type
+          type: string
+        - name: sourceAccountNumber
+          type: string
+        - name: targetAccountNumber
+          type: string
+    customer_emails.csv:
+      source: local
+      columns:
+        - name: customerId
+          type: string
+        - name: emailAddress
+          type: string
+        - name: domain
+          type: string
+        - name: since
+          type: string
+    customer_phones.csv:
+      source: local
+      columns:
+        - name: customerId
+          type: string
+        - name: phoneNumber
+          type: string
+        - name: countryCode
+          type: string
+        - name: since
+          type: string
+    addresses.csv:
+      source: local
+      columns:
+        - name: addressId
+          type: string
+        - name: addressLine1
+          type: string
+        - name: addressLine2
+          type: string
+        - name: postTown
+          type: string
+        - name: postCode
+          type: string
+        - name: countryCode
+          type: string
+    customer_addresses.csv:
+      source: local
+      columns:
+        - name: customerId
+          type: string
+        - name: addressId
+          type: string
+        - name: addedAt
+          type: string
+        - name: lastChangedAt
+          type: string
+        - name: isCurrent
+          type: string
+    customer_passports.csv:
+      source: local
+      columns:
+        - name: customerId
+          type: string
+        - name: passportId
+          type: string
+        - name: passportNumber
+          type: string
+        - name: issuingCountry
+          type: string
+        - name: issueDate
+          type: string
+        - name: expiryDate
+          type: string
+        - name: verificationDate
+          type: string
+        - name: verificationMethod
+          type: string
+        - name: verificationStatus
+          type: string
+    customer_driving_licenses.csv:
+      source: local
+      columns:
+        - name: customerId
+          type: string
+        - name: licenseId
+          type: string
+        - name: licenseNumber
+          type: string
+        - name: issuingCountry
+          type: string
+        - name: issueDate
+          type: string
+        - name: expiryDate
+          type: string
+        - name: verificationDate
+          type: string
+        - name: verificationMethod
+          type: string
+        - name: verificationStatus
+          type: string
+    devices.csv:
+      source: local
+      columns:
+        - name: deviceId
+          type: string
+        - name: deviceType
+          type: string
+        - name: userAgent
+          type: string
+    ip_addresses.csv:
+      source: local
+      columns:
+        - name: ipAddress
+          type: string
+        - name: countryCode
+          type: string
+    sessions.csv:
+      source: local
+      columns:
+        - name: sessionId
+          type: string
+        - name: customerId
+          type: string
+        - name: deviceId
+          type: string
+        - name: ipAddress
+          type: string
+        - name: status
+          type: string
+        - name: createdAt
+          type: string
+  data_source_mappings:
+    mapping0:
+      - type: NODE
+        node: Customer
+        table: customers.csv
+        mode: MERGE
+        key:
+          - customerId
+        properties:
+          customerId:
+            column: customerId
+          firstName:
+            column: firstName
+          lastName:
+            column: lastName
+          dateOfBirth:
+            column: dateOfBirth
+      - type: NODE
+        node: Country
+        table: countries.csv
+        mode: MERGE
+        key:
+          - code
+        properties:
+          code:
+            column: code
+          name:
+            column: name
+          isHighRiskJurisdiction:
+            column: isHighRiskJurisdiction
+      - type: NODE
+        node: Account
+        table: accounts.csv
+        mode: MERGE
+        key:
+          - accountNumber
+        properties:
+          accountNumber:
+            column: accountNumber
+          accountScope:
+            column: accountScope
+          accountType:
+            column: accountType
+          openedDate:
+            column: openedDate
+      - type: NODE
+        node: Transaction
+        table: transactions.csv
+        mode: MERGE
+        key:
+          - transactionId
+        properties:
+          transactionId:
+            column: transactionId
+          amount:
+            column: amount
+          currency:
+            column: currency
+          date:
+            column: date
+          type:
+            column: type
+      - type: NODE
+        node: Email
+        table: customer_emails.csv
+        mode: MERGE
+        key:
+          - address
+        properties:
+          address:
+            column: emailAddress
+          domain:
+            column: domain
+      - type: NODE
+        node: Phone
+        table: customer_phones.csv
+        mode: MERGE
+        key:
+          - phoneNumber
+        properties:
+          phoneNumber:
+            column: phoneNumber
+          countryCode:
+            column: countryCode
+      - type: NODE
+        node: Address
+        table: addresses.csv
+        mode: MERGE
+        key:
+          - addressId
+        properties:
+          addressId:
+            column: addressId
+          addressLine1:
+            column: addressLine1
+          addressLine2:
+            column: addressLine2
+          postTown:
+            column: postTown
+          postCode:
+            column: postCode
+      - type: NODE
+        node: Passport
+        table: customer_passports.csv
+        mode: MERGE
+        key:
+          - passportId
+        properties:
+          passportId:
+            column: passportId
+          passportNumber:
+            column: passportNumber
+          issuingCountry:
+            column: issuingCountry
+          issueDate:
+            column: issueDate
+          expiryDate:
+            column: expiryDate
+      - type: NODE
+        node: DrivingLicense
+        table: customer_driving_licenses.csv
+        mode: MERGE
+        key:
+          - licenseId
+        properties:
+          licenseId:
+            column: licenseId
+          licenseNumber:
+            column: licenseNumber
+          issuingCountry:
+            column: issuingCountry
+          issueDate:
+            column: issueDate
+          expiryDate:
+            column: expiryDate
+      - type: NODE
+        node: Session
+        table: sessions.csv
+        mode: MERGE
+        key:
+          - sessionId
+        properties:
+          sessionId:
+            column: sessionId
+          status:
+            column: status
+          createdAt:
+            column: createdAt
+      - type: NODE
+        node: Device
+        table: devices.csv
+        mode: MERGE
+        key:
+          - deviceId
+        properties:
+          deviceId:
+            column: deviceId
+          deviceType:
+            column: deviceType
+          userAgent:
+            column: userAgent
+      - type: NODE
+        node: IP
+        table: ip_addresses.csv
+        mode: MERGE
+        key:
+          - ipAddress
+        properties:
+          ipAddress:
+            column: ipAddress
+      - type: RELATIONSHIP
+        relationship: hasAccount
+        table: account_holders.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Customer
+          properties:
+            customerId:
+              column: customerId
+        to_node:
+          label: Account
+          properties:
+            accountNumber:
+              column: accountNumber
+        properties:
+          role:
+            column: role
+          since:
+            column: since
+      - type: RELATIONSHIP
+        relationship: performs
+        table: transactions.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Account
+          properties:
+            accountNumber:
+              column: sourceAccountNumber
+        to_node:
+          label: Transaction
+          properties:
+            transactionId:
+              column: transactionId
+      - type: RELATIONSHIP
+        relationship: benefitsTo
+        table: transactions.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Transaction
+          properties:
+            transactionId:
+              column: transactionId
+        to_node:
+          label: Account
+          properties:
+            accountNumber:
+              column: targetAccountNumber
+      - type: RELATIONSHIP
+        relationship: isHosted
+        table: accounts.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Account
+          properties:
+            accountNumber:
+              column: accountNumber
+        to_node:
+          label: Country
+          properties:
+            code:
+              column: countryCode
+      - type: RELATIONSHIP
+        relationship: hasEmail
+        table: customer_emails.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Customer
+          properties:
+            customerId:
+              column: customerId
+        to_node:
+          label: Email
+          properties:
+            address:
+              column: emailAddress
+        properties:
+          since:
+            column: since
+      - type: RELATIONSHIP
+        relationship: hasPhone
+        table: customer_phones.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Customer
+          properties:
+            customerId:
+              column: customerId
+        to_node:
+          label: Phone
+          properties:
+            phoneNumber:
+              column: phoneNumber
+        properties:
+          since:
+            column: since
+      - type: RELATIONSHIP
+        relationship: hasAddress
+        table: customer_addresses.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Customer
+          properties:
+            customerId:
+              column: customerId
+        to_node:
+          label: Address
+          properties:
+            addressId:
+              column: addressId
+        properties:
+          addedAt:
+            column: addedAt
+          lastChangedAt:
+            column: lastChangedAt
+          isCurrent:
+            column: isCurrent
+      - type: RELATIONSHIP
+        relationship: hasPassport
+        table: customer_passports.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Customer
+          properties:
+            customerId:
+              column: customerId
+        to_node:
+          label: Passport
+          properties:
+            passportId:
+              column: passportId
+        properties:
+          verificationDate:
+            column: verificationDate
+          verificationMethod:
+            column: verificationMethod
+          verificationStatus:
+            column: verificationStatus
+      - type: RELATIONSHIP
+        relationship: hasDrivingLicense
+        table: customer_driving_licenses.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Customer
+          properties:
+            customerId:
+              column: customerId
+        to_node:
+          label: DrivingLicense
+          properties:
+            licenseId:
+              column: licenseId
+        properties:
+          verificationDate:
+            column: verificationDate
+          verificationMethod:
+            column: verificationMethod
+          verificationStatus:
+            column: verificationStatus
+      - type: RELATIONSHIP
+        relationship: addressLocatedIn
+        table: addresses.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Address
+          properties:
+            addressId:
+              column: addressId
+        to_node:
+          label: Country
+          properties:
+            code:
+              column: countryCode
+      - type: RELATIONSHIP
+        relationship: ipLocatedIn
+        table: ip_addresses.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: IP
+          properties:
+            ipAddress:
+              column: ipAddress
+        to_node:
+          label: Country
+          properties:
+            code:
+              column: countryCode
+      - type: RELATIONSHIP
+        relationship: hasSession
+        table: sessions.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Customer
+          properties:
+            customerId:
+              column: customerId
+        to_node:
+          label: Session
+          properties:
+            sessionId:
+              column: sessionId
+      - type: RELATIONSHIP
+        relationship: sessionUsesDevice
+        table: sessions.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Session
+          properties:
+            sessionId:
+              column: sessionId
+        to_node:
+          label: Device
+          properties:
+            deviceId:
+              column: deviceId
+      - type: RELATIONSHIP
+        relationship: usesIp
+        table: sessions.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Session
+          properties:
+            sessionId:
+              column: sessionId
+        to_node:
+          label: IP
+          properties:
+            ipAddress:
+              column: ipAddress
+  custom:
+    relate-examples:
+      family: studio
+      source:
+        repository: neo4j/studio-agent-use-cases
+        commit: b76f767e85c5853b7d70eb2bb3b10879d0e394a9
+        package: retail-banking
+        files:
+          - ONTOLOGY.json
+          - QUERIES.md
+          - human_description.md
+          - NOTICE.md
+      card:
+        title: Retail Banking Fraud
+        category: Financial Services
+        description: Follow money, people and devices together to expose transaction rings, money mules, account takeovers and synthetic identities.
+      industry: Financial Services
+      about: data/ontologies/studio/retail-banking/human_description.md

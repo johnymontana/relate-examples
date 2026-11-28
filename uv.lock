@@ -63,14 +63,14 @@ wheels = [
 
 [[package]]
 name = "relate-db"
-version = "1.2.0"
+version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/15/e8/17cca7a148e001803f46dd97f123c8922d1c6a6aecf1df1882c4ddca7551/relate_db-1.2.0.tar.gz", hash = "sha256:143646c88a822034f50e262495a794ed548e388348c9c7ba794d157be6ee3b0d", size = 5118275, upload-time = "2026-11-20T09:34:24.782Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/95/3e8c8ff0b0b6b787bd1380154d96dcdeccab6768a989cbb1a99e490ce904/relate_db-1.3.0.tar.gz", hash = "sha256:c0a37aea9a17574504cf8cf61aaa9b5de407c2cac7b1ac9f1d1f110d257a59aa", size = 5655283, upload-time = "2026-11-25T13:18:21.364Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0f/6b/8caff3ee08a8e7a349125f3f58fc3eec892ea9f13916e48c299015178b4f/relate_db-1.2.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:25e593c3308d1d04cf0d66764c45d47ae2e085b3fc38168d966034654d850d33", size = 10247231, upload-time = "2026-11-20T09:34:14.338Z" },
-    { url = "https://files.pythonhosted.org/packages/43/e0/db5e9bf99cdf1b7cb5c25cdde71a1014da016dda8fe96fa0769852ac4095/relate_db-1.2.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:400ea6f9d71c03151ccafe274121c282b19a69a5e6b1835bf1f6a206502b6e29", size = 9523209, upload-time = "2026-11-20T09:34:16.719Z" },
-    { url = "https://files.pythonhosted.org/packages/63/68/d47629e44f03fab3c2a56e7f989724a811cf68e96dc904d3d700b3781fe8/relate_db-1.2.0-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:37f008756158f7973b7e42c6a79e8c35cf8173de7335f57d71283a458c24e7bd", size = 10014260, upload-time = "2026-11-20T09:34:18.833Z" },
-    { url = "https://files.pythonhosted.org/packages/43/9e/129c1dc7e823c5372e56dcd1f362e0f1856c51a6b44e1d0d359c9b11aa27/relate_db-1.2.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:f58bab28cdbd25715f5a9a52b79d92a26abb141e837933f713a68bb13c2c5829", size = 10582040, upload-time = "2026-11-20T09:34:20.7Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/6d/f7c645d36ea272c2fdf624fd773f09662b1c8bbfd0a9c4c30a0f11622685/relate_db-1.3.0-cp39-abi3-macosx_10_12_x86_64.whl", hash = "sha256:2727796b1ec283a64fde447eb3dbc6ed7913105f7154954afbda66e6114581ec", size = 10142723, upload-time = "2026-11-25T13:18:07.297Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/11/5618c554d6be0adb5c19f1f5ba4b180427eb8eee2ad525ff11fbb93d1b62/relate_db-1.3.0-cp39-abi3-macosx_11_0_arm64.whl", hash = "sha256:af871c1604d417a57b6286ad295f287a1270e016093a5ac5c91c165a7f466c65", size = 9403994, upload-time = "2026-11-25T13:18:10.167Z" },
+    { url = "https://files.pythonhosted.org/packages/32/6c/4b08e970ad2d6acb32092a77ac510487696f27bc5d2e2dcda0352763749a/relate_db-1.3.0-cp39-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:20db5be79fde04bbb2b94999bded569e1f792ef99c33a6e232a717bf5ca91449", size = 9970956, upload-time = "2026-11-25T13:18:12.969Z" },
+    { url = "https://files.pythonhosted.org/packages/87/17/43c4f61fc4252c7f98d8f0c88117fd9eea5a4d0731f826a531c0a0a53235/relate_db-1.3.0-cp39-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:33ba7a6163d3bc2f2220a7ac3719754b091735071ce48c54489978fbacc9d1b4", size = 10507675, upload-time = "2026-11-25T13:18:16.176Z" },
 ]
 
 [[package]]
@@ -85,5 +85,5 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pytest", specifier = ">=8" },
-    { name = "relate-db", specifier = "==1.2.0" },
+    { name = "relate-db", specifier = "==1.3.0" },
 ]

@@ -1,0 +1,575 @@
+# Hospitality: example 01's curated ontology for hotel operations documents (D20). Written for this
+# repository from create-context-graph's hospitality.yaml at 707b168 (Apache-2.0,
+# data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base (Person,
+# Organization, Location, Event, Object) is gone, and the people are named for what a hotel calls
+# them (Guest, StaffMember), beside the hotel's own things (Hotel, Room, Reservation, Service,
+# Amenity) and what interrupts a stay (Incident, Complaint).
+#
+# Every kind carries the description a reader needs, aliases, a reference where schema.org has the
+# concept, realistic properties (identifiers with patterns, vocabularies with one_of), and under
+# extensions.custom.relate-examples the words the model reads (ask) and whether its mentions are
+# proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link says its
+# direction and cardinality and carries the phrase the model reads. The tools are the ontology's
+# competency questions, written for the graph the page extracts: entities carry name, display, key
+# and their key property; relationships carry p, claims, sentences and docs, and the trace
+# (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: hospitality
+name: Hospitality
+description: >-
+  Hotel operations as duty managers, front office and guest relations teams write about them: the
+  hotels and their rooms, the guests and the reservations that put them in those rooms, the staff on
+  duty and the teams they work in, the amenities a hotel offers and a stay includes, and the
+  incidents and complaints that interrupt a stay. It answers who was staying where when something
+  went wrong, who responded, which guests an incident affected and which rooms they were moved to,
+  which complaints it led to and who is handling them, which services draw complaints, and what the
+  source text says about each fact. Rates, revenue, occupancy and ownership are out of scope, and so
+  are the value of a refund and a guest's contact details: a report states them, the extractor does
+  not keep them.
+nodes:
+  Hotel:
+    label: Hotel
+    description: >-
+      A hotel or other lodging property, named in full ("the Halden Quay Hotel"), sometimes by its
+      brand. A hotel holds rooms and employs staff; a sister property is another hotel, not a part of
+      this one.
+    aliases: [property, lodging, inn, sister property, resort]
+    reference: https://schema.org/Hotel
+    properties:
+      name: {type: STRING, key: true, description: "The hotel's name as the documents write it."}
+      brand: {type: STRING, description: "The brand or group the hotel trades under, if any."}
+      hotelClass: {type: STRING, one_of: [economy, midscale, upscale, upper upscale, luxury], description: "The hotel's chain-scale class."}
+      totalRooms: {type: INTEGER, description: "The number of guest rooms the hotel has."}
+      city: {type: STRING, description: "The town or city the hotel is in."}
+    extensions:
+      display: {x: 0, y: -320, colour: "#1e3a8a"}
+      custom:
+        relate-examples: {ask: "a hotel, inn or other lodging property that guests stay at, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: hotel-staff-and-amenities
+            category: neighbourhood
+            question: Who works at each hotel, and which amenities does it offer?
+            description: Each hotel with the staff who work there and the amenities it offers.
+            teaches: Two independent neighbourhoods of one node come back as two collected lists, one OPTIONAL MATCH each.
+            cypher: |-
+              MATCH (h:Hotel)
+              OPTIONAL MATCH (s:StaffMember)-[:WORKS_AT]->(h)
+              OPTIONAL MATCH (h)-[:OFFERS]->(a:Amenity)
+              RETURN h.name AS hotel, collect(DISTINCT s.name) AS staff, collect(DISTINCT a.name) AS amenities
+              ORDER BY hotel
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Halden Quay}
+  Room:
+    label: Room
+    description: >-
+      A guest room or suite in a hotel, named by its number ("Room 614"). A room belongs to one hotel
+      and is assigned to reservations; an amenity is a facility guests share, not a room.
+    aliases: [guest room, suite, bedroom, junior suite]
+    reference: https://schema.org/HotelRoom
+    properties:
+      name: {type: STRING, key: true, description: "The room as the documents write it, with its number (Room 614)."}
+      roomNumber: {type: STRING, pattern: "^[0-9]{3,4}$", description: "The room number, three or four digits, the first one or two the floor."}
+      roomType: {type: STRING, one_of: [standard, superior, deluxe, junior suite, suite, accessible], description: "The room's type as the hotel sells it."}
+      floor: {type: INTEGER, description: "The floor the room is on."}
+      status: {type: STRING, one_of: [vacant clean, vacant dirty, occupied, out of order, out of service], description: "The room's housekeeping status."}
+    extensions:
+      display: {x: -60, y: -110, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a guest room or suite in a hotel, written as the word Room and its number, such as Room 1203", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: rooms-and-their-incidents
+            category: aggregation
+            question: Which rooms have incidents started in, and how many reservations were in them?
+            description: Per room, its hotel, the incidents that started in it and the reservations assigned to it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (rm:Room)
+              OPTIONAL MATCH (rm)-[:LOCATED_IN]->(h:Hotel)
+              OPTIONAL MATCH (i:Incident)-[:OCCURRED_IN]->(rm)
+              OPTIONAL MATCH (r:Reservation)-[:ASSIGNED_TO]->(rm)
+              RETURN rm.name AS room, collect(DISTINCT h.name) AS hotel, count(DISTINCT i) AS incidents, count(DISTINCT r) AS reservations
+              ORDER BY incidents DESC, reservations DESC, room
+  Guest:
+    label: Guest
+    description: >-
+      A person staying at or booked into a hotel, named in full ("Odette Fairlie") and often
+      afterwards as "Ms Fairlie". Guests book reservations and raise complaints; the hotel's own staff
+      are never its guests.
+    aliases: [hotel guest, customer, resident, traveller, occupant]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The guest's full name."}
+      loyaltyTier: {type: STRING, one_of: [member, silver, gold, platinum], description: "The guest's tier in the hotel's loyalty programme."}
+      guestType: {type: STRING, one_of: [leisure, business, group, long stay], description: "Why the guest is travelling, as the hotel segments it."}
+      email: {type: STRING, description: "The guest's e-mail address on the profile."}
+    extensions:
+      display: {x: 280, y: 200, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a person staying at or booked into a hotel, named in full or as Mr or Ms and a surname; never a member of staff", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-guest
+            category: lookup
+            question: Who is this guest, and what does the store connect to them?
+            description: Finds guests whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (g:Guest) WHERE toLower(g.name) CONTAINS toLower($guest)
+              OPTIONAL MATCH (g)-[r]-(x:_Entity)
+              RETURN g.name AS guest, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY guest, link, other
+            parameters:
+              - {name: guest, type: STRING, description: "Part of the guest's name.", example: Wierzbicki}
+          - type: canonicalQuery
+            name: stays-of-a-guest
+            category: neighbourhood
+            question: Which reservations has this guest booked, in which rooms and hotels, and what do they include?
+            description: Each reservation the guest booked, with the rooms it was assigned to, their hotels and the amenities it includes.
+            teaches: OPTIONAL MATCH keeps a reservation in the answer even when the text names no room or inclusion for it.
+            cypher: |-
+              MATCH (g:Guest)-[:BOOKED]->(r:Reservation) WHERE toLower(g.name) CONTAINS toLower($guest)
+              OPTIONAL MATCH (r)-[:ASSIGNED_TO]->(rm:Room)
+              OPTIONAL MATCH (rm)-[:LOCATED_IN]->(h:Hotel)
+              OPTIONAL MATCH (r)-[:INCLUDES]->(a:Amenity)
+              RETURN g.name AS guest, r.name AS reservation, collect(DISTINCT rm.name) AS rooms,
+                     collect(DISTINCT h.name) AS hotels, collect(DISTINCT a.name) AS includes
+              ORDER BY reservation
+            parameters:
+              - {name: guest, type: STRING, description: "Part of the guest's name.", example: Odette Fairlie}
+  Reservation:
+    label: Reservation
+    description: >-
+      A booking for a guest's stay at a hotel, identified by its confirmation number (RSV-748215) and
+      dated by arrival and departure. One guest books it; it is assigned to one room, or to more when
+      the guest is moved.
+    aliases: [booking, stay, confirmation, folio]
+    reference: https://schema.org/LodgingReservation
+    properties:
+      confirmationNumber: {type: STRING, key: true, pattern: "^RSV-[0-9]{6}$", description: "The confirmation number, RSV- and six digits."}
+      name: {type: STRING, description: "The reservation as a document names it."}
+      arrival: {type: DATE, description: "The arrival date.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the stay starts, a full date such as 12 November 2026"}}}}
+      departure: {type: DATE, description: "The departure date."}
+      channel: {type: STRING, one_of: [direct, online travel agent, corporate, group, walk-in], description: "Where the booking came from.", extensions: {custom: {relate-examples: {extract: true, ask: "where the booking came from: direct, an online travel agent, corporate, group or walk-in"}}}}
+      status: {type: STRING, one_of: [confirmed, in house, checked out, cancelled, no-show], description: "Where the reservation stands."}
+      totalAmount: {type: FLOAT, description: "The room charges for the stay, in the hotel's currency."}
+    extensions:
+      display: {x: 300, y: -60, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a hotel booking for a guest's stay, identified by a confirmation number such as RSV-100234", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: reservation-by-number
+            category: lookup
+            question: Which reservation has this confirmation number, whose is it, and which rooms was it in?
+            description: The reservation whose confirmation number is the parameter, with its guest and its rooms.
+            teaches: The key property (confirmationNumber) is filled from the entity's name when the text gives the number, so an exact match works here.
+            cypher: |-
+              MATCH (r:Reservation) WHERE r.confirmationNumber = $number
+              OPTIONAL MATCH (g:Guest)-[:BOOKED]->(r)
+              OPTIONAL MATCH (r)-[:ASSIGNED_TO]->(rm:Room)
+              RETURN r.name AS reservation, r.confirmationNumber AS number, collect(DISTINCT g.name) AS guests, collect(DISTINCT rm.name) AS rooms
+            parameters:
+              - {name: number, type: STRING, description: "A confirmation number, RSV- and six digits.", example: RSV-748215}
+          - type: canonicalQuery
+            name: guests-moved-between-rooms
+            category: aggregation
+            question: Which reservations were moved from one room to another, and whose were they?
+            description: Every reservation assigned to more than one room, with its guest and the rooms in the order the store lists them.
+            teaches: Collect first, then filter on the list with WITH ... WHERE size(...) > 1.
+            cypher: |-
+              MATCH (r:Reservation)-[:ASSIGNED_TO]->(rm:Room)
+              OPTIONAL MATCH (g:Guest)-[:BOOKED]->(r)
+              WITH r, collect(DISTINCT g.name) AS guests, collect(DISTINCT rm.name) AS rooms
+              WHERE size(rooms) > 1
+              RETURN r.name AS reservation, guests, rooms, size(rooms) AS moves
+              ORDER BY moves DESC, reservation
+  StaffMember:
+    label: StaffMember
+    description: >-
+      A person who works at a hotel, such as a duty manager, engineer, porter, housekeeper or guest
+      relations manager, usually named with a role ("Dariusz Pelka, the night engineer"). Staff
+      respond to incidents and handle complaints; guests do neither.
+    aliases: [staff, employee, team member, colleague, manager]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The staff member's full name."}
+      role: {type: STRING, one_of: [general manager, duty manager, front office manager, guest relations manager, engineer, porter, valet, housekeeping supervisor, housekeeper, server], description: "The staff member's job."}
+      shift: {type: STRING, one_of: [early, day, late, night], description: "The shift the staff member works."}
+    extensions:
+      display: {x: -320, y: -230, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a person employed by a hotel, named in full and usually given a job title; never a guest", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: staff-workload
+            category: aggregation
+            question: Which team is each staff member in, and how many incidents and complaints did each deal with?
+            description: Per staff member, their teams, the incidents they responded to and the complaints they handle.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each incident is counted once per complaint.
+            cypher: |-
+              MATCH (s:StaffMember)
+              OPTIONAL MATCH (s)-[:WORKS_IN]->(v:Service)
+              OPTIONAL MATCH (s)-[:RESPONDED_TO]->(i:Incident)
+              OPTIONAL MATCH (c:Complaint)-[:HANDLED_BY]->(s)
+              RETURN s.name AS staff, collect(DISTINCT v.name) AS teams, count(DISTINCT i) AS incidents, count(DISTINCT c) AS complaints
+              ORDER BY incidents DESC, complaints DESC, staff
+  Service:
+    label: Service
+    description: >-
+      A service a hotel provides to guests, and the team that runs it: housekeeping, maintenance,
+      laundry, valet parking, the front office or in-room dining, named in lower case as a rule. Staff
+      deliver a service; an amenity is a facility guests use for themselves.
+    aliases: [department, team, hotel service, guest service]
+    reference: https://schema.org/Service
+    properties:
+      name: {type: STRING, key: true, description: "The service as the documents name it (housekeeping)."}
+      serviceType: {type: STRING, one_of: [housekeeping, maintenance, laundry, valet parking, front office, in-room dining, concierge], description: "The kind of service."}
+      hours: {type: STRING, description: "When the service runs, as the hotel publishes it (24 hours, 06:00 to 23:00)."}
+    extensions:
+      display: {x: -400, y: 60, colour: "#d97706"}
+      custom:
+        relate-examples: {ask: "a hotel service or the team that runs it, such as housekeeping, maintenance, laundry, valet parking, front office or in-room dining"}
+        tools:
+          - type: canonicalQuery
+            name: complaints-by-service
+            category: aggregation
+            question: Which services draw the most complaints, and who works in them?
+            description: Per service, the complaints that concern it and the staff in its team.
+            teaches: A service with no complaint still appears, with a count of zero, because the MATCH starts from the service.
+            cypher: |-
+              MATCH (v:Service)
+              OPTIONAL MATCH (c:Complaint)-[:CONCERNS]->(v)
+              OPTIONAL MATCH (s:StaffMember)-[:WORKS_IN]->(v)
+              RETURN v.name AS service, count(DISTINCT c) AS complaints, collect(DISTINCT s.name) AS team
+              ORDER BY complaints DESC, service
+  Amenity:
+    label: Amenity
+    description: >-
+      A facility or inclusion a hotel offers its guests (breakfast, a spa, a pool, a lounge, Wi-Fi),
+      named in lower case or by its own name ("the Tidewater Spa"). A reservation may include it; a
+      service, by contrast, is something staff do.
+    aliases: [facility, inclusion, outlet, feature, perk]
+    reference: https://schema.org/LocationFeatureSpecification
+    properties:
+      name: {type: STRING, key: true, description: "The amenity as the documents name it."}
+      amenityType: {type: STRING, one_of: [food and drink, wellness, leisure, business, connectivity, parking], description: "What kind of amenity it is."}
+      chargeable: {type: BOOLEAN, description: "Whether guests pay for it on top of the room rate."}
+    extensions:
+      display: {x: 340, y: -250, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "something a hotel offers its guests to use or enjoy, named in full, such as breakfast, Wi-Fi, a pool or the Harbour Spa"}
+        tools:
+          - type: canonicalQuery
+            name: amenities-offered-and-included
+            category: aggregation
+            question: Which hotels offer each amenity, and how many reservations include it?
+            description: Per amenity, the hotels that offer it and the number of reservations that include it.
+            teaches: collect() and count() can sit side by side in one aggregating RETURN, grouped by the amenity's name.
+            cypher: |-
+              MATCH (a:Amenity)
+              OPTIONAL MATCH (h:Hotel)-[:OFFERS]->(a)
+              OPTIONAL MATCH (r:Reservation)-[:INCLUDES]->(a)
+              RETURN a.name AS amenity, collect(DISTINCT h.name) AS offered_by, count(DISTINCT r) AS reservations
+              ORDER BY reservations DESC, amenity
+  Incident:
+    label: Incident
+    description: >-
+      Something that happened at a hotel and harmed, endangered or disturbed guests (a leak, a fall, a
+      theft, a fire alarm), logged with a reference such as INC-2026-0418. An incident is the event; a
+      complaint is what a guest says about it afterwards.
+    aliases: [incident report, occurrence, accident, escape of water, emergency]
+    properties:
+      incidentNumber: {type: STRING, key: true, pattern: "^INC-[0-9]{4}-[0-9]{4}$", description: "The incident reference, INC-, the year and four digits."}
+      name: {type: STRING, description: "The incident as a document names it."}
+      incidentType: {type: STRING, one_of: [water ingress, fire alarm, injury, illness, theft, security, power failure], description: "What kind of incident it was."}
+      severity: {type: STRING, one_of: [minor, moderate, major], description: "The severity the duty manager recorded.", extensions: {custom: {relate-examples: {extract: true, ask: "how serious the duty manager rated the incident: minor, moderate or major"}}}}
+      occurredOn: {type: DATE, description: "The date the incident happened."}
+    extensions:
+      display: {x: -200, y: 140, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "an incident at a hotel, such as a leak, fall, theft or fire alarm, identified by a reference such as INC-2025-0102", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: from-incident-to-complaints
+            category: path
+            question: Which complaints did this incident lead to, who raised them, what do they concern and who is handling them?
+            description: Every complaint the incident led to, with the guests who raised it, the services it concerns and its handlers.
+            teaches: Start from the incident and fan out; OPTIONAL MATCH on each side keeps a complaint whose guest or handler the text leaves out.
+            cypher: |-
+              MATCH (i:Incident)-[:LED_TO]->(c:Complaint)
+              WHERE toLower(i.name) CONTAINS toLower($incident)
+              OPTIONAL MATCH (g:Guest)-[:RAISED]->(c)
+              OPTIONAL MATCH (c)-[:CONCERNS]->(v:Service)
+              OPTIONAL MATCH (c)-[:HANDLED_BY]->(s:StaffMember)
+              RETURN i.name AS incident, c.name AS complaint, collect(DISTINCT g.name) AS raised_by,
+                     collect(DISTINCT v.name) AS concerns, collect(DISTINCT s.name) AS handled_by
+              ORDER BY complaint
+            parameters:
+              - {name: incident, type: STRING, description: "Part of the incident's reference.", example: INC-2026-0418}
+          - type: canonicalQuery
+            name: who-an-incident-affected
+            category: path
+            question: Where did this incident start, which guests did it affect, and which rooms did they stay in?
+            description: For each guest the incident affected, the room it started in and every room the guest stayed in, the one they were moved to included.
+            teaches: Two OPTIONAL MATCHes from different ends of the AFFECTED link (the incident's room, the guest's rooms) collect independently.
+            cypher: |-
+              MATCH (i:Incident)-[:AFFECTED]->(g:Guest)
+              WHERE toLower(i.name) CONTAINS toLower($incident)
+              OPTIONAL MATCH (i)-[:OCCURRED_IN]->(src:Room)
+              OPTIONAL MATCH (g)-[:STAYED_IN]->(rm:Room)
+              RETURN i.name AS incident, collect(DISTINCT src.name) AS started_in, g.name AS guest,
+                     collect(DISTINCT rm.name) AS stayed_in
+              ORDER BY guest
+            parameters:
+              - {name: incident, type: STRING, description: "Part of the incident's reference.", example: INC-2026-0418}
+  Complaint:
+    label: Complaint
+    description: >-
+      A guest's complaint as the hotel logs it, identified by a case number such as CMP-31742. A guest
+      raises it, one member of staff handles it, and it concerns one or more services.
+    aliases: [guest complaint, case, grievance, service failure]
+    properties:
+      caseNumber: {type: STRING, key: true, pattern: "^CMP-[0-9]{5}$", description: "The complaint's case number, CMP- and five digits."}
+      name: {type: STRING, description: "The complaint as a document names it."}
+      category: {type: STRING, one_of: [noise, cleanliness, maintenance, service, billing, safety], description: "What the complaint is about."}
+      status: {type: STRING, one_of: [open, resolved, escalated], description: "Where the complaint stands."}
+      raisedOn: {type: DATE, description: "The date the guest raised it."}
+      recoveryValue: {type: FLOAT, description: "The value of the recovery offered, in the hotel's currency (GBP).", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the value of the refunds and goodwill offered on the complaint, a sum such as £340"}}}}
+    extensions:
+      display: {x: -20, y: 330, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a guest complaint the hotel has logged, identified by a case number such as CMP-20817", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: complaint-back-to-the-room
+            category: path
+            question: Where was the guest who raised this complaint staying?
+            description: The chain complaint, guest, reservation, room, hotel, for every complaint whose case number holds the text.
+            teaches: A complaint names a guest, not a room; the path through the guest's reservations finds where they stayed.
+            cypher: |-
+              MATCH (g:Guest)-[:RAISED]->(c:Complaint) WHERE toLower(c.name) CONTAINS toLower($complaint)
+              MATCH (g)-[:BOOKED]->(r:Reservation)-[:ASSIGNED_TO]->(rm:Room)
+              OPTIONAL MATCH (rm)-[:LOCATED_IN]->(h:Hotel)
+              RETURN c.name AS complaint, g.name AS guest, r.name AS reservation, rm.name AS room, h.name AS hotel
+              ORDER BY reservation, room
+            parameters:
+              - {name: complaint, type: STRING, description: "Part of the complaint's case number.", example: CMP-31742}
+          - type: canonicalQuery
+            name: what-a-complaint-rests-on
+            category: evidence
+            question: Which sentences say who raised each complaint, what it concerns and who is handling it?
+            description: Every RAISED, CONCERNS and HANDLED_BY fact about a complaint, with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words. An undirected pattern over three types reads links pointing either way.
+            cypher: |-
+              MATCH (c:Complaint)-[r:RAISED|CONCERNS|HANDLED_BY]-(x:_Entity)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN c.name AS complaint, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY complaint, link, other
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Wierzbicki}
+relationships:
+  roomInHotel:
+    type: LOCATED_IN
+    description: >-
+      The room is in the hotel: exactly one hotel per room, many rooms per hotel.
+    aliases: [is in, is at, is on the floor of]
+    from: {node: Room, count: 1}
+    to: {node: Hotel}
+    extensions:
+      custom:
+        relate-examples: {phrase: belongs to}
+  guestBookedReservation:
+    type: BOOKED
+    description: >-
+      The guest booked the reservation and is its lead guest: one guest per reservation, many
+      reservations per guest.
+    aliases: [made, is booked under, holds, rebooked]
+    from: {node: Guest}
+    to: {node: Reservation, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: booked}
+  reservationAssignedToRoom:
+    type: ASSIGNED_TO
+    description: >-
+      The reservation was assigned to the room for some or all of the stay; a reservation moves to a
+      second room when the guest is moved, and a room takes many reservations over time.
+    aliases: [was in, was moved to, was roomed in, shows]
+    from: {node: Reservation}
+    to: {node: Room}
+    extensions:
+      custom:
+        relate-examples: {phrase: was assigned to}
+  guestStayedInRoom:
+    type: STAYED_IN
+    description: >-
+      The guest stayed in the room for some or all of a stay, as a document places them there; a
+      guest moved mid-stay stayed in two rooms, and a room has many guests over time.
+    aliases: [was in, was moved to, occupied, was asleep in, checked into]
+    from: {node: Guest}
+    to: {node: Room}
+    extensions:
+      custom:
+        relate-examples: {phrase: stayed in}
+  staffWorksAtHotel:
+    type: WORKS_AT
+    description: >-
+      The staff member works at the hotel; one hotel per staff member in this ontology, many staff per
+      hotel.
+    aliases: [is employed at, is on the team at, manages]
+    from: {node: StaffMember, count: 1}
+    to: {node: Hotel}
+    extensions:
+      custom:
+        relate-examples: {phrase: works at}
+  staffWorksInService:
+    type: WORKS_IN
+    description: >-
+      The staff member is part of the team that runs the service; at most one team per staff member,
+      many staff per team.
+    aliases: [is on, is part of, runs, supervises]
+    from: {node: StaffMember, max_count: 1}
+    to: {node: Service}
+    extensions:
+      custom:
+        relate-examples: {phrase: works in}
+  hotelOffersAmenity:
+    type: OFFERS
+    description: >-
+      The hotel offers the amenity to its guests; many to many, since two hotels may both serve
+      breakfast.
+    aliases: [has, provides, runs, features]
+    from: {node: Hotel}
+    to: {node: Amenity}
+    extensions:
+      custom:
+        relate-examples: {phrase: offers}
+  reservationIncludesAmenity:
+    type: INCLUDES
+    description: >-
+      The reservation's rate includes the amenity at no extra charge; many to many.
+    aliases: [comes with, covers, gives access to]
+    from: {node: Reservation}
+    to: {node: Amenity}
+    extensions:
+      custom:
+        relate-examples: {phrase: includes}
+  incidentOccurredInRoom:
+    type: OCCURRED_IN
+    description: >-
+      The incident started in the room, or was first found there; at most one room per incident, many
+      incidents per room over time.
+    aliases: [started in, began in, came from, was reported in]
+    from: {node: Incident, max_count: 1}
+    to: {node: Room}
+    extensions:
+      custom:
+        relate-examples: {phrase: occurred in}
+  incidentAffectedGuest:
+    type: AFFECTED
+    description: >-
+      The incident harmed, endangered or disturbed the guest; many to many.
+    aliases: [disturbed, injured, flooded, involved]
+    from: {node: Incident}
+    to: {node: Guest}
+    extensions:
+      custom:
+        relate-examples: {phrase: affected}
+  staffRespondedToIncident:
+    type: RESPONDED_TO
+    description: >-
+      The staff member attended or dealt with the incident as it happened; every incident has at least
+      one responder, and a staff member responds to many.
+    aliases: [attended, dealt with, reached, was called to]
+    from: {node: StaffMember}
+    to: {node: Incident, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: responded to}
+  incidentLedToComplaint:
+    type: LED_TO
+    description: >-
+      The incident gave rise to the complaint; a complaint follows from at most one incident, an
+      incident may lead to several.
+    aliases: [caused, gave rise to, prompted, resulted in]
+    from: {node: Incident}
+    to: {node: Complaint, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: led to}
+  guestRaisedComplaint:
+    type: RAISED
+    description: >-
+      The guest raised the complaint; exactly one guest per complaint, many complaints per guest.
+    aliases: [made, lodged, filed, complained in]
+    from: {node: Guest}
+    to: {node: Complaint, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: raised}
+  complaintConcernsService:
+    type: CONCERNS
+    description: >-
+      The complaint is about how the service was delivered; a complaint concerns one or more services,
+      a service draws many complaints.
+    aliases: [is about, criticises, relates to]
+    from: {node: Complaint}
+    to: {node: Service}
+    extensions:
+      custom:
+        relate-examples: {phrase: concerns}
+  complaintHandledByStaff:
+    type: HANDLED_BY
+    description: >-
+      The staff member owns the complaint until it is resolved; exactly one handler per complaint, many
+      complaints per staff member.
+    aliases: [is being handled by, was resolved by, is owned by, was taken by]
+    from: {node: Complaint, count: 1}
+    to: {node: StaffMember}
+    extensions:
+      custom:
+        relate-examples: {phrase: was handled by}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Travel & Hospitality
+      card:
+        title: Hospitality
+        description: Follow an incident from the room it started in to the guests it affected, the rooms they moved to and the complaints that followed.
+      source:
+        derived_from: create-context-graph's hospitality.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Staff became StaffMember; Hotel, Room, Guest,
+          Reservation and Service keep their meaning with new descriptions and properties; Amenity,
+          Incident and Complaint are new, for what a stay includes and what can interrupt it; RESERVED
+          became BOOKED, STAYED_AT (a guest's hotel) became STAYED_IN (a guest's room), ASSIGNED_TO and
+          LOCATED_IN stay; RATED, SERVED_BY, MANAGED_BY and DELIVERED_BY gave way to links read through
+          staff teams, incidents and complaints, each with a cardinality; the tools were written anew
+          for an extracted graph.

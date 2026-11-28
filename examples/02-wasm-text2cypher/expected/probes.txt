@@ -1,4 +1,4 @@
-# Relate 1.2.0 behaviours example 02 depends on (NOTES.md has one row per probe)
+# Relate 1.3.0 behaviours example 02 depends on (NOTES.md has one row per probe)
 
 ## P1 an existence constraint on a graph-typed label must come from the graph type: holds
   graph type {name :: STRING}, then CREATE CONSTRAINT … IS NOT NULL: error: IncompatibleGraphTypeDependence: dependent constraints are managed by the graph type

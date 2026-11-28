@@ -436,7 +436,7 @@ section('traps (R14)');
     say(`  the same handle again -> ${shown(again)}`);
     say(`  a new handle on the same instance -> ${fresh}`);
     pin('R14 (traps)', !first.ok && first.upstream && !again.ok && /recursive use of an object/.test(again.message) &&
-      !again.upstream && again.ours, 'a trap, then `recursive use of an object` that only relate_wasm.isTrap catches',
+      again.upstream && again.ours, 'a trap, then `recursive use of an object`, both caught by trap.js and relate_wasm.isTrap',
     `${shown(first)} / ${shown(again)}`);
   }
 }

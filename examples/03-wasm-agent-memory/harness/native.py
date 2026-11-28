@@ -3,7 +3,7 @@
     uv run --project ../.. python -I harness/native.py > out/native.txt
 
 Run by run.sh after the Node sections, with the project env's binding (`relate-db`, the
-repository's engine; run.sh checks it is 1.2.0 like the WASM bundle). For each scripted conversation
+repository's engine; run.sh checks it is 1.3.0 like the WASM bundle). For each scripted conversation
 it opens an in-memory database, applies the memory's schema, and replays every statement the Node
 section ran on Relate's WASM build (out/replay.json: the remember writes with their vectors, the
 recall, connect and trace reads), with the same parameters, in the same order. Every statement's

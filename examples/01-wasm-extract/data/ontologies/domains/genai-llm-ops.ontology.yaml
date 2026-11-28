@@ -1,0 +1,583 @@
+# GenAI & LLM Ops: example 01's curated ontology for the documents a team writes while it trains,
+# evaluates, ships and runs language models (D20). Written for this repository from
+# create-context-graph's genai-llm-ops.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/), which it
+# replaces in the page: the inherited POLE+O base (Person, Organization, Location, Event, Object) is
+# gone, and the parties are named for what the domain calls them (Provider, Engineer).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: genai-llm-ops
+name: GenAI & LLM Ops
+description: >-
+  The lifecycle of a language model as the team that ships it writes about it in evaluation reports,
+  model cards, runbooks and postmortems: the models and the base models they were fine-tuned from,
+  the providers that release them, the datasets they were trained on and the benchmarks built from
+  data, the experiments that produced them and the engineers who ran them, the evaluations that
+  scored them with a prompt and sometimes a judge model, the deployments that serve them, and the
+  incidents those deployments had. It answers what a model was made from, whether a benchmark shares
+  data with a model's training set, what a deployment runs and who owns it, which prompt an incident
+  was traced to and whether that prompt is still live, and what the source text says about each fact.
+  Scores over time, costs, hardware and the model's internals are out of scope: a document states
+  them, the extractor does not keep them.
+nodes:
+  Model:
+    label: Model
+    description: >-
+      A trained machine-learning model, usually a language model, or one released version of it,
+      named with its size or version ("Halcyon-13B", "Assist-13B v1"). A base model and the fine-tune
+      made from it are two models; the deployment that serves a model is not the model.
+    aliases: [LLM, large language model, checkpoint, fine-tune, base model, foundation model]
+    properties:
+      name: {type: STRING, key: true, description: "The model's name with its version, as the documents write it."}
+      version: {type: STRING, description: "The release version, as written (v2.1)."}
+      architecture: {type: STRING, one_of: [dense transformer, mixture of experts, encoder-decoder, diffusion], description: "The model's architecture family."}
+      parameterCount: {type: FLOAT, description: "The number of parameters, in billions (13.0)."}
+      contextWindow: {type: INTEGER, description: "The longest input the model accepts, in tokens."}
+      status: {type: STRING, one_of: [training, evaluating, staging, production, deprecated], description: "Where the model is in its lifecycle."}
+      licence: {type: STRING, description: "The licence its weights are released under, by name."}
+    extensions:
+      display: {x: -80, y: 0, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a trained machine-learning or large language model, or one version of it, named with its size or version, such as Halcyon-13B", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-model
+            category: lookup
+            question: Which models have this name, and what does the store connect to them?
+            description: Finds models whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (m:Model) WHERE toLower(m.name) CONTAINS toLower($model)
+              OPTIONAL MATCH (m)-[r]-(x:_Entity)
+              RETURN m.name AS model, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY model, link, other
+            parameters:
+              - {name: model, type: STRING, description: "Part of the model's name.", example: Assist-13B}
+          - type: canonicalQuery
+            name: how-a-model-was-made
+            category: neighbourhood
+            question: What was this model fine-tuned from and trained on, and which experiment and engineers produced it?
+            description: Each matching model with its direct base model, its training datasets, the experiment that produced it and who ran that experiment.
+            teaches: OPTIONAL MATCH keeps a model in the answer even when the text names no base, dataset or experiment for it.
+            cypher: |-
+              MATCH (m:Model) WHERE toLower(m.name) CONTAINS toLower($model)
+              OPTIONAL MATCH (m)-[:FINE_TUNED_FROM]->(base:Model)
+              OPTIONAL MATCH (m)-[:TRAINED_ON]->(d:Dataset)
+              OPTIONAL MATCH (m)-[:PRODUCED_BY]->(x:Experiment)
+              OPTIONAL MATCH (x)-[:RUN_BY]->(e:Engineer)
+              RETURN m.name AS model, collect(DISTINCT base.name) AS fine_tuned_from, collect(DISTINCT d.name) AS datasets,
+                     collect(DISTINCT x.name) AS experiments, collect(DISTINCT e.name) AS run_by
+              ORDER BY model
+            parameters:
+              - {name: model, type: STRING, description: "Part of the model's name.", example: Assist-13B v2.1}
+          - type: canonicalQuery
+            name: lineage-of-a-model
+            category: path
+            question: Which chain of base models does this model descend from?
+            description: The chain of FINE_TUNED_FROM links back from a model, up to four steps, longest last.
+            teaches: A bounded variable-length pattern (*1..4) walks a lineage without risking an unbounded search.
+            cypher: |-
+              MATCH p = (m:Model)-[:FINE_TUNED_FROM*1..4]->(:Model)
+              WHERE toLower(m.name) CONTAINS toLower($model)
+              RETURN m.name AS model, [n IN nodes(p) | n.name] AS lineage, length(p) AS steps
+              ORDER BY model, steps
+            parameters:
+              - {name: model, type: STRING, description: "Part of the model's name.", example: Assist-13B v2.1}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Assist-13B}
+  Provider:
+    label: Provider
+    description: >-
+      A company or lab that develops, releases or hosts models for others: a model lab publishing open
+      weights or a vendor selling a model through an API ("Larkspur AI"). The team that fine-tunes a
+      provider's model in house is not its provider.
+    aliases: [model provider, model vendor, model lab, AI lab, API provider]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The provider's name."}
+      providerType: {type: STRING, one_of: [model lab, API vendor, cloud host, open-source community], description: "How the provider makes its models available."}
+      country: {type: STRING, description: "The country of the provider's head office, as an ISO 3166 alpha-2 code (GB)."}
+    extensions:
+      display: {x: -360, y: -140, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a company or lab that develops, releases or hosts language models, such as a model lab or an API vendor", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-depends-on-a-provider
+            category: path
+            question: Which of our models descend from this provider's models?
+            description: Each model the provider releases, with every model fine-tuned from it, directly or through up to four steps.
+            teaches: A variable-length pattern ending at a fixed node finds every descendant; collect(DISTINCT) folds the paths into one list per model.
+            cypher: |-
+              MATCH (v:Provider)<-[:PROVIDED_BY]-(base:Model)
+              WHERE toLower(v.name) CONTAINS toLower($provider)
+              OPTIONAL MATCH (m:Model)-[:FINE_TUNED_FROM*1..4]->(base)
+              RETURN v.name AS provider, base.name AS model, collect(DISTINCT m.name) AS descendants
+              ORDER BY model
+            parameters:
+              - {name: provider, type: STRING, description: "Part of the provider's name.", example: Larkspur}
+  Dataset:
+    label: Dataset
+    description: >-
+      A named collection of data used to train or fine-tune a model, or set aside to build benchmarks
+      from ("Support Transcripts 2026"). A dataset is raw material; a benchmark is a fixed, scored test
+      built from one.
+    aliases: [corpus, training set, training data, data set, held-out set]
+    reference: https://schema.org/Dataset
+    properties:
+      name: {type: STRING, key: true, description: "The dataset's name, as the data catalogue writes it."}
+      purpose: {type: STRING, one_of: [pre-training, fine-tuning, preference, held-out, synthetic], description: "What the dataset is for."}
+      records: {type: INTEGER, description: "The number of records (conversations, documents or examples)."}
+      format: {type: STRING, one_of: [jsonl, parquet, csv, arrow], description: "The storage format."}
+      collectedTo: {type: DATE, description: "The date of the newest record."}
+      licence: {type: STRING, description: "The licence or data agreement it is used under."}
+    extensions:
+      display: {x: -360, y: 140, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a named collection of training, fine-tuning or held-out data, such as a corpus of transcripts or a synthetic set", proper: true}
+  Benchmark:
+    label: Benchmark
+    description: >-
+      A fixed test suite that models are scored on, public ("MMLU") or the team's own golden set or
+      red-team suite, named with its version. Evaluations are run against a benchmark; the benchmark
+      itself is not a run.
+    aliases: [eval set, golden set, test suite, evaluation suite, red-team suite]
+    properties:
+      name: {type: STRING, key: true, description: "The benchmark's name with its version."}
+      task: {type: STRING, one_of: [question answering, code generation, safety, reasoning, summarisation, knowledge], description: "What the benchmark tests."}
+      origin: {type: STRING, one_of: [public, internal], description: "Whether the benchmark is published or the team's own."}
+      items: {type: INTEGER, description: "The number of test items."}
+      metric: {type: STRING, description: "The metric it reports, as written (answer accuracy)."}
+    extensions:
+      display: {x: -120, y: 280, colour: "#d97706"}
+      custom:
+        relate-examples: {ask: "a named test suite that models are scored on, public such as MMLU or internal such as a golden set or red-team suite", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: benchmark-shares-training-data
+            category: path
+            question: Was any model evaluated on a benchmark built from data the model was trained on?
+            description: Every evaluation whose model was trained on a dataset that the evaluation's own benchmark was built from.
+            teaches: A pattern that returns to a node it has already bound (e) closes a cycle; here the cycle is a contaminated result.
+            cypher: |-
+              MATCH (e:Evaluation)-[:EVALUATED]->(m:Model)-[:TRAINED_ON]->(d:Dataset)<-[:BUILT_FROM]-(b:Benchmark)<-[:RAN_AGAINST]-(e)
+              RETURN e.name AS evaluation, m.name AS model, b.name AS benchmark, d.name AS shared_dataset
+              ORDER BY evaluation
+          - type: canonicalQuery
+            name: benchmark-scoreboard
+            category: aggregation
+            question: How many evaluations has each benchmark had, and of which models?
+            description: Per benchmark, the evaluations run against it and the models they evaluated.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (b:Benchmark)
+              OPTIONAL MATCH (e:Evaluation)-[:RAN_AGAINST]->(b)
+              OPTIONAL MATCH (e)-[:EVALUATED]->(m:Model)
+              RETURN b.name AS benchmark, count(DISTINCT e) AS evaluations, collect(DISTINCT m.name) AS models
+              ORDER BY evaluations DESC, benchmark
+  Prompt:
+    label: Prompt
+    description: >-
+      A versioned prompt template kept in a prompt registry, usually a system prompt, named by its
+      registry name and version ("triage-system v12"). Each version is its own prompt; the text a user
+      types is not one.
+    aliases: [prompt template, system prompt, prompt version, instructions]
+    reference: https://schema.org/CreativeWork
+    properties:
+      name: {type: STRING, key: true, description: "The prompt's registry name and version, as written."}
+      version: {type: STRING, description: "The version, as written (v12)."}
+      category: {type: STRING, one_of: [system, user, few-shot, chain-of-thought, tool-use], description: "The prompt's role in a request."}
+      tokens: {type: INTEGER, description: "The template's length in tokens."}
+      registry: {type: STRING, description: "The prompt registry that holds it."}
+    extensions:
+      display: {x: 380, y: 120, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a versioned prompt template from a prompt registry, usually a system prompt, named with its version such as triage-system v12", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: is-the-faulty-prompt-still-live
+            category: path
+            question: Is a prompt that an incident was traced to still configured on a deployment, and which evaluations used it?
+            description: Each incident with the prompt it was traced to, the deployments still configured with that prompt, and the evaluations that used it.
+            teaches: Two paths that meet at one node (the prompt) answer a question neither answers alone.
+            cypher: |-
+              MATCH (i:Incident)-[:TRACED_TO]->(p:Prompt)
+              OPTIONAL MATCH (d:Deployment)-[:CONFIGURED_WITH]->(p)
+              OPTIONAL MATCH (ev:Evaluation)-[:USED_PROMPT]->(p)
+              RETURN i.name AS incident, p.name AS prompt, collect(DISTINCT d.name) AS live_on, collect(DISTINCT ev.name) AS evaluated_in
+              ORDER BY incident, prompt
+  Experiment:
+    label: Experiment
+    description: >-
+      A tracked training, fine-tuning or prompt experiment run, identified by the experiment tracker's
+      id (EXP-0412). An experiment produces models; an evaluation scores them afterwards.
+    aliases: [run, training run, fine-tuning run, A/B test, sweep]
+    properties:
+      experimentId: {type: STRING, key: true, pattern: "^EXP-[0-9]{4}$", description: "The experiment tracker's id, EXP- and four digits."}
+      name: {type: STRING, description: "The experiment as a document names it."}
+      method: {type: STRING, one_of: [pre-training, supervised fine-tuning, preference tuning, prompt A/B, hyperparameter sweep], description: "What the experiment did."}
+      hypothesis: {type: STRING, description: "The hypothesis the experiment tested, in a sentence."}
+      startedOn: {type: DATE, description: "The date the run started."}
+      status: {type: STRING, one_of: [running, completed, failed, cancelled], description: "The run's state."}
+    extensions:
+      display: {x: -200, y: -260, colour: "#65a30d"}
+      custom:
+        relate-examples: {ask: "a tracked training, fine-tuning or prompt experiment run, identified by an id such as EXP-0412", proper: true, propose: true}
+  Evaluation:
+    label: Evaluation
+    description: >-
+      One scored run of one model against one benchmark, identified by its evaluation id (EV-2291),
+      with a metric, a score and often a prompt and a judge model. It is the run, not the benchmark it
+      uses.
+    aliases: [eval, eval run, evaluation run, test run]
+    properties:
+      evalId: {type: STRING, key: true, pattern: "^EV-[0-9]{4}$", description: "The evaluation id, EV- and four digits."}
+      name: {type: STRING, description: "The evaluation as a document names it."}
+      metric: {type: STRING, description: "The metric reported, as written (answer accuracy, unsafe-response rate)."}
+      score: {type: FLOAT, description: "The score, as a fraction (0.874 for 87.4%)."}
+      threshold: {type: FLOAT, description: "The release gate the score is held to, as a fraction."}
+      verdict: {type: STRING, one_of: [pass, fail, baseline, excluded], description: "What the release gate made of the score."}
+      ranOn: {type: DATE, description: "The date the evaluation ran."}
+    extensions:
+      display: {x: 160, y: 220, colour: "#059669"}
+      custom:
+        relate-examples: {ask: "one scored evaluation run of a model on a benchmark, identified by an id such as EV-2291", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: evaluation-by-id
+            category: lookup
+            question: What did this evaluation run, on which benchmark, with which prompt and judge?
+            description: The evaluation whose id is the parameter, with the model it evaluated, its benchmark, its prompt and its judge model.
+            teaches: The key property (evalId) is filled from the entity's name when the text gives the identifier, so an exact match works here.
+            cypher: |-
+              MATCH (e:Evaluation) WHERE e.evalId = $eval
+              OPTIONAL MATCH (e)-[:EVALUATED]->(m:Model)
+              OPTIONAL MATCH (e)-[:RAN_AGAINST]->(b:Benchmark)
+              OPTIONAL MATCH (e)-[:USED_PROMPT]->(p:Prompt)
+              OPTIONAL MATCH (e)-[:JUDGED_BY]->(j:Model)
+              RETURN e.name AS evaluation, collect(DISTINCT m.name) AS models, collect(DISTINCT b.name) AS benchmarks,
+                     collect(DISTINCT p.name) AS prompts, collect(DISTINCT j.name) AS judges
+            parameters:
+              - {name: eval, type: STRING, description: "An evaluation id, EV- and four digits.", example: EV-2291}
+          - type: canonicalQuery
+            name: what-each-evaluation-measured
+            category: evidence
+            question: Which sentences say which model each evaluation scored and on which benchmark?
+            description: Every EVALUATED and RAN_AGAINST fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (e:Evaluation)-[r]->(x:_Entity) WHERE type(r) IN ['EVALUATED', 'RAN_AGAINST']
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS evaluation, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY evaluation, link, other
+  Deployment:
+    label: Deployment
+    description: >-
+      A model served at an endpoint in one environment (staging, canary or production), identified by
+      its deployment id (DEP-0310). A deployment serves a model with a prompt; replacing the model
+      changes the deployment, not its id.
+    aliases: [endpoint, serving deployment, rollout, canary]
+    properties:
+      deploymentId: {type: STRING, key: true, pattern: "^DEP-[0-9]{4}$", description: "The deployment id, DEP- and four digits."}
+      name: {type: STRING, description: "The deployment as a document names it."}
+      environment: {type: STRING, one_of: [development, staging, canary, production], description: "The environment it serves.", extensions: {custom: {relate-examples: {extract: true, ask: "the environment the deployment serves, production, staging or canary"}}}}
+      endpoint: {type: STRING, description: "The endpoint's URL."}
+      trafficShare: {type: FLOAT, description: "The share of live traffic it receives, as a fraction (0.05).", extensions: {custom: {relate-examples: {extract: true, parse: PERCENT, ask: "the share of production traffic the deployment serves, a percentage such as 5%"}}}}
+      status: {type: STRING, one_of: [active, draining, rolled back, terminated], description: "The deployment's state."}
+    extensions:
+      display: {x: 200, y: -60, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a model deployment serving an endpoint in staging, canary or production, identified by an id such as DEP-0310", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: what-a-deployment-runs
+            category: neighbourhood
+            question: What does each deployment serve, with which prompt, who owns it, and which incidents has it had?
+            description: Each deployment with the models it serves, the prompts it is configured with, its owners and the incidents that affected it.
+            teaches: Four independent neighbourhoods of one node come back as four collected lists.
+            cypher: |-
+              MATCH (d:Deployment)
+              OPTIONAL MATCH (d)-[:SERVES]->(m:Model)
+              OPTIONAL MATCH (d)-[:CONFIGURED_WITH]->(p:Prompt)
+              OPTIONAL MATCH (d)-[:OWNED_BY]->(e:Engineer)
+              OPTIONAL MATCH (i:Incident)-[:AFFECTED]->(d)
+              RETURN d.name AS deployment, collect(DISTINCT m.name) AS models, collect(DISTINCT p.name) AS prompts,
+                     collect(DISTINCT e.name) AS owners, collect(DISTINCT i.name) AS incidents
+              ORDER BY deployment
+  Engineer:
+    label: Engineer
+    description: >-
+      A person on the team that builds and runs the models (an ML engineer, an evaluation engineer, an
+      SRE or their manager), named in full. Engineers run experiments, own deployments and handle
+      incidents; a provider's staff are not engineers here.
+    aliases: [ML engineer, evaluation engineer, SRE, on-call engineer, data scientist]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The engineer's full name."}
+      role: {type: STRING, one_of: [ML engineer, evaluation engineer, site reliability engineer, safety reviewer, engineering manager], description: "The engineer's role on the team."}
+      team: {type: STRING, description: "The team the engineer belongs to (platform)."}
+    extensions:
+      display: {x: 120, y: -300, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "a person on the team that trains, evaluates, deploys or operates the models, named by first and last name", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: engineer-workload
+            category: aggregation
+            question: How many experiments, deployments and incidents does each engineer have?
+            description: Per engineer, the experiments they ran, the deployments they own and the incidents they handled.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each experiment is counted once per incident.
+            cypher: |-
+              MATCH (e:Engineer)
+              OPTIONAL MATCH (x:Experiment)-[:RUN_BY]->(e)
+              OPTIONAL MATCH (d:Deployment)-[:OWNED_BY]->(e)
+              OPTIONAL MATCH (i:Incident)-[:HANDLED_BY]->(e)
+              RETURN e.name AS engineer, count(DISTINCT x) AS experiments, count(DISTINCT d) AS deployments, count(DISTINCT i) AS incidents
+              ORDER BY incidents DESC, deployments DESC, experiments DESC, engineer
+  Incident:
+    label: Incident
+    description: >-
+      A production or staging incident involving a model, such as a hallucination, a harmful output, a
+      prompt injection or an outage, identified by its incident id (INC-0877). An incident affects a
+      deployment and is traced to a cause.
+    aliases: [production incident, outage, sev, postmortem]
+    properties:
+      incidentId: {type: STRING, key: true, pattern: "^INC-[0-9]{4}$", description: "The incident id, INC- and four digits."}
+      name: {type: STRING, description: "The incident as a document names it."}
+      severity: {type: STRING, one_of: [SEV1, SEV2, SEV3, SEV4], description: "The severity it was declared at.", extensions: {custom: {relate-examples: {extract: true, ask: "the severity the incident was declared at, SEV1 to SEV4"}}}}
+      category: {type: STRING, one_of: [hallucination, harmful output, prompt injection, data leak, latency, outage], description: "What went wrong."}
+      openedOn: {type: DATE, description: "The date the incident was opened.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the incident happened or was opened, such as 14 August 2026"}}}}
+      resolvedOn: {type: DATE, description: "The date it was resolved."}
+    extensions:
+      display: {x: 380, y: -220, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a recorded incident on a model deployment, named by its incident id such as INC-0877", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: INC-0877}
+relationships:
+  modelFineTunedFromModel:
+    type: FINE_TUNED_FROM
+    description: >-
+      The model was fine-tuned from the other, its direct base model; read from the fine-tune to the
+      base, one base per model, many fine-tunes per base.
+    aliases: [is a fine-tune of, is based on, was adapted from, was trained from]
+    from: {node: Model}
+    to: {node: Model, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was fine-tuned from}
+  modelProvidedByProvider:
+    type: PROVIDED_BY
+    description: >-
+      The provider develops and releases the model or serves it through its API; at most one provider
+      per model (an in-house model has none), many models per provider.
+    aliases: [was released by, was developed by, comes from, is offered by]
+    from: {node: Model}
+    to: {node: Provider, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is provided by}
+  modelTrainedOnDataset:
+    type: TRAINED_ON
+    description: >-
+      The dataset was used to train or fine-tune the model; many to many.
+    aliases: [was fine-tuned on, learned from, was trained with]
+    from: {node: Model}
+    to: {node: Dataset}
+    extensions:
+      custom:
+        relate-examples: {phrase: was trained on}
+  modelProducedByExperiment:
+    type: PRODUCED_BY
+    description: >-
+      The experiment's run produced the model; one experiment per model, and an experiment may produce
+      several candidate models.
+    aliases: [came out of, was the output of, was trained in]
+    from: {node: Model}
+    to: {node: Experiment, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was produced by}
+  experimentRunByEngineer:
+    type: RUN_BY
+    description: >-
+      The engineer ran the experiment; one or more engineers per experiment, many experiments per
+      engineer.
+    aliases: [was led by, was started by, was carried out by]
+    from: {node: Experiment}
+    to: {node: Engineer, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was run by}
+  evaluationEvaluatedModel:
+    type: EVALUATED
+    description: >-
+      The evaluation scored the model; exactly one model per evaluation, many evaluations per model.
+    aliases: [tested, scored, measured]
+    from: {node: Evaluation}
+    to: {node: Model, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: evaluated}
+  evaluationRanAgainstBenchmark:
+    type: RAN_AGAINST
+    description: >-
+      The evaluation was run against the benchmark; exactly one benchmark per evaluation, many
+      evaluations per benchmark.
+    aliases: [was run on, was scored on, used the benchmark]
+    from: {node: Evaluation}
+    to: {node: Benchmark, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was run against}
+  evaluationUsedPrompt:
+    type: USED_PROMPT
+    description: >-
+      The evaluation sent its benchmark's items to the model with this prompt; at most one prompt per
+      evaluation, many evaluations per prompt.
+    aliases: [was run with, used the template]
+    from: {node: Evaluation}
+    to: {node: Prompt, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: used}
+  evaluationJudgedByModel:
+    type: JUDGED_BY
+    description: >-
+      A judge model graded the evaluation's answers (LLM as a judge); at most one judge per evaluation,
+      and the judge is never the model the evaluation scores.
+    aliases: [was scored by, was marked by, used as judge]
+    from: {node: Evaluation}
+    to: {node: Model, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was graded by}
+  benchmarkBuiltFromDataset:
+    type: BUILT_FROM
+    description: >-
+      The benchmark's items were drawn from the dataset; a benchmark comes from one or more datasets, and
+      a dataset can feed several benchmarks.
+    aliases: [was drawn from, was sampled from, was derived from]
+    from: {node: Benchmark}
+    to: {node: Dataset}
+    extensions:
+      custom:
+        relate-examples: {phrase: was built from}
+  deploymentServesModel:
+    type: SERVES
+    description: >-
+      The deployment serves the model at the time the document describes; one model per deployment, a
+      model in several deployments.
+    aliases: [runs, hosts, is serving]
+    from: {node: Deployment}
+    to: {node: Model, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: serves}
+  deploymentConfiguredWithPrompt:
+    type: CONFIGURED_WITH
+    description: >-
+      The deployment sends the prompt with every request at the time the document describes; many to
+      many.
+    aliases: [runs the prompt, uses the prompt, ships with]
+    from: {node: Deployment}
+    to: {node: Prompt}
+    extensions:
+      custom:
+        relate-examples: {phrase: is configured with}
+  deploymentOwnedByEngineer:
+    type: OWNED_BY
+    description: >-
+      The engineer owns the deployment and answers for it in production; one owner per deployment, many
+      deployments per engineer.
+    aliases: [is maintained by, belongs to, is the responsibility of]
+    from: {node: Deployment}
+    to: {node: Engineer, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is owned by}
+  incidentAffectedDeployment:
+    type: AFFECTED
+    description: >-
+      The incident happened on the deployment; an incident affects one or more deployments, a
+      deployment has many incidents.
+    aliases: [hit, degraded, took down, occurred on]
+    from: {node: Incident}
+    to: {node: Deployment, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: affected}
+  incidentTracedToPrompt:
+    type: TRACED_TO
+    description: >-
+      The incident's root cause was found in the prompt version; recorded once the postmortem names it;
+      many to many.
+    aliases: [was caused by, was attributed to, had its root cause in]
+    from: {node: Incident}
+    to: {node: Prompt}
+    extensions:
+      custom:
+        relate-examples: {phrase: was traced to}
+  incidentHandledByEngineer:
+    type: HANDLED_BY
+    description: >-
+      The engineer handled the incident as its responder or incident commander; one or more engineers
+      per incident.
+    aliases: [was resolved by, was managed by, was led by]
+    from: {node: Incident}
+    to: {node: Engineer, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was handled by}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Software & AI
+      card:
+        title: GenAI & LLM Ops
+        description: Follow a language model from its base model and training data through its evaluations to the deployments that serve it and the incidents they had.
+      source:
+        derived_from: create-context-graph's genai-llm-ops.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Engineer and Organization became
+          Provider; Benchmark and Incident are new kinds, Benchmark split from Dataset so that a test suite
+          and the data it was drawn from are two things; Model, Dataset, Prompt, Experiment, Evaluation and
+          Deployment keep their meaning with new descriptions and properties. FINE_TUNED_FROM, TRAINED_ON
+          and PRODUCED_BY stay; EVALUATED_ON, SCORED_IN and COMPARED_WITH became EVALUATED and RAN_AGAINST
+          from the evaluation, USED_PROMPT moved from the experiment to the evaluation, and DEPLOYED_TO
+          became SERVES from the deployment; PROVIDED_BY, RUN_BY, JUDGED_BY, BUILT_FROM, CONFIGURED_WITH,
+          OWNED_BY, AFFECTED, TRACED_TO and HANDLED_BY are new. Every link was given a cardinality, and the
+          tools were written anew for an extracted graph.

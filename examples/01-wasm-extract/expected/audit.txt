@@ -1,34 +1,166 @@
 # Audits of the stores after the first pass (harness/run.mjs; queries/audit-*.cypher)
 Each audit is a query that must return 0 rows, on every store, at the default gate after publish: the fixtures' store
-(listed) and the 27 create-context-graph stores (counted).
+(listed) and the 40 bundled ontologies' stores (counted).
 audit-1-kept-claims-legal.cypher: every kept claim is legal by the ontology (D10 rule 4)
-  rows: fixtures 0; create-context-graph: 0 on each of 27
+  rows: fixtures 0; bundled: 0 on each of 40
 audit-2-claim-ends-kept.cypher: both ends of every kept claim are kept mentions (D10 rule 3)
-  rows: fixtures 0; create-context-graph: 0 on each of 27
+  rows: fixtures 0; bundled: 0 on each of 40
 audit-3-evidence-inside-sentence.cypher: every mention and claim lies inside its sentence, and its text is what the offsets cut
-  rows: fixtures 0; create-context-graph: 0 on each of 27
+  rows: fixtures 0; bundled: 0 on each of 40
 audit-4-complete-sections-only.cypher: nothing outside a complete section is gated or published (D9)
-  rows: fixtures 0; create-context-graph: 0 on each of 27
+  rows: fixtures 0; bundled: 0 on each of 40
 audit-5-edges-match-kept-claims.cypher: typed edges and kept claims match one to one (D16)
-  rows: fixtures 0; create-context-graph: 0 on each of 27
+  rows: fixtures 0; bundled: 0 on each of 40
 audit-6-typed-endpoints-labelled.cypher: every published entity carries exactly its kind label, and every typed edge joins them (D16)
-  rows: fixtures 0; create-context-graph: 0 on each of 27
+  rows: fixtures 0; bundled: 0 on each of 40
 
 ## the graph type is the backstop: a deliberately illegal publish is refused (O4, D16)
-financial-services: WORKS_FOR is typed (:Person)-[:WORKS_FOR]->(:Organization); publish Location:EDINBURGH -[WORKS_FOR]-> Organization:HALVORSEN_PRYCE_PARTNERS through store.writeTypedEdges
+the fixtures' store (create-context-graph's financial-services): WORKS_FOR is typed (:Person)-[:WORKS_FOR]->(:Organization); publish Location:LEEDS -[WORKS_FOR]-> Organization:CALDER_BAY through store.writeTypedEdges
   -> constraint: ConstraintValidationFailed: endpoint label presence verification failed: expected Person
   WORKS_FOR edges from a Location afterwards: 0
 a link the ontology does not have (FOUNDED) -> StoreError: "FOUNDED" is not a link of this store's ontology
 
 ## R16: an ontology edit (ALTER CURRENT GRAPH TYPE SET) drops every UNIQUE constraint; the store puts its own back
-a fresh financial-services store: its UNIQUE constraints 11 of 11
-ontology.js applyOntology(financial-services + Product): altered true; the store's UNIQUE constraints 0 of 11
-store.ensureConstraints: 11 of 11; the lookup-index check passes (R9): 16 lookup indexes built
-store.applyOntologyToStore(financial-services + Product) on another fresh store: altered true; the store's UNIQUE constraints 11 of 11
+a fresh financial-services store: its UNIQUE constraints 12 of 12
+ontology.js applyOntology(financial-services + Product): altered true; the store's UNIQUE constraints 0 of 12
+store.ensureConstraints: 12 of 12; the lookup-index check passes (R9): 17 lookup indexes built
+store.applyOntologyToStore(financial-services + Product) on another fresh store: altered true; the store's UNIQUE constraints 12 of 12
 
 ## entities across documents (queries/03-entities-across-documents.cypher)
+agent-memory:
+  Agent:MARLOW (Agent): agent-memory, agent-memory/memory-snapshot
+  Item:KETTLEWISE_K2 (Item): agent-memory, agent-memory/memory-snapshot
+  Memory:MEM_1180 (Memory): agent-memory, agent-memory/memory-snapshot
+  Memory:MEM_1402 (Memory): agent-memory, agent-memory/memory-snapshot
+  Memory:MEM_1417 (Memory): agent-memory, agent-memory/memory-snapshot
+  Memory:MEM_2231 (Memory): agent-memory, agent-memory/memory-snapshot
+  Memory:MEM_2233 (Memory): agent-memory, agent-memory/memory-snapshot
+  Memory:MEM_2234 (Memory): agent-memory, agent-memory/memory-snapshot
+  Memory:MEM_2236 (Memory): agent-memory, agent-memory/memory-snapshot
+  Message:MSG_3309 (Message): agent-memory, agent-memory/memory-snapshot
+  Message:MSG_3313 (Message): agent-memory, agent-memory/memory-snapshot
+  Preference:EMAIL_ONLY_CONTACT (Preference): agent-memory, agent-memory/memory-snapshot
+  Preference:WEEKDAY_MORNING_DELIVERY (Preference): agent-memory, agent-memory/memory-snapshot
+  Session:SES_40218 (Session): agent-memory, agent-memory/memory-snapshot
+  User:INES_HALLORAN (User): agent-memory, agent-memory/memory-snapshot
+  User:NADIA_KERRIGAN (User): agent-memory, agent-memory/memory-snapshot
+cybersecurity:
+  Asset:VPN_GW_02 (Asset): cybersecurity, cybersecurity/threat-brief
+  Control:CTL_019 (Control): cybersecurity, cybersecurity/threat-brief
+  Incident:INC_2025_0031 (Incident): cybersecurity, cybersecurity/threat-brief
+  Indicator:198_51_100_77 (Indicator): cybersecurity, cybersecurity/threat-brief
+  Malware:BRINEHOLD_RANSOMWARE (Malware): cybersecurity, cybersecurity/threat-brief
+  Technique:T1003_001 (Technique): cybersecurity, cybersecurity/threat-brief
+  Technique:T1567_002 (Technique): cybersecurity, cybersecurity/threat-brief
+  ThreatActor:PALE_CORMORANT (ThreatActor): cybersecurity, cybersecurity/threat-brief
+  Vulnerability:CVE_2023_46805 (Vulnerability): cybersecurity, cybersecurity/threat-brief
+  Vulnerability:CVE_2024_21887 (Vulnerability): cybersecurity, cybersecurity/threat-brief
+financial-services:
+  Account:ACC_1980 (Account): financial-services, financial-services/risk-review
+  Advisor:PRIYA_RAMAN (Advisor): financial-services, financial-services/risk-review
+  Client:ARJUN_MEHTA (Client): financial-services, financial-services/risk-review
+  Firm:HALVORSEN_PRYCE_PARTNERS_LLP (Firm): financial-services, financial-services/risk-review
+  Policy:SUITABILITY (Policy): financial-services, financial-services/risk-review
+  Security:KESTREL_WATER_2031_GREEN_BOND (Security): financial-services, financial-services/risk-review
+healthcare:
+  Allergy:PENICILLIN_ALLERGY (Allergy): healthcare, healthcare/referral-letter
+  Clinician:INES_MARROW (Clinician): healthcare, healthcare/referral-letter
+  Clinician:SAMUEL_ACHTERBERG (Clinician): healthcare, healthcare/referral-letter
+  Clinician:TOBIAS_WENDT (Clinician): healthcare, healthcare/referral-letter
+  Diagnosis:ACUTE_KIDNEY_INJURY (Diagnosis): healthcare, healthcare/referral-letter
+  Diagnosis:CHRONIC_KIDNEY_DISEASE (Diagnosis): healthcare, healthcare/referral-letter
+  Diagnosis:HOSPITAL_ACQUIRED_PNEUMONIA (Diagnosis): healthcare, healthcare/referral-letter
+  Diagnosis:HYPERTENSION (Diagnosis): healthcare, healthcare/referral-letter
+  Diagnosis:TYPE_2_DIABETES_MELLITUS (Diagnosis): healthcare, healthcare/referral-letter
+  Encounter:ENC_2604417 (Encounter): healthcare, healthcare/referral-letter
+  Facility:HOLLIS_CREEK_FAMILY_MEDICINE (Facility): healthcare, healthcare/referral-letter
+  Facility:OSTRANDER_MEMORIAL_HOSPITAL (Facility): healthcare, healthcare/referral-letter
+  Facility:OSTRANDER_NEPHROLOGY_CLINIC (Facility): healthcare, healthcare/referral-letter
+  Medication:ASPIRIN (Medication): healthcare, healthcare/referral-letter
+  Medication:ATORVASTATIN (Medication): healthcare, healthcare/referral-letter
+  Medication:EMPAGLIFLOZIN (Medication): healthcare, healthcare/referral-letter
+  Medication:LEVOFLOXACIN (Medication): healthcare, healthcare/referral-letter
+  Medication:LISINOPRIL (Medication): healthcare, healthcare/referral-letter
+  Medication:METFORMIN (Medication): healthcare, healthcare/referral-letter
+  Medication:TICAGRELOR (Medication): healthcare, healthcare/referral-letter
+  Patient:HASKETT (Patient): healthcare, healthcare/referral-letter
+  Patient:LEONARD_HASKETT (Patient): healthcare, healthcare/referral-letter
+  Procedure:PERCUTANEOUS_CORONARY_INTERVENTION (Procedure): healthcare, healthcare/referral-letter
+legal:
+  Case:HALDEN_V_CORVANE (Case): legal, legal/contract-review
+  Clause:14_2 (Clause): legal, legal/contract-review
+  Clause:14_3 (Clause): legal, legal/contract-review
+  Clause:CLAUSE_22 (Clause): legal, legal/contract-review
+  Contract:MASTER_SERVICES_AGREEMENT (Contract): legal, legal/contract-review
+  Party:CORVANE (Party): legal, legal/contract-review
+  Party:HALDEN (Party): legal, legal/contract-review
+  Party:HALDEN_LOGISTICS_LTD (Party): legal, legal/contract-review
+manufacturing:
+  CorrectiveAction:CA_1193 (CorrectiveAction): manufacturing, manufacturing/supplier-evaluation
+  CorrectiveAction:CA_1195 (CorrectiveAction): manufacturing, manufacturing/supplier-evaluation
+  Lot:L26_0917 (Lot): manufacturing, manufacturing/supplier-evaluation
+  Machine:DC_104 (Machine): manufacturing, manufacturing/supplier-evaluation
+  Nonconformance:NCR_2026_0412 (Nonconformance): manufacturing, manufacturing/supplier-evaluation
+  Part:30418_02 (Part): manufacturing, manufacturing/supplier-evaluation
+  Part:30419_01 (Part): manufacturing, manufacturing/supplier-evaluation
+  Plant:CALDER_BRIDGE (Plant): manufacturing, manufacturing/supplier-evaluation
+  Supplier:BRACKENFOLD_DIECASTING_LTD (Supplier): manufacturing, manufacturing/supplier-evaluation
+software-engineering:
+  Deployment:DEP_5521 (Deployment): software-engineering, software-engineering/design-doc
+  Engineer:DANIEL_OSEI (Engineer): software-engineering, software-engineering/design-doc
+  Engineer:LENA_OKAFOR (Engineer): software-engineering, software-engineering/design-doc
+  Incident:INC_2291 (Incident): software-engineering, software-engineering/design-doc
+  Issue:CHK_208 (Issue): software-engineering, software-engineering/design-doc
+  Issue:LEDGER_412 (Issue): software-engineering, software-engineering/design-doc
+  Issue:LEDGER_415 (Issue): software-engineering, software-engineering/design-doc
+  Issue:OBS_77 (Issue): software-engineering, software-engineering/design-doc
+  Library:DBKIT (Library): software-engineering, software-engineering/design-doc
+  Release:V4_12_0 (Release): software-engineering, software-engineering/design-doc
+  Release:V4_12_1 (Release): software-engineering, software-engineering/design-doc
+  Repository:VANTORRA_CHECKOUT (Repository): software-engineering, software-engineering/design-doc
+  Repository:VANTORRA_LEDGER (Repository): software-engineering, software-engineering/design-doc
+  Service:CHECKOUT_API (Service): software-engineering, software-engineering/design-doc
+  Service:LEDGER_API (Service): software-engineering, software-engineering/design-doc
+  Service:PAYOUTS_WORKER (Service): software-engineering, software-engineering/design-doc
+  Team:CHECKOUT (Team): software-engineering, software-engineering/design-doc
+  Team:LEDGER (Team): software-engineering, software-engineering/design-doc
+  Team:SRE (Team): software-engineering, software-engineering/design-doc
+insurance-claims-fraud:
+  Claim:CL_000553 (Claim): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claim:CL_000587 (Claim): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claim:CL_000761 (Claim): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claim:CL_003544 (Claim): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claim:CL_004122 (Claim): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claim:CL_004177 (Claim): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claimant:AARON_RICHARDSON (Claimant): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claimant:CARL_WARD (Claimant): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claimant:KYLE_COOK (Claimant): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claimant:MARGARET_WRIGHT (Claimant): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  Claimant:RYAN_ROBERTS (Claimant): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  MedicalProfessional:ERIC_ROBINSON (MedicalProfessional): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  MedicalProfessional:JASON_BROWN (MedicalProfessional): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  MedicalProfessional:ROBINSON (MedicalProfessional): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+  MedicalProfessional:RUTH_BUTLER (MedicalProfessional): insurance-claims-fraud, insurance-claims-fraud/assessment-review
+retail-banking:
+  Account:12_34_56_24563467 (Account): retail-banking, retail-banking/sar-draft
+  Account:BG69TVNK94831093024404 (Account): retail-banking, retail-banking/sar-draft
+  Account:LT169404837175302881 (Account): retail-banking, retail-banking/sar-draft
+  Address:78_IVY_COURT_NOTTINGHAM_NG2_5EW (Address): retail-banking, retail-banking/sar-draft
+  Country:BULGARIA (Country): retail-banking, retail-banking/sar-draft
+  Country:LITHUANIA (Country): retail-banking, retail-banking/sar-draft
+  Customer:ISABELLA_ELLIS (Customer): retail-banking, retail-banking/sar-draft
+  Customer:JOSEPH_MITCHELL (Customer): retail-banking, retail-banking/sar-draft
+  Customer:MONEY_LAUNDERING_REPORTING_OFFICER (Customer): retail-banking, retail-banking/sar-draft
+  Customer:PRIYA_COLLINS (Customer): retail-banking, retail-banking/sar-draft
+  Customer:ZARA_KING (Customer): retail-banking, retail-banking/sar-draft
+  Device:ANDROID_MOBILE (Device): retail-banking, retail-banking/sar-draft
+  Device:DEV_45B24A72D3 (Device): retail-banking, retail-banking/sar-draft
+  Device:IPHONE (Device): retail-banking, retail-banking/sar-draft
+  IP:2001_DB8_5C75_C395_46 (IP): retail-banking, retail-banking/sar-draft
+  Session:SESS004521 (Session): retail-banking, retail-banking/sar-draft
+  Transaction:TXN4720 (Transaction): retail-banking, retail-banking/sar-draft
+  Transaction:TXN6551 (Transaction): retail-banking, retail-banking/sar-draft
 fixtures:
-  Account:ACC_5120 (Account): markup, pronouns
   Location:LEEDS (Location): event, injection, markup, unknown
   Organization:CALDER_BAY_CAPITAL (Organization): hedge, injection, markup, negation, overlap, pronouns
   Person:INGRID_SOL (Person): fence, hedge
@@ -36,139 +168,275 @@ fixtures:
   Person:TOMAS_REYES (Person): hedge, markup, negation, unknown
 
 ## entity keys with more than one display (the surface texts behind one KIND:NAME key, E3)
-digital-twin: Sensor:TS_204 shown as "Sensor TS-204", "sensor TS-204"; name "Sensor TS-204"
-digital-twin: Sensor:VS_118 shown as "Sensor VS-118", "sensor VS-118"; name "Sensor VS-118"
-gis-cartography: Layer:FLOOD_ZONES shown as "Flood Zones", "Flood Zones layer"; name "Flood Zones layer"
-gis-cartography: Layer:HYDROLOGY shown as "Hydrology", "Hydrology layer"; name "Hydrology layer"
-software-engineering: Deployment:D_881 shown as "D-881", "Deployment D-881"; name "Deployment D-881"
-fixtures: Decision:D_210 shown as "Decision D-210", "decision D-210"; name "Decision D-210"
+genai-llm-ops: Dataset:SUPPORT_TRANSCRIPTS_2026 shown as "Support Transcripts 2026", "Support Transcripts 2026 dataset"; name "Support Transcripts 2026"
+healthcare: Medication:LEVOFLOXACIN shown as "Levofloxacin", "levofloxacin"; name "levofloxacin"
+healthcare: Medication:METFORMIN shown as "Metformin", "metformin"; name "metformin"
+healthcare: Procedure:PERCUTANEOUS_CORONARY_INTERVENTION shown as "Percutaneous coronary intervention", "percutaneous coronary intervention"; name "Percutaneous coronary intervention"
+oil-gas: Well:HOLLIS_RANCH_31_18_2H shown as "Hollis Ranch 31-18 2H", "Hollis Ranch 31-18 2H well"; name "Hollis Ranch 31-18 2H well"
+product-management: Epic:OFFLINE_FIRST_TECHNICIAN_APP shown as "Offline-First Technician App", "Offline-First Technician App epic"; name "Offline-First Technician App epic"
+product-management: Persona:FIELD_TECHNICIAN shown as "Field Technician", "Field Technician persona"; name "Field Technician"
+scientific-research: Researcher:AMARA_OSEI shown as "Amara Osei", "Dr Amara Osei"; name "Dr Amara Osei"
+scientific-research: Researcher:MEI_LING_CHO shown as "Dr Mei-Ling Cho", "Mei-Ling Cho"; name "Dr Mei-Ling Cho"
+vacation-industry: Resort:PONTA_DOURADA shown as "Ponta Dourada", "Ponta Dourada Resort"; name "Ponta Dourada Resort"
+wildlife-management: Ranger:JOSEPH_EKIRU shown as "Joseph Ekiru", "Ranger Joseph Ekiru"; name "Ranger Joseph Ekiru"
+wildlife-management: Species:LION shown as "Lion", "lion"; name "lion"
+wildlife-management: Species:RHINO shown as "Rhino", "rhino"; name "rhino"
+ev-route-planning: Geo:VOLTWAY shown as "- VoltWay", "VoltWay"; name "- VoltWay"
+patient-journey: Condition:CORONARY_HEART_DISEASE shown as "Coronary heart disease", "coronary heart disease"; name "Coronary heart disease"
+patient-journey: Drug:LISINOPRIL shown as "Lisinopril", "lisinopril"; name "lisinopril"
+patient-journey: Encounter:039551B6 shown as "Encounter 039551b6", "encounter 039551b6"; name "encounter 039551b6"
+patient-journey: Encounter:4B541B7C shown as "Encounter 4b541b7c", "encounter 4b541b7c"; name "encounter 4b541b7c"
+patient-journey: Organisation:VA_BOSTON_HEALTHCARE_SYSTEM shown as "VA Boston Healthcare System", "| VA Boston Healthcare System |"; name "VA Boston Healthcare System"
+patient-journey: Provider:WILTON_POLLICH shown as "Dr Wilton Pollich", "Wilton Pollich"; name "Dr Wilton Pollich"
 
 ## the saved console queries (queries/[0-9]*.cypher, D11): rows on each store
-The fixtures' store alone; the create-context-graph stores as a total and the stores with rows.
-01-typed-graph.cypher: fixtures 5; create-context-graph: 261 rows, from 27 of 27 stores
-02-evidence-behind-an-edge.cypher: fixtures 7; create-context-graph: 261 rows, from 27 of 27 stores
-03-entities-across-documents.cypher: fixtures 6; create-context-graph: 0 rows, from 0 of 27 stores
-04-review-items-by-rule.cypher: fixtures 20; create-context-graph: 146 rows, from 27 of 27 stores
-05-ontology-graph.cypher: fixtures 24; create-context-graph: 677 rows, from 27 of 27 stores
-06-graph-type.cypher: fixtures 1; create-context-graph: 27 rows, from 27 of 27 stores
-07-ontology-canary.cypher: fixtures 0; create-context-graph: 0 rows, from 0 of 27 stores
-08-search-sentences.cypher ($q="decision transaction"): fixtures 2; create-context-graph: 7 rows, from 2 of 27 stores
+The fixtures' store alone; the bundled ontologies' stores as a total and the stores with rows.
+01-typed-graph.cypher: fixtures 5; bundled: 491 rows, from 39 of 40 stores
+02-evidence-behind-an-edge.cypher: fixtures 7; bundled: 572 rows, from 39 of 40 stores
+03-entities-across-documents.cypher: fixtures 5; bundled: 124 rows, from 9 of 40 stores
+04-review-items-by-rule.cypher: fixtures 30; bundled: 2094 rows, from 40 of 40 stores
+05-ontology-graph.cypher: fixtures 24; bundled: 1127 rows, from 40 of 40 stores
+06-graph-type.cypher: fixtures 1; bundled: 40 rows, from 40 of 40 stores
+07-ontology-canary.cypher: fixtures 0; bundled: 0 rows, from 0 of 40 stores
+08-search-sentences.cypher ($q="decision transaction"): fixtures 2; bundled: 23 rows, from 10 of 40 stores
 
 ## dump.json (D17): store.dumpStore, loaded into a fresh store by lib/replay.mjs
-agent-memory: 181 nodes, 285 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-conservation: 135 nodes, 210 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-cybersecurity: 190 nodes, 333 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-data-journalism: 164 nodes, 277 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-digital-twin: 160 nodes, 267 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-education: 191 nodes, 322 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-financial-services: 158 nodes, 259 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-gaming: 164 nodes, 285 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-genai-llm-ops: 155 nodes, 262 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-gis-cartography: 171 nodes, 289 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-golf-sports: 162 nodes, 270 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-government: 181 nodes, 305 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-healthcare: 184 nodes, 292 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-hospitality: 194 nodes, 310 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-legal: 172 nodes, 300 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-manufacturing: 195 nodes, 342 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-oil-gas: 145 nodes, 230 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-options-intelligence: 133 nodes, 224 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-personal-knowledge: 172 nodes, 280 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-product-management: 144 nodes, 238 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-real-estate: 154 nodes, 256 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-retail-ecommerce: 159 nodes, 250 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-scientific-research: 165 nodes, 271 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-software-engineering: 189 nodes, 332 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-trip-planning: 179 nodes, 287 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-vacation-industry: 138 nodes, 219 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-wildlife-management: 161 nodes, 269 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
-fixtures: 347 nodes, 478 relationships, 15 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+agent-memory: 1392 nodes, 1811 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+conservation: 979 nodes, 1297 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+cybersecurity: 1176 nodes, 1550 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+data-journalism: 778 nodes, 976 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+digital-twin: 880 nodes, 1119 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+education: 964 nodes, 1216 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+financial-services: 863 nodes, 1184 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+gaming: 906 nodes, 1189 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+genai-llm-ops: 811 nodes, 1034 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+gis-cartography: 863 nodes, 1143 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+golf-sports: 681 nodes, 999 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+government: 793 nodes, 1047 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+healthcare: 954 nodes, 1325 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+hospitality: 1025 nodes, 1375 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+legal: 1248 nodes, 1640 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+manufacturing: 1303 nodes, 1658 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+oil-gas: 972 nodes, 1226 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+options-intelligence: 845 nodes, 1077 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+personal-knowledge: 675 nodes, 1000 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+product-management: 709 nodes, 946 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+real-estate: 609 nodes, 748 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+retail-ecommerce: 851 nodes, 1239 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+scientific-research: 948 nodes, 1289 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+software-engineering: 1373 nodes, 1952 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+trip-planning: 996 nodes, 1291 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+vacation-industry: 1397 nodes, 1637 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+wildlife-management: 1016 nodes, 1428 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+attack-path-analysis: 759 nodes, 951 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+business-entities: 586 nodes, 849 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+competitive-intelligence: 950 nodes, 1280 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+configurable-bom: 911 nodes, 1111 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+ev-route-planning: 577 nodes, 709 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+identity-validation: 868 nodes, 1135 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+insurance-claims-fraud: 946 nodes, 1276 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+loans-and-mortgages: 863 nodes, 1088 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+multi-omics: 1167 nodes, 1512 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+patient-journey: 855 nodes, 1093 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+regulatory-dependency-mapping: 658 nodes, 833 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+retail-banking: 1230 nodes, 1619 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+securities-reference-data: 1335 nodes, 1671 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
+fixtures: 342 nodes, 473 relationships, 16 constraints, 4 indexes; content digest equal yes; dumped again byte-identical yes
 
-## the ontologies' example queries (the `tools` custom extension) on the create-context-graph stores
-create-context-graph's agent tools and default views, written for its full Neo4j graphs, run on the graphs this example
-extracts from the samples: every canonicalQuery tool of each domain, on a copy of its store (store.dumpStore loaded by
+## the ontologies' example queries (the `tools` custom extension) on the stores
+The curated ontologies' tools were written for the graph this example extracts (D20, D22); the packages' queries for their
+CSV sample data. Every canonicalQuery tool of each ontology runs on a copy of its store (store.dumpStore loaded by
 lib/replay.mjs into a fresh in-memory database), with its arguments checked and typed as the page checks them
-(web/console.js toolArgs: never a missing or null parameter, R3). Arguments: a STRING gets the name of the store's
-first kept entity of the tool's kind (else its first kept entity, else "x"); a parameter whose description suggests a
-value ("(default: 10)") that value; a default its default; numbers 10, booleans true, dates 2024-01-01, lists one name.
+(web/console.js toolArgs: never a missing or null parameter, R3). Arguments: each parameter's example when it has one (every
+curated tool's do, from its documents); else a STRING gets the name of the store's first kept entity of the tool's kind (else
+its first kept entity, else "x"); a parameter whose description suggests a value ("(default: 10)") that value; a default its
+default; numbers 10, booleans true, dates 2024-01-01, lists one name. A tool that requires GDS, APOC or a write (the packages'
+projections, placeholder flags and constraints) is not run: the page's engine has neither library, and its console's lease
+is read-only (R15).
 Outcome: rows (1 or more), empty (0 rows), or error (the first line of the engine's message). Beside it, what the
 page's note on the tool (web/console.js toolCompat, which never runs the query) predicted: rows, empty, error, an error if
 reached (a clause before a call on a missing index can leave no rows) or checked at run (an index named by a parameter).
-SHOW PROCEDURES lists 31 procedures; SHOW INDEXES on each store equals the page's list of a store's 19 indexes: 27 of 27 stores
+SHOW PROCEDURES lists 31 procedures; SHOW INDEXES on each store equals the page's list of a store's 20 indexes: 40 of 40 stores
 
 domain                 tools  rows empty error   predicted rows/empty/error/if reached/at run
-agent-memory               8     5     3     0   6/2/0/0/0
-conservation               8     5     3     0   6/2/0/0/0
-cybersecurity              8     4     4     0   4/4/0/0/0
-data-journalism            8     4     4     0   5/3/0/0/0
-digital-twin               8     7     1     0   7/1/0/0/0
-education                  8     4     4     0   4/4/0/0/0
-financial-services         8     4     4     0   4/4/0/0/0
-gaming                     9     5     4     0   7/2/0/0/0
-genai-llm-ops              8     4     4     0   7/1/0/0/0
-gis-cartography            8     4     4     0   7/1/0/0/0
-golf-sports                8     2     6     0   7/1/0/0/0
-government                 8     5     3     0   6/2/0/0/0
-healthcare                 8     3     5     0   3/5/0/0/0
-hospitality                8     5     3     0   6/2/0/0/0
-legal                      8     1     6     1   2/5/1/0/0
-manufacturing              8     5     3     0   7/1/0/0/0
-oil-gas                    8     4     4     0   6/2/0/0/0
-options-intelligence      11     0    11     0   2/9/0/0/0
-personal-knowledge         8     5     3     0   6/2/0/0/0
-product-management         8     5     3     0   6/2/0/0/0
-real-estate                8     4     4     0   4/4/0/0/0
-retail-ecommerce           8     4     4     0   5/3/0/0/0
-scientific-research        8     2     6     0   5/3/0/0/0
-software-engineering       8     5     3     0   6/2/0/0/0
-trip-planning              8     3     5     0   7/1/0/0/0
-vacation-industry          8     5     3     0   7/1/0/0/0
-wildlife-management        8     2     6     0   4/4/0/0/0
-all                      220   106   113     1   146/73/1/0/0
+agent-memory              15    11     4     0   14/1/0/0/0
+attack-path-analysis       7     0     7     0   0/7/0/0/0
+business-entities         12     0    12     0   5/7/0/0/0
+competitive-intelligence    10     1     9     0   4/6/0/0/0
+configurable-bom           5     4     1     0   1/4/0/0/0
+conservation              13     9     4     0   10/3/0/0/0
+cybersecurity             15    13     2     0   13/2/0/0/0
+data-journalism           14     9     5     0   12/2/0/0/0
+digital-twin              15    12     3     0   11/4/0/0/0
+education                 14     8     6     0   12/2/0/0/0
+ev-route-planning         20     8    12     0   17/3/0/0/0
+financial-services        15    12     3     0   12/3/0/0/0
+gaming                    14    12     2     0   13/1/0/0/0
+genai-llm-ops             13     9     4     0   11/2/0/0/0
+gis-cartography           14    11     3     0   9/5/0/0/0
+golf-sports               14    11     3     0   13/1/0/0/0
+government                14    10     4     0   12/2/0/0/0
+healthcare                15    13     2     0   13/2/0/0/0
+hospitality               15    12     3     0   13/2/0/0/0
+identity-validation        8     3     5     0   1/7/0/0/0
+insurance-claims-fraud     6     4     2     0   6/0/0/0/0
+legal                     15    10     5     0   14/1/0/0/0
+loans-and-mortgages       12     2     9     1   1/11/0/0/0
+manufacturing             15     9     6     0   8/7/0/0/0
+multi-omics               13     1    12     0   1/12/0/0/0
+oil-gas                   14    12     2     0   11/3/0/0/0
+options-intelligence      14    11     3     0   11/3/0/0/0
+patient-journey           13     2    11     0   4/9/0/0/0
+personal-knowledge        15    10     5     0   13/2/0/0/0
+product-management        14    11     3     0   11/3/0/0/0
+real-estate               14    10     4     0   11/3/0/0/0
+regulatory-dependency-mapping     7     1     6     0   2/5/0/0/0
+retail-banking             8     1     7     0   5/3/0/0/0
+retail-ecommerce          15    13     2     0   12/3/0/0/0
+scientific-research       15    12     3     0   12/3/0/0/0
+securities-reference-data    12     1    11     0   3/9/0/0/0
+software-engineering      13    11     2     0   8/5/0/0/0
+trip-planning             15    11     4     0   11/4/0/0/0
+vacation-industry         14     9     5     0   12/2/0/0/0
+wildlife-management       13    11     2     0   10/3/0/0/0
+all                      519   320   198     1   362/157/0/0/0
 
 the note's prediction against the outcome ("rows" only says a query can return rows, so "rows, got empty" is no miss;
 "an error if reached" allows error or empty; "checked at run" allows any):
-  predicted rows             (146): rows 106, empty 40, error 0
-  predicted empty            ( 73): rows 0, empty 73, error 0
-  predicted error            (  1): rows 0, empty 0, error 1
+  predicted rows             (362): rows 242, empty 120, error 0
+  predicted empty            (157): rows 78, empty 78, error 1
+  predicted error            (  0): rows 0, empty 0, error 0
   predicted error if reached (  0): rows 0, empty 0, error 0
   predicted checked at run   (  0): rows 0, empty 0, error 0
-  of the 40 predicted rows that got none, 18 ran on a store with no entity of the tool's kind (its first entity's name was the argument), 22 on a store with one:
-    agent-memory conversation_history, data-journalism source_network, genai-llm-ops experiment_comparison, genai-llm-ops eval_metrics, genai-llm-ops deployment_history, gis-cartography defaultView, golf-sports tournament_standings, hospitality defaultView, manufacturing quality_analysis, manufacturing get_work_orders, oil-gas equipment_health, product-management roadmap_status, retail-ecommerce review_sentiment, software-engineering defaultView, trip-planning find_activities, trip-planning hotel_comparison, trip-planning restaurant_recommendations, trip-planning defaultView, vacation-industry booking_history, vacation-industry defaultView, wildlife-management defaultView, wildlife-management sightings_by_area
-  the (domain, kind) pairs that carry tools: 99, of which 85 have an entity of the kind in their store
-  misses: none
+  of the 120 predicted rows that got none, 8 ran on a store with no entity of the tool's kind (its first entity's name was the argument), 112 on a store with one:
+    agent-memory what-the-agent-remembers-about-a-user, agent-memory preferences-stated-and-recorded, agent-memory preferences-nobody-stated, agent-memory from-message-to-item, business-entities collective-ownership-by-household, business-entities offshore-layering, business-entities circular-ownership, business-entities reported-versus-ownership-derived-parent, business-entities shared-registered-addresses, competitive-intelligence patents-without-a-pipeline-programme, competitive-intelligence disease-pipeline-intensity, competitive-intelligence target-diversification-within-a-disease, conservation habitat-dependence, conservation who-does-the-monitoring, conservation threats-to-target-species, conservation from-target-species-to-evidence, cybersecurity from-indicator-to-actor, cybersecurity mitigated-but-unprotected, data-journalism who-speaks-for-a-subject, data-journalism contradicted-claims-that-ran, data-journalism contradicted-claims-and-their-data, data-journalism whose-claim-forced-a-correction, digital-twin assets-in-a-system, digital-twin from-alert-to-failed-part, digital-twin failure-chain, education programme-structure, education prerequisite-chain, education failures-by-course, education progression-blocked-by-a-failure, education submission-trail, education outcomes-not-yet-shown, ev-route-planning reference-ontology-sanity-check-node-and-relationship-counts, ev-route-planning charging-options-near-a-city-stations-within-two-road-hops-by-depth, ev-route-planning charging-coverage-gaps-cities-with-no-station-within-two-road-hops, ev-route-planning corridor-preview-how-hard-the-spatial-prune-bites-before-paying-for-traversal, ev-route-planning location-ego-network-everything-one-hop-from-a-city, ev-route-planning fewest-hop-route-between-two-locations, ev-route-planning least-distance-routes-ranked-by-driving-distance-not-hop-count, ev-route-planning charging-catchment-of-a-city-the-paths-out-to-reachable-stations, ev-route-planning charge-tiers-what-each-dwell-time-delivers, ev-route-planning inline-corridor-stations-sites-with-no-bypass, financial-services clients-exposed-to-an-issuer, financial-services from-decision-to-trades, financial-services decisions-before-this-one, gaming from-quest-reward-to-fix, gaming achievements-earned-through-an-exploit, genai-llm-ops lineage-of-a-model, genai-llm-ops what-depends-on-a-provider, genai-llm-ops benchmark-shares-training-data, genai-llm-ops is-the-faulty-prompt-still-live, gis-cartography what-a-boundary-follows, gis-cartography datum-mismatch, gis-cartography what-a-map-project-draws-on, golf-sports rounds-on-each-clubs-courses, golf-sports where-the-winner-scored, golf-sports leader-after-each-round, government policy-lineage, government legal-basis-of-programmes, healthcare results-behind-a-diagnosis, healthcare allergy-conflicts, hospitality guests-moved-between-rooms, hospitality from-incident-to-complaints, hospitality complaint-back-to-the-room, identity-validation implausible-address-detection, insurance-claims-fraud potential-crash-for-cash-scams, insurance-claims-fraud claim-subgraphs-of-vehicles-involved-in-more-than-one-claim, legal opposing-counsel, legal what-each-filing-relies-on, legal contract-parties-and-disputes, legal cases-turning-on-a-statute, loans-and-mortgages application-outcomes-by-product, manufacturing machines-on-a-line, manufacturing facts-in-more-than-one-document, oil-gas incidents-on-a-contractors-rig, oil-gas offset-wells-in-the-target, options-intelligence trades-at-a-level, options-intelligence what-moved-the-regime, options-intelligence exposure-to-an-event, patient-journey comorbidity-network, patient-journey drug-co-prescription-network, personal-knowledge how-i-was-introduced, personal-knowledge what-a-book-fed, personal-knowledge notes-under-a-topic, personal-knowledge people-in-the-journal, product-management what-a-feature-waits-on, real-estate both-sides-of-a-sale, real-estate lender-conditions, real-estate defects-and-disclosures, regulatory-dependency-mapping most-cited-sections-by-inbound-citation-count, regulatory-dependency-mapping citations-that-cross-standards, retail-banking synthetic-identity-clusters, retail-banking directed-ring-basic, retail-banking cross-layer-ring, retail-banking device-sharing, retail-ecommerce from-case-to-returns, scientific-research from-grant-to-papers, scientific-research replications-and-where-they-ran, scientific-research citation-chain, securities-reference-data identifiers-shared-by-several-securities, securities-reference-data look-through-concentration-breaches, securities-reference-data affiliated-underwriting, software-engineering deployments-of-a-service, trip-planning where-each-traveller-sleeps, trip-planning operators-each-traveller-meets, trip-planning operators-a-trip-depends-on, trip-planning flying-to-a-destination, vacation-industry resort-activity-programme, vacation-industry who-sells-at-whose-resorts, vacation-industry providers-and-where-they-work, vacation-industry what-a-guests-booking-includes, wildlife-management where-was-this-individual-identified, wildlife-management threats-found-in-an-area
+  the (domain, kind) pairs that carry tools: 289, of which 280 have an entity of the kind in their store
+  misses: 
+    agent-memory claims-waiting-about-a-name: predicted empty, got rows
+    configurable-bom explore-the-configurable-structure-of-a-product: predicted empty, got rows
+    configurable-bom roll-up-weight-and-cost-of-a-resolved-variant: predicted empty, got rows
+    configurable-bom find-configuration-decisions-the-constraints-could-not-satisfy: predicted empty, got rows
+    conservation claims-waiting-about-a-name: predicted empty, got rows
+    conservation grant-by-reference: predicted empty, got rows
+    conservation indicator-by-code: predicted empty, got rows
+    cybersecurity cve-exposure: predicted empty, got rows
+    cybersecurity claims-waiting-about-a-name: predicted empty, got rows
+    data-journalism claims-waiting-about-a-name: predicted empty, got rows
+    data-journalism what-the-data-were-read-as-saying: predicted empty, got rows
+    digital-twin asset-by-tag: predicted empty, got rows
+    digital-twin downstream-of-an-asset: predicted empty, got rows
+    digital-twin claims-waiting-about-a-name: predicted empty, got rows
+    digital-twin work-orders-on-an-asset: predicted empty, got rows
+    education claims-waiting-about-a-name: predicted empty, got rows
+    education course-by-code: predicted empty, got rows
+    ev-route-planning vehicle-range-one-vehicle-s-usable-range-from-telemetry: predicted empty, got rows
+    financial-services claims-waiting-about-a-name: predicted empty, got rows
+    financial-services account-by-number: predicted empty, got rows
+    financial-services security-by-isin: predicted empty, got rows
+    gaming claims-waiting-about-a-name: predicted empty, got rows
+    genai-llm-ops claims-waiting-about-a-name: predicted empty, got rows
+    genai-llm-ops evaluation-by-id: predicted empty, got rows
+    gis-cartography survey-lineage-of-a-parcel: predicted empty, got rows
+    gis-cartography find-a-parcel: predicted empty, got rows
+    gis-cartography boundaries-and-neighbors: predicted empty, got rows
+    gis-cartography who-fixed-each-corner: predicted empty, got rows
+    gis-cartography claims-waiting-about-a-name: predicted empty, got rows
+    golf-sports claims-waiting-about-a-name: predicted empty, got rows
+    government grant-by-reference: predicted empty, got rows
+    healthcare claims-waiting-about-a-name: predicted empty, got rows
+    healthcare encounter-by-number: predicted empty, got rows
+    hospitality reservation-by-number: predicted empty, got rows
+    hospitality claims-waiting-about-a-name: predicted empty, got rows
+    identity-validation shared-identifier-fan-out-basic: predicted empty, got rows
+    identity-validation confidence-scored-identity-matches: predicted empty, got rows
+    identity-validation match-cluster-as-a-graph: predicted empty, got rows
+    legal claims-waiting-about-a-name: predicted empty, got rows
+    loans-and-mortgages total-exposure-per-person: predicted empty, got rows
+    loans-and-mortgages delinquency-by-servicer: predicted empty, got rows
+    loans-and-mortgages default-contagion-through-borrowers-and-guarantors: predicted empty, got error
+    manufacturing machine-by-asset-number: predicted empty, got rows
+    manufacturing lot-genealogy: predicted empty, got rows
+    manufacturing find-a-nonconformance: predicted empty, got rows
+    oil-gas well-by-api-number: predicted empty, got rows
+    oil-gas permit-by-number: predicted empty, got rows
+    oil-gas claims-waiting-about-a-name: predicted empty, got rows
+    options-intelligence contract-by-symbol: predicted empty, got rows
+    options-intelligence trade-by-ticket: predicted empty, got rows
+    options-intelligence claims-waiting-about-a-name: predicted empty, got rows
+    personal-knowledge claims-waiting-about-a-name: predicted empty, got rows
+    personal-knowledge journal-entry-by-date: predicted empty, got rows
+    product-management claims-waiting-about-a-name: predicted empty, got rows
+    product-management feedback-by-reference: predicted empty, got rows
+    product-management experiment-by-reference: predicted empty, got rows
+    real-estate listing-by-mls-number: predicted empty, got rows
+    real-estate inspection-by-report-number: predicted empty, got rows
+    regulatory-dependency-mapping change-blast-radius-for-a-section: predicted empty, got rows
+    retail-ecommerce claims-waiting-about-a-name: predicted empty, got rows
+    retail-ecommerce case-by-number: predicted empty, got rows
+    retail-ecommerce order-by-number: predicted empty, got rows
+    scientific-research claims-waiting-about-a-name: predicted empty, got rows
+    scientific-research grant-by-reference: predicted empty, got rows
+    scientific-research paper-by-doi: predicted empty, got rows
+    securities-reference-data listings-of-a-security: predicted empty, got rows
+    software-engineering claims-waiting-about-a-name: predicted empty, got rows
+    software-engineering pull-request-in-context: predicted empty, got rows
+    software-engineering incident-by-number: predicted empty, got rows
+    software-engineering what-the-documents-say-about-an-incident: predicted empty, got rows
+    trip-planning claims-waiting-about-a-name: predicted empty, got rows
+    trip-planning flight-by-number: predicted empty, got rows
+    trip-planning booking-by-reference: predicted empty, got rows
+    trip-planning what-each-booking-holds: predicted empty, got rows
+    vacation-industry claims-waiting-about-a-name: predicted empty, got rows
+    vacation-industry booking-by-reference: predicted empty, got rows
+    wildlife-management camera-trap-by-code: predicted empty, got rows
+    wildlife-management patrol-by-number: predicted empty, got rows
+    wildlife-management claims-waiting-about-a-name: predicted empty, got rows
+not run, requiring GDS, APOC or a write (42): attack-path-analysis node-key-constraints (write), attack-path-analysis node-key-constraints-2 (write), attack-path-analysis node-key-constraints-3 (write), attack-path-analysis node-key-constraints-4 (write), attack-path-analysis node-key-constraints-5 (write), attack-path-analysis node-key-constraints-6 (write), attack-path-analysis node-key-constraints-7 (write), business-entities node-key-constraints (write), competitive-intelligence node-key-constraints (write), configurable-bom resolve-a-variant-against-constraints (write), configurable-bom remove-resolved-links-detached-from-the-product (write), configurable-bom clear-a-resolved-variant (write), configurable-bom node-key-constraints (write), configurable-bom prune-undecided-decisions-by-scoring (write), ev-route-planning node-key-constraints (write), identity-validation descriptor-similarity-near-miss-name-spelling-requires-apoc (apoc), identity-validation weighted-composite-match-score-requires-apoc (apoc), identity-validation node-key-constraints (write), identity-validation placeholder-phone-detection (write), identity-validation placeholder-email-detection (write), identity-validation near-duplicate-ssn-synthetic-identity-signal (index), identity-validation near-duplicate-ssn-as-a-graph (index), insurance-claims-fraud project-the-fraud-graph (gds), insurance-claims-fraud louvain-communities-in-the-fraud-graph (gds), insurance-claims-fraud pagerank-centrality-in-the-fraud-graph (gds), insurance-claims-fraud drop-the-fraud-graph-projection (gds), insurance-claims-fraud node-key-constraints (write), loans-and-mortgages node-key-constraints (write), multi-omics node-keys (write), patient-journey node-key-constraints (write), regulatory-dependency-mapping gds-project-the-section-cross-reference-graph (gds), regulatory-dependency-mapping gds-rank-section-influence-with-pagerank (gds), regulatory-dependency-mapping gds-group-cross-referencing-sections-into-communities (gds), regulatory-dependency-mapping gds-drop-the-section-projection (gds), regulatory-dependency-mapping node-key-constraints (write), retail-banking project-identity-links-requires-gds (gds), retail-banking identity-clusters-with-wcc-requires-gds (gds), retail-banking drop-identity-links-projection-requires-gds (gds), retail-banking node-key-constraints (write), retail-banking directed-ring-with-distinct-accounts-requires-apoc (apoc), retail-banking chronological-and-amount-decay-ring-requires-apoc (apoc), securities-reference-data node-key-constraints (write)
 refused by the page's checks before running: none
-errors, by category: syntax 1
-  syntax: legal expiring_contracts: syntax error: UndefinedVariable: variable 'expiry' not defined
+errors, by category: type 1
+  type: loans-and-mortgages default-contagion-through-borrowers-and-guarantors: type error: InvalidArgumentType: IN requires a list on the right-hand side
 the tools that returned rows, with their row counts:
-  agent-memory: search_agent 8, tool_usage_stats 1, list_agents 1, defaultView 8, entity_graph 1
-  conservation: search_site 1, list_species 2, defaultView 2, program_effectiveness 1, funding_analysis 2
-  cybersecurity: asset_exposure 1, search_alert 1, list_incidents 1, threat_actor_targets 1
-  data-journalism: search_source 1, defaultView 6, dataset_analysis 1, list_investigations 1
-  digital-twin: search_asset 1, sensor_readings 1, alert_history 1, maintenance_schedule 1, list_assets 2, system_health 2, defaultView 13
-  education: search_student 1, defaultView 2, instructor_load 2, list_courses 2
-  financial-services: search_customer 5, get_customer_decisions 2, defaultView 14, list_accounts 2
-  gaming: list_players 2, get_top_players 2, defaultView 2, item_economy 1, quest_progress 1
-  genai-llm-ops: search_model 1, list_models 2, defaultView 11, prompt_analysis 1
-  gis-cartography: search_feature 1, list_features 3, layer_contents 1, survey_data 1
-  golf-sports: course_stats 1, list_courses 2
-  government: agency_portfolio 1, list_agencies 1, get_agency_by_name 12, defaultView 2, search_program 1
-  healthcare: search_patient 8, list_patients 1, defaultView 8
-  hospitality: search_hotel 1, revenue_metrics 1, list_hotels 2, guest_history 1, service_analysis 1
-  legal: list_cases 1
-  manufacturing: search_machine 1, list_machines 2, defaultView 4, supplier_performance 2, production_metrics 1
-  oil-gas: search_well 1, permit_status 1, list_wells 2, defaultView 12
-  options-intelligence: none
-  personal-knowledge: knowledge_connections 1, list_notes 2, defaultView 8, project_status 1, topic_exploration 1
-  product-management: search_feature 1, dependency_map 1, list_features 2, defaultView 2, metric_analysis 1
-  real-estate: list_properties 2, defaultView 1, agent_performance 1, market_trends 1
-  retail-ecommerce: search_customer 1, list_customers 1, defaultView 3, campaign_performance 1
-  scientific-research: dataset_usage 1, experiment_results 1
-  software-engineering: search_developer 6, list_repositories 1, get_repository_by_name 4, get_service_health 1, get_deployment_history 1
-  trip-planning: search_destination 1, list_destinations 2, trip_budget 2
-  vacation-industry: search_resort 1, list_resorts 1, guest_preferences 1, seasonal_analysis 1, package_comparison 1
-  wildlife-management: list_species 2, habitat_analysis 1
-each copy's content digest after its tools ran: unchanged on 27 of 27 (no tool wrote)
+  agent-memory: what-the-documents-say-about 2, claims-waiting-about-a-name 1, find-a-user 3, staff-workload 1, session-overview 1, where-a-memory-came-from 1, what-replaced-what 1, memory-facts-and-their-sentences 13, facts-in-more-than-one-document 2, where-an-item-comes-up 2, tool-usage 6
+  attack-path-analysis: none
+  business-entities: none
+  competitive-intelligence: graph-census-node-counts-by-label 19
+  configurable-bom: explore-the-configurable-structure-of-a-product 2, roll-up-weight-and-cost-of-a-resolved-variant 1, find-configuration-decisions-the-constraints-could-not-satisfy 1, list-the-configuration-decisions-and-their-options 1
+  conservation: find-a-site 1, site-profile 4, what-the-documents-say-about 2, programme-partners-and-funding 1, claims-waiting-about-a-name 10, grant-by-reference 1, funding-by-funder 3, what-the-text-says-about-each-survey 1, indicator-by-code 1
+  cybersecurity: asset-exposure 6, cve-exposure 1, detection-coverage 5, alerts-to-attribution 1, how-alerts-were-handled 1, claims-waiting-about-a-name 4, find-an-incident 6, incident-scope 1, actor-tradecraft 1, what-the-documents-say-about 8, facts-in-more-than-one-document 1, analyst-workload 2, stolen-accounts 2
+  data-journalism: journalist-workload 5, source-reliance 3, what-the-documents-say-about 1, claims-waiting-about-a-name 4, find-a-claim 1, evidence-for-and-against 4, what-the-data-were-read-as-saying 2, corrections-log 1, investigation-at-a-glance 1
+  digital-twin: plant-systems-and-staff 1, asset-by-tag 3, asset-health-picture 1, downstream-of-an-asset 1, what-the-documents-say-about 3, alerts-per-sensor 4, alerts-and-their-answers 4, why-each-part-failed 1, claims-waiting-about-a-name 4, work-orders-on-an-asset 1, technician-workload 3, what-each-twin-caught 2
+  education: find-a-student 1, student-record 1, claims-waiting-about-a-name 2, staff-load 8, who-teaches-what-and-why 2, department-portfolio 4, course-by-code 1, what-the-minutes-say-about 2
+  ev-route-planning: available-anchors 24, lane-feasibility-across-the-fleet-which-vehicles-can-serve-this-lane-today 1, charging-station-detail-one-station-its-charge-tiers-and-the-roads-that-reach-it 1, charging-capacity-by-region 1, operator-footprint 1, vehicle-range-one-vehicle-s-usable-range-from-telemetry 1, fleet-composition-and-reach 1, road-network-by-class-the-four-tier-hierarchy 1
+  financial-services: find-a-client 4, accounts-of-a-client 2, claims-waiting-about-a-name 4, client-in-graph-and-text 10, advisor-workload 3, firm-staff-and-regulators 1, account-by-number 1, who-manages-what-and-why 1, facts-in-more-than-one-document 1, security-by-isin 1, what-the-documents-say-about 4, policies-applied-and-breached 2
+  gaming: find-a-player 1, claims-waiting-about-a-name 1, character-sheet 1, item-exposure 2, what-a-patch-did 1, find-an-exploit 4, exploit-at-a-glance 2, guilds-behind-an-exploit 1, who-abused-what-and-the-words 3, what-the-documents-say-about 1, sanction-by-case-number 1, enforcement-per-exploit 2
+  genai-llm-ops: find-a-model 6, how-a-model-was-made 1, claims-waiting-about-a-name 5, benchmark-scoreboard 3, evaluation-by-id 1, what-each-evaluation-measured 1, what-a-deployment-runs 3, engineer-workload 4, what-the-documents-say-about 1
+  gis-cartography: find-a-surveyor 1, survey-lineage-of-a-parcel 2, monuments-found-and-set 2, what-each-survey-did 4, find-a-parcel 1, boundaries-and-neighbors 1, what-the-documents-say-about 8, who-fixed-each-corner 1, encroachments 1, what-each-authority-holds 5, claims-waiting-about-a-name 5
+  golf-sports: find-a-player 2, a-players-team 2, who-caddies-for-whom 1, a-clubs-courses-and-events 2, hardest-holes 2, tournament-at-a-glance 1, the-field 1, what-the-documents-say-about 6, claims-waiting-about-a-name 2, what-each-sponsor-backs 4, tour-members-and-events 1
+  government: agency-portfolio 1, officials-and-their-roles 5, what-the-report-says-about 2, find-a-programme 2, programme-at-a-glance 1, regulations-under-an-act 1, follow-the-money 1, grant-by-reference 1, grants-by-recipient 1, what-the-file-says-about-grants 2
+  healthcare: find-a-patient 14, problem-list-of-a-patient 1, claims-waiting-about-a-name 18, care-team-of-a-patient 3, clinician-activity 6, who-prescribed-what 2, facility-encounters-and-staff 3, encounter-by-number 1, facts-in-more-than-one-document 3, medications-for-a-diagnosis 1, what-the-documents-say-about 16, procedures-and-who-did-them 4, medications-by-prescriber-count 14
+  hospitality: hotel-staff-and-amenities 2, what-the-documents-say-about 3, rooms-and-their-incidents 5, find-a-guest 4, stays-of-a-guest 1, reservation-by-number 1, staff-workload 6, complaints-by-service 3, amenities-offered-and-included 6, who-an-incident-affected 1, what-a-complaint-rests-on 3, claims-waiting-about-a-name 3
+  identity-validation: shared-identifier-fan-out-basic 4, confidence-scored-identity-matches 1, match-cluster-as-a-graph 4
+  insurance-claims-fraud: claimants-with-multiple-claims 3, claim-subgraphs-of-the-most-frequent-repeat-claimants 7, medical-professionals-with-unusual-patterns 1, medical-professionals-ranked-by-total-claim-value 3
+  legal: firms-lawyers-and-clients 3, firm-caseload 3, find-a-case 5, who-is-on-each-side 2, who-is-sued-and-why 3, facts-in-more-than-one-document 1, hearing-brief 1, what-the-documents-say-about 7, claims-waiting-about-a-name 3, statutes-in-play 7
+  loans-and-mortgages: total-exposure-per-person 1, delinquency-by-servicer 1
+  manufacturing: plant-lines-and-engineers 2, machine-by-asset-number 2, lot-genealogy 1, supplier-quality-record 3, find-a-nonconformance 4, caught-or-escaped 3, where-each-was-caught-and-why 1, what-the-documents-say-about 4, engineer-workload 4
+  multi-omics: comparison-overview 3
+  oil-gas: rig-owner-equipment-and-wells 1, equipment-record 4, well-by-api-number 1, who-operates-and-drills-a-well 2, where-is-the-well-mentioned 2, wells-and-reservoirs-by-formation 2, geology-of-a-well 1, permit-by-number 1, regulator-oversight 3, claims-waiting-about-a-name 3, incident-follow-up 1, what-each-incident-involved 1
+  options-intelligence: desk-book 2, trader-activity 3, what-the-documents-say-about 3, find-a-ticker 1, ticker-positioning 3, contract-by-symbol 1, strategies-for-the-regime 2, which-sentences-set-the-regime 3, strategy-usage 3, trade-by-ticket 1, claims-waiting-about-a-name 2
+  patient-journey: available-anchors 10, reference-ontology-sanity-check-node-counts-by-label 20
+  personal-knowledge: find-a-contact 2, claims-waiting-about-a-name 2, who-i-know-at 1, project-at-a-glance 2, who-works-on-what-and-where-it-says-so 3, meetings-and-who-came 2, what-the-vault-says-about 2, whose-recommendations-turned-into-notes 1, what-the-week-kept-returning-to 8, journal-entry-by-date 1
+  product-management: squad-load 2, from-objective-to-features 1, how-each-metric-is-used 5, how-success-is-measured 1, what-an-epic-holds 1, find-a-feature 7, what-the-documents-say-about 8, claims-waiting-about-a-name 4, what-ships-in-each-release 2, feedback-by-reference 1, experiment-by-reference 1
+  real-estate: find-a-residence 3, residence-file 1, neighborhood-overview 1, listing-by-mls-number 1, brokerage-book 3, a-buyers-purchase 1, what-the-documents-say-about 3, inspection-by-report-number 1, what-each-inspection-says 3, inspector-workload 3
+  regulatory-dependency-mapping: change-blast-radius-for-a-section 1
+  retail-banking: graph-census 1
+  retail-ecommerce: find-a-customer 4, orders-of-a-customer 1, claims-waiting-about-a-name 7, agent-caseload 2, case-by-number 1, order-by-number 1, replacement-chain 1, what-the-documents-say-about 3, who-else-bought-it 3, returns-and-reviews-by-product 3, brand-catalogue 3, warehouse-activity 3, reviews-in-graph-and-text 2
+  scientific-research: find-a-researcher 2, researcher-output 7, claims-waiting-about-a-name 2, institution-people-grants-and-kit 4, funder-portfolio 2, grant-by-reference 1, how-an-experiment-was-done 1, who-conducted-what-and-why 3, experiments-by-method 2, dataset-provenance 1, paper-by-doi 1, what-the-documents-say-about 6
+  securities-reference-data: listings-of-a-security 1
+  software-engineering: engineer-activity 7, claims-waiting-about-a-name 8, who-owns-a-service 1, find-a-service 4, blast-radius 1, library-reach 2, pull-request-in-context 1, follow-up-progress 1, incident-by-number 1, what-the-documents-say-about-an-incident 3, facts-in-more-than-one-document 3
+  trip-planning: find-a-traveller 2, itinerary-at-a-glance 1, claims-waiting-about-a-name 4, staying-eating-and-doing-in 1, hotel-in-graph-and-text 4, activities-per-operator 4, flight-by-number 1, booking-by-reference 1, bookings-per-traveller 4, what-each-booking-holds 2, what-the-documents-say-about 1
+  vacation-industry: find-a-resort 2, what-the-documents-say-about 1, resort-group-portfolio 2, bookings-by-destination 1, season-programme 4, claims-waiting-about-a-name 4, booking-by-reference 1, reviews-by-resort 1, what-the-reviews-say 1
+  wildlife-management: ranger-activity 5, find-a-protected-area 8, protected-area-profile 4, habitats-a-species-uses 1, what-is-known-about-a-species 1, what-the-documents-say-about 1, camera-trap-by-code 1, detections-per-camera-trap 5, patrol-by-number 1, what-the-text-says-about-each-patrol 4, claims-waiting-about-a-name 1
+each copy's content digest after its tools ran: unchanged on 40 of 40 (no tool wrote)
 
 the note on index procedures (toolCompat) against the engine. A missing index errors once the query reaches the call
 (IndexDoesNotExist, for both index kinds); a null query vector returns no rows even then (R23). The note says no rows when a
@@ -192,7 +460,7 @@ prediction allows (rows also allows empty; an error if reached allows error or e
     predicted empty (it matches on incident_id, which the extractor never writes); got error (IndexDoesNotExist: incident_embeddings): outside the note's premise
   software-engineering find_similar_incidents, incident_id and embedding written by hand, with the index: MATCH (i:Incident {incident_id: $incident_id}) CALL db.index.vector.queryNodes('incident_embeddings', 5, i.embedding) YIELD node, score WHERE node.incident_id <> $incident_id RETURN node AS similar_incident, score ORDER BY score DESC
     predicted empty (it matches on incident_id, which the extractor never writes); got rows: outside the note's premise
-  a full-text index the store has: MATCH (s:_Sentence) WITH s LIMIT 1 CALL db.index.fulltext.queryNodes('sentence_text', 'Whitlock') YIELD node RETURN node
+  a full-text index the store has: MATCH (s:_Sentence) WITH s LIMIT 1 CALL db.index.fulltext.queryNodes('sentence_text', 'Holt') YIELD node RETURN node
     predicted rows; got rows: allowed
   the call first, then a MATCH that finds nothing: CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node MATCH (n:Nope) RETURN n
     predicted error (db.index.fulltext.queryNodes needs the index 'nope', which this store does not have: the call errors); got error (IndexDoesNotExist: nope): allowed
@@ -222,7 +490,7 @@ prediction allows (rows also allows empty; an error if reached allows error or e
     predicted error (db.index.fulltext.queryNodes needs the index 'nope', which this store does not have: the call errors); got error (IndexDoesNotExist: nope): allowed
   the index named by a parameter: CALL db.index.fulltext.queryNodes($i, 'x') YIELD node RETURN node
     predicted checked at run (db.index.fulltext.queryNodes takes its index from $i, so whether that index exists is checked at run (an error when it does not)); got error (IndexDoesNotExist: nope): allowed
-  the index named by a parameter, one the store has: CALL db.index.fulltext.queryNodes($i, 'Whitlock') YIELD node RETURN node
+  the index named by a parameter, one the store has: CALL db.index.fulltext.queryNodes($i, 'Holt') YIELD node RETURN node
     predicted checked at run (db.index.fulltext.queryNodes takes its index from $i, so whether that index exists is checked at run (an error when it does not)); got rows: allowed
   queryRelationships alone: CALL db.index.vector.queryRelationships('nope', 5, [1.0, 0.0]) YIELD relationship RETURN relationship
     predicted error (db.index.vector.queryRelationships needs the index 'nope', which this store does not have: the call errors); got error (IndexDoesNotExist: nope): allowed
@@ -253,14 +521,14 @@ else no parameter takes a name. Only a comparison that filters the rows counts f
 MATCH or a subquery), and any comparison with a property of another kind's variable rules out 'name'. The side panel
 runs a tool whose parameters all have a value (the name, a default, a value its description suggests, a first option),
 as a tool about the kind when the name goes nowhere, and asks for the ones with no value otherwise.
-  220 tools: no parameters 33, property 102, name 1, none 84
-  the side panel's button: runs at once for 167 (33 without parameters, 102 with the name and the rest with a value, 32 with every parameter at its start, as a tool about the kind), asks for the parameters that have no value for 53
-  prefilled, by parameter: query 75, name 8, asset_name 4, agent_name 3, destination 3, model_name 3, case_number 1, instructor 1, itinerary_name 1, property_id 1, service 1, species_name 1, system_name 1
-  by its name alone: data-journalism claim_verification $query
-  tools with none, by parameter: limit 28, id 22, ticker 6, course_code 3, incident_id 3, patient_id 3, customer_id 2, days 2, decision_id 2, threshold 2, case_number 1, habitat_name 1, matter_id 1, min_gex 1, option_type 1, pr_id 1, property_id 1, provider_id 1, quarter 1, query 1, severity_levels 1, status 1, strategy_type 1
-  digital-twin list_assets on an Asset named "pump P-12" (only $limit, read through toInteger()): fills {}, runs with {"limit":"10"}, as a tool about the kind
-  financial-services list_accounts on the Account "ACC-2207": runs with {"limit":"10"}, as a tool about the kind
-  financial-services get_account_by_id on the Account "ACC-2207": asks for $id
+  561 tools: no parameters 235, property 107, name 0, none 219
+  the side panel's button: runs at once for 337 (235 without parameters, 102 with the name and the rest with a value, 0 with every parameter at its start, as a tool about the kind), asks for the parameters that have no value for 224
+  prefilled, by parameter: incident 4, sourceName 4, cityName 3, client 3, guest 3, model 3, player 3, programme 3, address 2, contact 2, customer 2, exploit 2, feature 2, memory 2, name 2, patient 2, project 2, service 2, student 2, user 2, well 2, act 1, actor 1, agency 1, area 1, asset 1, book 1, boundary 1, buyer 1, character 1, claim 1, club 1, complaint 1, contract 1, counsel 1, course 1, dataset 1, decision 1, destination 1, diagnosis 1, epic 1, event 1, experiment 1, hotel 1, individual 1, investigation 1, issuer 1, item 1, itinerary 1, library 1, line 1, mode 1, note 1, objective 1, order 1, organisation 1, package 1, paper 1, patch 1, product 1, provider 1, record 1, ref 1, researcher 1, resort 1, rig 1, session 1, site 1, species 1, stationName 1, surveyor 1, system 1, ticker 1, topic 1, tournament 1, traveller 1
+  by its name alone: none
+  tools with none, by parameter: name 52, limit 13, maxAdjP 10, minAbsLogFC 10, entityId 8, comparisonId 7, idVariant 7, maxLateralHops 5, minCvss 5, patientId 5, symbol 5, minScore 4, parcel 4, asOf 3, carId 3, conditionCode 3, controlPct 3, crownJewelTier 3, diseaseName 3, incident 3, minPct 3, ncr 3, productId 3, ref 3, tag 3, case 2, changedSince 2, code 2, departureHour 2, detourRatio 2, fundId 2, identityId 2, lot 2, maxMins 2, maxSoc 2, minRatio 2, minSharedTypes 2, minSoc 2, mondoId 2, number 2, phoneNumber 2, reserveSoc 2, sectionId 2, service 2, sourceName 2, species 2, subject 2, targetName 2, tournament 2, well 2, accountId 1, api 1, area 1, asset 1, bookingRef 1, cameraId 1, caseNumber 1, classifications 1, companyId 1, constraints 1, cve 1, date 1, destination 1, doi 1, encounter 1, eval 1, experimentId 1, feature 1, feedbackId 1, flight 1, fromDate 1, fromEntityId 1, grant 1, instanceId 1, isin 1, item 1, limitPct 1, loanId 1, maxAccountAgeDays 1, maxCltv 1, maxDwellHours 1, maxIterations 1, maxMarketCapUsd 1, maxMonths 1, maxPhase 1, maxRatio 1, mic 1, minClaims 1, minClusterSize 1, minCommunitySize 1, minCustomers 1, minEntities 1, minGenes 1, minInboundCitations 1, minIncreasePct 1, minIntermediaries 1, minLinkTypes 1, minLoans 1, minMissed 1, minOffshoreLayers 1, minPassThrough 1, minPatents 1, minPatentsEach 1, minPathsThrough 1, minPhase 1, minPlatforms 1, minPriorSessions 1, minSenders 1, minSharedTerms 1, minTissues 1, minTotal 1, mlsNumber 1, months 1, orderId 1, patient 1, patrolId 1, paymentTypes 1, permit 1, personId 1, phenotypeId 1, proteinName 1, providerId 1, reportNumber 1, requiredRangeKm 1, scheme 1, scoring 1, securityId 1, standardId 1, statuses 1, statute 1, ticker 1, ticket 1, toEntityId 1, user 1, value 1, windowDays 1, windowEnd 1, windowHours 1
+  create-context-graph's digital-twin list_assets on an Asset named "pump P-12" (only $limit, read through toInteger()): fills {}, runs with {"limit":"10"}, as a tool about the kind
+  create-context-graph's financial-services list_accounts on the Account "ACC-2207": runs with {"limit":"10"}, as a tool about the kind
+  create-context-graph's financial-services get_account_by_id on the Account "ACC-2207": asks for $id
   synthetic tools, on a Person:
     function-wrapped equality on its name: q/property (compared with p.name of (p:Person) (=))
     a regular expression built around the parameter: query/name (named like a name or a search)
@@ -278,21 +546,21 @@ out when a top-level column is a bookkeeping node or relationship, or a path thr
 values are dropped and the row stays. NVL draws only what the shown rows hold, capped after the filter (1,000 nodes,
 3,000 relationships). _IN and _OF are the ontology's between two ontology-layer nodes and bookkeeping otherwise; the
 console worker sends the store's ontology node ids (ONTOLOGY_NODE_IDS) whenever the rows hold one.
-  bookkeeping labels: _Document, _Section, _Sentence, _Inference, _InferencePart, _Mention, _Claim, _Run, _Verdict, _Gold
+  bookkeeping labels: _Document, _Section, _Sentence, _Inference, _InferencePart, _Mention, _Claim, _Attribute, _Run, _Verdict, _Gold
   content labels: _Ontology, _Kind, _LinkType, _Alias, _Entity (and every ontology label)
   bookkeeping types: _HEAD, _TAIL, _EVIDENCE, _READ, _ON, _INFERRED; content: _DOMAIN, _RANGE (and every ontology type); by their ends: _IN, _OF
-  ontology.js's internal labels (15) and types (10) each classified exactly once: yes, yes
-on a copy of the financial-services store:
+  ontology.js's internal labels (16) and types (10) each classified exactly once: yes, yes
+on a copy of the fixtures' store (create-context-graph's financial-services):
   queries/05-ontology-graph.cypher: 24 rows; on: 24 shown, "", NVL 21 nodes and 24 relationships; off: NVL 21 and 24
-  queries/01-typed-graph.cypher: 10 rows; on: 10 shown, "", NVL 11 nodes and 10 relationships; off: NVL 11 and 10
+  queries/01-typed-graph.cypher: 5 rows; on: 5 shown, "", NVL 6 nodes and 5 relationships; off: NVL 6 and 5
   each kind -[:_IN]-> the ontology, the relationships alone: 22 rows; on: 22 shown, "", NVL 0 nodes and 22 relationships; off: NVL 0 and 22
-  each sentence -[:_IN]-> its section, the relationships alone: 13 rows; on: 0 shown, "13 of 13 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 0 and 13
-  mentions, their _OF and entities: 24 rows; on: 0 shown, "24 of 24 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 36 and 24
-  paths through _OF: 24 rows; on: 0 shown, "24 of 24 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 36 and 24
-  each entity's key and collect() of its mentions: 12 rows; on: 12 shown, "24 values inside lists/maps hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 24 and 0
-  a map of a mention and its entity: 24 rows; on: 24 shown, "24 values inside lists/maps hidden (bookkeeping).", NVL 12 nodes and 0 relationships; off: NVL 36 and 0
-  the persons' untyped neighbours (financial-services' defaultView): 14 rows; on: 6 shown, "8 of 14 rows hidden (bookkeeping).", NVL 7 nodes and 6 relationships; off: NVL 15 and 14
-  every node: 158 rows; on: 35 shown, "123 of 158 rows hidden (bookkeeping).", NVL 35 nodes and 0 relationships; off: NVL 158 and 0
+  each sentence -[:_IN]-> its section, the relationships alone: 29 rows; on: 0 shown, "29 of 29 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 0 and 29
+  mentions, their _OF and entities: 37 rows; on: 0 shown, "37 of 37 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 53 and 37
+  paths through _OF: 37 rows; on: 0 shown, "37 of 37 rows hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 53 and 37
+  each entity's key and collect() of its mentions: 16 rows; on: 16 shown, "37 values inside lists/maps hidden (bookkeeping).", NVL 0 nodes and 0 relationships; off: NVL 37 and 0
+  a map of a mention and its entity: 37 rows; on: 37 shown, "37 values inside lists/maps hidden (bookkeeping).", NVL 16 nodes and 0 relationships; off: NVL 53 and 0
+  the persons' untyped neighbours (financial-services' defaultView): 16 rows; on: 4 shown, "12 of 16 rows hidden (bookkeeping).", NVL 5 nodes and 4 relationships; off: NVL 19 and 16
+  every node: 342 rows; on: 39 shown, "303 of 342 rows hidden (bookkeeping).", NVL 39 nodes and 0 relationships; off: NVL 342 and 0
 on a store of the generic document (harness/fixtures.mjs GENERIC_YAML, with a gazetteer), its ontology applied:
   the gazetteer: _Alias -[:_OF]-> _Kind: 4 rows; on: 4 shown, "", NVL 7 nodes and 4 relationships; off: NVL 7 and 4
   the gazetteer's _OF relationships alone: 4 rows; on: 4 shown, "", NVL 0 nodes and 4 relationships; off: NVL 0 and 4

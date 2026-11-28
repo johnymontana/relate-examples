@@ -1,0 +1,643 @@
+# Manufacturing: example 01's curated ontology for the quality, supplier-quality and maintenance
+# documents of a discrete-manufacturing plant (D20). Written for this repository from
+# create-context-graph's manufacturing.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/), which it
+# replaces in the page: the inherited POLE+O base (Person, Organization, Location, Event, Object) is
+# gone, and the things are named for what a quality engineer calls them (Plant, ProductionLine,
+# Machine, Part, Lot, Supplier, Customer, Nonconformance, CorrectiveAction, Operator, Engineer).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: manufacturing
+name: Manufacturing
+description: >-
+  Discrete manufacturing as its quality, supplier-quality and maintenance engineers write about it in
+  8D reports, supplier evaluations and maintenance logs: the plants and the production lines inside
+  them, the machines on each line and the operators and engineers who run and maintain them, the parts
+  a plant makes, buys and ships and the suppliers behind them, the lots that carry parts from delivery
+  through machining and assembly to a customer, the nonconformances found in those lots, and the
+  containment and corrective actions taken against them. It answers which lot, machine and supplier lie
+  behind a nonconformance, which customers received product built from a suspect lot, whether a defect
+  was caught in the plant or escaped to a customer, who owns each action and which machine it changed,
+  and how a supplier's record stands. Measurements, process settings, costs, schedules and production
+  orders are out of scope: a document names them, the extractor does not keep them.
+nodes:
+  Plant:
+    label: Plant
+    description: >-
+      A factory or manufacturing site that runs production lines and employs engineers, named in full
+      as its owner names it ("Calder Bridge Plant"). A plant is a whole site; a production line is one
+      part of it.
+    aliases: [factory, site, works, facility, manufacturing plant]
+    reference: https://schema.org/Place
+    properties:
+      name: {type: STRING, key: true, description: "The plant's name as the documents write it."}
+      plantCode: {type: STRING, pattern: "^[A-Z]{3}$", description: "The company's three-letter site code (CBP)."}
+      company: {type: STRING, description: "The company that owns and runs the plant."}
+      city: {type: STRING, description: "The town the plant is in (Brighouse)."}
+      certification: {type: STRING, one_of: [ISO 9001, IATF 16949, AS9100, ISO 14001], description: "The management-system certificate the plant holds."}
+    extensions:
+      display: {x: -360, y: -240, colour: "#065f46"}
+      custom:
+        relate-examples: {ask: "a factory building named with the word Plant, such as Calder Bridge Plant", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: plant-lines-and-engineers
+            category: neighbourhood
+            question: Which production lines does each plant hold, and which engineers work there?
+            description: Each plant with the production lines located at it and the engineers based at it.
+            teaches: Two independent neighbourhoods of one node come back as two collected lists.
+            cypher: |-
+              MATCH (p:Plant)
+              OPTIONAL MATCH (l:ProductionLine)-[:LOCATED_AT]->(p)
+              OPTIONAL MATCH (e:Engineer)-[:BASED_AT]->(p)
+              RETURN p.name AS plant, collect(DISTINCT l.name) AS lines, collect(DISTINCT e.name) AS engineers
+              ORDER BY plant
+  ProductionLine:
+    label: ProductionLine
+    description: >-
+      A production, machining or assembly line or cell inside a plant, named by its number or title
+      ("Line 3", "Line 5"). Machines are installed on a line; the line itself carries no asset number.
+    aliases: [line, cell, assembly line, machining line, work centre]
+    properties:
+      name: {type: STRING, key: true, description: "The line's name or number as the documents write it (Line 3)."}
+      lineType: {type: STRING, one_of: [machining, assembly, press, welding, painting, packing], description: "What the line does."}
+      shiftPattern: {type: STRING, one_of: [single, double, triple, continuous], description: "How many shifts the line runs."}
+      ratedOutput: {type: INTEGER, description: "The line's rated output, in units per hour."}
+    extensions:
+      display: {x: -360, y: -20, colour: "#059669"}
+      custom:
+        relate-examples: {ask: "a production, machining or assembly line or cell inside a plant, named by its number or title such as Line 3", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: machines-on-a-line
+            category: neighbourhood
+            question: Which machines are installed on this line, and who runs and maintains each one?
+            description: The machines installed on every line whose name holds the text, each with its operators and the engineers who maintain it.
+            teaches: OPTIONAL MATCH keeps a machine in the answer even when the text names nobody who runs or maintains it.
+            cypher: |-
+              MATCH (m:Machine)-[:INSTALLED_ON]->(l:ProductionLine) WHERE toLower(l.name) CONTAINS toLower($line)
+              OPTIONAL MATCH (o:Operator)-[:OPERATES]->(m)
+              OPTIONAL MATCH (e:Engineer)-[:MAINTAINS]->(m)
+              RETURN l.name AS line, m.name AS machine, m.assetNumber AS asset,
+                     collect(DISTINCT o.name) AS operators, collect(DISTINCT e.name) AS maintained_by
+              ORDER BY line, machine
+            parameters:
+              - {name: line, type: STRING, description: "Part of the line's name.", example: Line 5}
+  Machine:
+    label: Machine
+    description: >-
+      A piece of production or test equipment with its own asset number (a machining centre,
+      die-casting machine, press, robot cell or leak tester), identified by that number ("MC-412", "the
+      leak tester LT-107"). A machine stands on one line or in a supplier's shop; a part is what it
+      makes.
+    aliases: [equipment, machine tool, station, press, tester, cell]
+    properties:
+      assetNumber: {type: STRING, key: true, pattern: "^[A-Z]{2}-[0-9]{3}$", description: "The asset number: two letters for the class (MC machining centre, DC die-casting machine, LT leak tester, PR press, RW robot welder, VS vision system), a dash and three digits (MC-412)."}
+      name: {type: STRING, description: "The machine as a document names it."}
+      machineType: {type: STRING, one_of: [machining centre, die-casting machine, press, robot cell, leak tester, vision system, assembly station], description: "The kind of equipment."}
+      manufacturer: {type: STRING, description: "The machine builder's name."}
+      installedOn: {type: DATE, description: "The date the machine was commissioned."}
+    extensions:
+      display: {x: -120, y: -20, colour: "#475569"}
+      custom:
+        relate-examples: {ask: "a piece of plant equipment with an asset number such as MC-412, a machining centre, die-casting machine, press or leak tester", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: machine-by-asset-number
+            category: lookup
+            question: Which machine has this asset number, and what does the store connect to it?
+            description: The machine whose asset number is the parameter, with every entity one link away.
+            teaches: The key property (assetNumber) is filled from the entity's name when the text gives the number, so an exact match works here.
+            cypher: |-
+              MATCH (m:Machine) WHERE m.assetNumber = $asset
+              OPTIONAL MATCH (m)-[r]-(x:_Entity)
+              RETURN m.name AS machine, m.assetNumber AS asset, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY link, other
+            parameters:
+              - {name: asset, type: STRING, description: "A machine's asset number.", example: LT-107}
+  Part:
+    label: Part
+    description: >-
+      An item with a part number that a plant makes, buys or ships (a casting, component, sub-assembly
+      or finished product), named by its part number or its product name ("30418-02", "the HG40 gear
+      pump"). A part is the design; a lot is a quantity of it made or delivered together.
+    aliases: [component, item, part number, casting, assembly, product, SKU]
+    reference: https://schema.org/Product
+    properties:
+      partNumber: {type: STRING, key: true, pattern: "^[0-9]{5}-[0-9]{2}$", description: "The part number: five digits, a dash and a two-digit variant (30418-02)."}
+      name: {type: STRING, description: "The part as a document names it."}
+      category: {type: STRING, one_of: [raw material, casting, component, sub-assembly, finished good, tooling spare], description: "Where the part sits in the bill of materials."}
+      revision: {type: STRING, description: "The drawing revision the documents cite, a letter (C)."}
+      material: {type: STRING, description: "The material the part is made of (aluminium alloy, steel)."}
+    extensions:
+      display: {x: 360, y: -200, colour: "#0284c7"}
+      custom:
+        relate-examples: {ask: "a part or finished product a plant makes, buys or ships, such as the HG40 gear pump, a casting, or a part number such as 30418-02", proper: true, propose: true}
+  Lot:
+    label: Lot
+    description: >-
+      A quantity of one part made, delivered or shipped together and traced as one (a supplier's
+      delivery lot, a production lot, a finished-goods lot), identified by its lot number ("L26-0917").
+      A lot is a batch of one part; the part is its design.
+    aliases: [batch, production lot, delivery lot, consignment, finished-goods lot]
+    properties:
+      lotNumber: {type: STRING, key: true, pattern: "^L[0-9]{2}-[0-9]{4}$", description: "The lot number: L, the two-digit year, a dash and four digits (L26-0917)."}
+      name: {type: STRING, description: "The lot as a document names it."}
+      quantity: {type: INTEGER, description: "The number of units in the lot as it was made or delivered (480), not a part of it held or sorted later.", extensions: {custom: {relate-examples: {extract: true, ask: "the size of the whole lot, the number of units it was made or delivered with, such as a lot of 1,200"}}}}
+      madeOn: {type: DATE, description: "The date the lot was made, cast or built."}
+      status: {type: STRING, one_of: [released, quarantined, on hold, returned, scrapped], description: "Where the lot stands when the document was written."}
+    extensions:
+      display: {x: 120, y: -200, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "a production, delivery or finished-goods lot or batch of parts, identified by a lot number such as L26-0917", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: lot-genealogy
+            category: path
+            question: Which lots was this lot built from, and who delivered each of them?
+            description: Every chain of BUILT_FROM links back from the lot with this number, up to four steps, with the supplier of the lot at the end of each chain.
+            teaches: A bounded variable-length pattern (*1..4) walks a lot's genealogy without risking an unbounded search; nodes(p) lists it in order.
+            cypher: |-
+              MATCH p = (l:Lot)-[:BUILT_FROM*1..4]->(src:Lot)
+              WHERE l.lotNumber = $lot
+              OPTIONAL MATCH (src)-[:DELIVERED_BY]->(s:Supplier)
+              RETURN l.name AS lot, [n IN nodes(p) | n.name] AS genealogy, s.name AS supplier, length(p) AS steps
+              ORDER BY steps
+            parameters:
+              - {name: lot, type: STRING, description: "A lot number.", example: L26-1003}
+          - type: canonicalQuery
+            name: customers-exposed-to-a-lot
+            category: path
+            question: Which customers received product built from this lot?
+            description: The chain from a lot, through every lot built from it, to the customers those lots were shipped to.
+            teaches: Read BUILT_FROM backwards (<-) to go from a component lot to the finished lots that used it, then out along SHIPPED_TO.
+            cypher: |-
+              MATCH (src:Lot)<-[:BUILT_FROM*1..3]-(fin:Lot)-[:SHIPPED_TO]->(c:Customer)
+              WHERE src.lotNumber = $lot
+              OPTIONAL MATCH (fin)-[:OF_PART]->(p:Part)
+              RETURN src.name AS source_lot, fin.name AS shipped_lot, p.name AS part, c.name AS customer
+              ORDER BY customer, shipped_lot
+            parameters:
+              - {name: lot, type: STRING, description: "A lot number.", example: L26-0917}
+  Supplier:
+    label: Supplier
+    description: >-
+      A company that supplies parts, materials or tooling to a plant (a foundry, die-caster, machine
+      shop or toolmaker), named with or without its legal suffix ("Brackenfold Diecasting Ltd",
+      "Brackenfold"). A supplier sells to the plant; a customer buys from it.
+    aliases: [vendor, subcontractor, foundry, die-caster, source]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The supplier's name."}
+      supplierCode: {type: STRING, pattern: "^S[0-9]{5}$", description: "The supplier's code in the purchasing system, S and five digits (S10442)."}
+      approvalStatus: {type: STRING, one_of: [approved, conditional, probationary, suspended, disqualified], description: "The supplier's standing on the approved supplier list."}
+      country: {type: STRING, pattern: "^[A-Z]{2}$", description: "The supplier's country, as an ISO 3166 alpha-2 code (GB)."}
+      qualityPpm: {type: FLOAT, description: "Parts rejected per million delivered, over the period a document reports."}
+    extensions:
+      display: {x: 360, y: 20, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a supplier company that makes and delivers parts, castings or tooling to a plant, such as a foundry or die-caster, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: supplier-quality-record
+            category: aggregation
+            question: What does each supplier supply, how many lots has it delivered, and how many nonconformances were attributed to it?
+            description: Per supplier, the parts it supplies, the lots it delivered and the nonconformances attributed to it.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each lot is counted once per part and per nonconformance.
+            cypher: |-
+              MATCH (s:Supplier)
+              OPTIONAL MATCH (s)-[:SUPPLIES]->(p:Part)
+              OPTIONAL MATCH (l:Lot)-[:DELIVERED_BY]->(s)
+              OPTIONAL MATCH (n:Nonconformance)-[:ATTRIBUTED_TO]->(s)
+              RETURN s.name AS supplier, collect(DISTINCT p.name) AS parts, count(DISTINCT l) AS lots_delivered,
+                     count(DISTINCT n) AS nonconformances
+              ORDER BY nonconformances DESC, supplier
+  Customer:
+    label: Customer
+    description: >-
+      A company that buys a plant's finished products and receives its shipments, named with or
+      without its legal suffix ("Fenmoor Tractors Ltd"). Customers report the nonconformances that
+      escape the plant; suppliers are the other end of the chain.
+    aliases: [client, OEM, buyer, account]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The customer's name."}
+      customerCode: {type: STRING, description: "The customer's account code in the plant's order system."}
+      sector: {type: STRING, description: "The industry the customer serves (agricultural machinery)."}
+    extensions:
+      display: {x: 120, y: -360, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a company, usually named with Ltd, that buys and receives the plant's products and complains about defects, such as Fenmoor Tractors Ltd", proper: true}
+  Nonconformance:
+    label: Nonconformance
+    description: >-
+      A recorded failure of product to meet its specification (an internal reject, a goods-in rejection
+      or a customer complaint), identified by its report number ("NCR-2026-0412"). A nonconformance
+      records what was wrong and where it was found; a corrective action is what was done about it.
+    aliases: [NCR, nonconformity, nonconformance report, quality concern, customer complaint, reject]
+    properties:
+      ncrId: {type: STRING, key: true, pattern: "^NCR-[0-9]{4}-[0-9]{4}$", description: "The nonconformance report number: NCR-, the year, a dash and four digits (NCR-2026-0412)."}
+      name: {type: STRING, description: "The nonconformance as a document names it."}
+      source: {type: STRING, one_of: [customer complaint, internal, goods-in inspection], description: "Where the nonconformance was raised."}
+      defect: {type: STRING, description: "The defect as the report names it (gas porosity, burr)."}
+      quantity: {type: INTEGER, description: "The number of nonconforming units recorded."}
+      raisedOn: {type: DATE, description: "The date the nonconformance was reported, detected or raised.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the nonconformance was reported, detected or raised, such as 14 October 2026"}}}}
+      disposition: {type: STRING, one_of: [use as is, rework, scrap, return to supplier, sort], description: "What was decided for the nonconforming units."}
+    extensions:
+      display: {x: 120, y: 60, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a recorded nonconformance, reject or customer complaint, identified by a report number such as NCR-2026-0412", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-nonconformance
+            category: lookup
+            question: Which nonconformance has this number, and what does the store connect to it?
+            description: The nonconformance whose report number is the parameter, with every entity one link away.
+            teaches: The key property (ncrId) is filled from the entity's name when the text gives the number, so an exact match works here.
+            cypher: |-
+              MATCH (n:Nonconformance) WHERE n.ncrId = $ncr
+              OPTIONAL MATCH (n)-[r]-(x:_Entity)
+              RETURN n.name AS nonconformance, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY link, other
+            parameters:
+              - {name: ncr, type: STRING, description: "A nonconformance report number.", example: NCR-2026-0412}
+          - type: canonicalQuery
+            name: trace-a-nonconformance
+            category: path
+            question: Which lot, part, machines and supplier lie behind this nonconformance?
+            description: Each lot the nonconformance was found in, with the date it was raised, the lot's size and part, the machines it was processed on and the supplier that delivered it.
+            teaches: A two-hop pattern fixes the spine (nonconformance, lot, part); OPTIONAL MATCH adds what the text may or may not say about the lot.
+            cypher: |-
+              MATCH (n:Nonconformance)-[:FOUND_IN]->(l:Lot)-[:OF_PART]->(p:Part)
+              WHERE n.ncrId = $ncr
+              OPTIONAL MATCH (l)-[:PROCESSED_ON]->(m:Machine)
+              OPTIONAL MATCH (l)-[:DELIVERED_BY]->(s:Supplier)
+              RETURN n.name AS nonconformance, n.raisedOn AS raised, l.name AS lot, l.quantity AS lot_size, p.name AS part,
+                     collect(DISTINCT m.name) AS machines, collect(DISTINCT s.name) AS suppliers
+              ORDER BY lot
+            parameters:
+              - {name: ncr, type: STRING, description: "A nonconformance report number.", example: NCR-2026-0412}
+          - type: canonicalQuery
+            name: caught-or-escaped
+            category: aggregation
+            question: Was each nonconformance caught at a machine in the plant, or reported by a customer?
+            description: Per nonconformance, the machines that detected it and the customers that reported it, escapes first.
+            teaches: count() over an OPTIONAL MATCH that found nothing is 0, so sorting on it puts the escapes to customers first.
+            cypher: |-
+              MATCH (n:Nonconformance)
+              OPTIONAL MATCH (n)-[:DETECTED_AT]->(m:Machine)
+              OPTIONAL MATCH (n)-[:REPORTED_BY]->(c:Customer)
+              RETURN n.name AS nonconformance, collect(DISTINCT m.name) AS detected_at, collect(DISTINCT c.name) AS reported_by,
+                     count(DISTINCT c) AS customers
+              ORDER BY customers DESC, nonconformance
+          - type: canonicalQuery
+            name: where-each-was-caught-and-why
+            category: evidence
+            question: Which sentences say where each nonconformance was detected?
+            description: Every DETECTED_AT fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words, which is how a reader catches a fact the text itself withdraws.
+            cypher: |-
+              MATCH (n:Nonconformance)-[r:DETECTED_AT]->(m:Machine)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN n.name AS nonconformance, m.name AS detected_at, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY nonconformance, detected_at
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: NCR-2026-0412}
+          - type: canonicalQuery
+            name: facts-in-more-than-one-document
+            category: cross-document
+            question: Which facts do two or more documents both state?
+            description: Every extracted relationship whose evidence spans more than one document, with the documents' titles.
+            teaches: A relationship's docs list holds every document that supports it; size() over it finds the corroborated facts.
+            cypher: |-
+              MATCH (a:_Entity)-[r]->(b:_Entity) WHERE size(r.docs) > 1
+              MATCH (d:_Document) WHERE d.id IN r.docs
+              RETURN a.name AS source, type(r) AS link, b.name AS target, collect(d.title) AS documents
+              ORDER BY link, source, target
+  CorrectiveAction:
+    label: CorrectiveAction
+    description: >-
+      An action taken against a nonconformance in an 8D or CAPA system (an interim containment, a
+      permanent corrective action or a preventive action), identified by its action number ("CA-1192").
+      One engineer owns it, and it may change a machine.
+    aliases: [CAPA, containment action, permanent corrective action, preventive action, ICA, PCA]
+    properties:
+      actionId: {type: STRING, key: true, pattern: "^CA-[0-9]{4}$", description: "The action number, CA- and four digits (CA-1192)."}
+      name: {type: STRING, description: "The action as a document names it."}
+      actionType: {type: STRING, one_of: [containment, corrective, preventive], description: "What the action is for."}
+      discipline: {type: STRING, one_of: [D3, D5, D6, D7], description: "The 8D discipline the action belongs to."}
+      dueOn: {type: DATE, description: "The date the action is due."}
+      status: {type: STRING, one_of: [open, implemented, verified, closed], description: "Where the action stands: raised and open, implemented, verified as effective, or closed.", extensions: {custom: {relate-examples: {extract: true, ask: "where the action stands, open, implemented, verified or closed"}}}}
+    extensions:
+      display: {x: 120, y: 260, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a containment, corrective or preventive action, identified by an action number such as CA-1192", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: actions-against-a-nonconformance
+            category: neighbourhood
+            question: Which actions address this nonconformance, who owns each one, and which machine did it change?
+            description: Each corrective action that addresses the nonconformance with this number, with its owner and the machines it was implemented on.
+            teaches: Start from the nonconformance and fan out from each action; OPTIONAL MATCH keeps an action whose owner or machine the text leaves out, and a status read from the text is a property of the action.
+            cypher: |-
+              MATCH (a:CorrectiveAction)-[:ADDRESSES]->(n:Nonconformance) WHERE n.ncrId = $ncr
+              OPTIONAL MATCH (a)-[:OWNED_BY]->(e:Engineer)
+              OPTIONAL MATCH (a)-[:IMPLEMENTED_ON]->(m:Machine)
+              RETURN a.name AS action, a.status AS status, collect(DISTINCT e.name) AS owners, collect(DISTINCT m.name) AS implemented_on
+              ORDER BY action
+            parameters:
+              - {name: ncr, type: STRING, description: "A nonconformance report number.", example: NCR-2026-0412}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: CA-1193}
+  Operator:
+    label: Operator
+    description: >-
+      A shop-floor operator, setter or inspector who runs a machine or test station on a shift, named
+      in full ("Kasia Wróbel"). Operators run machines; engineers investigate problems, own actions and
+      maintain equipment.
+    aliases: [machine operator, setter, setter-operator, inspector, line operator]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The operator's full name."}
+      role: {type: STRING, one_of: [operator, setter, inspector, team leader], description: "The operator's job on the shop floor."}
+      shift: {type: STRING, one_of: [earlies, lates, nights, days], description: "The shift the operator works."}
+    extensions:
+      display: {x: -360, y: 220, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a shop-floor worker named in full, a person who runs, sets or inspects a machine or test station", proper: true}
+  Engineer:
+    label: Engineer
+    description: >-
+      A quality, supplier-quality, manufacturing, process or maintenance engineer who investigates
+      problems, owns corrective actions or maintains equipment, named in full ("Rachel Okonkwo").
+      Engineers own the actions; operators run the machines.
+    aliases: [quality engineer, supplier quality engineer, manufacturing engineer, maintenance engineer, process engineer, SQE]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The engineer's full name."}
+      discipline: {type: STRING, one_of: [quality, supplier quality, manufacturing, process, maintenance], description: "The engineer's discipline."}
+    extensions:
+      display: {x: -120, y: 300, colour: "#c2410c"}
+      custom:
+        relate-examples: {ask: "a person working as a quality, manufacturing or maintenance engineer, who investigates problems, owns actions or maintains machines", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: engineer-workload
+            category: aggregation
+            question: Where does each engineer work, how many actions do they own, and which machines do they maintain?
+            description: Per engineer, the plant they work at, the corrective actions they own and the machines they maintain.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (e:Engineer)
+              OPTIONAL MATCH (e)-[:BASED_AT]->(p:Plant)
+              OPTIONAL MATCH (a:CorrectiveAction)-[:OWNED_BY]->(e)
+              OPTIONAL MATCH (e)-[:MAINTAINS]->(m:Machine)
+              RETURN e.name AS engineer, collect(DISTINCT p.name) AS based_at, count(DISTINCT a) AS actions_owned,
+                     collect(DISTINCT m.name) AS maintains
+              ORDER BY actions_owned DESC, engineer
+relationships:
+  lineLocatedAtPlant:
+    type: LOCATED_AT
+    description: >-
+      The production line is inside the plant; every line is located at exactly one plant, and a plant
+      holds many lines.
+    aliases: [is at, is in, is part of the plant]
+    from: {node: ProductionLine, count: 1}
+    to: {node: Plant}
+    extensions:
+      custom:
+        relate-examples: {phrase: is located at}
+  machineInstalledOnLine:
+    type: INSTALLED_ON
+    description: >-
+      The machine is installed on the production line; a machine is on at most one line (a supplier's
+      machine on none the documents name), and a line has many machines.
+    aliases: [is on, sits on, stands on, belongs to the line]
+    from: {node: Machine, max_count: 1}
+    to: {node: ProductionLine}
+    extensions:
+      custom:
+        relate-examples: {phrase: is installed on}
+  operatorOperatesMachine:
+    type: OPERATES
+    description: >-
+      The operator runs or sets the machine on a shift; many to many, since a machine has an operator on
+      every shift and an operator may run several machines.
+    aliases: [runs, sets, works on, minds]
+    from: {node: Operator}
+    to: {node: Machine}
+    extensions:
+      custom:
+        relate-examples: {phrase: operates}
+  engineerBasedAtPlant:
+    type: BASED_AT
+    description: >-
+      The engineer works at the plant; one plant per engineer in this ontology, and a plant has many
+      engineers.
+    aliases: [works at, is based at, is on site at]
+    from: {node: Engineer, count: 1}
+    to: {node: Plant}
+    extensions:
+      custom:
+        relate-examples: {phrase: works at}
+  engineerMaintainsMachine:
+    type: MAINTAINS
+    description: >-
+      The engineer is responsible for maintaining and repairing the machine; a machine has one or more
+      maintenance engineers, and an engineer maintains many machines.
+    aliases: [services, repairs, looks after, is responsible for]
+    from: {node: Engineer}
+    to: {node: Machine}
+    extensions:
+      custom:
+        relate-examples: {phrase: maintains}
+  supplierSuppliesPart:
+    type: SUPPLIES
+    description: >-
+      The supplier is an approved source of the part; many to many, since a part may be dual-sourced and
+      a supplier makes many parts.
+    aliases: [makes, casts, provides, is the source of, sells]
+    from: {node: Supplier}
+    to: {node: Part}
+    extensions:
+      custom:
+        relate-examples: {phrase: supplies}
+  lotOfPart:
+    type: OF_PART
+    description: >-
+      The lot is a quantity of the part; every lot is of exactly one part, and a part has many lots.
+    aliases: [is a lot of, holds, contains units of]
+    from: {node: Lot, count: 1}
+    to: {node: Part}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a batch of}
+  lotDeliveredBySupplier:
+    type: DELIVERED_BY
+    description: >-
+      The supplier made and delivered the lot to the plant; a purchased lot has exactly one supplier, a
+      lot made in the plant has none, and a supplier delivers many lots.
+    aliases: [was delivered by, was shipped by, came from]
+    from: {node: Lot, max_count: 1}
+    to: {node: Supplier}
+    extensions:
+      custom:
+        relate-examples: {phrase: was received from}
+  lotProcessedOnMachine:
+    type: PROCESSED_ON
+    description: >-
+      The lot was cast, machined, pressed, assembled or tested on the machine; many to many, since a lot
+      passes several machines and a machine processes many lots.
+    aliases: [was machined on, was cast on, was pressed on, was made on, ran on]
+    from: {node: Lot}
+    to: {node: Machine}
+    extensions:
+      custom:
+        relate-examples: {phrase: was processed on}
+  lotBuiltFromLot:
+    type: BUILT_FROM
+    description: >-
+      The first lot was built with parts from the second, read from the finished lot back to the
+      component lot it consumed; many to many, which is a lot genealogy.
+    aliases: [was assembled from, used parts from, consumed]
+    from: {node: Lot}
+    to: {node: Lot}
+    extensions:
+      custom:
+        relate-examples: {phrase: was built from}
+  lotShippedToCustomer:
+    type: SHIPPED_TO
+    description: >-
+      The lot, or part of it, was shipped to the customer; a lot may be split between several
+      customers, and a customer receives many lots.
+    aliases: [was delivered to, went to, was sent to]
+    from: {node: Lot}
+    to: {node: Customer}
+    extensions:
+      custom:
+        relate-examples: {phrase: was shipped to}
+  nonconformanceFoundInLot:
+    type: FOUND_IN
+    description: >-
+      The nonconforming units were found in, or traced to, the lot; a nonconformance may span several
+      lots, and a lot may have several nonconformances.
+    aliases: [was traced to, came from, affects, was raised against]
+    from: {node: Nonconformance}
+    to: {node: Lot}
+    extensions:
+      custom:
+        relate-examples: {phrase: was found in}
+  nonconformanceDetectedAtMachine:
+    type: DETECTED_AT
+    description: >-
+      The nonconformance was caught by the test or inspection machine; at most one detection point per
+      nonconformance, and a machine detects many.
+    aliases: [was caught at, was found at, was rejected by, failed at]
+    from: {node: Nonconformance, max_count: 1}
+    to: {node: Machine}
+    extensions:
+      custom:
+        relate-examples: {phrase: was detected at}
+  nonconformanceReportedByCustomer:
+    type: REPORTED_BY
+    description: >-
+      The customer reported the nonconformance as a complaint, so it escaped the plant; at most one
+      customer per nonconformance, and a customer reports many.
+    aliases: [was raised by, was notified by, came from]
+    from: {node: Nonconformance, max_count: 1}
+    to: {node: Customer}
+    extensions:
+      custom:
+        relate-examples: {phrase: was reported by}
+  nonconformanceAttributedToSupplier:
+    type: ATTRIBUTED_TO
+    description: >-
+      The nonconformance was found to be the supplier's responsibility and counts against its record;
+      at most one supplier per nonconformance, and a supplier may have many.
+    aliases: [was charged to, was traced to, was the fault of]
+    from: {node: Nonconformance, max_count: 1}
+    to: {node: Supplier}
+    extensions:
+      custom:
+        relate-examples: {phrase: was attributed to}
+  actionAddressesNonconformance:
+    type: ADDRESSES
+    description: >-
+      The corrective action was raised to contain or correct the nonconformance; an action addresses
+      one or more nonconformances, and a nonconformance has many actions.
+    aliases: [contains, corrects, answers, was raised for]
+    from: {node: CorrectiveAction}
+    to: {node: Nonconformance}
+    extensions:
+      custom:
+        relate-examples: {phrase: addresses}
+  actionOwnedByEngineer:
+    type: OWNED_BY
+    description: >-
+      The engineer owns the corrective action and answers for it; exactly one owner per action, and an
+      engineer owns many actions.
+    aliases: [is led by, is assigned to, belongs to]
+    from: {node: CorrectiveAction}
+    to: {node: Engineer, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is owned by}
+  actionImplementedOnMachine:
+    type: IMPLEMENTED_ON
+    description: >-
+      The corrective action changed the machine (a repair, a new setting, an interlock or a check); an
+      action may change several machines, and a machine many actions over its life.
+    aliases: [was applied to, changed, modified, was fitted to]
+    from: {node: CorrectiveAction}
+    to: {node: Machine}
+    extensions:
+      custom:
+        relate-examples: {phrase: was implemented on}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Manufacturing
+      card:
+        title: Manufacturing
+        description: Trace a nonconformance from the customer who reported it, through the lots, machines and supplier behind it, to the corrective actions and the engineers who own them.
+      source:
+        derived_from: create-context-graph's manufacturing.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Operator and Engineer, and
+          Organization became Customer; Machine, Part, Supplier and ProductionLine keep their meaning with
+          new descriptions and properties; QualityReport became Nonconformance; WorkOrder was dropped
+          (production orders are schedules, not things a quality document traces) and Lot took its place
+          as the unit of traceability; Plant and CorrectiveAction are new; the links were renamed for their
+          meaning and given cardinalities; the tools were written anew for an extracted graph.

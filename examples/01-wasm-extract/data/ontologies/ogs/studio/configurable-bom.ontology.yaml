@@ -1,0 +1,947 @@
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
+id: configurable-bom
+name: Configurable Bill of Materials
+description: Models a configurable product as a hierarchy of assemblies, fixed parts and explicit configuration decisions, so that a single variant can be resolved from the superset by applying allow and deny constraints, scoring the branches that remain, and costing the result.
+nodes:
+  Product:
+    label: Product
+    properties:
+      productId:
+        type: STRING
+        key: true
+        description: Unique identifier for the product in the engineering catalog. Expected to be stable across revisions of the configurable structure. e.g. `MB1`.
+        pattern: ^MB[0-9]+$
+      description:
+        type: STRING
+        must_exist: true
+        description: Human-readable name or specification of the product, as an engineer would recognise it on a drawing or in a catalog.
+    extensions:
+      display:
+        x: -160
+        'y': -70
+        colour: '#2563eb'
+      custom:
+        relate-examples:
+          ask: a configurable end product, such as MB1
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: explore-the-configurable-structure-of-a-product
+            question: Explore the configurable structure of a product
+            description: 'Returns the product''s configurable structure as paths: required assemblies, fixed parts, and the configuration decisions with the options each offers. Reads the structure only; ignores any resolved variant.'
+            cypher: |-
+              MATCH path = (:Product {productId: $productId})-[:REQUIRES|HAS_PART|HAS_OPTION]->{1,8}()
+              RETURN path
+            parameters:
+              - name: productId
+                type: STRING
+                description: Identifier of the product to explore. Matches Product.productId.
+                example: MB1
+            category: query
+            teaches: 'The first query to run on an unfamiliar catalog: it shows the superset of everything the product could contain, before any constraint is applied. The depth bound of 8 covers a structure nesting assemblies inside options inside assemblies; raise it only if the catalog nests deeper than the result shows, and lower it when the graph is too large to read. Returns paths, not a deduplicated tree, so a part used by several assemblies appears on several paths.'
+            returns: One path per route from the product down through the structure, for rendering as a graph.
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - structure
+              - exploration
+              - bom
+              - product
+            upstream:
+              file: QUERIES.md
+              heading: Explore the configurable structure of a product
+              sample: 'Bundled sample data only: $productId = ''MB1'' returns 61 paths of 1 to 4 hops, together covering all 61 structural relationships; the deepest reach the rims and tires beneath the three wheel assemblies.'
+          - type: canonicalQuery
+            name: resolve-a-variant-against-constraints
+            question: Resolve a variant against constraints
+            description: Walks the configurable structure from the product to its parts, refusing any step out of a configuration decision whose option the constraints reject, and records every edge that survives on a path reaching a part as a RESOLVED_LINK tagged with the variant name. WRITES to the database.
+            cypher: |-
+              CYPHER 25
+
+              MATCH path = (:Product {productId: $productId})
+                (
+                  (x)-[r:!RESOLVED_LINK]->(y)
+                  WHERE NOT (
+                    x:ConfigGroup
+                    AND any(cons IN $constraints WHERE
+                      cons.category = x.category
+                      AND any(prop IN cons.properties WHERE
+                        (prop.allowList IS NOT NULL AND NOT y[prop.name] IN prop.allowList)
+                        OR (prop.denyList IS NOT NULL AND y[prop.name] IN prop.denyList)
+                      )
+                    )
+                  )
+                )*
+                (:Part)
+              UNWIND relationships(path) AS rel
+              RETURN startNode(rel) AS source, rel AS r, endNode(rel) AS target
+
+              NEXT
+
+              MERGE (source)-[rl:RESOLVED_LINK {idVariant: $idVariant, relType: type(r)}]->(target)
+              SET rl.qty = r.qty
+            parameters:
+              - name: productId
+                type: STRING
+                description: Identifier of the product to resolve. Scopes the traversal to one product so a catalog holding many is not walked.
+                example: MB1
+              - name: idVariant
+                type: STRING
+                description: Name for the variant being resolved. Every RESOLVED_LINK written carries it, so several variants can coexist in one database. Reuse a value only when re-resolving that same variant after clearing it.
+                example: V-275-TRAIL
+              - name: constraints
+                type: STRING
+                description: 'List of maps, one per decision category: {category, properties: [{name, allowList, denyList}]}. category is matched against ConfigGroup.category; name is the graph property read off each option node. Supply allowList, denyList, or both. Omitting a category leaves that decision open, to be settled by scoring.'
+                example:
+                  - category: wheelset
+                    properties:
+                      - name: wheelSize
+                        allowList:
+                          - '27.5'
+                  - category: gearing
+                    properties:
+                      - name: gearSystem
+                        allowList:
+                          - 9-Speed
+                  - category: shifter
+                    properties:
+                      - name: gearSystem
+                        allowList:
+                          - 9-Speed
+                  - category: derailleur
+                    properties:
+                      - name: gearSystem
+                        allowList:
+                          - 9-Speed
+                  - category: rim
+                    properties:
+                      - name: material
+                        allowList:
+                          - Alloy
+                  - category: tire
+                    properties:
+                      - name: pattern
+                        allowList:
+                          - Trail
+                  - category: frame-material
+                    properties:
+                      - name: material
+                        allowList:
+                          - Aluminum
+                  - category: finish
+                    properties:
+                      - name: color
+                        allowList:
+                          - Black
+                  - category: caliper
+                    properties:
+                      - name: brakeType
+                        allowList:
+                          - Hydraulic Disc
+            category: writes
+            teaches: 'Run this first, then prune, then garbage collect, then roll up. Whether a decision comes out made depends on how tightly the constraints bind it: exactly one surviving option is a decision made, more than one is a decision left to scoring, and none at all is a decision the constraints cannot satisfy — which the unsatisfied-requirements query reports. Because the filter is applied per step rather than to the finished configuration, it prunes as it walks and never enumerates the rejected combinations. Clear a variant before re-resolving it under different constraints; MERGE is idempotent, so a second run under the same constraints changes nothing. Its variable-length traversal is unbounded and relies on the structure being acyclic.'
+            returns: Nothing. Its effect is the RESOLVED_LINK relationships it merges, which the other queries read.
+            prerequisites: 'Neo4j 2025.06 or later (Cypher 25: NEXT, quantified path patterns, negated relationship type predicate).'
+            tags:
+              - resolution
+              - constraints
+              - variant
+              - write
+              - bom
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Resolve a variant against constraints
+              sample: 'Bundled sample data only: $productId = ''MB1'', $idVariant = ''V-WELL'', $constraints = one allowList per category — wheelset wheelSize [''29'']; gearing, shifter and derailleur gearSystem [''9-Speed'']; rim material [''Alloy'']; tire pattern [''Trail'']; frame-material material [''Aluminum'']; finish color [''Black'']; caliper brakeType [''Hydraulic Disc''] — writes 30 RESOLVED_LINK relationships and leaves each of the 9 decisions it reaches with exactly one option.'
+          - type: canonicalQuery
+            name: show-a-resolved-bill-of-materials
+            question: Show a resolved bill of materials
+            description: Returns every RESOLVED_LINK belonging to one variant as paths, for rendering the resolved structure as a graph.
+            cypher: |-
+              MATCH p = ()-[:RESOLVED_LINK {idVariant: $idVariant}]->()
+              RETURN p
+            parameters:
+              - name: idVariant
+                type: STRING
+                description: Name of the variant to show, as supplied when it was resolved.
+                example: V-275-TRAIL
+            category: picture
+            teaches: 'Run it after resolving and again after pruning: the difference between the two is exactly what scoring decided. A decision node with more than one outgoing link is still open; one with exactly one is settled. Returns nothing at all when the variant name does not match one that was resolved, which is worth checking before reading anything into an empty result.'
+            returns: One path per resolved link.
+            prerequisites: The variant has been resolved.
+            tags:
+              - bom
+              - variant
+              - visualisation
+            upstream:
+              file: QUERIES.md
+              heading: Show a resolved bill of materials
+              sample: 'Bundled sample data only: $idVariant = ''V-WELL'', resolved as in the resolve query''s sample, returns 30 paths, one per resolved link.'
+          - type: canonicalQuery
+            name: remove-resolved-links-detached-from-the-product
+            question: Remove resolved links detached from the product
+            description: Deletes RESOLVED_LINK relationships for one variant that are no longer reachable from the product, which is what pruning a decision leaves behind beneath the options it discarded. WRITES to the database.
+            cypher: |-
+              MATCH ()<-[r:RESOLVED_LINK {idVariant: $idVariant}]-(x)
+              WHERE NOT EXISTS { (x)<-[:RESOLVED_LINK {idVariant: $idVariant}]-*(:Product) }
+              DELETE r
+            parameters:
+              - name: idVariant
+                type: STRING
+                description: Name of the variant to tidy, as supplied when it was resolved.
+                example: V-275-TRAIL
+            category: writes
+            teaches: Run after every pruning pass. Skipping it leaves the links beneath discarded options in place, and because the rollup walks down from the product it will not count them — but the resolved bill of materials will still show them, so the picture and the totals disagree. Deletes only links whose source has no remaining route back to a product, so it is safe to run repeatedly and harmless on a variant that needed no pruning. Its variable-length traversal is unbounded and relies on the structure being acyclic.
+            returns: Nothing. Its effect is the RESOLVED_LINK relationships it deletes.
+            prerequisites: The variant has been resolved.
+            tags:
+              - cleanup
+              - pruning
+              - variant
+              - write
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Remove resolved links detached from the product
+              sample: 'Bundled sample data only: $idVariant = ''V-LOOSE'', after the prune query''s sample, deletes 12 links — everything beneath the discarded A-WHEEL-275 and A-WHEEL-29 — leaving 30. A second run deletes nothing.'
+          - type: canonicalQuery
+            name: roll-up-weight-and-cost-of-a-resolved-variant
+            question: Roll up weight and cost of a resolved variant
+            description: Totals the weight and cost of a resolved variant by finding every part at the bottom of the resolved structure, multiplying its per-unit values by the quantities on the path from the product down to it, and summing.
+            cypher: |-
+              MATCH path = (leaf)<-[rs:RESOLVED_LINK {idVariant: $idVariant}]-*(:Product)
+              WHERE NOT EXISTS { (leaf)-[:RESOLVED_LINK {idVariant: $idVariant}]->() }
+              WITH leaf, reduce(acc = 1, r IN rs | acc * coalesce(r.qty, 1)) AS times
+              WITH leaf, {cost: leaf.cost * times, weight: leaf.weight * times} AS vals
+              WITH collect(vals) AS valsList
+              WITH reduce(acc = {cost: 0.0, weight: 0.0}, vals IN valsList |
+                   {cost: acc.cost + vals.cost, weight: acc.weight + vals.weight}) AS vals
+              RETURN round(vals.weight, 2) AS weightKg, round(vals.cost, 2) AS cost
+            parameters:
+              - name: idVariant
+                type: STRING
+                description: Name of the variant to total, as supplied when it was resolved.
+                example: V-275-TRAIL
+            category: query
+            teaches: 'Only meaningful on a fully pruned variant — run it while a decision is still open and it totals every surviving option at once, giving a figure for a superset rather than for a bill of materials. Check the unsatisfied-requirements query before quoting the result: an over-constrained variant still totals cleanly, and the number it gives is for an incomplete product. A relationship carrying no quantity counts as one. Its variable-length traversal is unbounded and relies on the structure being acyclic.'
+            returns: 'One row: weightKg and cost, rounded to two decimals. Weight is in kilograms and cost in the catalog''s base currency, following Part.weight and Part.cost.'
+            prerequisites: The variant has been resolved, pruned to a single option per decision, and garbage collected.
+            tags:
+              - rollup
+              - cost
+              - weight
+              - variant
+              - bom
+            upstream:
+              file: QUERIES.md
+              heading: Roll up weight and cost of a resolved variant
+              sample: 'Bundled sample data only: $idVariant = ''V-WELL'' returns weightKg 8.95 and cost 1164.80; ''V-LOOSE'' after pruning and garbage collection returns 9.29 and 1015.60.'
+          - type: canonicalQuery
+            name: find-configuration-decisions-the-constraints-could-not-satisfy
+            question: Find configuration decisions the constraints could not satisfy
+            description: Returns the paths to configuration decisions that the resolved variant reaches but never resolves — decisions whose every option the constraints rejected.
+            cypher: |-
+              MATCH path = (:Product {productId: $productId})-[:RESOLVED_LINK {idVariant: $idVariant}]->*(x)
+                           -[:REQUIRES]->(y:ConfigGroup)
+              WHERE NOT EXISTS { (x)-[:RESOLVED_LINK {idVariant: $idVariant}]->(y) }
+              RETURN path
+            parameters:
+              - name: productId
+                type: STRING
+                description: Identifier of the product the variant was resolved for. Matches Product.productId.
+                example: MB1
+              - name: idVariant
+                type: STRING
+                description: Name of the variant to check, as supplied when it was resolved.
+                example: V-275-TRAIL
+            category: query
+            teaches: 'This is the over-constrained check, and it should be run before any result is reported: the rollup and the resolved bill of materials both return perfectly well on an incomplete variant, so an empty result here is what makes them trustworthy. A returned decision names the category whose allow or deny list is impossible to satisfy — widen that list, or accept that the product cannot be built to that specification. Run it on a variant that was never resolved and it returns nothing, because nothing was reached; that is not the same as a satisfiable configuration. Its variable-length traversal is unbounded and relies on the structure being acyclic.'
+            returns: One path per unsatisfied decision, from the product down to the decision node, showing which branch of the structure the contradiction sits in.
+            prerequisites: The variant has been resolved.
+            tags:
+              - constraints
+              - diagnostics
+              - over-constrained
+              - variant
+            upstream:
+              file: QUERIES.md
+              heading: Find configuration decisions the constraints could not satisfy
+              sample: 'Bundled sample data only: $productId = ''MB1'', $idVariant = ''V-OVER'' — resolved with the V-WELL constraints except a gearing allowList of [''11-Speed''] — returns 1 path, MB1 → A-DRIVETRAIN → CG-GEARING. ''V-WELL'' returns no rows.'
+          - type: canonicalQuery
+            name: clear-a-resolved-variant
+            question: Clear a resolved variant
+            description: Deletes every RESOLVED_LINK belonging to one variant, returning the database to its imported state as far as that variant is concerned. WRITES to the database.
+            cypher: |-
+              MATCH ()-[r:RESOLVED_LINK {idVariant: $idVariant}]->()
+              DELETE r
+            parameters:
+              - name: idVariant
+                type: STRING
+                description: Name of the variant to clear, as supplied when it was resolved.
+                example: V-275-TRAIL
+            category: writes
+            teaches: 'Run before re-resolving a variant under different constraints: resolution merges links rather than replacing them, so re-running over an existing variant adds the new result to the old one and the two become indistinguishable. Touches only links carrying this variant name, so other variants and the whole configurable structure are unaffected. On a variant with very many links, wrap the delete in CALL { ... } IN TRANSACTIONS to avoid one large transaction.'
+            returns: Nothing. Its effect is the RESOLVED_LINK relationships it deletes.
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - cleanup
+              - variant
+              - reset
+              - write
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Clear a resolved variant
+              sample: 'Bundled sample data only: $idVariant = ''V-LOOSE'' deletes its 30 remaining links after pruning and garbage collection, or 55 if run straight after resolving.'
+          - type: canonicalQuery
+            name: node-key-constraints
+            question: Node-key constraints
+            cypher: |-
+              CREATE CONSTRAINT product_key IF NOT EXISTS
+              FOR (n:Product) REQUIRE n.productId IS NODE KEY;
+
+              CREATE CONSTRAINT assembly_key IF NOT EXISTS
+              FOR (n:Assembly) REQUIRE n.assemblyId IS NODE KEY;
+
+              CREATE CONSTRAINT config_group_key IF NOT EXISTS
+              FOR (n:ConfigGroup) REQUIRE n.configGroupId IS NODE KEY;
+
+              CREATE CONSTRAINT part_key IF NOT EXISTS
+              FOR (n:Part) REQUIRE n.partId IS NODE KEY;
+            parameters: []
+            category: setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Node-key constraints
+              sample: ''
+    description: A configurable end product whose bill of materials is not fixed until a variant is resolved. The root of the configurable structure and the anchor every resolution query starts from.
+  Assembly:
+    label: Assembly
+    properties:
+      assemblyId:
+        type: STRING
+        key: true
+        description: Unique identifier for the assembly in the engineering catalog. Expected to be stable across revisions. e.g. `A-DRIVETRAIN`.
+        pattern: ^A-[A-Z]{3,}(?:-[0-9A-Z]+)*$
+      description:
+        type: STRING
+        must_exist: true
+        description: Human-readable name or specification of the assembly, as an engineer would recognise it on a drawing or in a catalog.
+      wheelSize:
+        type: STRING
+        description: Option attribute. Nominal wheel diameter in inches, written as a decimal string so that constraint allow and deny lists match it by exact string equality. Set only on assemblies that are offered as options of a configuration group whose optionProperty is wheelSize; absent on every other assembly. e.g. `27.5`.
+    extensions:
+      display:
+        x: -55
+        'y': 70
+        colour: '#d97706'
+      custom:
+        relate-examples:
+          ask: a sub-assembly of a product, such as A-WHEEL-29
+          proper: true
+          propose: true
+    description: A reusable sub-assembly that groups fixed parts and further configuration decisions. An assembly may sit directly beneath the product, or be offered as one of the options of a configuration group — in which case selecting it also brings in every decision nested beneath it.
+  ConfigGroup:
+    label: ConfigGroup
+    properties:
+      configGroupId:
+        type: STRING
+        key: true
+        description: Unique identifier for the configuration group in the engineering catalog. Expected to be stable across revisions. e.g. `CG-CALIPER`.
+        pattern: ^CG-[A-Z]{3,}(?:-[0-9A-Z]+)*$
+      category:
+        type: STRING
+        must_exist: true
+        description: 'The decision category this group represents, encoded as a lower-case hyphenated token. Constraints are matched to configuration groups by this value, so it is the scoping key of the whole constraint mechanism: two groups sharing a category are governed by the same constraint entry. e.g. `caliper`.'
+      optionProperty:
+        type: STRING
+        must_exist: true
+        description: The name of the property, carried by each of this group's option nodes, whose value distinguishes the options from one another. Written exactly as the graph property name so it can be used to read the value off an option node. Documents what a constraint on this category should filter on; the resolution query itself takes property names from its constraint parameter rather than from here. e.g. `brakeType`.
+      description:
+        type: STRING
+        must_exist: true
+        description: Human-readable explanation of the decision this group represents, phrased as a configurator would present it to whoever is specifying the product.
+    extensions:
+      display:
+        x: 55
+        'y': -70
+        colour: '#7c3aed'
+      custom:
+        relate-examples:
+          ask: a choice between interchangeable options, such as CG-RIM-29
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: list-the-configuration-decisions-and-their-options
+            question: List the configuration decisions and their options
+            description: Returns every configuration decision in the catalog with its category, the option property its choices vary along, and the options themselves with the value each carries for that property.
+            cypher: |-
+              MATCH (cg:ConfigGroup)-[:HAS_OPTION]->(option)
+              RETURN cg.configGroupId AS configGroupId,
+                     cg.category      AS category,
+                     cg.optionProperty AS optionProperty,
+                     collect({
+                       optionId:    coalesce(option.partId, option.assemblyId),
+                       optionValue: option[cg.optionProperty]
+                     }) AS options
+              ORDER BY category, configGroupId
+            parameters: []
+            category: query
+            teaches: 'Use this to build the constraints parameter the resolution query takes: the category column supplies each constraint''s category, optionProperty supplies the property name, and the optionValue column shows the exact strings an allow or deny list has to match, which are compared by equality and are case-sensitive. Two decisions sharing a category are governed by one constraint entry, which is how a single constraint keeps components that must match in step.'
+            returns: 'One row per ConfigGroup: configGroupId, category, optionProperty, and a list of {optionId, optionValue}.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - configuration
+              - options
+              - constraints
+              - catalog
+            upstream:
+              file: QUERIES.md
+              heading: List the configuration decisions and their options
+              sample: 'Bundled sample data only: returns 13 rows. CG-RIM-26, CG-RIM-275 and CG-RIM-29 all report category rim, the three tire decisions report tire, and CG-WHEELSET''s options are assemblies with wheelSize 26, 27.5 and 29.'
+          - type: canonicalQuery
+            name: prune-undecided-decisions-by-scoring
+            question: Prune undecided decisions by scoring
+            description: Repeatedly finds configuration decisions that still have more than one surviving option and no undecided decision beneath them, totals cost and weight over each option's whole sub-branch, scores the options, and deletes the links to all but the best. Works bottom-up, so a nested decision is settled before the decision that contains it. WRITES to the database.
+            cypher: |-
+              CYPHER 25
+
+              UNWIND range(1, $maxIterations) AS _
+              CALL (_) {
+
+                // Decisions still open, with no still-open decision beneath them.
+                MATCH (cf:ConfigGroup)
+                WHERE count{ (cf)-[:RESOLVED_LINK {idVariant: $idVariant}]->() } > 1
+                  AND NOT EXISTS {
+                    (cf)-[:RESOLVED_LINK {idVariant: $idVariant}]->+(cfBelow:ConfigGroup)
+                    WHERE count{ (cfBelow)-[:RESOLVED_LINK {idVariant: $idVariant}]->() } > 1
+                  }
+                RETURN cf
+
+                NEXT
+
+                // Total cost and weight over each option's whole sub-branch.
+                MATCH path = (leaf)<-[rs:RESOLVED_LINK {idVariant: $idVariant}]-*(opt)
+                    <-[optLink:RESOLVED_LINK {idVariant: $idVariant}]-(cf)
+                WHERE NOT EXISTS { (leaf)-[:RESOLVED_LINK {idVariant: $idVariant}]->() }
+                WITH cf, optLink, opt, leaf, reduce(acc = 1, r IN rs | acc * coalesce(r.qty, 1)) AS times
+                WITH cf, optLink, opt, leaf, {cost: leaf.cost * times, weight: leaf.weight * times} AS vals
+                WITH cf, optLink, opt, collect(vals) AS valsList
+                WITH cf, optLink, opt, reduce(acc = {cost: 0.0, weight: 0.0}, vals IN valsList |
+                    {cost: acc.cost + vals.cost, weight: acc.weight + vals.weight}) AS vals
+
+                // Score, then detach every option but the best.
+                UNWIND $scoring AS fieldFactor
+                WITH cf, optLink, opt, vals[fieldFactor.field] * fieldFactor.factor AS score
+                WITH cf, optLink, opt, sum(score) AS score
+                ORDER BY cf, score DESC
+                WITH cf, collect(optLink) AS optLinks
+                UNWIND optLinks[1..] AS delOptLink
+                DELETE delOptLink
+
+              }
+            parameters:
+              - name: idVariant
+                type: STRING
+                description: Name of the variant to prune, as supplied when it was resolved.
+                example: V-275-TRAIL
+              - name: scoring
+                type: STRING
+                description: 'List of {field, factor} maps, where field is cost or weight and factor weights it. The option with the highest total score is kept, so use negative factors to minimise. The ratio between factors is an exchange rate between the fields: {cost, -1.0} with {weight, -50.0} says you would spend fifty units of currency to save a kilogram. Set it from what the product is worth, not from the numbers in the catalog.'
+                example:
+                  - field: cost
+                    factor: -1
+                  - field: weight
+                    factor: -50
+              - name: maxIterations
+                type: INTEGER
+                description: Upper bound on the bottom-up passes. One pass settles one layer of nesting, so set it to at least the depth of decisions nested inside options; 10 covers a deeply nested structure and costs nothing when resolution converges sooner.
+                example: 10
+            category: writes
+            teaches: 'Only needed when constraints left a decision open; a fully constrained variant is unchanged by it. Scoring compares whole sub-branches, not single components, so an option that is dearer in isolation can still win by what it brings with it — and the reverse, which is the usual reason a result surprises. Deleting a link can strand the links below it; run the garbage collector afterwards. Read the chosen options before trusting the totals: scoring always picks something, including when neither option was really acceptable. Its variable-length traversal is unbounded and relies on the structure being acyclic.'
+            returns: Nothing. Its effect is the RESOLVED_LINK relationships it deletes.
+            prerequisites: 'Neo4j 2025.06 or later (Cypher 25: NEXT, scoped call subqueries, quantified path patterns). The variant has been resolved.'
+            tags:
+              - scoring
+              - optimisation
+              - pruning
+              - variant
+              - write
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Prune undecided decisions by scoring
+              sample: 'Bundled sample data only: $idVariant = ''V-LOOSE'' — resolved for ''MB1'' with deny lists only: rim material [''Carbon'']; gearing, shifter and derailleur gearSystem [''7-Speed''] — with $scoring = [{field: ''cost'', factor: -1.0}, {field: ''weight'', factor: -50.0}] and $maxIterations = 10 settles all 10 open decisions in 2 passes, deleting 13 of the variant''s 55 links. It keeps A-WHEEL-26, P-FRAME-STEEL, P-PAINT-BLACK, P-CALIPER-MECH and the 9-Speed drivetrain.'
+    description: 'A single configuration decision: a named set of interchangeable options, exactly one of which is chosen for any given variant. Configuration groups are where constraints are applied during resolution, and an unresolved group is what makes a variant incomplete.'
+  Part:
+    label: Part
+    properties:
+      partId:
+        type: STRING
+        key: true
+        description: Unique identifier for the part in the engineering catalog. Expected to be stable across revisions. e.g. `P-CHAIN`.
+        pattern: ^P-[A-Z]{3,}(?:-[0-9A-Z]+)*$
+      description:
+        type: STRING
+        must_exist: true
+        description: Human-readable name or specification of the part, as an engineer would recognise it on a drawing or in a catalog.
+      cost:
+        type: FLOAT
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              parse: MONEY
+              ask: the purchase cost of one unit of the part, an amount such as 40.00 EUR
+        description: 'Purchase cost of one unit of the part, in the catalog''s base currency. Per unit, not per assembly: a rollup multiplies this by the quantities on the path from the product down to the part. e.g. `24.0`.'
+      weight:
+        type: FLOAT
+        must_exist: true
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the mass of one unit of the part in kilograms, such as 0.48 kg
+        description: 'Mass of one unit of the part in kilograms. Per unit, not per assembly: a rollup multiplies this by the quantities on the path from the product down to the part. e.g. `0.28`.'
+      material:
+        type: STRING
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the material a sentence says the part is made from, such as an alloy or carbon rim, not a word inside a part number
+        description: Option attribute. The material the part is made from, as a catalog term matched by exact string equality in constraint allow and deny lists. Set only on parts offered as options of a configuration group whose optionProperty is material; absent on every other part. e.g. `Alloy`.
+        one_of:
+          - Alloy
+          - Carbon
+          - Aluminum
+          - Steel
+      pattern:
+        type: STRING
+        description: Option attribute. The tread pattern of a tire, as a catalog term matched by exact string equality in constraint allow and deny lists. Set only on parts offered as options of a configuration group whose optionProperty is pattern; absent on every other part. e.g. `Trail`.
+      gearSystem:
+        type: STRING
+        description: Option attribute. The gearing standard a drivetrain component belongs to, as a catalog term matched by exact string equality in constraint allow and deny lists. Components sharing a value are compatible with one another, so allowing the same value on each matched decision keeps cassette, shifter and derailleur in step. Set only on parts offered as options of a configuration group whose optionProperty is gearSystem; absent on every other part. e.g. `9-Speed`.
+      color:
+        type: STRING
+        description: Option attribute. The finish colour of the part, as a catalog term matched by exact string equality in constraint allow and deny lists. Set only on parts offered as options of a configuration group whose optionProperty is color; absent on every other part. e.g. `Black`.
+      brakeType:
+        type: STRING
+        description: Option attribute. The braking technology the part implements, as a catalog term matched by exact string equality in constraint allow and deny lists. Set only on parts offered as options of a configuration group whose optionProperty is brakeType; absent on every other part. e.g. `Hydraulic Disc`.
+    extensions:
+      display:
+        x: 160
+        'y': 70
+        colour: '#059669'
+      custom:
+        relate-examples:
+          ask: a single component part, such as P-HUB
+          proper: true
+          propose: true
+    description: A procured or manufactured component that is not decomposed further in this reference ontology. Parts are the leaves of a resolved bill of materials and the only nodes that carry cost and weight, so every rollup is a sum over the parts a variant reaches.
+    aliases:
+      - Component
+relationships:
+  productRequiresAssembly:
+    type: REQUIRES
+    from:
+      node: Product
+    to:
+      node: Assembly
+    properties:
+      qty:
+        type: INTEGER
+        must_exist: true
+        description: Number of the required assembly needed per one of the product. Multiplied along the path when costing or weighing a resolved variant. e.g. `1`.
+      note:
+        type: STRING
+        description: Free-text engineering note explaining why the requirement exists or how the quantity was arrived at. Not read by any query.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: requires
+    description: States that building the product requires the given sub-assembly, in the quantity carried on the relationship. A product may require many assemblies, or none; the same assembly may be required by more than one product.
+  productRequiresConfigGroup:
+    type: REQUIRES
+    from:
+      node: Product
+    to:
+      node: ConfigGroup
+      max_count: 1
+    properties:
+      qty:
+        type: INTEGER
+        description: Number of the chosen option needed per one of the product. Expected on every REQUIRES relationship; multiplied along the path when costing or weighing a resolved variant. e.g. `2`.
+      note:
+        type: STRING
+        description: Free-text engineering note explaining why the decision exists or how the quantity was arrived at. Not read by any query.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: requires
+    description: States that a configuration decision must be made at product level before the bill of materials is complete, and that the chosen option is needed in the quantity carried on the relationship. A product may require many configuration groups, or none; in this reference ontology each configuration group is required by exactly one product or assembly.
+  assemblyRequiresConfigGroup:
+    type: REQUIRES
+    from:
+      node: Assembly
+    to:
+      node: ConfigGroup
+      max_count: 1
+    properties:
+      qty:
+        type: INTEGER
+        description: Number of the chosen option needed per one of the assembly. Expected on every REQUIRES relationship; multiplied along the path when costing or weighing a resolved variant. e.g. `2`.
+      note:
+        type: STRING
+        description: Free-text engineering note explaining why the decision exists or how the quantity was arrived at. Not read by any query.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: requires
+    description: States that a configuration decision must be made within the assembly before it is complete, and that the chosen option is needed in the quantity carried on the relationship. An assembly may require many configuration groups, or none; in this reference ontology each configuration group is required by exactly one product or assembly.
+  assemblyHasPart:
+    type: HAS_PART
+    from:
+      node: Assembly
+    to:
+      node: Part
+    properties:
+      qty:
+        type: INTEGER
+        must_exist: true
+        description: Number of the part needed per one of the assembly. Multiplied along the path when costing or weighing a resolved variant. e.g. `2`.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: includes
+    description: Attaches a part that is always present in the assembly, in the quantity carried on the relationship — a component with no configuration decision attached to it, so it appears in every variant that reaches the assembly. An assembly may have many such parts, or none; the same part may be used by more than one assembly.
+  configGroupHasOptionPart:
+    type: HAS_OPTION
+    from:
+      node: ConfigGroup
+    to:
+      node: Part
+      max_count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: offers
+    description: Offers a part as one of the interchangeable options of the configuration group. A configuration group offers two or more options, of which resolution keeps exactly one; a part offered as an option is offered by exactly one configuration group. Carries no quantity — how many are needed is stated on the REQUIRES relationship into the group.
+  configGroupHasOptionAssembly:
+    type: HAS_OPTION
+    from:
+      node: ConfigGroup
+    to:
+      node: Assembly
+      max_count: 1
+    extensions:
+      custom:
+        relate-examples:
+          phrase: offers
+    description: Offers a whole sub-assembly as one of the interchangeable options of the configuration group, so that choosing it also brings in every configuration decision nested beneath it. A configuration group offers two or more options, of which resolution keeps exactly one; an assembly offered as an option is offered by exactly one configuration group. Carries no quantity — how many are needed is stated on the REQUIRES relationship into the group.
+extensions:
+  data_source_tables:
+    products.csv:
+      source: local
+      columns:
+        - name: productId
+          type: string
+        - name: description
+          type: string
+    assemblies.csv:
+      source: local
+      columns:
+        - name: assemblyId
+          type: string
+        - name: description
+          type: string
+        - name: wheelSize
+          type: string
+    config_groups.csv:
+      source: local
+      columns:
+        - name: configGroupId
+          type: string
+        - name: category
+          type: string
+        - name: optionProperty
+          type: string
+        - name: description
+          type: string
+    parts.csv:
+      source: local
+      columns:
+        - name: partId
+          type: string
+        - name: description
+          type: string
+        - name: cost
+          type: string
+        - name: weight
+          type: string
+        - name: material
+          type: string
+        - name: pattern
+          type: string
+        - name: gearSystem
+          type: string
+        - name: color
+          type: string
+        - name: brakeType
+          type: string
+    product_requires_assembly.csv:
+      source: local
+      columns:
+        - name: productId
+          type: string
+        - name: assemblyId
+          type: string
+        - name: qty
+          type: string
+        - name: note
+          type: string
+    product_requires_config_group.csv:
+      source: local
+      columns:
+        - name: productId
+          type: string
+        - name: configGroupId
+          type: string
+        - name: qty
+          type: string
+        - name: note
+          type: string
+    assembly_requires_config_group.csv:
+      source: local
+      columns:
+        - name: assemblyId
+          type: string
+        - name: configGroupId
+          type: string
+        - name: qty
+          type: string
+        - name: note
+          type: string
+    assembly_has_part.csv:
+      source: local
+      columns:
+        - name: assemblyId
+          type: string
+        - name: partId
+          type: string
+        - name: qty
+          type: string
+    config_group_has_option_part.csv:
+      source: local
+      columns:
+        - name: configGroupId
+          type: string
+        - name: partId
+          type: string
+    config_group_has_option_assembly.csv:
+      source: local
+      columns:
+        - name: configGroupId
+          type: string
+        - name: assemblyId
+          type: string
+  data_source_mappings:
+    mapping0:
+      - type: NODE
+        node: Product
+        table: products.csv
+        mode: MERGE
+        key:
+          - productId
+        properties:
+          productId:
+            column: productId
+          description:
+            column: description
+      - type: NODE
+        node: Assembly
+        table: assemblies.csv
+        mode: MERGE
+        key:
+          - assemblyId
+        properties:
+          assemblyId:
+            column: assemblyId
+          description:
+            column: description
+          wheelSize:
+            column: wheelSize
+      - type: NODE
+        node: ConfigGroup
+        table: config_groups.csv
+        mode: MERGE
+        key:
+          - configGroupId
+        properties:
+          configGroupId:
+            column: configGroupId
+          category:
+            column: category
+          optionProperty:
+            column: optionProperty
+          description:
+            column: description
+      - type: NODE
+        node: Part
+        table: parts.csv
+        mode: MERGE
+        key:
+          - partId
+        properties:
+          partId:
+            column: partId
+          description:
+            column: description
+          cost:
+            column: cost
+          weight:
+            column: weight
+          material:
+            column: material
+          pattern:
+            column: pattern
+          gearSystem:
+            column: gearSystem
+          color:
+            column: color
+          brakeType:
+            column: brakeType
+      - type: RELATIONSHIP
+        relationship: productRequiresAssembly
+        table: product_requires_assembly.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Product
+          properties:
+            productId:
+              column: productId
+        to_node:
+          label: Assembly
+          properties:
+            assemblyId:
+              column: assemblyId
+        properties:
+          qty:
+            column: qty
+          note:
+            column: note
+      - type: RELATIONSHIP
+        relationship: productRequiresConfigGroup
+        table: product_requires_config_group.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Product
+          properties:
+            productId:
+              column: productId
+        to_node:
+          label: ConfigGroup
+          properties:
+            configGroupId:
+              column: configGroupId
+        properties:
+          qty:
+            column: qty
+          note:
+            column: note
+      - type: RELATIONSHIP
+        relationship: assemblyRequiresConfigGroup
+        table: assembly_requires_config_group.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Assembly
+          properties:
+            assemblyId:
+              column: assemblyId
+        to_node:
+          label: ConfigGroup
+          properties:
+            configGroupId:
+              column: configGroupId
+        properties:
+          qty:
+            column: qty
+          note:
+            column: note
+      - type: RELATIONSHIP
+        relationship: assemblyHasPart
+        table: assembly_has_part.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Assembly
+          properties:
+            assemblyId:
+              column: assemblyId
+        to_node:
+          label: Part
+          properties:
+            partId:
+              column: partId
+        properties:
+          qty:
+            column: qty
+      - type: RELATIONSHIP
+        relationship: configGroupHasOptionPart
+        table: config_group_has_option_part.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: ConfigGroup
+          properties:
+            configGroupId:
+              column: configGroupId
+        to_node:
+          label: Part
+          properties:
+            partId:
+              column: partId
+      - type: RELATIONSHIP
+        relationship: configGroupHasOptionAssembly
+        table: config_group_has_option_assembly.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: ConfigGroup
+          properties:
+            configGroupId:
+              column: configGroupId
+        to_node:
+          label: Assembly
+          properties:
+            assemblyId:
+              column: assemblyId
+  custom:
+    relate-examples:
+      family: studio
+      source:
+        repository: neo4j/studio-agent-use-cases
+        commit: b76f767e85c5853b7d70eb2bb3b10879d0e394a9
+        package: configurable-bom
+        files:
+          - ONTOLOGY.json
+          - QUERIES.md
+          - human_description.md
+      card:
+        title: Configurable Bill of Materials
+        category: Manufacturing
+        description: Resolve a single buildable product variant from a configurable bill of materials by applying constraints, scoring the options that remain, and rolling up cost and weight.
+      industry: Manufacturing
+      about: data/ontologies/studio/configurable-bom/human_description.md

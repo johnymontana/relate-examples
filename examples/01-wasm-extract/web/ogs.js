@@ -2,7 +2,7 @@
 /**
  * ogs.js: the Neo4j Ontology Graph Specification, spec 1.1.0 (https://neo4j.com/docs/ontology-graph-spec/,
  * Apache-2.0; its JSON Schema vendored in data/ontology-spec/ from neo4j/ontology-graph-spec at tag
- * release/v0.12.2): a document read from YAML or JSON, checked against the spec's JSON Schema, the
+ * release/v0.13.0): a document read from YAML or JSON, checked against the spec's JSON Schema, the
  * spec's official SDK (npm @neo4j/ontology-graph-spec, through lib/ogs.mjs) and the rules this
  * example needs, and written back out in one canonical form. The ontology format every other module
  * of the example reads (ontology.js builds its kinds and links from a document; convert.js turns
@@ -74,7 +74,14 @@ export const SPEC_VERSION = LIB_SPEC_VERSION;
 /** The schema's $id, which a document's `schema` names. */
 export const SCHEMA_ID = SCHEMA_URL;
 /** The SDK version this example pins (package.json; build.mjs and harness/ontology.mjs check it). */
-export const SDK_VERSION = '0.12.2';
+export const SDK_VERSION = '0.13.0';
+/**
+ * The `schema` a spec 1.0.0 document names (Neo4j's solution packages, data/ontologies/studio/, do).
+ * 1.1.0 is 1.0.0 with one field added, a property's `aliases` (harness/ontology.mjs pins the
+ * difference against the 1.0.0 schema vendored beside the 1.1.0 one, NOTES.md Y3), so every 1.0.0
+ * document is a 1.1.0 document once it names 1.1.0: fromSpec10 changes `schema` and nothing else.
+ */
+export const SPEC_1_0_URL = 'https://neo4j.com/docs/ontology-graph-spec/1.0.0/schema.json';
 
 /** An ontology the rules refuse; the message is meant for the person who wrote it. errors: [{path, keyword, message}] when a document failed its checks. */
 export class OntologyError extends Error {
@@ -1580,7 +1587,44 @@ export const EXTENSIONS = Object.freeze({
   gazetteer: 'edgextract:gazetteer',
   symmetric: 'edgextract:symmetric',
   tools: 'tools',
+  repo: 'relate-examples',
 });
+
+/**
+ * What this repository adds to a document, under `extensions.custom.relate-examples` (D22):
+ *   on a node:          {ask?, extract?, proper?, propose?}
+ *                                            ask: the description the model reads for the kind, in
+ *                                            place of the node's own (1 to MAX_ASK_CHARS characters);
+ *                                            extract: false, the kind is never asked (it stays a kind and a node type);
+ *                                            proper: its mentions are proper names or identifiers (D26);
+ *                                            propose: its key property's pattern proposes identifiers (D26)
+ *   on a relationship:  {phrase?, extract?}  phrase: the words the model reads between the endpoints'
+ *                                            label texts ("filed": "claimant filed claim"), lower case;
+ *                                            every entry of one type agrees on both
+ *   on the document:    a mapping, read by the page (source, card, industry, about); not checked here
+ */
+export const MAX_ASK_CHARS = 240;
+/** A link phrase: lower-case words joined by single spaces, hyphens or apostrophes, at most 60 characters. */
+const PHRASE_RE = /^[\p{Ll}\p{Lo}\p{N}]+(?:[ '-][\p{Ll}\p{Lo}\p{N}]+)*$/u;
+export const MAX_PHRASE_CHARS = 60;
+/** The types a property may be extracted as (D27; web/values.js parses them). */
+export const EXTRACTED_TYPES = Object.freeze(['STRING', 'INTEGER', 'FLOAT', 'DATE', 'BOOLEAN']);
+/** The separators of gliner-rs's structure syntax, which an extracted property's ask and vocabulary may not hold. */
+const STRUCTURE_SEPARATORS = /[;=|]|::|\[|\]/;
+/** The text fields a tool may carry beside the ones the page runs (question, teaches, category: D22). */
+const TOOL_TEXT_FIELDS = Object.freeze(['question', 'teaches', 'category']);
+
+/** Does this document name spec 1.0.0 (SPEC_1_0_URL)? @param {unknown} doc */
+export const isSpec10 = (doc) => isMap(doc) && /** @type {any} */ (doc).schema === SPEC_1_0_URL;
+/**
+ * A spec 1.0.0 document read as 1.1.0: the same document naming SCHEMA_ID (see SPEC_1_0_URL), its
+ * `schema` field where it was.
+ * @param {any} doc
+ */
+export function fromSpec10(doc) {
+  if (!isSpec10(doc)) throw new OntologyError(`fromSpec10: the document does not name ${SPEC_1_0_URL}`);
+  return { ...doc, schema: SCHEMA_ID };
+}
 
 /**
  * The rules a schema- and SDK-valid document must also follow (see the header): [{path, keyword: 'semantic', message}].
@@ -1600,8 +1644,9 @@ export function checkDocument(doc) {
   /** @type {Map<string, string>} identifier label -> node id */
   const byLabel = new Map();
   /** Properties and tools of a node or relationship entry. @param {string} at @param {any} el */
-  const element = (at, el) => {
+  const element = (at, el, where = 'node') => {
     const props = isMap(el.properties) ? el.properties : {};
+    const keys = Object.entries(props).filter(([, q]) => isMap(q) && q.key === true).map(([k]) => k);
     for (const [name, p] of Object.entries(props)) {
       const pp = `${at}/properties${ptr(name)}`;
       if (p.dimension !== undefined && p.dimension !== null && !(typeof p.type === 'string' && p.type.startsWith('VECTOR<'))) {
@@ -1609,6 +1654,31 @@ export function checkDocument(doc) {
       }
       if (p.key === true && (p.must_exist === false || p.unique === false)) {
         err(pp, 'key implies unique and must_exist; it cannot go with must_exist: false or unique: false');
+      }
+      // A property extracted from text (D27): relate-examples {extract?, ask?} on the property.
+      const x = custom(p.extensions, EXTENSIONS.repo);
+      if (x === undefined) continue;
+      const xp = `${pp}/extensions/custom/${EXTENSIONS.repo}`;
+      if (!isMap(x)) { err(xp, `is a mapping, not ${show(x)}`); continue; }
+      if (x.extract !== undefined && typeof x.extract !== 'boolean') err(`${xp}/extract`, `is true or false, not ${show(x.extract)}`);
+      if (x.ask !== undefined) {
+        const n = typeof x.ask === 'string' ? Array.from(x.ask.trim()).length : 0;
+        if (n === 0 || n > MAX_ASK_CHARS || STRUCTURE_SEPARATORS.test(x.ask)) {
+          err(`${xp}/ask`, `the description the model reads is text of 1 to ${MAX_ASK_CHARS} characters without ; = | :: [ or ], not ${show(x.ask)}`);
+        }
+      }
+      const PARSE = { DATE: ['STRING'], MONEY: ['INTEGER', 'FLOAT'], PERCENT: ['FLOAT'] };
+      if (x.parse !== undefined && !(Object.hasOwn(PARSE, x.parse) && PARSE[x.parse].includes(p.type))) {
+        err(`${xp}/parse`, 'parse is DATE on a STRING (read as a date, written YYYY-MM-DD), MONEY on an INTEGER or a FLOAT (an amount, never a percentage) '
+          + `or PERCENT on a FLOAT (a percentage, as a fraction); not ${show(x.parse)} on ${show(p.type)}`);
+      }
+      if (x.extract === true) {
+        if (where !== 'node') err(`${xp}/extract`, 'a relationship\'s properties are not extracted (only a node\'s)');
+        else if (!EXTRACTED_TYPES.includes(p.type)) err(`${xp}/extract`, `this page extracts ${EXTRACTED_TYPES.join(', ')} values, not ${show(p.type)}`);
+        else if (name === 'name' || keys.includes(name)) err(`${xp}/extract`, 'the name and the key come from the entity\'s mentions, not from a value');
+        else if (Array.isArray(p.one_of) && p.one_of.some((v) => typeof v !== 'string' || STRUCTURE_SEPARATORS.test(v) || v.trim() === '')) {
+          err(`${pp}/one_of`, 'an extracted property\'s vocabulary is plain text values, without ; = | :: [ or ]');
+        }
       }
     }
     const tp = `${at}/extensions/custom/tools`;
@@ -1635,7 +1705,41 @@ export function checkDocument(doc) {
       if (t.parameters !== undefined && (!Array.isArray(t.parameters) || t.parameters.some((x) => !isMap(x) || typeof x.name !== 'string' || x.name === ''))) {
         err(`${tp}/${i}/parameters`, 'parameters are a list of {name, type?, description?, ...}, each with a name');
       }
+      for (const f of TOOL_TEXT_FIELDS) {
+        if (t[f] !== undefined && typeof t[f] !== 'string') err(`${tp}/${i}/${f}`, `a tool's ${f} is text, not ${show(t[f])}`);
+      }
+      if (t.requires !== undefined && (!Array.isArray(t.requires) || t.requires.some((x) => typeof x !== 'string' || x === ''))) {
+        err(`${tp}/${i}/requires`, `what a tool requires is a list of names (gds, apoc), not ${show(t.requires)}`);
+      }
     });
+  };
+  /** The relate-examples extension of a node or a relationship entry (EXTENSIONS.repo). @param {string} at @param {any} el @param {'node'|'relationship'} where */
+  const repo = (at, el, where) => {
+    const x = custom(el.extensions, EXTENSIONS.repo);
+    if (x === undefined) return undefined;
+    const p = `${at}/extensions/custom/${EXTENSIONS.repo}`;
+    if (!isMap(x)) {
+      err(p, `is a mapping, not ${show(x)}`);
+      return undefined;
+    }
+    if (where === 'node' && x.ask !== undefined) {
+      const n = typeof x.ask === 'string' ? Array.from(x.ask.trim()).length : 0;
+      if (n === 0 || n > MAX_ASK_CHARS) err(`${p}/ask`, `the description the model reads is text of 1 to ${MAX_ASK_CHARS} characters, not ${show(x.ask)}`);
+    }
+    if (where === 'relationship' && x.phrase !== undefined &&
+      (typeof x.phrase !== 'string' || !PHRASE_RE.test(x.phrase) || Array.from(x.phrase).length > MAX_PHRASE_CHARS)) {
+      err(`${p}/phrase`, `a link phrase is lower-case words (at most ${MAX_PHRASE_CHARS} characters, single spaces), not ${show(x.phrase)}`);
+    }
+    for (const f of where === 'node' ? ['extract', 'proper', 'propose'] : ['extract']) {
+      if (x[f] !== undefined && typeof x[f] !== 'boolean') err(`${p}/${f}`, `is true or false, not ${show(x[f])}`);
+    }
+    if (where === 'node' && x.propose === true) {
+      const keys = Object.entries(isMap(el.properties) ? el.properties : {}).filter(([, q]) => isMap(q) && q.key === true);
+      if (keys.length !== 1 || keys[0][0] === 'name' || typeof keys[0][1].pattern !== 'string') {
+        err(`${p}/propose`, 'proposes identifiers by the pattern of the node\'s one key property other than name, which this node does not have');
+      }
+    }
+    return x;
   };
 
   for (const [key, node] of Object.entries(nodes)) {
@@ -1666,6 +1770,7 @@ export function checkDocument(doc) {
       }
     }
     element(at, node);
+    repo(at, node, 'node');
     const pole = custom(node.extensions, EXTENSIONS.pole);
     if (pole !== undefined && (!isMap(pole) || typeof pole.pole_type !== 'string' || pole.pole_type.trim() === '' ||
       (pole.subtype !== undefined && pole.subtype !== null && typeof pole.subtype !== 'string') ||
@@ -1677,7 +1782,7 @@ export function checkDocument(doc) {
 
   /** @type {Map<string, string>} 'TYPE|from|to' -> relationship id */
   const triples = new Map();
-  /** @type {Map<string, {symmetric: Set<boolean>, origin: Set<string>}>} */
+  /** @type {Map<string, {symmetric: Set<boolean>, origin: Set<string>, phrase: Set<string>, extract: Set<boolean>}>} */
   const byType = new Map();
   for (const [key, r] of Object.entries(rels)) {
     const at = `/relationships${ptr(key)}`;
@@ -1690,8 +1795,11 @@ export function checkDocument(doc) {
     const dup = triples.get(t);
     if (dup !== undefined) err(at, `repeats ${show(dup)}: the same type between the same nodes`);
     else triples.set(t, key);
-    element(at, r);
-    const s = byType.get(r.type) ?? { symmetric: new Set(), origin: new Set() };
+    element(at, r, 'relationship');
+    const rx = repo(at, r, 'relationship');
+    const s = byType.get(r.type) ?? { symmetric: new Set(), origin: new Set(), phrase: new Set(), extract: new Set() };
+    s.phrase.add(typeof rx?.phrase === 'string' ? rx.phrase : '');
+    s.extract.add(rx?.extract !== false);
     s.symmetric.add(custom(r.extensions, EXTENSIONS.symmetric) !== undefined);
     const origin = custom(r.extensions, EXTENSIONS.origin);
     if (origin !== undefined) {
@@ -1704,7 +1812,11 @@ export function checkDocument(doc) {
   for (const [type, s] of byType) {
     if (s.symmetric.size > 1) err('/relationships', `the entries of ${type} disagree on ${EXTENSIONS.symmetric}: put it on all of them or none`);
     if (s.origin.size > 1) err('/relationships', `the entries of ${type} disagree on ${EXTENSIONS.origin}`);
+    if (s.phrase.size > 1) err('/relationships', `the entries of ${type} disagree on their ${EXTENSIONS.repo} phrase: give all of them the same one, or none`);
+    if (s.extract.size > 1) err('/relationships', `the entries of ${type} disagree on ${EXTENSIONS.repo} extract`);
   }
+  const docRepo = custom(doc.extensions, EXTENSIONS.repo);
+  if (docRepo !== undefined && !isMap(docRepo)) err(`/extensions/custom/${EXTENSIONS.repo}`, `is a mapping, not ${show(docRepo)}`);
 
   const gaz = custom(doc.extensions, EXTENSIONS.gazetteer);
   if (gaz !== undefined) {

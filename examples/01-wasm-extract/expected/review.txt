@@ -1,61 +1,62 @@
 # Review: verdicts are graph state, latest wins (D10 rule 7; harness/run.mjs)
-On the financial-services store, its sample. A verdict names its target by key, so it outlives the
+On the financial-services store, its primary document. A verdict names its target by key, so it outlives the
 target node; the gate takes the latest per target (ORDER BY ts DESC, seq DESC, then head(collect())).
 
 ## before: the gate at the defaults
-review item (the highest-scoring): "Arjun Mehta" -[MANAGES]-> "ACC-2207" 0.342, review by band
-kept claim (the lowest-scoring):   "Rebalancing Decision" -[APPLIED_POLICY]-> "Concentration Limit Policy" 0.402, keep by band
-  review item: review by band; no typed edge
-  kept claim: keep by band; (Rebalancing Decision)-[:APPLIED_POLICY]->(Concentration Limit Policy)
+review item (the highest-scoring): "Priya Raman" -[MANAGES]-> "ACC-4102" 0.560, review by hedged
+kept claim (the lowest-scoring):   "TX-4471" -[BREACHED]-> "the Concentration Limit Policy, which caps exposure" 0.239, keep by band
+  review item: review by hedged; no typed edge
+  kept claim: keep by band; (TX-4471)-[:BREACHED]->(Concentration Limit Policy)
 
 ## accept the review item, reject the kept claim; re-gate; re-publish
 verdicts v1 (claim, accept) and v2 (claim, reject)
-  review item: keep by verdict; (Arjun Mehta)-[:MANAGES]->(ACC-2207)
+  review item: keep by verdict; (Priya Raman)-[:MANAGES]->(ACC-4102)
   kept claim: drop by verdict; no typed edge
-  published generation 3: 10 relationships
+  published generation 5: 17 relationships
 
 ## re-extract the document: its trace is deleted and extracted again (the cache answers)
-forgetDocument: 30 claims, 50 mentions, 13 sentences, 1 sections, 2 runs deleted; verdicts left: 2
-extracted again: 0 inferences, 13 cache hits; gated and published (generation 4)
+forgetDocument: 89 claims, 214 mentions, 51 sentences, 3 sections, 2 runs deleted; verdicts left: 2
+extracted again: 0 inferences, 85 cache hits; gated and published (generation 6)
 verdicts re-attached to the new nodes (ON edges): 2 of 2
-  review item: keep by verdict; (Arjun Mehta)-[:MANAGES]->(ACC-2207)
+  review item: keep by verdict; (Priya Raman)-[:MANAGES]->(ACC-4102)
   kept claim: drop by verdict; no typed edge
 
 ## the latest verdict wins
 v3: reject the item accepted by v1
   review item: drop by verdict; no typed edge
 v4: accept it again
-  review item: keep by verdict; (Arjun Mehta)-[:MANAGES]->(ACC-2207)
+  review item: keep by verdict; (Priya Raman)-[:MANAGES]->(ACC-4102)
 verdicts on it, oldest first: v1 accept, v3 reject, v4 accept
 
 ## a verdict on a mention: rejecting a kept name unanchors the claims that joined it (rule 3)
-mention "TX-4471" (Transaction) 0.624, keep by band: 3 claims join it; unanchored claims in the document: 3
-v5 (mention, reject): the mention is drop by verdict; 0 claims join it; unanchored claims: 6
-  published generation 7: 12 entities, 9 relationships
+the target: the lowest-scoring kept model mention whose rejection unanchors a claim (2 of 31 joined kept mentions tried on a copy)
+mention "Trim Decision" (Decision) 0.769, keep by band: 1 claims join it; unanchored claims in the document: 40
+v5 (mention, reject): the mention is drop by verdict; 0 claims join it; unanchored claims: 41
+  published generation 9: 31 entities, 17 relationships
 
 ## the rule invariant holds with verdicts in the store
 the Cypher gate equals the JS gate: yes
 
 ## rule 3's cap: a claim with an end in review waits in review; a verdict on that end, or on the claim, lifts it
-On the agent-memory store (create-context-graph): the highest-scoring claim decided by end-in-review, and its end in review.
+On the agent-memory store: the highest-scoring claim decided by end-in-review, and its end in review.
 at the defaults:
-  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: review by end-in-review; no typed edge
-  its end "billing agent" (Agent) 0.936: review by type-margin
+  claim "ses-40218" -[ESCALATED_TO]-> "to Aled Pritchard" 0.643: review by end-in-review; no typed edge
+  its end "Aled Pritchard" (StaffMember) 0.667: review by band
 accept the end (a mention verdict): the claim joins a kept mention and the band decides it:
   the Cypher gate equals the JS gate: yes; audits: 0 rows each
-  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: keep by band; (billing agent:Agent)-[:REASONED_ABOUT]->(Brennan Freight entity:Entity)
-  its end "billing agent" (Agent) 0.936: keep by verdict
+  claim "ses-40218" -[ESCALATED_TO]-> "to Aled Pritchard" 0.643: keep by band; (ses-40218:Session)-[:ESCALATED_TO]->(Aled Pritchard:StaffMember)
+  its end "Aled Pritchard" (StaffMember) 0.667: keep by verdict
 instead, accept the claim: the end in review it joined is kept with it (claim-verdict):
   the Cypher gate equals the JS gate: yes; audits: 0 rows each
-  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: keep by verdict; (billing agent:Agent)-[:REASONED_ABOUT]->(Brennan Freight entity:Entity)
-  its end "billing agent" (Agent) 0.936: keep by claim-verdict
+  claim "ses-40218" -[ESCALATED_TO]-> "to Aled Pritchard" 0.643: keep by verdict; (ses-40218:Session)-[:ESCALATED_TO]->(Aled Pritchard:StaffMember)
+  its end "Aled Pritchard" (StaffMember) 0.667: keep by claim-verdict
 then reject the end: the mention's own verdict wins, the claim is unanchored (rule 3) and keeps nothing:
   the Cypher gate equals the JS gate: yes; audits: 0 rows each
-  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: drop by unanchored; no typed edge
-  its end "billing agent" (Agent) 0.936: drop by verdict
+  claim "ses-40218" -[ESCALATED_TO]-> "to Aled Pritchard" 0.643: drop by unanchored; no typed edge
+  its end "Aled Pritchard" (StaffMember) 0.667: drop by verdict
 the verdicts deleted and the store re-gated: back to the defaults:
-  claim "billing agent" -[REASONED_ABOUT]-> "the Brennan Freight entity" 0.448: review by end-in-review; no typed edge
-  its end "billing agent" (Agent) 0.936: review by type-margin
+  claim "ses-40218" -[ESCALATED_TO]-> "to Aled Pritchard" 0.643: review by end-in-review; no typed edge
+  its end "Aled Pritchard" (StaffMember) 0.667: review by band
 
 ## an accepted claim keeps the two mentions it joined, and nothing else (claim-verdict)
 On the scripted store (gate.txt). An accepted claim keeps its ends in review only when both anchor, the pair is legal and

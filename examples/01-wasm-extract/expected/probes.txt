@@ -1,11 +1,11 @@
-# Relate WASM 1.2.0: the surface example 01 relies on (harness/probes.mjs; NOTES.md has a row per R-id)
-bundle: npm's @relate/relate-wasm 1.2.0, installed from package-lock.json (lib/relate_wasm.check)
+# Relate WASM 1.3.0: the surface example 01 relies on (harness/probes.mjs; NOTES.md has a row per R-id)
+bundle: npm's @relate/relate-wasm 1.3.0, installed from package-lock.json (lib/relate_wasm.check)
 
 ## version (R1)
 dbms.components: Cypher 5, 25
 dbms.components: Neo4j Kernel 2026.10-relate
-dbms.components: Relate 1.2.0
-relate_wasm.version(db) -> 1.2.0
+dbms.components: Relate 1.3.0
+relate_wasm.version(db) -> 1.3.0
 
 ## no transaction control (R2)
 BEGIN -> syntax: syntax error: parse error: unexpected token "BEGIN"
@@ -38,7 +38,7 @@ relate_wasm.exec refuses before the engine sees it (a forgotten argument is an e
 a fresh store already has 2 indexes: index_1b9dcc97 LOOKUP RELATIONSHIP token-lookup-1.0; index_460996c0 LOOKUP NODE token-lookup-1.0
 Each case: a fresh store, the DDL, then 10 :N nodes; SHOW INDEXES on :N (the built-in LOOKUP indexes left
 out); and the leaf operator of EXPLAIN MATCH (a:N {id: $k}) RETURN a.id AS id (the envelope's plan document).
-Timing it: node harness/probes.mjs 1.2.0 --index-timing (stderr only; never part of this file).
+Timing it: node harness/probes.mjs 1.3.0 --index-timing (stderr only; never part of this file).
 - no index on :N(id)
     DDL: (none)
     SHOW INDEXES: (none on :N)
@@ -70,7 +70,7 @@ Timing it: node harness/probes.mjs 1.2.0 --index-timing (stderr only; never part
 The second of an equivalent index and UNIQUE is refused in either order (IF NOT EXISTS would skip it silently).
 
 ## 0 and 0.0 (R5)
-RETURN valueType(0), valueType(0.0), 0 = 0.0 -> [{"eq":true,"f":"FLOAT NOT NULL","i":"INTEGER NOT NULL"}]
+RETURN valueType(0), valueType(0.0), 0 = 0.0 -> [{"i":"INTEGER NOT NULL","f":"FLOAT NOT NULL","eq":true}]
 valueType($p) for $p = 0, 0.0, 3.0, 3.5 sent from JS -> [{"a":"INTEGER NOT NULL","b":"INTEGER NOT NULL","c":"INTEGER NOT NULL","d":"FLOAT NOT NULL"}]
 valueType(toFloat($p)) for $p = 0 -> [{"t":"FLOAT NOT NULL"}]
 valueType($e) for $e = [0.9, 0] -> [{"t":"LIST<INTEGER NOT NULL | FLOAT NOT NULL> NOT NULL"}]
@@ -111,14 +111,14 @@ a relationship ts from timestamp() (an INTEGER) -> [{"t":"INTEGER NOT NULL"}]
 MATCH (p:P) RETURN [x IN [1,2] | x * 2], {a: 1}.a, CASE WHEN true THEN 1 END, $x, -1, p {.name}
   columns: ["[x IN [1,2] | x * 2]","{a: 1}.a","CASE WHEN true THEN 1 END","$x","-1","p"]
   (an unaliased column is named by its text, a map projection by its variable: give every console column an alias)
-CREATE (n:Ärzte {Größe: 1}) (unquoted Unicode) -> [{"g":1,"l":["Ärzte"]}]
+CREATE (n:Ärzte {Größe: 1}) (unquoted Unicode) -> [{"l":["Ärzte"],"g":1}]
 CREATE (:Café😀) (an emoji) -> syntax: syntax error: InvalidUnicodeCharacter: parse error: expected RightParen, got "invalid unicode character: 😀" (Error)
 
 ## the wire envelope (R4)
 DDL: CREATE INDEX -> ok
 an envelope's keys: columnTypes, columns, elapsed_ms, error, execute_ms, lex_parse_ms, lower_ms, notifications, parse_ms, plan, plan_cache, plan_ms, result_generation_ms, rewrite_ms, rows, stats (relate_wasm.exec keeps columns, rows and stats)
-a node's keys: id, kind, labels, properties
-a relationship's keys: end_node, id, kind, properties, start_node, type
+a node's keys: kind, id, labels, properties
+a relationship's keys: kind, id, type, start_node, end_node, properties
 a path: a flat list of 3 (node, relationship, node)
 RETURN 9007199254740993: the envelope text holds it (true), JSON.parse gives 9007199254740992
 execute(q, '[1]') (relate_wasm never sends this) -> other: params must be a JSON object
@@ -131,10 +131,10 @@ RETURN size(range(1, 300000000)) -> other: This statement tried to build a singl
 Still traps, each in its own process with a 400 KB stack (node --stack-size): a nesting under the parser's
 limit that overflows the stack. The default Node stack takes these; a browser worker's may not.
 RETURN ((((1)))) nested 450 deep -> threw RangeError: Maximum call stack size exceeded; trap.js isWasmTrap true, relate_wasm.isTrap true
-  the same handle again -> threw Error: recursive use of an object detected which would lead to unsafe aliasing in rust; trap.js isWasmTrap false, relate_wasm.isTrap true
+  the same handle again -> threw Error: recursive use of an object detected which would lead to unsafe aliasing in rust; trap.js isWasmTrap true, relate_wasm.isTrap true
   a new handle on the same instance -> works
 RETURN [[[[]]]] nested 450 deep -> threw RangeError: Maximum call stack size exceeded; trap.js isWasmTrap true, relate_wasm.isTrap true
-  the same handle again -> threw Error: recursive use of an object detected which would lead to unsafe aliasing in rust; trap.js isWasmTrap false, relate_wasm.isTrap true
+  the same handle again -> threw Error: recursive use of an object detected which would lead to unsafe aliasing in rust; trap.js isWasmTrap true, relate_wasm.isTrap true
   a new handle on the same instance -> works
 
 ## a read-only handle in memory (R15): new RelateDb(true)

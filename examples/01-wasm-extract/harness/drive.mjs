@@ -34,7 +34,7 @@
  *       text`); each row as canon text without its `path` columns (paths carry internal ids).
  *
  * The Node side (also used in-process by the browser run for its comparisons) is web/gliner.js,
- * web/pipeline.js and web/store.js on Relate 1.2.0 WASM in memory and GLiNER2.5-small-v1,
+ * web/pipeline.js and web/store.js on Relate 1.3.0 WASM in memory and GLiNER2.5-small-v1,
  * exactly as harness/run.mjs runs them, with the page's defaults (no cutoffs, DEFAULT_GATE).
  *
  * Content comparisons use lib/replay.mjs digests of a dump without its (:_Run) nodes: a Run records
@@ -58,24 +58,26 @@ import { splitSentences } from '../web/split.js';
 import * as store from '../web/store.js';
 import { CANDIDATE_SIZE, NODE_SIZE } from '../web/tonvl.js';
 import { GENERIC_TEXT, GENERIC_YAML } from './fixtures.mjs';
+import { loadOntologies } from './corpus.mjs';
+import { ccgConversions } from './convert.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EX = path.resolve(HERE, '..');
 const ROOT = path.resolve(EX, '../..');
-const VER = '1.2.0';
+const VER = '1.3.0';
 const GLINER_REV = '4fa741eec466660daf4adc8703210138295e0b1b';
 const SMALL = { repo: 'fastino/gliner2.5-small-v1', rev: '7132dc4561c3f94563c6147e75ffa8ef34c4964a', name: 'gliner2.5-small-v1' };
 const WASM_DIR = process.env.GLINER_WASM_DIR || path.join(ROOT, '.cache/gliner-wasm', GLINER_REV.slice(0, 7));
 const MODEL_DIR = process.env.GLINER_SMALL_DIR || path.join(ROOT, '.cache/gliner', `${SMALL.name}@${SMALL.rev.slice(0, 7)}`);
-/** The browser section's store: the page's default ontology, create-context-graph's financial-services domain. */
+/** The browser section's store: the page's default ontology, the curated Financial Services (D20). */
 const ONTOLOGY = 'financial-services';
 const STORE = `ex01-kg-${ONTOLOGY}`;
 /** The sample the browser section extracts there, and the Node side reproduces. */
 const SAMPLE = 'financial-services';
 /** The kept entity the graph tab clicks (its evidence must show). */
-const CLICK = { id: 'Person:DANA_WHITLOCK', title: 'Dana Whitlock' };
-/** An edge the financial-services graph type refuses: OWNS is typed (:Person)-[:OWNS]->(:Account). */
-const ILLEGAL = { label: '(:Account)-[:OWNS]->(:Person)', query: "CREATE (:Account {name: 'Probe'})-[:OWNS]->(:Person {name: 'Probe Person'})" };
+const CLICK = { id: 'Client:ARJUN_MEHTA', title: 'Arjun Mehta' };
+/** An edge the financial-services graph type refuses: OWNS is typed (:Client)-[:OWNS]->(:Account). */
+const ILLEGAL = { label: '(:Account)-[:OWNS]->(:Client)', query: "CREATE (:Account {name: 'Probe'})-[:OWNS]->(:Client {name: 'Probe Client'})" };
 /** The ontology the picker opens next (D14: another store), and where the engine is terminated mid-section. */
 const OTHER = 'software-engineering';
 const WATCHDOG_MS = 3000;
@@ -120,13 +122,9 @@ function nodeEnv() {
     const modelInfo = { repo: SMALL.repo, rev: SMALL.rev, weights: sums.get('model.safetensors'), build: pipeline.BUILD };
     /** @type {Map<string, any>} */
     const ontologies = new Map();
-    // the bundled ontologies as the page's picker loads them: Ontology Graph Spec 1.1 documents (data/ontologies/ogs/ccg/),
-    // and the generic document of native.py's second round trip
-    const dir = path.join(EX, 'data/ontologies/ogs/ccg');
-    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.ontology.yaml')).sort()) {
-      const o = parseOntology(fs.readFileSync(path.join(dir, f), 'utf8'));
-      ontologies.set(o.id, o);
-    }
+    // the bundled ontologies as the page's picker loads them (curated and the packages, harness/corpus.mjs), and the
+    // generic document of native.py's second round trip
+    for (const [id, x] of loadOntologies()) ontologies.set(id, x.o);
     const generic = parseOntology(GENERIC_YAML);
     ontologies.set(generic.id, generic);
     const samples = new Map(JSON.parse(fs.readFileSync(path.join(EX, 'data/samples/samples.json'), 'utf8'))
@@ -359,6 +357,11 @@ async function extractSample(page, id) {
   await page.waitForFunction(() => ['running', 'confirm', 'failed'].includes(document.body.dataset.extract ?? '') ||
     document.body.dataset.extract === 'done', null, { timeout: 60000 });
   await waitDs(page, 'extract', ['done', 'failed', 'stopped', 'confirm'], 300000);
+  // A document over the page's ASK_ABOVE sentences is asked about first (sizeCheckAndExtract): say yes, as a reader would.
+  if ((await ds(page, 'extract')) === 'confirm') {
+    await page.click(tid('confirm-yes'));
+    await waitDs(page, 'extract', ['done', 'failed', 'stopped'], 300000);
+  }
   const kept = await page.$$eval(tid('kept-fact'), (els) => els.map((e) => /** @type {HTMLElement} */ (e).dataset.fact ?? ''));
   const data = await page.$eval(tid('extract-status'), (e) => ({ .../** @type {HTMLElement} */ (e).dataset }));
   return { state: await ds(page, 'extract'), status: await text(page, 'extract-status'), kept, data };
@@ -401,14 +404,17 @@ async function summaryLine(page) {
   }));
 }
 
-/** One console query through the UI (D11's lease): its status line, category, rows. */
+/**
+ * One console query through the UI (D11's lease): its status line, category, rows. `saved` names a
+ * queries/*.cypher file, typed into the editor without its comment header (the page's list holds the
+ * ontology's tools, not these files).
+ */
 async function consoleUi(page, query, { saved = '' } = {}) {
   await page.click(tid('tab-console'));
-  if (saved) await page.selectOption(tid('saved-queries'), saved);
-  else {
-    await page.selectOption(tid('saved-queries'), '');
-    await page.fill(tid('console-input'), query);
-  }
+  const q = saved ? savedQueries().find((x) => x.file === saved) : null;
+  if (saved && !q) throw new Error(`no queries/${saved}`);
+  await page.selectOption(tid('saved-queries'), '');
+  await page.fill(tid('console-input'), q ? q.src.split('\n').filter((l) => !l.startsWith('//')).join('\n').trim() : query);
   await page.$eval(tid('console-status'), (e) => { delete e.dataset.code; });
   await page.click(tid('console-run'));
   await page.waitForFunction(() => document.querySelector('[data-testid="console-status"]').dataset.code, null, { timeout: 60000 });
@@ -587,7 +593,7 @@ async function browserRun(argv) {
     const look0 = await firstLook();
     say(`step 1: ${JSON.stringify(look0.domain)} of ${look0.domains} domains, ${JSON.stringify(look0.about)}; ${JSON.stringify(look0.status)}`);
     say(`step 2: ${JSON.stringify(look0.load)}; step 3: ${JSON.stringify(look0.extract)} ${look0.extractOff ? 'disabled' : 'ENABLED'}, ${JSON.stringify(look0.hint)}; ` +
-      `Document: ${JSON.stringify(look0.doc)}: ${yes(look0.extractOff && look0.domains === 27 && look0.doc === 'the Financial Services sample', 'step 3 waits for the model, with the sample ready')}`);
+      `Document: ${JSON.stringify(look0.doc)}: ${yes(look0.extractOff && look0.domains === env.ontologies.size - 1 && look0.doc === 'the Financial Services sample', 'step 3 waits for the model, with the sample ready')}`);
     say(`the graph tab's empty state (${look0.empty}): ${JSON.stringify(look0.emptyTitle)}, ${JSON.stringify(look0.emptyText)} [${look0.emptyButton}]: ` +
       `${yes(look0.empty === 'load-model' && look0.emptyButton === look0.load, 'the empty graph tab says to load the model, with its button')}`);
     const docBox = await page.evaluate(() => ({ box: /** @type {HTMLTextAreaElement} */ (document.querySelector('[data-testid="doc-text"]')).value, doc: /** @type {any} */ (window).ex01.currentDoc() }));
@@ -631,7 +637,7 @@ async function browserRun(argv) {
 
     // ---- the sample -----------------------------------------------------------------------------------
     say();
-    say(`## the store: the ${SAMPLE} sample, create-context-graph's format (D7, D9, D16)`);
+    say(`## the store: the ${SAMPLE} sample, under its curated ontology (D7, D9, D16, D20)`);
     {
       const progress = /** @type {string[]} */ ([]);
       // The progress line over the graph while it runs (one per model call; their number is the plan's).
@@ -641,7 +647,10 @@ async function browserRun(argv) {
         const obs = new MutationObserver(() => { if (el.textContent) seen.add(el.textContent); });
         obs.observe(el, { childList: true, characterData: true, subtree: true });
         const done = () => { obs.disconnect(); resolve([...seen]); };
+        // extractSample answers the page's question (a sample over ASK_ABOVE sentences), so 'confirm' is not an end;
+        // the deadline is extractSample's own, so a page that never finishes cannot hold the run.
         const t = setInterval(() => { if (['done', 'failed', 'stopped'].includes(document.body.dataset.extract ?? '')) { clearInterval(t); done(); } }, 50);
+        setTimeout(() => { clearInterval(t); done(); }, 360000);
       }));
       const r = await extractSample(page, SAMPLE);
       progress.push(.../** @type {string[]} */ (await watching));
@@ -670,8 +679,8 @@ async function browserRun(argv) {
         `${yes(fitOk(f0), 'the graph is fitted after an extraction, its nodes and relationships labelled')}`);
     }
     const s0 = splitSentences(env.samples.get(SAMPLE).text)[1].text;
-    const rawRows = await consoleCall(page, `MATCH (s:_Sentence)-[:_INFERRED]->(:_Inference)<-[:_OF]-(p:_InferencePart)
-WHERE $text IS NOT NULL AND s.text = $text
+    const rawRows = await consoleCall(page, `MATCH (s:_Sentence)-[:_INFERRED]->(i:_Inference)<-[:_OF]-(p:_InferencePart) WHERE i.task IS NULL
+  AND $text IS NOT NULL AND s.text = $text
 RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
     const workerRaw = rawRows.ok ? rawRows.rows.map((/** @type {any} */ r) => r.text).join('') : '';
     const nodeRaw0 = await nodeRaw(ONTOLOGY, s0);
@@ -746,7 +755,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
       else note(`native.py x4 failed (${r.error ? r.error.message : `exit ${r.status}`}): ${(r.stderr || r.stdout || '').trim().split('\n').slice(-3).join(' | ')}`);
     }
     if (!x4made) {
-      // No 1.2.0 CLI on PATH (or it failed, noted above): the download through opfsfmt to-dir and to-tar, the
+      // No 1.3.0 CLI on PATH (or it failed, noted above): the download through opfsfmt to-dir and to-tar, the
       // same restore form X4 produces, but not written by native code. native.txt covers the native side.
       note(`no native clone for the X4 restore input${eng ? '' : ` (no relate on PATH reporting Relate v${VER}, or no uv)`}: using the download re-tarred by lib/opfsfmt.py`);
       const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ex01-x4-'));
@@ -771,7 +780,8 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
     say('## the same document again (D7, D9)');
     const again = await extractSample(page, SAMPLE);
     say(`${SAMPLE}: ${again.state}; ${again.status}`);
-    yes(again.data.inferences === '0' && again.data.skipped === '1', 're-extracting runs 0 inferences');
+    // Every section is complete (D9), so each is skipped: the sample's three.
+    yes(again.data.inferences === '0' && Number(again.data.skipped) > 0 && again.data.skipped === again.data.sections, 're-extracting runs 0 inferences');
 
     // ---- NVL -----------------------------------------------------------------------------------------------
     say();
@@ -805,7 +815,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
     say(`a click on ${CLICK.id} shows ${JSON.stringify(side)}, ${about.kind}, ${JSON.stringify(about.line)}, with ${ev.length} evidence sentence(s):`);
     for (const e of ev) say(`  ${e}`);
     yes(side.startsWith(CLICK.title) && ev.length > 0, 'a node click shows its evidence');
-    say(`  its key, generation and document ids only under "Stored properties", collapsed: ${yes(about.kind === 'Person' && about.props && !about.keyShown, 'the side panel keeps the store\'s bookkeeping folded away')}`);
+    say(`  its key, generation and document ids only under "Stored properties", collapsed: ${yes(about.kind === 'Client' && about.props && !about.keyShown, 'the side panel keeps the store\'s bookkeeping folded away')}`);
     // Relationship labels and the pointer: a selected node shows its relationships' labels; at a
     // zoom that leaves a kept relationship's line no room for its label, the label shows while the pointer is
     // over the line, on its midpoint, and goes when the pointer leaves.
@@ -884,16 +894,16 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
       `${yes(oc.nodes === st.ontology.kinds.length && oc.rels === oPairs && oc.rels > 0, 'the ontology tab draws the kinds and links')}; fitted, every kind inside and labelled: ${yes(fitOk(fo), 'the ontology picture is fitted and labelled')}`);
     const oPos = await page.evaluate(() => {
       const nvl = /** @type {any} */ (window).ex01.ontologyView.nvl;
-      const n = nvl.getNodes().find((/** @type {any} */ x) => x.id === 'Person');
+      const n = nvl.getNodes().find((/** @type {any} */ x) => x.id === 'Client');
       const r = /** @type {HTMLElement} */ (document.querySelector('[data-testid="ontology-graph"]')).getBoundingClientRect();
       return n && n.clientPosition ? { x: r.left + n.clientPosition.x, y: r.top + n.clientPosition.y } : null;
     });
     if (oPos) await page.mouse.click(oPos.x, oPos.y);
-    await page.waitForFunction(() => (document.querySelector('[data-testid="ontology-side"] [data-testid="side-title"]')?.textContent ?? '') === 'Person', null, { timeout: 15000 }).catch(() => {});
+    await page.waitForFunction(() => (document.querySelector('[data-testid="ontology-side"] [data-testid="side-title"]')?.textContent ?? '') === 'Client', null, { timeout: 15000 }).catch(() => {});
     const oSide = await page.$$eval(`${tid('ontology-side')} p`, (ps) => ps.map((x) => (x.textContent ?? '').trim()));
-    say('a click on Person shows:');
+    say('a click on Client shows:');
     for (const l of oSide) say(`  ${l}`);
-    yes(oSide.some((l) => /^Asked of the model as "person"/.test(l)) && oSide.some((l) => /^Its cutoffs: keeps at p ≥ /.test(l)), 'a kind click shows what it is asked and its cutoffs');
+    yes(oSide.some((l) => /^Asked of the model as "client"/.test(l)) && oSide.some((l) => /^Its cutoffs: keeps at p ≥ /.test(l)), 'a kind click shows what it is asked and its cutoffs');
 
     // ---- the console ----------------------------------------------------------------------------------------
     say();
@@ -1013,8 +1023,8 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: s0 });
     say(`an extraction queued during that lease ran after it: ${yes(wd.order.join(',') === 'console watchdog,extraction', 'the queued extraction runs after the lease')} (${wd.status}, ${wd.inferences} inference)`);
     const after = await consoleCall(page, 'MATCH (d:_Document) RETURN count(d) AS n');
     say(`the engine took the store back and the console works again: ${yes(after.ok, 'the console works after the watchdog')} (${after.ok ? after.rows[0].n : '?'} documents)`);
-    const qRaw = await consoleCall(page, `MATCH (s:_Sentence)-[:_INFERRED]->(:_Inference)<-[:_OF]-(p:_InferencePart)
-WHERE $text IS NOT NULL AND s.text = $text
+    const qRaw = await consoleCall(page, `MATCH (s:_Sentence)-[:_INFERRED]->(i:_Inference)<-[:_OF]-(p:_InferencePart) WHERE i.task IS NULL
+  AND $text IS NOT NULL AND s.text = $text
 RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const raw2 = qRaw.ok ? qRaw.rows.map((/** @type {any} */ r) => r.text).join('') : '';
     say(`its inference (the model from Cache Storage) is bit-identical to Node's: ${yes(raw2 !== '' && raw2 === await nodeRaw(ONTOLOGY, newSentence), 'the reloaded model infers as Node does')}`);
@@ -1171,6 +1181,29 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const tCtx = { kinds: tOnto.types, links: tOnto.relations, procedures: tProcs, indexes: storeIndexNames(store.LOOKUP_INDEXES, [...store.STORE_CONSTRAINTS, ...ONTOLOGY_CONSTRAINTS, store.STORE_FULLTEXT]) };
     for (const t of tFlat) say(`  ${t.anchor} ${t.name} [${t.predict}]: ${t.note}`);
     say(`  each note equals web/console.js toolCompat's in Node: ${yes(tFlat.every((t, i) => t.note === toolCompat(tOnto.tools[i], tCtx).text), "the page's tool notes = Node's")}`);
+    // The editor's "Ontology tool" list: the same tools (those with a query to load), grouped by element, in document order.
+    const tAnchor = (/** @type {any} */ t) => (t.anchor.kind === 'node' ? t.anchor.label : `[:${t.anchor.type}]`);
+    const tLoadable = tOnto.tools.filter((/** @type {any} */ t) => t.type === 'canonicalQuery' && typeof t.cypher === 'string' && t.cypher.trim() !== '');
+    const tOpts = await page.$$eval(`${tid('saved-queries')} optgroup`, (gs) => gs.map((g) => ({
+      label: /** @type {HTMLOptGroupElement} */ (g).label, names: [...g.querySelectorAll('option')].map((o) => (o.textContent ?? '').split(':')[0]),
+    })));
+    const tOptFlat = tOpts.flatMap((g) => g.names.map((n) => `${g.label.replace(/ \((?:node|relationship)\)$/, '')}/${n}`));
+    say(`the editor's "Ontology tool" list holds the ${tOptFlat.length} tools with a query, by element: ${tOpts.map((g) => `${g.label} ${g.names.length}`).join(', ')}: ` +
+      `${yes(JSON.stringify(tOptFlat) === JSON.stringify(tLoadable.map((/** @type {any} */ t) => `${tAnchor(t)}/${t.name}`)), "the editor's list holds the ontology's tools in document order")}`);
+    // Chosen there, a tool loads as its card's "Load into editor" does: its query, its line, its example values; Run applies its checks.
+    const tAcc = tOnto.tools.find((/** @type {any} */ t) => t.name === 'account-by-number');
+    const tAccVal = await page.$eval(tid('saved-queries'), (s, n) => [.../** @type {HTMLSelectElement} */ (s).options].find((o) => (o.textContent ?? '').startsWith(`${n}:`))?.value ?? '', tAcc.name);
+    await page.selectOption(tid('saved-queries'), tAccVal);
+    const tAccEditor = await page.$eval(tid('console-input'), (e) => /** @type {HTMLTextAreaElement} */ (e).value);
+    const tAccDoc = await text(page, 'query-doc');
+    const tAccParam = await page.$eval(tid('param-accountId'), (e) => /** @type {HTMLInputElement} */ (e).value).catch(() => null);
+    await page.$eval(tid('console-status'), (e) => { delete e.dataset.code; });
+    await page.click(tid('console-run'));
+    await page.waitForFunction(() => document.querySelector('[data-testid="console-status"]').dataset.code, null, { timeout: 60000 });
+    const tAccRun = await page.$eval(tid('console-status'), (e) => ({ code: e.dataset.code ?? '', rows: Number(e.dataset.rows ?? -1) }));
+    say(`choosing ${tAcc.name} there loads its query and its line (${JSON.stringify(tAccDoc.slice(0, 40))}…), with $accountId = ${JSON.stringify(tAccParam)} (its example); ` +
+      `Run: ${tAccRun.code}, ${tAccRun.rows} row(s): ${yes(tAccEditor === tAcc.cypher.trim() && tAccDoc.startsWith(`Tool ${tAcc.name} on ${tAnchor(tAcc)}`) && tAccParam === 'ACC-2207' && tAccRun.code === 'ok',
+      "a tool chosen in the editor's list loads with its example values and runs")}`);
     /** One tool card, by anchor and name. @param {string} anchor @param {string} name */
     const tCard = (anchor, name) => `${tid('tool-group')}[data-anchor="${anchor}"] ${tid('tool')}[data-tool="${name}"]`;
     /** Open a card, run it with its inputs as they are, and wait for its status. */
@@ -1183,9 +1216,29 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
       await page.waitForFunction((sel) => /** @type {HTMLElement} */ (document.querySelector(`${sel} [data-testid="tool-status"]`)).dataset.code, tCard(anchor, name), { timeout: 60000 });
       return page.$eval(`${tCard(anchor, name)} ${tid('tool-status')}`, (e) => ({ code: e.dataset.code ?? '', rows: Number(e.dataset.rows ?? -1), refused: e.dataset.refused ?? '', text: (e.textContent ?? '').trim() }));
     };
-    const tDv = tOnto.tools.find((/** @type {any} */ t) => t.name === 'defaultView');
+    /** Click an entity in the graph tab (NVL) by its key. @param {string} id */
+    const tClickEntity = async (id) => {
+      await page.click(tid('tab-graph'));
+      await settled(page, 'graphView');
+      const pos = await page.evaluate((key) => {
+        const nvl = /** @type {any} */ (window).ex01.graphView.nvl;
+        const n = nvl.getNodes().find((/** @type {any} */ x) => x.id === key);
+        const r = document.querySelector('[data-testid="graph-canvas"]').getBoundingClientRect();
+        return n && n.clientPosition ? { x: r.left + n.clientPosition.x, y: r.top + n.clientPosition.y } : null;
+      }, id);
+      if (pos) await page.mouse.click(pos.x, pos.y);
+      return pos !== null;
+    };
+    /** The side panel's tool rows, as they are now. */
+    const tSideNow = () => page.$$eval(tid('side-tool'), (els) => els.map((e) => ({
+      name: /** @type {HTMLElement} */ (e).dataset.tool ?? '', run: (e.querySelector('[data-testid="side-tool-run"]')?.textContent ?? '').trim(),
+    })));
+    // A tool whose rows mix the knowledge graph with the trace: the client's links, then its mentions.
+    const tDv = tOnto.tools.find((/** @type {any} */ t) => t.name === 'client-in-graph-and-text');
+    const tDvCard = tCard(tDv.anchor.label, tDv.name);
     const tHideBefore = await page.$eval(tid('console-hide-bookkeeping'), (e) => /** @type {HTMLInputElement} */ (e).checked);
-    const tr0 = await tRunCard(tDv.anchor.label, 'defaultView');
+    await page.$eval(`${tDvCard} [data-name="client"]`, (e, v) => { /** @type {HTMLInputElement} */ (e).value = v; }, CLICK.title);
+    const tr0 = await tRunCard(tDv.anchor.label, tDv.name);
     await page.waitForFunction(() => /** @type {any} */ (window).ex01.consoleView.counts().nodes > 0, null, { timeout: 30000 }).catch(() => {});
     await settled(page, 'consoleView');
     /** The console's table rows, the hidden-rows line and NVL's counts, as they are now. */
@@ -1196,8 +1249,10 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     });
     const tOff = await tShownNow();
     const tEditor = await page.$eval(tid('console-input'), (e) => /** @type {HTMLTextAreaElement} */ (e).value);
-    say(`Run ${tDv.anchor.label}'s defaultView, ${JSON.stringify(tDv.cypher.trim())}: ${tr0.code}, ${tr0.rows} rows (lease, read-only); the editor holds the tool's query: ` +
+    say(`Run ${tDv.anchor.label}'s ${tDv.name} with $client = ${JSON.stringify(CLICK.title)}: ${tr0.code}, ${tr0.rows} rows (lease, read-only); the editor holds the tool's query: ` +
       `${yes(tr0.code === 'ok' && tr0.rows > 0 && tEditor === tDv.cypher.trim(), 'a tool run returns rows')}`);
+    const tChosen = await page.$eval(tid('saved-queries'), (s) => (/** @type {HTMLSelectElement} */ (s).selectedOptions[0]?.textContent ?? '').split(':')[0]);
+    say(`  the editor's "Ontology tool" list shows it: ${JSON.stringify(tChosen)}: ${yes(tChosen === tDv.name, "a tool run from its card is chosen in the editor's list")}`);
     say(`  "Hide the example's bookkeeping" ${tHideBefore ? 'CHECKED' : 'unchecked'} (the default): the table shows ${tOff.rows} rows, ${JSON.stringify(tOff.hidden.text)}; NVL draws ${tOff.cv.nodes} nodes and ` +
       `${tOff.cv.rels} relationships: ${yes(!tHideBefore && tOff.rows === tr0.rows && tOff.hidden.n === 0 && tOff.cv.nodes > 0 && tOff.cv.rels > 0, "the console shows every row by default")}`);
     await page.click(tid('console-hide-bookkeeping'));
@@ -1207,7 +1262,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const tRemembered = await page.evaluate(() => { try { return localStorage.getItem('ex01.consoleHideBookkeeping'); } catch { return null; } });
     say(`  checked: the table shows ${tOn.rows} rows, ${JSON.stringify(tOn.hidden.text)}; NVL draws ${tOn.cv.nodes} nodes and ${tOn.cv.rels} relationships; ` +
       `remembered as ex01.consoleHideBookkeeping = ${tRemembered}: ${yes(tOn.hidden.n > 0 && tOn.rows + tOn.hidden.n === tr0.rows && tOn.cv.nodes > 0 && tOn.cv.rels > 0 &&
-        tOn.cv.nodes < tOff.cv.nodes && tOn.cv.rels < tOff.cv.rels && tRemembered === '1', "the toggle hides the example's bookkeeping, undrawn too, and is remembered")}`);
+        tOn.cv.nodes < tOff.cv.nodes && tOn.cv.rels < tOff.cv.rels && tRemembered === '1', "the toggle hides the example's bookkeeping (the mentions), undrawn too, and is remembered")}`);
     await page.click(tid('console-hide-bookkeeping'));
     await page.waitForFunction(() => /** @type {HTMLElement} */ (document.querySelector('[data-testid="console-hidden"]')).dataset.hidden === '0', null, { timeout: 10000 }).catch(() => {});
     await settled(page, 'consoleView');
@@ -1215,103 +1270,78 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     say(`  the console's table columns: ${tCols.join(', ')}`);
     // The editor's line about the loaded tool holds only while the editor holds its query unchanged.
     const tDoc0 = await text(page, 'query-doc');
-    await page.fill(tid('console-input'), `${tDv.cypher.trim()} `.replace('LIMIT 100', 'LIMIT 5'));
+    await page.fill(tid('console-input'), `${tDv.cypher.trim()}\nLIMIT 5`);
     const tDoc1 = await text(page, 'query-doc');
     await page.fill(tid('console-input'), tDv.cypher.trim());
     const tDoc2 = await text(page, 'query-doc');
-    say(`the editor's line about the tool: ${JSON.stringify(tDoc0.slice(0, 40))}…; once the query is edited: ${JSON.stringify(tDoc1)}; edited back: the tool's line again: ` +
-      `${yes(tDoc0.startsWith('Tool defaultView on Person') && tDoc1.startsWith('Edited from the tool defaultView') && tDoc2 === tDoc0, "an edited tool query loses the tool's description")}`);
-    // A STRING parameter read only through toInteger() takes a whole number of 0 or more, checked before any query.
-    const tLa = tOnto.tools.find((/** @type {any} */ t) => t.name === 'list_accounts');
-    const tSentL = await page.evaluate(() => /** @type {any} */ (window).ex01.state.consoleQueries);
-    const tLimits = [];
-    for (const v of ['2.7', '-1']) {
-      await page.$eval(`${tCard(tLa.anchor.label, 'list_accounts')} [data-name="limit"]`, (e, x) => { /** @type {HTMLInputElement} */ (e).value = x; }, v);
-      const r = await tRunCard(tLa.anchor.label, 'list_accounts');
-      tLimits.push(`${JSON.stringify(v)} ${r.code}: ${r.text}`);
-    }
-    const tSentL2 = await page.evaluate(() => /** @type {any} */ (window).ex01.state.consoleQueries);
-    for (const l of tLimits) say(`Run list_accounts with $limit = ${l}`);
-    await page.$eval(`${tCard(tLa.anchor.label, 'list_accounts')} [data-name="limit"]`, (e) => { /** @type {HTMLInputElement} */ (e).value = '10'; });
-    say(`  queries sent to the console worker: ${tSentL2 - tSentL}: ${yes(tLimits.every((l) => / refused: /.test(l)) && tSentL2 === tSentL, 'a non-integer or negative $limit is refused before any query')}`);
+    say(`the editor's line about the tool: ${JSON.stringify(tDoc0.slice(0, 48))}…; once the query is edited: ${JSON.stringify(tDoc1.slice(0, 60))}; edited back: the tool's line again: ` +
+      `${yes(tDoc0.startsWith(`Tool ${tDv.name} on ${tDv.anchor.label}`) && tDoc1.startsWith(`Edited from the tool ${tDv.name}`) && tDoc2 === tDoc0, "an edited tool query loses the tool's description")}`);
+    // A required parameter left empty is refused before any query ($limit's whole-number rule is audit.txt's, in Node).
+    const tFind = tOnto.tools.find((/** @type {any} */ t) => t.name === 'find-a-client');
+    const tFindCard = tCard(tFind.anchor.label, tFind.name);
     const tSent0 = await page.evaluate(() => /** @type {any} */ (window).ex01.state.consoleQueries);
-    await page.$eval(`${tCard('Person', 'search_customer')} [data-name="query"]`, (e) => { /** @type {HTMLInputElement} */ (e).value = ''; });
-    const tr1 = await tRunCard('Person', 'search_customer');
+    await page.$eval(`${tFindCard} [data-name="client"]`, (e) => { /** @type {HTMLInputElement} */ (e).value = ''; });
+    const tr1 = await tRunCard(tFind.anchor.label, tFind.name);
     const tSent1 = await page.evaluate(() => /** @type {any} */ (window).ex01.state.consoleQueries);
-    say(`Run search_customer with $query empty: ${tr1.code} (${tr1.refused}): ${tr1.text}`);
-    say(`  queries sent to the console worker: ${tSent1 - tSent0}: ${yes(tr1.code === 'refused' && tr1.refused === 'query' && tSent1 === tSent0, 'a tool run with a missing required parameter is refused before any query')}`);
-    // The graph tab's side panel: a Person's tools, and a run prefilled with its name.
-    await page.click(tid('tab-graph'));
-    await settled(page, 'graphView');
-    const tPos = await page.evaluate((id) => {
-      const nvl = /** @type {any} */ (window).ex01.graphView.nvl;
-      const n = nvl.getNodes().find((/** @type {any} */ x) => x.id === id);
-      const r = document.querySelector('[data-testid="graph-canvas"]').getBoundingClientRect();
-      return n && n.clientPosition ? { x: r.left + n.clientPosition.x, y: r.top + n.clientPosition.y } : null;
-    }, CLICK.id);
-    if (tPos) await page.mouse.click(tPos.x, tPos.y);
+    say(`Run ${tFind.name} with $client empty: ${tr1.code} (${tr1.refused}): ${tr1.text}`);
+    say(`  queries sent to the console worker: ${tSent1 - tSent0}: ${yes(tr1.code === 'refused' && tr1.refused === 'client' && tSent1 === tSent0, 'a tool run with a missing required parameter is refused before any query')}`);
+    // The graph tab's side panel: a Client's tools, and a run prefilled with its name.
+    await tClickEntity(CLICK.id);
     await page.waitForSelector(tid('side-tools'), { timeout: 15000 }).catch(() => {});
-    const tSide = await page.$$eval(tid('side-tool'), (els) => els.map((e) => ({
-      name: /** @type {HTMLElement} */ (e).dataset.tool ?? '', run: (e.querySelector('[data-testid="side-tool-run"]')?.textContent ?? '').trim(),
-    })));
-    const tPerson = tOnto.tools.filter((/** @type {any} */ t) => t.anchor.label === 'Person').map((/** @type {any} */ t) => t.name);
-    say(`a click on ${CLICK.id} lists Person's tools in the side panel: ${tSide.map((x) => `${x.name} [${x.run}]`).join(', ')}: ` +
-      `${yes(JSON.stringify(tSide.map((x) => x.name)) === JSON.stringify(tPerson), "the side panel lists the clicked kind's tools")}`);
-    await page.$eval(`${tCard('Person', 'search_customer')} ${tid('tool-status')}`, (e) => { delete /** @type {HTMLElement} */ (e).dataset.code; });
-    await page.click(`${tid('side-tool')}[data-tool="search_customer"] ${tid('side-tool-run')}`);
-    await page.waitForFunction((sel) => /** @type {HTMLElement} */ (document.querySelector(`${sel} [data-testid="tool-status"]`)).dataset.code, tCard('Person', 'search_customer'), { timeout: 60000 });
-    const tr2 = await page.$eval(`${tCard('Person', 'search_customer')} ${tid('tool-status')}`, (e) => ({ code: e.dataset.code ?? '', rows: Number(e.dataset.rows ?? -1) }));
-    const tFilled = await page.$eval(`${tCard('Person', 'search_customer')} [data-name="query"]`, (e) => /** @type {HTMLInputElement} */ (e).value);
+    const tSide = await tSideNow();
+    const tKindTools = tOnto.tools.filter((/** @type {any} */ t) => t.anchor.label === tFind.anchor.label).map((/** @type {any} */ t) => t.name);
+    say(`a click on ${CLICK.id} lists ${tFind.anchor.label}'s tools in the side panel: ${tSide.map((x) => `${x.name} [${x.run}]`).join(', ')}: ` +
+      `${yes(JSON.stringify(tSide.map((x) => x.name)) === JSON.stringify(tKindTools), "the side panel lists the clicked kind's tools")}`);
+    await page.$eval(`${tFindCard} ${tid('tool-status')}`, (e) => { delete /** @type {HTMLElement} */ (e).dataset.code; });
+    await page.click(`${tid('side-tool')}[data-tool="${tFind.name}"] ${tid('side-tool-run')}`);
+    await page.waitForFunction((sel) => /** @type {HTMLElement} */ (document.querySelector(`${sel} [data-testid="tool-status"]`)).dataset.code, tFindCard, { timeout: 60000 });
+    const tr2 = await page.$eval(`${tFindCard} ${tid('tool-status')}`, (e) => ({ code: e.dataset.code ?? '', rows: Number(e.dataset.rows ?? -1) }));
+    const tFilled = await page.$eval(`${tFindCard} [data-name="client"]`, (e) => /** @type {HTMLInputElement} */ (e).value);
     const tShown = await page.isVisible(tid('panel-console'));
     const tRows = await page.$$eval(`${tid('console-table')} tbody tr`, (trs) => trs.map((tr) => [...tr.querySelectorAll('td')].map((td) => (td.textContent ?? '').trim()).join(' | ')));
-    say(`its Run prefilled $query = ${JSON.stringify(tFilled)} and opened the console tab (${tShown ? 'shown' : 'NOT shown'}): ${tr2.code}, ${tr2.rows} rows: ` +
+    say(`its Run prefilled $client = ${JSON.stringify(tFilled)} and opened the console tab (${tShown ? 'shown' : 'NOT shown'}): ${tr2.code}, ${tr2.rows} rows: ` +
       `${yes(tShown && tFilled === CLICK.title && tr2.code === 'ok' && tr2.rows > 0, 'a side-panel tool run is prefilled with the entity name and returns rows')}`);
     for (const r of [...tRows].sort(replay.cmp)) say(`  ${r}`);
-    // A kind whose tools mostly take no name: the side panel asks for their parameters instead of running them.
+    // An account: its number is an identifier, never filled with the entity's name; a tool with no parameter runs about the kind.
     const ACCOUNT = 'Account:ACC_2207';
-    await page.click(tid('tab-graph'));
-    await settled(page, 'graphView');
-    const tPosA = await page.evaluate((id) => {
-      const nvl = /** @type {any} */ (window).ex01.graphView.nvl;
-      const n = nvl.getNodes().find((/** @type {any} */ x) => x.id === id);
-      const r = document.querySelector('[data-testid="graph-canvas"]').getBoundingClientRect();
-      return n && n.clientPosition ? { x: r.left + n.clientPosition.x, y: r.top + n.clientPosition.y } : null;
-    }, ACCOUNT);
-    if (tPosA) await page.mouse.click(tPosA.x, tPosA.y);
-    await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="side-tool"]')].some((e) => /** @type {HTMLElement} */ (e).dataset.tool === 'list_accounts'), null, { timeout: 15000 }).catch(() => {});
-    const tSideA = await page.$$eval(tid('side-tool'), (els) => els.map((e) => ({
-      name: /** @type {HTMLElement} */ (e).dataset.tool ?? '', run: (e.querySelector('[data-testid="side-tool-run"]')?.textContent ?? '').trim(),
-    })));
+    await tClickEntity(ACCOUNT);
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="side-tool"]')].some((e) => /** @type {HTMLElement} */ (e).dataset.tool === 'account-by-number'), null, { timeout: 15000 }).catch(() => {});
+    const tSideA = await tSideNow();
     say(`a click on ${ACCOUNT} lists Account's tools: ${tSideA.map((x) => `${x.name} [${x.run}]`).join(', ')}: ` +
-      `${yes(tSideA.some((x) => x.name === 'list_accounts' && x.run === 'Run with $limit = "10"') && tSideA.some((x) => x.name === 'get_account_by_id' && x.run === 'Open: fill $id') &&
-        tSideA.every((x) => !/ACC-2207/.test(x.run) || /\$query|\$name/.test(x.run)), "no $limit or $id is prefilled with the entity's name; a tool whose parameters all have a value runs")}`);
-    // list_accounts: no parameter takes the name and $limit starts at 10 (its description's suggestion), so it runs as a tool about the kind.
-    await page.$eval(`${tCard(tLa.anchor.label, 'list_accounts')} ${tid('tool-status')}`, (e) => { delete /** @type {HTMLElement} */ (e).dataset.code; });
-    await page.click(`${tid('side-tool')}[data-tool="list_accounts"] ${tid('side-tool-run')}`);
-    await page.waitForFunction((sel) => /** @type {HTMLElement} */ (document.querySelector(`${sel} [data-testid="tool-status"]`)).dataset.code, tCard(tLa.anchor.label, 'list_accounts'), { timeout: 60000 }).catch(() => {});
-    const tKind = await page.$eval(`${tCard(tLa.anchor.label, 'list_accounts')} ${tid('tool-status')}`, (e) => ({ code: e.dataset.code ?? '', rows: Number(e.dataset.rows ?? -1) }));
-    const tKindLimit = await page.$eval(`${tCard(tLa.anchor.label, 'list_accounts')} [data-name="limit"]`, (e) => /** @type {HTMLInputElement} */ (e).value);
-    say(`its list_accounts button ran it in the console tab (${await page.isVisible(tid('panel-console')) ? 'shown' : 'NOT shown'}) with $limit = ${JSON.stringify(tKindLimit)}: ${tKind.code}, ${tKind.rows} row${tKind.rows === 1 ? '' : 's'}: ` +
-      `${yes(tKind.code === 'ok' && tKind.rows > 0 && tKindLimit === '10', 'a tool about the kind runs from the side panel at its start values')}`);
-    await page.click(tid('tab-graph'));
-    await settled(page, 'graphView');
-    const tPosA2 = await page.evaluate((id) => {
-      const nvl = /** @type {any} */ (window).ex01.graphView.nvl;
-      const n = nvl.getNodes().find((/** @type {any} */ x) => x.id === id);
-      const r = document.querySelector('[data-testid="graph-canvas"]').getBoundingClientRect();
-      return n && n.clientPosition ? { x: r.left + n.clientPosition.x, y: r.top + n.clientPosition.y } : null;
-    }, ACCOUNT);
-    if (tPosA2) await page.mouse.click(tPosA2.x, tPosA2.y);
-    await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="side-tool"]')].some((e) => /** @type {HTMLElement} */ (e).dataset.tool === 'get_account_by_id'), null, { timeout: 15000 }).catch(() => {});
-    const tGa = tOnto.tools.find((/** @type {any} */ t) => t.name === 'get_account_by_id');
+      `${yes(tSideA.some((x) => x.name === 'account-by-number' && x.run === 'Open: fill $accountId') && tSideA.some((x) => x.name === 'who-manages-what-and-why' && x.run === 'Run') &&
+        tSideA.every((x) => !/ACC-2207/.test(x.run)), "no identifier parameter is prefilled with the entity's name; a tool with no parameters runs")}`);
+    const tWho = tOnto.tools.find((/** @type {any} */ t) => t.name === 'who-manages-what-and-why');
+    const tWhoCard = tCard(tWho.anchor.label, tWho.name);
+    await page.$eval(`${tWhoCard} ${tid('tool-status')}`, (e) => { delete /** @type {HTMLElement} */ (e).dataset.code; });
+    await page.click(`${tid('side-tool')}[data-tool="${tWho.name}"] ${tid('side-tool-run')}`);
+    await page.waitForFunction((sel) => /** @type {HTMLElement} */ (document.querySelector(`${sel} [data-testid="tool-status"]`)).dataset.code, tWhoCard, { timeout: 60000 }).catch(() => {});
+    const tKind = await page.$eval(`${tWhoCard} ${tid('tool-status')}`, (e) => ({ code: e.dataset.code ?? '', rows: Number(e.dataset.rows ?? -1) }));
+    say(`its ${tWho.name} button ran it in the console tab (${await page.isVisible(tid('panel-console')) ? 'shown' : 'NOT shown'}): ${tKind.code}, ${tKind.rows} row${tKind.rows === 1 ? '' : 's'}: ` +
+      `${yes(tKind.code === 'ok' && tKind.rows > 0, 'a tool about the kind runs from the side panel')}`);
+    await tClickEntity(ACCOUNT);
+    await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="side-tool"]')].some((e) => /** @type {HTMLElement} */ (e).dataset.tool === 'account-by-number'), null, { timeout: 15000 }).catch(() => {});
+    const tGa = tOnto.tools.find((/** @type {any} */ t) => t.name === 'account-by-number');
+    const tGaCard = tCard(tGa.anchor.label, tGa.name);
     const tSentA = await page.evaluate(() => /** @type {any} */ (window).ex01.state.consoleQueries);
-    await page.click(`${tid('side-tool')}[data-tool="get_account_by_id"] ${tid('side-tool-run')}`);
-    await page.waitForFunction((sel) => /** @type {HTMLElement} */ (document.querySelector(`${sel} [data-testid="tool-status"]`)).dataset.code === 'ask', tCard(tGa.anchor.label, 'get_account_by_id'), { timeout: 15000 }).catch(() => {});
-    const tAsk = await page.$eval(`${tCard(tGa.anchor.label, 'get_account_by_id')} ${tid('tool-status')}`, (e) => ({ code: e.dataset.code ?? '', text: (e.textContent ?? '').trim() }));
-    const tAskId = await page.$eval(`${tCard(tGa.anchor.label, 'get_account_by_id')} [data-name="id"]`, (e) => /** @type {HTMLInputElement} */ (e).value);
+    await page.click(`${tid('side-tool')}[data-tool="${tGa.name}"] ${tid('side-tool-run')}`);
+    await page.waitForFunction((sel) => /** @type {HTMLElement} */ (document.querySelector(`${sel} [data-testid="tool-status"]`)).dataset.code === 'ask', tGaCard, { timeout: 15000 }).catch(() => {});
+    const tAsk = await page.$eval(`${tGaCard} ${tid('tool-status')}`, (e) => ({ code: e.dataset.code ?? '', text: (e.textContent ?? '').trim() }));
+    const tAskId = await page.$eval(`${tGaCard} [data-name="accountId"]`, (e) => /** @type {HTMLInputElement} */ (e).value);
     const tSentA2 = await page.evaluate(() => /** @type {any} */ (window).ex01.state.consoleQueries);
-    say(`its get_account_by_id button opened the console tab (${await page.isVisible(tid('panel-console')) ? 'shown' : 'NOT shown'}) and asks: ${JSON.stringify(tAsk.text)}; $id = ${JSON.stringify(tAskId)}; ` +
+    say(`its ${tGa.name} button opened the console tab (${await page.isVisible(tid('panel-console')) ? 'shown' : 'NOT shown'}) and asks: ${JSON.stringify(tAsk.text)}; $accountId = ${JSON.stringify(tAskId)}; ` +
       `queries sent: ${tSentA2 - tSentA}: ${yes(tAsk.code === 'ask' && tAskId === '' && tSentA2 === tSentA, 'a tool with an empty parameter asks for it instead of running')}`);
+    // D27: a transaction's values read from the text, in its side panel, as publish wrote them, with their sentences.
+    const TRADE = 'Transaction:TX_4471';
+    await tClickEntity(TRADE);
+    await page.waitForSelector(tid('side-values'), { timeout: 15000 }).catch(() => {});
+    const tVals = await page.$$eval(tid('side-value'), (els) => els.map((e) => ({
+      prop: /** @type {HTMLElement} */ (e).dataset.prop ?? '', value: (e.querySelector('strong')?.textContent ?? '').trim(),
+      marked: (e.querySelector('mark')?.textContent ?? '').trim(),
+    })));
+    const tValOf = (/** @type {string} */ p) => tVals.find((v) => v.prop === p)?.value;
+    say(`a click on ${TRADE} shows the values read from the text: ${tVals.map((v) => `${v.prop} = ${v.value} ("${v.marked}")`).join('; ') || 'NONE'}: ` +
+      `${yes(Number(tValOf('amount')) === 410000 && tValOf('tradeDate') === '2026-09-22' && tValOf('side') === 'buy' && tVals.every((v) => v.marked !== ''),
+        "an entity's side panel shows its read values, typed as published, each marked in its sentence")}`);
     note(`tools done (${secs()})`);
 
     // ---- a second tab ---------------------------------------------------------------------------------------------
@@ -1337,17 +1367,12 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     // ---- a store that keeps another version of its bundled ontology ---------------------------------------------------
     say();
     say("## a store that keeps another version of its bundled ontology (an earlier build's conversion), and Re-apply");
-    // The financial-services document converted another way: create-context-graph's icon and node size in
-    // display.custom, beside the caption, not in a createContextGraph:display extension. Applied through the editor.
-    const olderDoc = parseDocument(fs.readFileSync(path.join(EX, 'data/ontologies/ogs/ccg', `${ONTOLOGY}.ontology.yaml`), 'utf8'));
+    // The financial-services document as an earlier wording of it: every node's description with a clause added,
+    // its kinds, links and graph type unchanged. Applied through the editor.
+    const olderDoc = parseDocument(fs.readFileSync(path.join(EX, 'data/ontologies/domains', `${ONTOLOGY}.ontology.yaml`), 'utf8'));
     let olderMoved = 0;
     for (const node of Object.values(olderDoc.nodes)) {
-      const custom = node.extensions?.custom ?? {};
-      const disp = custom['createContextGraph:display'];
-      if (!disp) continue;
-      node.extensions.display = { ...node.extensions.display, custom: { ...node.extensions.display.custom, ...disp } };
-      delete custom['createContextGraph:display'];
-      if (!Object.keys(custom).length) delete node.extensions.custom;
+      node.description = `${String(node.description ?? '').trim()} (An earlier wording.)`;
       olderMoved++;
     }
     // A cutoff the user set (at its default value, small-v1's store.DEFAULT_GATE, so the graph does not move): it must
@@ -1371,7 +1396,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const keep1 = await keeps();
     const staleText = ((await page.textContent('#ontology-stale-text')) ?? '').trim();
     const pick1 = await page.$eval(tid('domain-select'), (e) => /** @type {HTMLSelectElement} */ (e).selectedOptions[0]?.textContent ?? '');
-    say(`applied through the editor: the ${ONTOLOGY} document with the icon and size of its ${olderMoved} nodes in display.custom; the page says: ${JSON.stringify(staleText)}; ` +
+    say(`applied through the editor: the ${ONTOLOGY} document with the descriptions of its ${olderMoved} nodes reworded; the page says: ${JSON.stringify(staleText)}; ` +
       `the picker shows ${JSON.stringify(pick1)}: ${yes(await page.isVisible(tid('ontology-stale')) && /an earlier build's conversion, or an edit/.test(staleText) && keep1.sha !== keep0.sha, 'a store with another version of a bundled ontology says so')}`);
     say(`  ${(await text(page, 'notice')) || 'no notice'}`);
     await page.click(tid('ontology-reapply'));
@@ -1380,7 +1405,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const keep2 = await keeps();
     const pick2 = await page.$eval(tid('domain-select'), (e) => /** @type {HTMLSelectElement} */ (e).value);
     say(`Re-apply the bundled one: the note is gone, the picker holds ${pick2}, the store's document is the bundled one again (its sha): ` +
-      `${yes(!(await page.isVisible(tid('ontology-stale'))) && pick2 === `ogs/ccg/${ONTOLOGY}.ontology.yaml` && keep2.sha === keep0.sha, 'Re-apply brings the bundled document back')}`);
+      `${yes(!(await page.isVisible(tid('ontology-stale'))) && pick2 === `domains/${ONTOLOGY}.ontology.yaml` && keep2.sha === keep0.sha, 'Re-apply brings the bundled document back')}`);
     say(`  ${(await text(page, 'notice')) || 'no notice'}`);
     say(`  kept: verdicts ${keep0.verdicts} -> ${keep2.verdicts}; cutoffs set by you: ${keep0.user} -> ${keep2.user}; the typed graph ${keep0.entities} entities and ${keep0.facts} relationships -> ` +
       `${keep2.entities} and ${keep2.facts}: ${yes(keep2.verdicts === keep0.verdicts && keep0.verdicts > 0 && keep2.user === keep0.user && keep0.user !== '' && keep2.entities === keep0.entities && keep2.facts === keep0.facts, 'Re-apply keeps verdicts, the cutoffs you set and the graph')}`);
@@ -1403,7 +1428,7 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     if (pPos) await page.mouse.click(pPos.x, pPos.y);
     await page.waitForSelector(`${tid('side-panel')} ${tid('side-title')}`, { timeout: 15000 }).catch(() => {});
     const sideBefore = await page.$eval(tid('side-panel'), (e) => (e.querySelector('[data-testid="side-title"]')?.textContent ?? '').trim()).catch(() => '');
-    await page.selectOption(tid('domain-select'), `ogs/ccg/${OTHER}.ontology.yaml`);
+    await page.selectOption(tid('domain-select'), `domains/${OTHER}.ontology.yaml`);
     await page.waitForFunction((name) => document.body.dataset.store === name, `ex01-kg-${OTHER}`, { timeout: 60000 }).catch(() => {});
     await waitDs(page, 'busy', ['0'], 60000);
     await page.waitForFunction((t) => /** @type {any} */ (window).ex01.state.doc.sample?.id === t, OTHER, { timeout: 30000 }).catch(() => {});
@@ -1426,6 +1451,12 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
         'a store switch clears the side panel, the summary line and step 3\'s last result')}`);
     say(`the Document box holds ${JSON.stringify(switched.doc)} (${JSON.stringify(switched.title)}); step 1 says ${JSON.stringify(switched.about)}; the empty graph tab: ${switched.empty}: ` +
       `${yes(switched.doc === 'the Software Engineering sample' && switched.title === OTHER && switched.empty === 'extract', 'the domain picker opens the ontology, its store and its sample')}`);
+    // The console's "Ontology tool" list follows the store's ontology, nothing chosen.
+    const swTools = env.ontologies.get(OTHER).tools.filter((/** @type {any} */ t) => t.type === 'canonicalQuery' && typeof t.cypher === 'string' && t.cypher.trim() !== '').map((/** @type {any} */ t) => t.name);
+    const swList = await page.$$eval(`${tid('saved-queries')} optgroup option`, (os) => os.map((o) => (o.textContent ?? '').split(':')[0]));
+    const swValue = await page.$eval(tid('saved-queries'), (e) => /** @type {HTMLSelectElement} */ (e).value);
+    say(`the console's "Ontology tool" list now holds ${OTHER}'s ${swList.length} tools, none chosen: ` +
+      `${yes(swList.length > 0 && JSON.stringify(swList) === JSON.stringify(swTools) && swValue === '', "the editor's tool list follows the store's ontology")}`);
 
     // ---- a crash mid-section ----------------------------------------------------------------------------------------------
     say();
@@ -1592,6 +1623,46 @@ RETURN entities, rels, claims + mentions AS review`, { doc });
     say(`pasted text with no heading: ${JSON.stringify(u6.title)}, extracted (${px4}); then other pasted text: ${JSON.stringify(u7.title)} [${u7.button}]: ` +
       `${yes(u6.title === 'pasted' && px4 === 'done' && u7.title === 'pasted-2' && u7.button === 'Extract “pasted-2”', '"pasted" is made unique against the store\'s titles')}`);
     note(`pasted documents done (${secs()})`);
+
+    // ---- a store an earlier build made under create-context-graph's version (D20) ------------------------------------
+    say();
+    say("## a store made under create-context-graph's version of a curated domain: the page offers to empty it (D20)");
+    // An earlier build stored create-context-graph's financial-services, converted (harness/convert.mjs ccgConversions, from
+    // data/ontologies/ccg/): an empty store under it stands for one, with the same ontology id as the curated document.
+    // The open store is OTHER's (the picker and crash sections), so the picker goes back to financial-services's,
+    // which the Store tab's Reset empties, before the old document is applied to it.
+    await page.selectOption(tid('domain-select'), `domains/${ONTOLOGY}.ontology.yaml`);
+    await page.waitForFunction((name) => document.body.dataset.store === name, STORE, { timeout: 60000 }).catch(() => {});
+    await waitDs(page, 'busy', ['0'], 60000);
+    await page.click(tid('tab-store'));
+    await page.click(tid('reset'));
+    await page.click(tid('reset-confirm'));
+    await page.waitForFunction(() => /empty again/.test(document.querySelector('[data-testid="store-op"]')?.textContent ?? ''), null, { timeout: 60000 }).catch(() => {});
+    await waitDs(page, 'busy', ['0'], 60000);
+    const oldDoc = ccgConversions().find((c) => c.o.id === ONTOLOGY)?.text ?? '';
+    await page.click(tid('tab-ontology'));
+    await page.fill(tid('ontology-yaml'), oldDoc);
+    await page.waitForFunction(() => /** @type {HTMLElement} */ (document.querySelector('[data-testid="ontology-status"]')).dataset.valid === '1', null, { timeout: 15000 }).catch(() => {});
+    await page.click(tid('apply-ontology'));
+    await page.waitForSelector(tid('ontology-migrate'), { state: 'visible', timeout: 60000 }).catch(() => {});
+    await waitDs(page, 'busy', ['0'], 60000);
+    const mig0 = await page.evaluate(() => /** @type {any} */ (window).ex01.call('stats'));
+    const migText = ((await page.textContent('#ontology-stale-text')) ?? '').trim();
+    const migFlag = await page.$eval(tid('ontology-stale'), (e) => /** @type {HTMLElement} */ (e).dataset.migrate ?? '');
+    say(`the old conversion applied (${mig0.ontology.kinds.length} kinds, ${mig0.ontology.kinds.some((/** @type {any} */ k) => k.id === 'Person') ? 'Person among them' : 'no Person'}); the page says: ${JSON.stringify(migText)}; ` +
+      `Re-apply ${await page.isVisible(tid('ontology-reapply')) ? 'SHOWN' : 'hidden'}, "${((await page.textContent(tid('ontology-migrate'))) ?? '').trim()}" ${await page.isVisible(tid('ontology-migrate')) ? 'shown' : 'HIDDEN'}: ` +
+      `${yes(migFlag === '1' && /create-context-graph's version/.test(migText) && await page.isVisible(tid('ontology-migrate')) && !(await page.isVisible(tid('ontology-reapply'))), "a store under create-context-graph's version is offered the curated one, not a re-apply")}`);
+    await page.click(tid('ontology-migrate'));
+    await page.waitForSelector(tid('ontology-stale'), { state: 'hidden', timeout: 60000 }).catch(() => {});
+    await waitDs(page, 'busy', ['0'], 60000);
+    const mig1 = await page.evaluate(() => /** @type {any} */ (window).ex01.call('stats'));
+    const migPick = await page.$eval(tid('domain-select'), (e) => /** @type {HTMLSelectElement} */ (e).value);
+    const curated = env.ontologies.get(ONTOLOGY);
+    say(`"Empty it and use version 2": the store holds ${mig1.documents.length} documents and ${mig1.entities} entities under ${mig1.ontology.kinds.length} kinds ` +
+      `(${mig1.ontology.kinds.map((/** @type {any} */ k) => k.id).join(', ')}); the picker holds ${migPick}: ` +
+      `${yes(!(await page.isVisible(tid('ontology-stale'))) && migPick === `domains/${ONTOLOGY}.ontology.yaml` && mig1.documents.length === 0 && mig1.entities === 0 &&
+        JSON.stringify(mig1.ontology.kinds.map((/** @type {any} */ k) => k.id)) === JSON.stringify(curated.types.map((/** @type {any} */ t) => t.id)), 'the store is emptied and opened under the curated document')}`);
+    say(`  ${(await text(page, 'notice')) || 'no notice'}`);
 
     // ---- reset ------------------------------------------------------------------------------------------------------------
     say();

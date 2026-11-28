@@ -1,0 +1,52 @@
+{
+  "entities": [
+    {"name": "Pale Cormorant", "type": "ThreatActor"},
+    {"name": "Hannah Ferris", "type": "Analyst"},
+    {"name": "INC-2025-0031", "type": "Incident"},
+    {"name": "CVE-2023-46805", "type": "Vulnerability"},
+    {"name": "CVE-2024-21887", "type": "Vulnerability"},
+    {"name": "CVE-2024-21762", "type": "Vulnerability"},
+    {"name": "Tidecaller", "type": "Malware"},
+    {"name": "Mimikatz", "type": "Malware"},
+    {"name": "Rclone", "type": "Malware"},
+    {"name": "Brinehold", "type": "Malware", "aliases": ["Brinehold ransomware"]},
+    {"name": "T1190", "type": "Technique", "aliases": ["Exploit Public-Facing Application"]},
+    {"name": "T1505.003", "type": "Technique", "aliases": ["Web Shell"]},
+    {"name": "T1003.001", "type": "Technique"},
+    {"name": "T1567.002", "type": "Technique", "aliases": ["Exfiltration to Cloud Storage"]},
+    {"name": "T1486", "type": "Technique"},
+    {"name": "198.51.100.77", "type": "Indicator"},
+    {"name": "198.51.100.140", "type": "Indicator"},
+    {"name": "update-relay.example.net", "type": "Indicator"},
+    {"name": "VPN-GW-02", "type": "Asset"},
+    {"name": "CTL-019", "type": "Control"}
+  ],
+  "relations": [
+    {"source": "INC-2025-0031", "target": "Pale Cormorant", "type": "ATTRIBUTED_TO", "how": "passive"},
+    {"source": "Pale Cormorant", "target": "CVE-2023-46805", "type": "EXPLOITS", "how": "plain"},
+    {"source": "Pale Cormorant", "target": "CVE-2024-21887", "type": "EXPLOITS", "how": "plain"},
+    {"source": "Pale Cormorant", "target": "Tidecaller", "type": "DEPLOYS", "how": "plain"},
+    {"source": "Pale Cormorant", "target": "Mimikatz", "type": "DEPLOYS", "how": "list"},
+    {"source": "Pale Cormorant", "target": "Rclone", "type": "DEPLOYS", "how": "list"},
+    {"source": "Pale Cormorant", "target": "T1190", "type": "USES", "how": "list"},
+    {"source": "Pale Cormorant", "target": "T1505.003", "type": "USES", "how": "list"},
+    {"source": "Pale Cormorant", "target": "T1003.001", "type": "USES", "how": "list"},
+    {"source": "Pale Cormorant", "target": "T1567.002", "type": "USES", "how": "list"},
+    {"source": "198.51.100.77", "target": "Tidecaller", "type": "ASSOCIATED_WITH", "how": "table"},
+    {"source": "198.51.100.140", "target": "Tidecaller", "type": "ASSOCIATED_WITH", "how": "table"},
+    {"source": "update-relay.example.net", "target": "Tidecaller", "type": "ASSOCIATED_WITH", "how": "table"},
+    {"source": "198.51.100.77", "target": "INC-2025-0031", "type": "OBSERVED_IN", "how": "passive"},
+    {"source": "Tidecaller", "target": "VPN-GW-02", "type": "FOUND_ON", "how": "passive"},
+    {"source": "CTL-019", "target": "CVE-2023-46805", "type": "MITIGATES", "how": "list"},
+    {"source": "CTL-019", "target": "CVE-2024-21887", "type": "MITIGATES", "how": "list"}
+  ],
+  "distractors": [
+    {"source": "Pale Cormorant", "target": "CVE-2024-21762", "type": "EXPLOITS", "family": "hedge"},
+    {"source": "Pale Cormorant", "target": "Brinehold", "type": "DEPLOYS", "family": "alleged"},
+    {"source": "Pale Cormorant", "target": "T1486", "type": "USES", "family": "negation"}
+  ],
+  "properties": [
+    {"entity": "INC-2025-0031", "property": "severity", "text": "SEV2", "value": "SEV2", "how": "plain"},
+    {"entity": "CVE-2024-21887", "property": "cvssScore", "text": "9.1", "value": 9.1, "how": "plain"}
+  ]
+}

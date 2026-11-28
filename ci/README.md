@@ -15,13 +15,19 @@ dependency fails the run instead of printing `SKIP`.
 
 | Started by | Examples run | Takes about |
 |---|---|---|
-| a push to `main`, or by hand (`workflow_dispatch`, on any branch) | every example | 19 minutes, 16.5 of them example 01 |
-| a pull request that changes example 01, or anything shared | every example | 19 minutes |
+| a push to `main`, or by hand (`workflow_dispatch`, on any branch) | every example | over an hour (19 minutes before example 01's curated corpus; below) |
+| a pull request that changes example 01, or anything shared | every example | over an hour |
 | a pull request that changes only example 02 or 03 | that example | 3 minutes |
 | a pull request that changes only docs, the site's page or `lib/tests/` | none; `pytest` only | 2 minutes |
 
-The first two times are measured; the last two are estimates from the steps that remain, until
-such a pull request has run.
+The 19 minutes was measured, before the curated corpus; the last two are estimates from the steps
+that remain, until such a pull request has run.
+
+Example 01's curated corpus (ADR-0019, ADR-0020: 40 ontologies, 61 documents) made its run much
+longer. On a laptop (6 worker threads), with every one of its 6,903 model answers taken from the
+inference cache (step 5), `harness/run.mjs` takes about 51 minutes, most of it the scores and their
+per-setting grids, and the browser section about 13. A cold cache asks the model for each answer on
+top of that. Neither has been timed on CI yet; cutting the run back is planned work.
 
 A pull request's first step, "Which examples to run", gives the paths it changes to
 [`ci/changed-examples.sh`](changed-examples.sh), which prints the examples to run: the example a
@@ -41,8 +47,8 @@ The workflow also sets `RELATE_TELEMETRY=off`, `RELATE_MAX_ROWS=0` and
 `RELATE_AGENT_MODE=0` (as `scripts/env.sh` does), so the CLI's output never depends on who started
 the run. No `.env` and no network beyond the downloads below.
 
-1. **The relate CLI.** `relate-linux-amd64` from the public `v1.2.0` release, checked against
-   `ci/relate-1.2.0.sha256`, installed on `PATH`, and its `--version` first line checked.
+1. **The relate CLI.** `relate-linux-amd64` from the public `v1.3.0` release, checked against
+   `ci/relate-1.3.0.sha256`, installed on `PATH`, and its `--version` first line checked.
 2. **The Python env.** `astral-sh/setup-uv` (uv 0.11.29, the version that wrote `uv.lock`; Python
    3.12), `uv sync --locked`, then a check that `relate.__version__` matches the CLI.
 3. **Node 22** with npm's cache keyed on every example's `package-lock.json`
@@ -54,6 +60,10 @@ the run. No `.env` and no network beyond the downloads below.
    builds; on a hit it only re-checks the cached build.
 5. **The GLiNER2.5-small-v1 weights** (`scripts/fetch-gliner.sh small`), cached in `.cache/gliner`
    keyed on `ci/gliner2.5-*.sha256`; every file is re-hashed on each run.
+   Then example 01's inference cache (`.cache/ex01-infer`, D24): the harness's model answers, one
+   file per call named by its request, restored from the newest earlier run (`restore-keys`) and
+   saved after this one, so a run asks the model only for what changed; `harness/run.mjs` asks every
+   33rd cached answer again and fails on any difference, so a stale entry cannot pass unseen.
 6. **Example 01's npm packages** (`npm ci --omit=peer`, which installs `@relate/relate-wasm`
    pinned with its integrity in `package-lock.json`) and the NVL vendor bundle (`npm run vendor`).
 7. **Playwright's Chromium**, the download cached, its system libraries installed on every run.
@@ -74,10 +84,10 @@ the run. No `.env` and no network beyond the downloads below.
    `run.sh` of each example this run needs ("What runs when"), with a per-example result table in
    the job summary; the job fails if any example fails.
 
-The job has a 60-minute timeout. A cold cache adds the gliner-rs build, 304 MB of weights and
-Chromium before example 01's own run, which takes about 10 minutes. Example 02 adds about a minute
-and example 03 a few seconds.
-The first two runs took 27 and 24 minutes. The linux CLI runs on ubuntu-24.04's glibc.
+The job has a 240-minute timeout (60 before example 01's curated corpus). A cold cache adds the
+gliner-rs build, 304 MB of weights, Chromium and every model answer before example 01's own run
+finishes. Example 02 adds about a minute and example 03 a few seconds. Before the curated corpus,
+the first two runs took 27 and 24 minutes. The linux CLI runs on ubuntu-24.04's glibc.
 
 ## `pages.yml`: the site
 
@@ -97,7 +107,7 @@ GitHub Actions. See [site/README.md](../site/README.md).
 
 | File | What it pins |
 |---|---|
-| `relate-1.2.0.sha256` | The v1.2.0 release's own SHA256SUMS, every platform's CLI (CI uses `relate-linux-amd64`). |
+| `relate-1.3.0.sha256` | The v1.3.0 release's own SHA256SUMS, copied verbatim: every platform's CLI (CI uses `relate-linux-amd64`) and the release's `assets.json`, after a `# relate-release-version` comment line. |
 | `changed-examples.sh` | Not a pin: which examples a pull request's changes need run (above). |
 | `gliner2.5-small-v1.sha256`, `gliner2.5-base-v1.sha256` | Every file of the GLiNER2.5 weights at the pinned Hugging Face revisions, read by `scripts/fetch-gliner.sh` and embedded into example 01's page by its build. |
 

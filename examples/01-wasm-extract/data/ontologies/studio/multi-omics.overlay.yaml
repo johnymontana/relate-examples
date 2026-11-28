@@ -1,0 +1,162 @@
+# What example 01 adds to Neo4j's multi-omics package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for the study codes the documents state,
+# the properties whose values the model reads (D27), and example arguments for the package's queries,
+# taken from the records this example's results summary narrates (the package's sample data: the liver
+# biopsy cohort PRJ-LIVER and its comparison CMP-LIV-MASLD).
+package: multi-omics
+card:
+  title: "Multi-Omics: Transcript and Protein Integration"
+  category: Healthcare & Life Sciences
+  description: Read RNA-seq and proteomics results side by side to find changes confirmed at both layers, proteins regulated after transcription, and new targets in their disease, network and pathway context.
+industry: Healthcare & Life Sciences
+nodes:
+  # The study's own records are named by their codes (PRJ-LIVER, S-LIV-009, EXP-LIV-RNA, CMP-LIV-MASLD),
+  # each scheme with its own prefix, so each pattern proposes its codes: small-v1 reads most codes as
+  # projects and sample codes as genes (0.4 to 0.9) whatever the cues say, and the patterns decide the
+  # kinds. The cues' examples are the package's other records (adipose and islet), not the liver document's.
+  Project:
+    colour: "#0891b2"
+    proper: true
+    propose: true
+    ask: a research cohort or study programme that collected the samples, named by a project code beginning PRJ-, such as PRJ-ADIPOSE
+    pattern:
+      projectId: "^PRJ-[A-Z]+$"
+  Sample:
+    colour: "#2563eb"
+    proper: true
+    propose: true
+    ask: a biological specimen from one donor, named by a sample code beginning S-, such as S-ADI-020
+    pattern:
+      sampleId: "^S-[A-Z]{3}-[0-9]{3}$"
+  # Tissues are written in lower case (liver, visceral adipose tissue): not proper.
+  Tissue:
+    colour: "#a16207"
+    ask: the anatomical tissue a sample was taken from, such as visceral adipose tissue, or its UBERON term
+  # Traits are written in lower case (hepatic fibrosis, obesity): not proper.
+  Phenotype:
+    colour: "#db2777"
+    ask: a clinical trait recorded in a sample's donor, such as insulin resistance, or its HP term such as HP:0000855; a trait of the donor, not a disease a comparison studies
+  Experiment:
+    colour: "#7c3aed"
+    proper: true
+    propose: true
+    ask: one omics profiling run, RNA-seq or proteomics, named by an experiment code beginning EXP-, such as EXP-ADI-RNA
+    pattern:
+      experimentId: "^EXP-[A-Z]{3}-[A-Z]{3}$"
+    properties:
+      omicsLayer:
+        extract: true
+        ask: the molecular layer the experiment measures, transcriptomics or proteomics
+      platform:
+        extract: true
+        ask: the instrument model the experiment ran on, such as Orbitrap Exploris 480 or Q Exactive HF
+  Comparison:
+    colour: "#d97706"
+    proper: true
+    propose: true
+    ask: a case-control differential analysis, named by a comparison code beginning CMP-, such as CMP-ADI-METS
+    pattern:
+      comparisonId: "^CMP-[A-Z]{3}-[A-Z0-9]+$"
+  # Gene symbols are capitals and digits (PLIN2, CD36); a protein is never named by its gene's symbol here.
+  # Saying so in the cue moved SQSTM1 from sample to gene (0.6); in "X is associated with ..." the model
+  # still reads some symbols (PPARG, TIMP1) as proteins.
+  Gene:
+    colour: "#059669"
+    proper: true
+    ask: a gene or its transcript, named by its HGNC symbol of capitals and digits, such as ACTB, INSR or IRS1
+  # Proteins are named by UniProt accession (Q99541), whose pattern the package gives; a lower-case
+  # protein name beside it is dropped, so the accession names the entity.
+  Protein:
+    colour: "#dc2626"
+    proper: true
+    propose: true
+    ask: a protein named by its UniProt accession, such as P60709, or by its protein name, such as Actin; never a gene symbol
+  # Diseases are written in lower case or as acronyms (type 2 diabetes mellitus, MASH): not proper. small-v1
+  # reads the acronyms MASLD and MASH as pathways (0.6 to 0.9) under every cue tried, unless the sentence
+  # calls them a disease ("MASLD, the disease under study": 0.9 as a disease).
+  Disease:
+    colour: "#9333ea"
+    ask: a disease, often written as a capitalised acronym such as MASH or T2D, or in full such as type 1 diabetes mellitus
+  GOTerm:
+    colour: "#65a30d"
+    ask: a Gene Ontology term a protein is annotated with, a biological process, function or cellular component, such as translation or GO:0006412
+  # A pathway is named by its Reactome stable ID (R-HSA-1989781), which the pattern proposes: the model
+  # typed the IDs as genes and GO terms. Its title, a phrase such as "PPARA activates gene expression",
+  # stands beside the ID.
+  Pathway:
+    colour: "#ea580c"
+    proper: true
+    propose: true
+    ask: a Reactome pathway, named by a stable ID beginning R-HSA-, such as R-HSA-70171, or by its title
+    pattern:
+      pathwayId: "^R-HSA-[0-9]+$"
+relationships:
+  # The two HAS_VALUE links read as one phrase, and so do the two FOUND_DIFFERENTIAL links (the model is
+  # asked one relation per type). small-v1 never proposed FOUND_DIFFERENTIAL under any phrase tried (found a
+  # change in, found differential, shows a change in, found, found up or down): it reads "CMP-LIV-MASLD
+  # found P60484 down" as HAS_VALUE. The phrase kept is the link's own reading.
+  projectHasSample:
+    phrase: collected
+  sampleTakenFrom:
+    phrase: was taken from
+  sampleHasPhenotype:
+    phrase: shows
+  sampleHasExperiment:
+    phrase: was assayed in
+  comparisonCompares:
+    phrase: analyzes
+  comparisonIncludes:
+    phrase: includes
+  comparisonStudiesDisease:
+    phrase: studies
+  experimentMeasuresGene:
+    phrase: detected
+  experimentMeasuresProtein:
+    phrase: detected
+  comparisonFoundGene:
+    phrase: found a change in
+  comparisonFoundProtein:
+    phrase: found a change in
+  geneCodesProtein:
+    phrase: encodes
+  geneRelatedToDisease:
+    phrase: is associated with
+  proteinAssociatedWithGO:
+    phrase: is annotated with
+  proteinInteractsWith:
+    phrase: interacts with
+  proteinParticipatesIn:
+    phrase: participates in
+  diseaseInvolvesPathway:
+    phrase: involves
+tools:
+  # The summary's cutoffs: adjusted p-value 0.05 and an absolute log2 fold change of 1 in each layer.
+  comparison-overview:
+    args: {maxAdjP: 0.05, minAbsLogFC: 1}
+  comparisons-whose-cases-carry-a-phenotype:
+    args: {phenotypeId: "HP:0001395"}
+  disease-associations-of-a-gene:
+    args: {symbol: PPARG, maxAdjP: 0.05, minAbsLogFC: 1}
+  concordant-transcript-and-protein-changes:
+    args: {comparisonId: CMP-LIV-MASLD, maxAdjP: 0.05, minAbsLogFC: 1}
+  post-transcriptional-candidates:
+    args: {comparisonId: CMP-LIV-MASLD, maxAdjP: 0.05, minAbsLogFC: 1}
+  novel-targets-among-concordant-changes:
+    args: {comparisonId: CMP-LIV-MASLD, maxAdjP: 0.05, minAbsLogFC: 1, minScore: 0.3}
+  concordant-changes-shared-across-tissues:
+    args: {maxAdjP: 0.05, minAbsLogFC: 1, minTissues: 2}
+  protein-changes-replicated-across-platforms:
+    args: {mondoId: "MONDO:0013209", maxAdjP: 0.05, minAbsLogFC: 1, minPlatforms: 2}
+  evidence-trail-for-a-gene-in-a-comparison:
+    args: {symbol: PIK3CG, comparisonId: CMP-LIV-MASLD}
+  interaction-partners-of-a-gene:
+    args: {symbol: PIK3CG, minScore: 0.7, comparisonId: CMP-LIV-MASLD}
+  changed-proteins-within-two-interaction-hops:
+    args: {symbol: CD36, comparisonId: CMP-LIV-MASLD, minScore: 0.7, maxAdjP: 0.05, minAbsLogFC: 1}
+  candidate-genes-sharing-processes-with-disease-genes:
+    args: {mondoId: "MONDO:0013209", minScore: 0.5, minSharedTerms: 2, maxAdjP: 0.05, minAbsLogFC: 1}
+  pathways-with-concordant-changes:
+    args: {comparisonId: CMP-LIV-MASLD, maxAdjP: 0.05, minAbsLogFC: 1, minGenes: 2}

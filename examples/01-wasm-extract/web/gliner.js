@@ -61,8 +61,14 @@ export function relationPhrase(id) {
 
 /**
  * @typedef {{id: string, description?: string}} EntityType
- * @typedef {{entities: EntityType[], relations?: string[], threshold: number, overlap?: string}} Schema
- * @typedef {{entities: {id: string, description: string|null}[], relations: string[], threshold: number, overlap: string|null}} CheckedSchema
+ * @typedef {{name: string, choices?: string[], description?: string}} StructureField
+ * @typedef {{name: string, fields: StructureField[]}} Structure
+ *   GLiNER2's structured extraction (D27): one record per mention of the first field (the anchor), the other
+ *   fields assigned to it; a field with choices answers one of them
+ * @typedef {{entities: EntityType[], relations?: string[], structures?: Structure[], threshold: number, overlap?: string}} Schema
+ * @typedef {{entities: {id: string, description: string|null}[], relations: string[], threshold: number, overlap: string|null,
+ *   structures: Array<{name: string, fields: Array<{name: string, choices: string[]|null, description: string|null}>}>}} CheckedSchema
+ * @typedef {{name: string, instances: Array<Record<string, {text: string, start: number|null, end: number|null, score: number}|null>>}} StructureResult
  * @typedef {{model: any, exports: any}} ModelHandle
  * @typedef {{label: string, text: string, start: number, end: number, score: number}} Entity
  * @typedef {{text: string, start: number, end: number}} Span
@@ -77,7 +83,9 @@ export function relationPhrase(id) {
 export function checkSchema(schema) {
   if (!schema || typeof schema !== 'object') throw new TypeError('schema: an object');
   const { entities, relations = [], threshold, overlap } = schema;
-  if (!Array.isArray(entities) || entities.length === 0) throw new TypeError('schema.entities: a non-empty array');
+  // A schema of structures alone (D27's second call) asks no entity type; any other asks one at least.
+  const valuesOnly = Array.isArray(schema.structures) && schema.structures.length > 0 && Array.isArray(entities) && entities.length === 0 && relations.length === 0;
+  if (!Array.isArray(entities) || (entities.length === 0 && !valuesOnly)) throw new TypeError('schema.entities: a non-empty array (empty only beside structures and no relations)');
   const seen = new Set();
   const ents = entities.map((e, i) => {
     const id = typeof e === 'object' && e !== null ? e.id : undefined;
@@ -106,7 +114,40 @@ export function checkSchema(schema) {
   if (overlap != null && !OVERLAP_POLICIES.includes(overlap)) {
     throw new RangeError(`schema.overlap: one of ${OVERLAP_POLICIES.join(', ')}, or omitted for the checkpoint's own`);
   }
-  return { entities: ents, relations: rels, threshold, overlap: overlap ?? null };
+  // Structures (D27), written for gliner-rs's flag syntax `name=field::str::description;…`: no part may hold the
+  // syntax's own separators, and the result keys them beside entities and relation_extraction.
+  const { structures = [] } = schema;
+  if (!Array.isArray(structures)) throw new TypeError('schema.structures: an array');
+  const sseen = new Set();
+  const bad = (/** @type {string} */ s) => /[;=|]|::|\[|\]/.test(s);
+  const structs = structures.map((st, i) => {
+    const name = st?.name;
+    if (typeof name !== 'string' || name.trim() !== name || name === '' || bad(name) || ['entities', 'relation_extraction'].includes(name)) {
+      throw new TypeError(`schema.structures[${i}].name: a non-empty name without ; = | :: [ ] or surrounding space, not "entities" or "relation_extraction"`);
+    }
+    if (sseen.has(name)) throw new RangeError(`schema.structures: duplicate name ${JSON.stringify(name)}`);
+    sseen.add(name);
+    if (!Array.isArray(st.fields) || st.fields.length < 2) throw new TypeError(`schema.structures[${i}].fields: an anchor and at least one field`);
+    const fseen = new Set();
+    const fields = st.fields.map((f, j) => {
+      const fn = f?.name;
+      if (typeof fn !== 'string' || fn.trim() !== fn || fn === '' || bad(fn)) throw new TypeError(`schema.structures[${i}].fields[${j}].name: a plain non-empty name`);
+      if (fseen.has(fn)) throw new RangeError(`schema.structures[${i}]: duplicate field ${JSON.stringify(fn)}`);
+      fseen.add(fn);
+      const d = f.description == null ? '' : String(f.description).trim();
+      if (bad(d)) throw new TypeError(`schema.structures[${i}].fields[${j}].description: no ; = | :: [ or ]`);
+      const choices = f.choices == null ? null : f.choices.map((c) => String(c).trim());
+      if (choices && (choices.length < 2 || choices.some((c) => c === '' || bad(c)))) throw new TypeError(`schema.structures[${i}].fields[${j}].choices: two or more plain values`);
+      return { name: fn, choices, description: d === '' ? null : d };
+    });
+    return { name, fields };
+  });
+  return { entities: ents, relations: rels, threshold, overlap: overlap ?? null, structures: structs };
+}
+
+/** A checked structure as gliner-rs's flag syntax (`name=field::str::description;…`). @param {CheckedSchema['structures'][number]} st */
+export function structureSpec(st) {
+  return `${st.name}=${st.fields.map((f) => [f.name, f.choices ? `[${f.choices.join('|')}]` : 'str', ...(f.description ? [f.description] : [])].join('::')).join(';')}`;
 }
 
 /**
@@ -126,6 +167,8 @@ export function schemaKey(schema) {
     relations: s.relations,
     threshold: s.threshold,
     overlap: s.overlap,
+    // only when there are any (D27), so a schema without structures keeps the key it always had
+    ...(s.structures.length ? { structures: s.structures.map(structureSpec) } : {}),
   });
 }
 
@@ -202,7 +245,7 @@ export function extractRaw(handle, text, schema) {
   if (s.overlap !== null) opts.overlap = s.overlap;
   let pretty;
   try {
-    pretty = handle.model.extractCli(text, ents, s.relations, [], [], false, JSON.stringify(opts));
+    pretty = handle.model.extractCli(text, ents, s.relations, s.structures.map(structureSpec), [], false, JSON.stringify(opts));
   } catch (e) {
     throw glinerError('extractCli', e);
   }
@@ -229,12 +272,13 @@ function span(x, what) {
 export function normalize(raw, schema) {
   const s = checkSchema(schema);
   const r = typeof raw === 'string' ? JSON.parse(raw) : raw;
-  if (!r || typeof r.entities !== 'object' || r.entities === null) throw new TypeError('normalize: no entities in the result');
+  if (!r || typeof r !== 'object') throw new TypeError('normalize: the result is not an object');
+  if ((typeof r.entities !== 'object' || r.entities === null) && s.entities.length) throw new TypeError('normalize: no entities in the result');
   const labelRank = new Map(s.entities.map((e, i) => [e.id, i]));
   const relRank = new Map(s.relations.map((p, i) => [p, i]));
   /** @type {Entity[]} */
   const entities = [];
-  for (const [label, items] of Object.entries(r.entities)) {
+  for (const [label, items] of Object.entries(r.entities ?? {})) {
     if (!labelRank.has(label)) throw new RangeError(`normalize: label ${JSON.stringify(label)} is not in the schema`);
     for (const it of items ?? []) {
       const sp = span(it, `${label} entity`);
@@ -258,7 +302,18 @@ export function normalize(raw, schema) {
   relations.sort((a, b) => byNum(
     [relRank.get(a.relation) ?? 0, a.head.start, a.head.end, a.tail.start, a.tail.end, -a.score],
     [relRank.get(b.relation) ?? 0, b.head.start, b.head.end, b.tail.start, b.tail.end, -b.score]));
-  return { entities, relations };
+  // Structures (D27), in schema order: each instance's fields as {text, start, end, score} (start and end null when
+  // gliner-rs gives a field no span: a choice it did not read in the text), or null when the field is empty.
+  /** @type {StructureResult[]} */
+  const structures = s.structures.map((st) => ({
+    name: st.name,
+    instances: (Array.isArray(r[st.name]) ? r[st.name] : []).map((/** @type {any} */ inst) => Object.fromEntries(st.fields.map((f) => {
+      const v = inst?.[f.name];
+      if (!v || typeof v.text !== 'string') return [f.name, null];
+      return [f.name, { text: v.text, start: Number.isInteger(v.start) ? v.start : null, end: Number.isInteger(v.end) ? v.end : null, score: Number(v.confidence) }];
+    }))),
+  }));
+  return { entities, relations, structures };
 }
 
 /**

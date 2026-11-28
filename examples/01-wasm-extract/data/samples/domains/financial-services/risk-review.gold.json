@@ -1,0 +1,44 @@
+{
+  "entities": [
+    {"name": "Arjun Mehta", "type": "Client"},
+    {"name": "Mehta Family Trust", "type": "Client"},
+    {"name": "ACC-1980", "type": "Account"},
+    {"name": "Halvorsen Pryce Partners LLP", "type": "Firm"},
+    {"name": "Priya Raman", "type": "Advisor"},
+    {"name": "Dana Whitlock", "type": "Advisor"},
+    {"name": "Northbrook Infrastructure ordinary shares", "type": "Security"},
+    {"name": "Fenwick Global Equity Fund", "type": "Security", "aliases": ["GB00BKX5CN86"]},
+    {"name": "Kestrel Water 2031 green bond", "type": "Security"},
+    {"name": "Fenwick Asset Management", "type": "Issuer"},
+    {"name": "Northbrook Infrastructure plc", "type": "Issuer"},
+    {"name": "ISA Top-up Decision", "type": "Decision"},
+    {"name": "Suitability Policy", "type": "Policy"},
+    {"name": "TX-4611", "type": "Transaction"},
+    {"name": "TX-4650", "type": "Transaction"}
+  ],
+  "relations": [
+    {"source": "Arjun Mehta", "target": "ACC-1980", "type": "OWNS", "how": "plain"},
+    {"source": "ACC-1980", "target": "Halvorsen Pryce Partners LLP", "type": "HELD_AT", "how": "plain"},
+    {"source": "Priya Raman", "target": "ACC-1980", "type": "MANAGES", "how": "plain"},
+    {"source": "ACC-1980", "target": "Northbrook Infrastructure ordinary shares", "type": "HOLDS", "how": "plain"},
+    {"source": "ACC-1980", "target": "Fenwick Global Equity Fund", "type": "HOLDS", "how": "plain"},
+    {"source": "Fenwick Global Equity Fund", "target": "Fenwick Asset Management", "type": "ISSUED_BY", "how": "passive"},
+    {"source": "ISA Top-up Decision", "target": "Priya Raman", "type": "RECOMMENDED_BY", "how": "passive"},
+    {"source": "ISA Top-up Decision", "target": "Suitability Policy", "type": "APPLIED", "how": "plain"},
+    {"source": "ISA Top-up Decision", "target": "TX-4611", "type": "CAUSED", "how": "coreference"},
+    {"source": "TX-4611", "target": "Fenwick Global Equity Fund", "type": "INVOLVES", "how": "nominal"},
+    {"source": "TX-4611", "target": "ACC-1980", "type": "EXECUTED_IN", "how": "passive"}
+  ],
+  "distractors": [
+    {"source": "Priya Raman", "target": "Mehta Family Trust", "type": "ADVISES", "family": "hedge"},
+    {"source": "ACC-1980", "target": "Kestrel Water 2031 green bond", "type": "HOLDS", "family": "negation"},
+    {"source": "TX-4650", "target": "ACC-1980", "type": "EXECUTED_IN", "family": "conditional"}
+  ],
+  "properties": [
+    {"entity": "ACC-1980", "property": "accountType", "text": "advisory", "value": "advisory", "how": "plain"},
+    {"entity": "ACC-1980", "property": "wrapper", "text": "ISA", "value": "ISA", "how": "apposition"},
+    {"entity": "TX-4611", "property": "amount", "text": "£20,000", "value": 20000, "how": "apposition"},
+    {"entity": "TX-4611", "property": "tradeDate", "text": "5 August 2026", "value": "2026-08-05", "how": "plain"},
+    {"entity": "ISA Top-up Decision", "property": "decidedOn", "text": "2 August 2026", "value": "2026-08-02", "how": "plain"}
+  ]
+}

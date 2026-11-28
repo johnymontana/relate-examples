@@ -41,9 +41,9 @@ import * as relateWasm from '../../lib/relate_wasm.mjs';
 
 export const EX = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(EX, '../..');
-export const RELATE = '1.2.0';
+export const RELATE = '1.3.0';
 const MODULES = path.join(EX, 'node_modules');
-/** Relate's LICENSE at tag v<RELATE> (https://github.com/relatedb/relate/blob/v1.2.0/LICENSE): its sha256 (as example 01 pins it). */
+/** Relate's LICENSE at tag v<RELATE> (https://github.com/relatedb/relate/blob/v1.3.0/LICENSE): its sha256 (as example 01 pins it). */
 const RELATE_LICENSE_SHA256 = 'ac87d12e27d69f09130a7b4178e48e995ab131e4b476aa188e58ffac7ed7fab3';
 /** The page's modules (bundled) and static files; any other web/ file is an error. */
 const ENTRIES = ['app.js', 'engine.worker.js', 'llm.worker.js'];
@@ -51,7 +51,7 @@ const MODULES_IN = ['briefing.js', 'canned.js', 'compare.js', 'ddl.js', 'llm.js'
 const STATIC = ['index.html', 'style.css', 'favicon.svg'];
 const INPUTS = ['vendor-entry.mjs'];
 const DATA = ['corporate-events.ontology.yaml', 'demo-graph.json', 'canned.json', 'SOURCE.md'];
-/** The Kotlin libraries compiled into the SDK (neo4j/ontology-graph-spec release/v0.12.2, gradle/libs.versions.toml). */
+/** The Kotlin libraries compiled into the SDK (neo4j/ontology-graph-spec release/v0.13.0, gradle/libs.versions.toml). */
 const OGS_SDK_RUNTIME = [
   'Kotlin standard library 2.3.20 (JetBrains, Apache-2.0)',
   'kotlinx.serialization 1.10.0, core and JSON (JetBrains, Apache-2.0)',

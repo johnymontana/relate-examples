@@ -1,0 +1,131 @@
+# What example 01 adds to Neo4j's loans-and-mortgages package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for the identifiers the memo states, the
+# properties whose values the model reads (D27), and example arguments for the package's queries, taken
+# from the records this example's memo narrates (the package's sample data: Brandon Wagner is P-0727).
+package: loans-and-mortgages
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: Loans and Mortgages
+  category: Financial Services
+  description: Built on the EDM Council's FIBO Loans ontology, connect borrowers, loans, collateral and originators to see combined exposure, stacked liens and early-default patterns that loan-by-loan reporting misses.
+industry: Financial Services
+nodes:
+  Person:
+    colour: "#2563eb"
+    proper: true
+    ask: a customer who borrows on, applies for or guarantees a loan, named by full name, such as Brandon Wagner or Michael Lee; not a loan officer or other staff of a lender
+  # An application number alone (A-00716) has no canonical name: edgextract's rule drops the leading
+  # "a" as an article and an all-digit rest is opaque (names.js). The memo writes "application
+  # A-00716", which keeps one (APPLICATION_00716), so the kind does not propose bare numbers.
+  LoanApplication:
+    colour: "#d97706"
+    proper: true
+    ask: an application to borrow, written as the word application and its number, such as application A-00716; the request and its decision, not the loan it became
+    pattern:
+      applicationId: "^A-[0-9]{5}$"
+    properties:
+      creditScore:
+        extract: true
+        ask: the applicant's credit score when the application was made, a number on the 300 to 850 scale such as 663
+  # Product names are written in lower case in running text (a fixed-rate home equity loan): not proper.
+  LoanProduct:
+    colour: "#0891b2"
+    ask: a loan product a lender offers, named by its product name, such as fixed-rate home equity loan, home equity line of credit or 30-year fixed-rate mortgage; the product, not one loan made under it
+  Loan:
+    colour: "#dc2626"
+    proper: true
+    propose: true
+    ask: a funded loan or mortgage, named only by its loan number, such as L-00712; the credit agreement itself, never a product name and not the application it came from
+    pattern:
+      loanId: "^L-[0-9]{5}$"
+    properties:
+      principalAmount:
+        extract: true
+        parse: MONEY
+        ask: the original principal advanced when the loan closed, a sum such as $132,400, not a balance, an installment or a property value
+      status:
+        extract: true
+        ask: the servicer's status of the loan, one of current, delinquent, in default or paid in full
+  Property:
+    colour: "#059669"
+    proper: true
+    propose: true
+    ask: a house or other residential property pledged as collateral, named by its street address, such as 4594 Lexington Blvd, or by its property number, such as PR-0404; never a city alone
+    pattern:
+      propertyId: "^PR-[0-9]{4}$"
+  Appraisal:
+    colour: "#7c3aed"
+    proper: true
+    propose: true
+    ask: an appraisal of a property, named by its appraisal number, such as AP-00551; the valuation report, not the property it values
+    pattern:
+      appraisalId: "^AP-[0-9]{5}$"
+    properties:
+      appraisedValue:
+        extract: true
+        parse: MONEY
+        ask: the sum in dollars the appraisal set as the property's value, such as $420,000, never the property's address
+  Payment:
+    colour: "#db2777"
+    proper: true
+    propose: true
+    ask: one scheduled monthly installment on a loan, named by its payment number, such as PM-002252
+    pattern:
+      paymentId: "^PM-[0-9]{6}$"
+  FinancialInstitution:
+    colour: "#334155"
+    proper: true
+    ask: a bank, credit union, mortgage company or loan servicer, named by its name, such as Lakeshore Mortgage Company or Meridian Servicing Group; the institution that lends or services, never a person
+  LoanOfficer:
+    colour: "#65a30d"
+    proper: true
+    ask: a lender's employee who took and handled loan applications, named by full name and often called a loan officer, such as loan officer Carolyn Jensen or Timothy Collins; never a borrower or guarantor
+relationships:
+  appliedFor:
+    phrase: submitted
+  forProduct:
+    phrase: is for
+  handledBy:
+    phrase: was handled by
+  resultedIn:
+    phrase: resulted in
+  borrowerOn:
+    phrase: borrows on
+  guarantees:
+    phrase: guarantees
+  lentBy:
+    phrase: was made by
+  servicedBy:
+    phrase: is serviced by
+  employedBy:
+    phrase: works for
+  securedBy:
+    phrase: is secured on
+  values:
+    phrase: valued
+  hasPayment:
+    phrase: has the installment
+tools:
+  # The memo's records by their ids: P-0739 is Michael Lee (guarantor of L-00738, in default on L-00736),
+  # L-00712 Brandon Wagner's home equity loan. The other values are the thresholds the memo applies:
+  # loans with two or more missed installments, the six re-appraisals (20 percent within 12 months),
+  # and the early payment default cohort from September 1, 2025 over the first six months.
+  person-s-lending-network:
+    args: {personId: P-0739}
+  total-exposure-per-person:
+    args: {limit: 10}
+  loan-overview:
+    args: {loanId: L-00712}
+  loans-with-missed-payments:
+    args: {minMissed: 2}
+  default-contagion-through-borrowers-and-guarantors:
+    args: {statuses: [in default]}
+  stacked-liens-with-high-combined-ltv:
+    args: {maxCltv: 85}
+  rapid-appraisal-increases-on-the-same-property:
+    args: {minIncreasePct: 20, maxMonths: 12}
+  early-payment-defaults-by-loan-officer:
+    args: {fromDate: "2025-09-01", months: 6, minLoans: 5, minRatio: 2.0}

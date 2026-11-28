@@ -3,17 +3,19 @@
 Paste or load a markdown document and get a knowledge graph back, with nothing running on a server.
 The model, the database and the page all live in one browser tab.
 
-- An **ontology** decides which kinds of entity and which links are legal: one of
-  [create-context-graph](https://github.com/neo4j-labs/create-context-graph)'s 27 domain ontologies
-  (each with a synthetic sample document; the page opens on Financial Services), or one you write.
-  Every ontology is a [Neo4j Ontology Graph Specification 1.1](https://neo4j.com/docs/ontology-graph-spec/)
-  document.
+- An **ontology** decides which kinds of entity and which links are legal, and which property
+  values are read from the text: one of 40 bundled ones, or one you write. 27 are curated domains
+  written for this example (ADR-0019) and 13 are Neo4j's
+  [solution packages](https://github.com/neo4j/studio-agent-use-cases), vendored with an overlay each
+  (ADR-0020). Each comes with one or more realistic synthetic documents (49 in all; the page opens on
+  Financial Services). Every ontology is a
+  [Neo4j Ontology Graph Specification 1.1](https://neo4j.com/docs/ontology-graph-spec/) document.
 - **GLiNER2.5** scores every candidate entity and relation, through
   [gliner-rs](https://github.com/apiplant/gliner-rs) compiled to WebAssembly.
 - **Cutoffs you own** sort each answer into keep, review or drop. The approach (an ontology, a
   probability for every answer, keep/review/drop cutoffs), the sentence splitter and the name rules
   come from [edgextract](https://github.com/raphaelmansuy/edgextract), ported to JavaScript.
-- **Relate 1.2.0**, compiled to WebAssembly (npm `@relate/relate-wasm`) and persisted in the
+- **Relate 1.3.0**, compiled to WebAssembly (npm `@relate/relate-wasm`) and persisted in the
   browser's OPFS, holds all of it: the ontology with a graph type derived from it that the engine
   enforces, the inference cache, every candidate with its score, the gate and its review queue, and
   the extracted knowledge graph, accumulated across documents.
@@ -23,7 +25,7 @@ The model, the database and the page all live in one browser tab.
 
 Live: <https://johnymontana.github.io/relate-examples/01-wasm-extract/>.
 
-The ids cited below are defined in [NOTES.md](NOTES.md): `R1`… are the Relate 1.2.0 behaviours the
+The ids cited below are defined in [NOTES.md](NOTES.md): `R1`… are the Relate 1.3.0 behaviours the
 example depends on or pins (each with a minimal repro), and the D, E, G, O, V and X ids are the
 example's design decisions and findings. The larger decisions are ADRs in
 [`docs/adr/`](../../docs/adr/README.md). ADR-0010 covers this example's architecture: GLiNER2.5 in
@@ -31,7 +33,7 @@ WASM, in one worker that owns an OPFS store. ADR-0007 covers the move to the pub
 Graph Spec. ADR-0002 to ADR-0009 are the repository's.
 
 ```bash
-./run.sh              # offline, about 8-10 minutes: Node, then Chromium, then native Relate; diffed against expected/
+./run.sh              # offline, about an hour (the Node pipeline over 61 documents and its grids), then Chromium, then native Relate; diffed against expected/
 ./run.sh --site       # build dist/ and serve it at http://127.0.0.1:8701/relate-examples/01-wasm-extract/ as Pages would
 ./run.sh --update     # accept this run's output as expected/
 ```
@@ -42,7 +44,7 @@ Three numbered steps on the left, six tabs on the right.
 
 | Step | What it does |
 |---|---|
-| 1 Domain | Picks one of the 27 bundled ontologies. Each has its own store, `opfs://ex01-kg-<slug>` (D14), and its sample goes into the Document box. |
+| 1 Domain | Picks one of the 40 bundled ontologies, listed by industry. Each has its own store, `opfs://ex01-kg-<slug>` (D14), and its sample goes into the Document box. **About this domain** gives its description, the questions its tools answer, its other documents (each a **Load** button; they extract into the same store) and, for a solution package, the package's own description. |
 | 2 Model | GLiNER2.5-small-v1 (the default, 304 MB once) or base-v1 (783 MB). The weights download from the Hugging Face Hub, are checked against pinned sha256s, and are cached in the browser; a cached model loads by itself and is hashed again on every load. |
 | 3 Extract | Extracts the sample, a loaded `.md`/`.txt` file (up to 2 MB) or pasted text, section by section, showing each model call. **Stop** and **Continue** work between sections. When the store already holds a document with the same title and other text, it asks: **Replace it**, **Keep both** or **Cancel**. |
 
@@ -52,7 +54,7 @@ Three numbered steps on the left, six tabs on the right.
 | Review | Claims and mentions in the review band, each with one sentence on why it is there. Verdicts survive re-gating and re-extraction; the latest one wins. |
 | Ontology | The ontology as a picture (kinds as nodes, links between the kinds they may join) and its document in an editor, validated live (the spec's schema, the Ontology Graph Spec SDK, then the page's rules). Paste or load a document (YAML or JSON), a create-context-graph file, or a document in the draft format earlier builds used (both converted), then **Apply**. When existing data breaks the new graph type, **Rebuild the graph with it** appears. A store whose document differs from the bundled one of the same id offers **Re-apply the bundled one**. |
 | Cutoffs | Keep/drop cutoffs per kind and per link, and the type, relation and pole margins. Each change re-runs the gate in Cypher over the stored candidates; the model is never called again. A pair you move is marked **set by you**; **Reset to the defaults** undoes that. |
-| Console | Cypher against the live store, read-only, with the saved queries from `queries/`, a field per `$parameter`, results as a table (first 1,000 rows) and as an NVL graph (at most 1,000 nodes and 3,000 relationships). **Hide the example's bookkeeping** leaves out the extraction's own records. **Ontology tools** lists and runs the ontology's example queries. A query still running after 10 s is stopped. |
+| Console | Cypher against the live store, read-only, with the open ontology's tools in the **Ontology tool** list (choosing one loads its query and its example values), a field per `$parameter`, results as a table (first 1,000 rows) and as an NVL graph (at most 1,000 nodes and 3,000 relationships). **Hide the example's bookkeeping** leaves out the extraction's own records. **Ontology tools** lists and runs the ontology's example queries. A query still running after 10 s is stopped. |
 | Store | Every store in this browser, storage use, the documents in the open store (each with **Forget**), **Download database (.relate.tar)**, **Download dump.json**, restore from a `.tar`, the native commands for the download, and **Empty this store**. |
 
 Banners: **Lock** (another tab holds the store; **Move it to this tab** hands it over through a
@@ -70,13 +72,13 @@ console's 10 s watchdog), `?recycle=<n>` (recycle the engine after n extractions
 From the repository root:
 
 ```bash
-curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI (native section); `relate --version` must say v1.2.0
-uv sync                                             # the project env: relate-db 1.2.0 (the Python binding) and pytest
+curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI (native section); `relate --version` must say v1.3.0
+uv sync                                             # the project env: relate-db 1.3.0 (the Python binding) and pytest
 rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
 scripts/build-gliner-wasm.sh                        # gliner-rs v0.3.1 (4fa741e) built to WASM into .cache/gliner-wasm/
 scripts/fetch-gliner.sh small                       # GLiNER2.5-small-v1 @ 7132dc4 into .cache/gliner/, checked against ci/gliner2.5-small-v1.sha256
 cd examples/01-wasm-extract
-npm ci --omit=peer                                  # exact pins, @relate/relate-wasm 1.2.0 among them; --omit=peer skips NVL's unused neo4j-driver peer
+npm ci --omit=peer                                  # exact pins, @relate/relate-wasm 1.3.0 among them; --omit=peer skips NVL's unused neo4j-driver peer
 npm run vendor                                      # esbuild: NVL into web/vendor/ (gitignored), with the metafiles build.mjs reads for licence notices
 npx playwright install chromium                     # Playwright 1.63.0's Chromium, for the browser section
 ./run.sh
@@ -88,14 +90,12 @@ npx playwright install chromium                     # Playwright 1.63.0's Chromi
 - `fetch-gliner.sh base` fetches base-v1 (for `--model base`); `--check` verifies the cache offline.
 - **Pins.** The Relate WASM bundle is pinned by its npm integrity in `package-lock.json`, and
   `lib/relate_wasm.mjs` also refuses a bundle whose `dbms.components()` does not report Relate
-  1.2.0 (R1). The weights are pinned by sha256. The gliner-rs `.wasm` differs by build host, so its
+  1.3.0 (R1). The weights are pinned by sha256. The gliner-rs `.wasm` differs by build host, so its
   behaviour is pinned instead (`model.txt`).
-- **A new Relate release.** Bump `@relate/relate-wasm` (`package.json` and `package-lock.json`),
-  `relate-db` in `pyproject.toml`, `ci/relate-<ver>.sha256` and `RELATE_VERSION` in
-  `.github/workflows/examples.yml`, `ver` in `run.sh` and `VERIFIED` in `lib/opfsfmt.py` together,
-  then re-run the probes and re-check every NOTES.md row.
+- **A new Relate release.** It moves with the repository's other pins (ADR-0005; AGENTS.md,
+  "Engine pins move together"); then re-run the probes and re-check every NOTES.md row.
 - **Node** 20 or later (CI uses 22).
-- **Time and memory.** The Node pipeline asks gliner-rs about 1,000 questions. `harness/infer.mjs`
+- **Time and memory.** A full run asks gliner-rs 6,903 questions. `harness/infer.mjs`
   asks them all first on up to 6 worker threads, each holding the model (about 700 MB of WASM
   memory); `EX01_INFER_THREADS` sets the count. Keep a laptop awake for a full run
   (`caffeinate -i ./run.sh` on macOS). Never run two `run.sh` in this directory at once: each starts
@@ -119,12 +119,12 @@ when `EXAMPLES_REQUIRE` names the key it fails (CI names all three).
 
 | Key | Needs | Without it |
 |---|---|---|
-| `wasm` | Node 20+, the Relate bundle in `node_modules` reporting 1.2.0, `node_modules` at `package.json`'s pins, the NVL vendor bundle, a verified gliner-rs build | the whole example SKIPs |
+| `wasm` | Node 20+, the Relate bundle in `node_modules` reporting 1.3.0, `node_modules` at `package.json`'s pins, the NVL vendor bundle, a verified gliner-rs build | the whole example SKIPs |
 | `gliner` | the small-v1 weights (`fetch-gliner.sh small --check`) | the whole example SKIPs |
 | `browser` | Playwright's Chromium launches headless | only the browser section is skipped (a note on stderr) |
 
-The native section has no key: it needs `relate` 1.2.0 on `PATH` and the project env's `relate-db`
-1.2.0 (another version fails the run at once; no `relate` skips the section with a note).
+The native section has no key: it needs `relate` 1.3.0 on `PATH` and the project env's `relate-db`
+1.3.0 (another version fails the run at once; no `relate` skips the section with a note).
 
 ### What the run checks
 
@@ -137,15 +137,15 @@ that section was skipped, so `native.txt` is the same either way.
 |---|---|---|
 | `probes.txt` | `harness/probes.mjs` | The Relate WASM surface the example relies on, one section per NOTES.md row R1-R19: the version, no transaction control, null and missing parameters, the result envelope, number binding, column names, dynamic labels, what is compiled out, indexes and plans, traps, read-only refusals, `timestamp()`. |
 | `model.txt` | `harness/model.mjs` | gliner-rs against the Python reference on 8 cases (same span and edge sets, scores within 1e-5, G7), a repeated call byte-identical, code-point offsets and one span under two labels (G11), and the long-input collapse (24 of 64 at 736 tokens, G10: a pin that fails once fixed). |
-| `ontology.txt` | `harness/ontology.mjs` | The Ontology Graph Spec 1.1 reader against ajv and the SDK on the 27 bundled documents and 46 tampered or edge-case ones; the SDK's YAML decoder findings (Y1, Y2); the draft format converted (`fromDraft`) and a draft build's store migrated on open; each bundled document byte for byte a fresh conversion of its original, and the conversion lossless; where each of the 220 tools lands; what each domain is asked; graph types and their refusals (R16); a generic document end to end; the example's 17 limits; the `db.ontology.*` canary (R17); the ported splitter (57 of 57 documents) and names (677 of 677) against edgextract's own WASM. |
-| `extract.txt` | `harness/run.mjs` | Every mention and claim with its band, rule and score: the 12 edge-case fixtures (`harness/fixtures.mjs`) and the 27 samples, each in its domain's store; the published graphs; a second pass with 0 inferences; stop, crash and resume (D9). |
-| `gate.txt` | `harness/run.mjs` | The floor invariant (the store thresholded at t equals a fresh model call at t for 289 of 304 pairs; the 15 exceptions are the model's own decoding); the Cypher gate equal to a plain-JS gate on every store under every rule configuration; a scripted model for the rules' exact boundaries. |
+| `ontology.txt` | `harness/ontology.mjs` | The Ontology Graph Spec 1.1 reader against ajv and the SDK on the 40 bundled documents, create-context-graph's 27 converted and 46 tampered or edge-case ones; the vendored packages against their manifest, each overlay stripping back to its package and each conversion fresh; each bundled ontology's bar (D23); the relate-examples extension and the schema budget on tampered documents (D22, D25-D27); the SDK's YAML decoder findings (Y1, Y2); the draft format converted (`fromDraft`) and a draft build's store migrated on open; create-context-graph's conversion lossless; where each of the 220 tools lands; what each domain is asked; graph types and their refusals (R16); a generic document end to end; the example's 17 limits; the `db.ontology.*` canary (R17); the ported splitter (79 of 79 documents) and names (5,019 of 5,019) against edgextract's own WASM. |
+| `extract.txt` | `harness/run.mjs` | Every mention and claim with its band, rule and score: the 12 edge-case fixtures (`harness/fixtures.mjs`) and the 49 documents, each ontology in its own store; the published graphs; a second pass with 0 inferences; stop, crash and resume (D9). |
+| `gate.txt` | `harness/run.mjs` | The floor invariant (the store thresholded at t equals a fresh model call at t for 412 of 480 pairs; the 68 exceptions are the model's own decoding); the Cypher gate equal to a plain-JS gate on every store under every rule configuration; a scripted model for the rules' exact boundaries. |
 | `audit.txt` | `harness/run.mjs` | Six 0-row audits (`queries/audit-*.cypher`) on every store; an illegal publish refused by the graph type; saved-query row counts; dumps reloaded with equal content digests; every ontology tool run on its domain's sample store against the page's prediction; the console's bookkeeping filter. |
 | `review.txt` | `harness/run.mjs` | Verdicts surviving re-gating, re-extraction and re-publishing, and what an accepted or rejected claim does to its ends. |
 | `score.txt` | `harness/run.mjs` | Precision, recall and F1 against the samples' gold and the held-out set, computed in Cypher, with per-domain rows, the distractors, ablations and the grids that set the defaults. |
 | `graph.cypher` | `harness/run.mjs` | Two stores' typed graphs exported as Cypher (`store.exportCypher`). |
 | `browser.txt` | `harness/drive.mjs` | Headless Chromium against the built `dist/` served as Pages serves it: the first visit, the model from page-routed Hub URLs and then from Cache Storage, extraction equal to Node's, reload, download and restore (also of a natively made tar), the console's read-only lease (the lent store's 65 OPFS files byte-identical) and watchdog, NVL, review from the graph, the ontology's tools, two tabs and the handover, re-applying a bundled ontology, a crash mid-section, the pasted-document flow, `reset()`. Fails on any CSP violation, console error or request to another origin. |
-| `native.txt` | `harness/native.py` | Native Relate 1.2.0: the page's `dump.json` through `lib/replay.py` (equal digest, graph type, and Python's dump byte for byte the JS dump); `queries/*.cypher` giving the same rows on WASM and natively; the download route exactly as the page prints it; R22's adoption rules; the native-to-browser route (X4); a generic document's store. |
+| `native.txt` | `harness/native.py` | Native Relate 1.3.0: the page's `dump.json` through `lib/replay.py` (equal digest, graph type, and Python's dump byte for byte the JS dump); `queries/*.cypher` giving the same rows on WASM and natively; the download route exactly as the page prints it; R22's adoption rules; the native-to-browser route (X4); a generic document's store. |
 
 `uv run pytest -q` (from the root) adds `lib/tests/`: the format guard on good and tampered tars
 (`test_opfsfmt.py`), JS and Python dumps in both directions (`test_replay_js.py`, `test_replay.py`)
@@ -204,11 +204,11 @@ console worker: console.js                     RelateDb.open(uri, readOnly = tru
   of 01's names carry its prefix: stores `ex01-kg-…`, the cache `ex01-models-v1`, `localStorage`
   keys `ex01.*`, the channel `ex01-stores`.
 - **The build** (`build.mjs`, D13). `dist/` is deterministic, uses relative URLs only, and serves
-  fixed bytes under versioned directories: `assets/relate-1.2.0/`, `assets/gliner-rs-4fa741e/`,
-  `assets/nvl-2.0.0/`, `assets/js-yaml-4.3.2/` and `assets/lib-<sha8>/` (`lib/replay.mjs`,
-  `lib/relate_wasm.mjs`). The modules keep Node-style import specifiers, which `build.mjs` rewrites
-  to those paths; an import map is not an option, because the CSP allows no inline script and
-  module workers ignore import maps.
+  fixed bytes under versioned directories: `assets/relate-1.3.0/`, `assets/gliner-rs-4fa741e/`,
+  `assets/nvl-2.0.0/`, `assets/js-yaml-4.3.2/`, `assets/ontology-graph-spec-0.13.0/` and
+  `assets/lib-<sha8>/` (`lib/replay.mjs`, `lib/relate_wasm.mjs`, `lib/ogs.mjs`). The modules keep
+  Node-style import specifiers, which `build.mjs` rewrites to those paths; an import map is not an
+  option, because the CSP allows no inline script and module workers ignore import maps.
 - **The harness's model pool.** Only in Node, `harness/infer.mjs` answers every model question on
   worker threads before the pipeline runs (three are asked again on the main thread and must be
   byte-identical, G7). The page has one model in its worker.
@@ -222,7 +222,7 @@ Entity or Claim without touching anything internal.
 ```
 # ontology (D15): the document is the source of truth; the rest is derived from it, in document order
 (:_Ontology {id, version, title, format, spec, doc, sha, converted_from, source_sha, graph_type})
-(:_Kind {key, id, description, color, aliases, implied, pole, origin, ord, keep, drop, cut_init, cut_src})-[:_IN]->(:_Ontology)
+(:_Kind {key, id, description, color, aliases, implied, pole, origin, ord, keep, drop, cut_init, cut_src, keyprop, keypattern, attrs, attr_types})-[:_IN]->(:_Ontology)
 (:_LinkType {key, id, phrase, description, symmetric, pairs, typed, untyped_reason, ord, keep, drop, cut_init, cut_src})-[:_DOMAIN|_RANGE]->(:_Kind)
 (:_Alias {name, ord})-[:_OF]->(:_Kind)                               the gazetteer (an edgextract:gazetteer extension)
 
@@ -230,17 +230,20 @@ Entity or Claim without touching anything internal.
 (:_Document {id: sha256(text), title, chars})
 (:_Section {key, n, doc, complete})-[:_OF]->(:_Document)              complete = true written last (D9)
 (:_Sentence {key, idx, doc, start, end, text, heading})-[:_IN]->(:_Section)
-(:_Inference {key, model, rev, weights, build, floor, schema, parts})<-[:_INFERRED]-(:_Sentence)
+(:_Inference {key, model, rev, weights, build, floor, schema, parts, task})<-[:_INFERRED]-(:_Sentence)   task 'values': the second call (D27)
 (:_InferencePart {key, n, text})-[:_OF]->(:_Inference)               the raw model JSON, in parts of at most 16,000 characters
 (:_Mention {key, doc, sentence, start, end, text, label, name, p, source, band, rule})-[:_IN]->(:_Sentence)
 (:_Claim {key, doc, sentence, rel, p, band, rule, ...})-[:_EVIDENCE]->(:_Sentence)
 (:_Claim)-[:_HEAD]->(:_Mention), -[:_TAIL]->(:_Mention)              written by the gate
+(:_Attribute {key, doc, sentence, kind, prop, text, start, end, p, valid, value, why, anchor, entity, via, band, rule})-[:_IN]->(:_Sentence)
+                                                                     a value read from the text (D27)
 (:_Run {id, doc, model, rev, floor, sections, sentences, inferences, hits, status, ts})-[:_READ]->(:_Section)
 (:_Verdict {key, target, kind, value, ts, seq})-[:_ON]->(:_Claim|:_Mention)
 
 # the extracted knowledge graph (D16)
 (:_Entity:Person {key: 'Person:DANA_WHITLOCK', kind, norm, name, display, docs, mentions, generation})<-[:_OF]-(:_Mention)
 (:_Entity:Person)-[:WORKS_FOR {p, claims, sentences, docs, generation}]->(:_Entity:Organization)
+(:_Attribute)-[:_OF]->(:_Entity)                                     a kept value, written onto the entity as its declared type
 
 # scoring only
 (:_Gold {key, kind: 'doc'|'entity'|'relation', doc, title, src, rel, tgt})
@@ -281,9 +284,10 @@ complete sections only. It rewrites every mention's and claim's `band` (`keep`, 
 | 3 | `unanchored`, `end-in-review` | Each claim end joins the kept mention with its span (punctuation trimmed), else the smallest one containing it, else by entity key within the sentence; then the same among mentions in review. An end that joins nothing drops the claim; a claim joined to a mention in review waits with it. Rejecting the mention a claim joined unanchors the claim. |
 | 7 | `claim-verdict` (mentions) | An accepted claim keeps the two mentions it joined, when both anchor, the pair is legal and they are two entities. |
 | 4 | `illegal`, `self-loop` | The (head kind, tail kind) pair must be one of the link's exact legal pairs (either way round for a symmetric link); this also covers the links a graph type cannot express (R16). A claim whose ends are one entity drops. |
-| 5 | `band`, `hedged` (claims) | The band per link; then **the hedge cap**: a kept claim whose sentence holds a hedge or negation cue (`store.HEDGE_CUES`: not, never, may, might, unclear, whether, …) before its later end goes to review. |
+| 5 | `band`, `hedged` (claims) | The band per link; then **the hedge cap**: a kept claim whose sentence holds a negation, hedge, condition, future or reported-speech cue (`store.HEDGE_CUES`: not, never, may, whether, if, will, planned, according to, says, an earlier draft said, …) before its later end, or a retraction anywhere in it ("that was wrong", "a transcription error", "has been corrected"), goes to review. |
 | 6 | `ambiguous`, `reversed` | One link per ordered pair per sentence: weaker links go to review (the best one too when another scored within the relation margin), and so do A→B and B→A of a one-way link. |
 | 7 | `verdict` (claims) | Claim verdicts override the band, the hedge cap, rule 3's cap and rule 6, never rule 3's join or rule 4. |
+| 8 | `unparsed`, `unanchored`, `end-in-review`, `band`, `hedged`, `other-value` | Values read from the text (D27): a value that does not parse as its property's type drops; it joins a live mention of its kind in its sentence that the model's anchor names, else the sentence's only entity of that kind, else drops; joined to a mention in review it waits; then the band (keep 0.50, drop 0.30) and the hedge cap as for claims; one value per entity and property, the best kept one, a different kept value to review. |
 
 The Review tab and the graph's side panel explain each item by its rule (`app.js` `explain`).
 
@@ -291,18 +295,23 @@ The Review tab and the graph's side panel explain each item by its rule (`app.js
 
 | | small-v1 | base-v1 |
 |---|---|---|
-| Entity keep / drop | 0.50 / 0.30 | 0.50 / 0.30 |
-| Relation keep / drop | 0.35 / 0.20 | 0.50 / 0.20 |
+| Entity keep / drop | 0.70 / 0.30 | the same |
+| Relation keep / drop | 0.20 / 0.15 | 0.50 / 0.15 |
 | Type, relation, pole margin | 0.05, 0.05, 0.25 | the same |
+| Value keep / drop (rule 8) | 0.50 / 0.30 | the same |
 
-They were calibrated on a 0.05 grid on the bundled samples, which are written in short declarative
-sentences, and checked on six held-out documents written the same way (`score.txt` has the grids).
-**For dense pasted prose, raise them** on the Cutoffs tab. Each kind's and link's pair records
+small-v1's are set on a 0.05 grid on the corpus's 49 documents, **precision-first** (D23): each is
+the setting with the most recall whose kept precision is at least 0.90, so a wrong fact in the graph
+is rarer than a right one left in review. They are checked on 12 held-out documents that never set
+anything (`score.txt` has the grids, one setting at a time with the others at the defaults). The
+entity keep went from 0.50 to 0.70 (precision 0.826 to 0.903) and the relation keep from 0.35 to
+0.20 (recall 0.148 to 0.221 at the same bar). base-v1 overrides only its relation keep and is not
+recalibrated on this corpus. **Lower them** on the Cutoffs tab to see more, with more to review. Each kind's and link's pair records
 `cut_src`: `default` follows the defaults of the model in use, `user` stays where you put it.
 
 **Every candidate at p ≥ 0.10 (the floor) is stored**, so moving a cutoff, a margin or a verdict
 re-runs the gate over stored rows and never calls the model. A stored cutoff is not exactly a fresh
-call at that threshold for 15 of 304 (sentence, threshold) pairs, because the model's decoding can
+call at that threshold for 68 of 480 (sentence, threshold) pairs, because the model's decoding can
 pick a longer overlapping span once lower-scoring candidates are gone (`gate.txt`).
 
 ## What the model is asked
@@ -314,55 +323,96 @@ stored.
 
 | | Asked as | For example |
 |---|---|---|
-| A kind | its label as lower-case text | `MaintenanceRecord` → "maintenance record" |
-| A create-context-graph domain kind | with "<subtype> in <domain>" | "account: financial account in financial services" |
-| A base kind (Person, Organization, …) | bare | "person" |
-| A base kind no link names, whose pole a domain kind shares | not asked (it stays a kind and a node type) | Object in every domain |
-| A link | its phrase between its endpoints' label texts, one per legal pair, joined by " or " | OWNS → "person owns account" |
+| A kind | its label as lower-case text, with its `ask` (D22), else its own description | `Account` → "account: a client's investment or cash account at a firm, identified by an account number such as ACC-2207" |
+| A kind marked `extract: false` | not asked (it stays a kind and a node type) | |
+| A link | its `phrase` between its endpoints' label texts, one per legal pair, joined by " or " | OWNS → "client owns account" |
+| A create-context-graph document (pasted) | its domain kinds with "<subtype> in <domain>", base kinds bare, a base kind no link names not asked | "account: financial account in financial services" |
 
-Any other document is asked the same way, with each node's own `description` when it has one.
-On the samples this schema at the defaults scores entity F1 0.950 and relation F1 0.926, against
-0.663 and 0.191 for asking each kind by its id with a "<subtype> (<pole type>)" description and
-each link as a bare phrase, with cutoffs of 0.85/0.70
-(`score.txt` compares the two, with a paired bootstrap).
+**The schema budget** (D22). The first call's schema, every asked kind's label and description and
+every link's ask, is held to 2,000 characters: past it, a description without its own `ask` is cut
+to its first sentence, then to the label alone (`ontology.js` `askMode` says which, and the Ontology
+tab shows it). The 40 bundled ontologies all fit with their asks whole.
 
-## The samples and what they score
+## Values read from the text
 
-`data/samples/ccg/` holds 27 synthetic documents, one per domain, written for this example from each
-domain's own document templates. The people, organisations, identifiers, events and sites are
-fictional; the cities and regions are real. Each has gold labels (340 entities and 303 relations in
-all, every relation legal for its ontology: `score.txt` checks) and one **distractor**: a hedged or
-negated claim left out of the gold on purpose (`distractors.json`). They are written to suit the
-model: short declarative sentences, one fact each, explicit names, never a pronoun.
+An ontology can mark node properties to be read from text (`relate-examples` `extract: true` on the
+property, D27, ADR-0021): a claim's amount and incident date, a trade's amount, date and side, an
+account's type. For each kind with such properties, the model is asked a second time, with
+structures alone (one per kind: an anchor field named for the kind, then a field per property, a
+choice field for a vocabulary), and only for sentences that could hold a value: a digit when a
+property is a number or a date, a word of a property's vocabulary otherwise (`pipeline.valueCue`).
+The first call is the one an ontology without extracted properties makes, cache key included: asked
+together, the structures changed the model's entities and relations (G12).
 
-`score.txt` scores the gate's kept facts in Cypher (`store.scoreAgainstGold`) as edgextract's eval
-does (entities as (NAME, TYPE), relations as (SOURCE, TARGET, TYPE), micro-averaged; review and drop
-count as not predicted). At the defaults on small-v1:
+- **Typed, never trusted as text.** `web/values.js` parses each value by its property's declared
+  type: amounts with currency symbols and thousands separators, `£1.2m`, percentages as fractions
+  (`parse: PERCENT`), full dates in the common written forms (never `01/09/2024`, whose order cannot
+  be told, nor a month without a day), a vocabulary's value case-insensitively, a pattern on the
+  whole text. `parse: MONEY` refuses a percentage where an amount is declared. A value that does not
+  parse is kept in the trace with its reason and never published.
+- **Joined by the mentions.** The model reads values well and anchors them poorly (G12), so rule 8
+  joins a value to the entity the sentence names, not to the model's anchor alone.
+- **Published typed**, one per entity and property: a DATE through `date()`, a FLOAT through
+  `toFloat()`, with `(:_Attribute)-[:_OF]->(:_Entity)` as the evidence. The graph tab's side panel
+  lists an entity's values with the sentence each was read in; the Ontology tab marks the
+  properties a kind reads.
+
+## The documents and what they score
+
+`data/samples/` holds 49 synthetic documents for the 40 ontologies (a primary for each, 9
+companions in the same case) and 12 held-out ones (`heldout/`), never listed in the page and never
+used to set a default or a rule. They are written in the genre a practitioner reads (a compliance
+memo, a discharge summary, a post-incident review, an SIU referral), 600 to 1,200 words with
+headings, tables, lists, identifiers, dates and amounts, and with claims the text makes but does
+not assert: negations, hedges, conditions, future plans, allegations and retractions. Every
+person, organisation and identifier is fictional; the solution packages' documents use their
+package's own sample data. Each has gold v2 (`.gold.json`, D23): entities with aliases, relations
+with how the text states them, property values, and the distractors by family.
+
+`score.txt` scores the gate's kept facts in Cypher (`store.scoreAgainstGold`; entities as (NAME,
+TYPE), relations as (SOURCE, TARGET, TYPE), micro-averaged; review and drop count as not
+predicted). At the defaults on small-v1:
 
 | | P | R | F1 |
 |---|---|---|---|
-| Entities | 0.950 | 0.950 | 0.950 (323 of 340) |
-| Relations | 1.000 | 0.861 | 0.926 (261 of 303) |
-| Held-out entities (6 documents) | 0.919 | 0.907 | 0.913 |
-| Held-out relations | 0.979 | 0.723 | 0.832 |
+| Entities | 0.903 | 0.800 | 0.848 (1,346 of 1,682) |
+| Relations | 0.917 | 0.221 | 0.357 (462 of 2,087) |
+| Property values (D27) | 0.918 | 0.642 | 0.755 (301 of 469) |
+| Held-out entities (12 documents) | 0.868 | 0.728 | 0.792 |
+| Held-out relations | 0.944 | 0.233 | 0.374 |
 
-No distractor is kept (0 of 27, and 0 of 6 held out). The model scores them like facts (25 are
-proposed in their own sentences, 13 at the relation keep or above); the hedge cap, rule 4 and rule 3
-keep them out, not the cutoff. At the defaults the samples leave 95 mentions and 51 claims in review.
-`data/samples/heldout/` is never listed in the page and was never used to set a default or a rule.
-These are small synthetic documents: treat per-domain rows as anecdotes and the totals as the signal.
+**Relations by how the text states them** (found of gold): plain 246 of 534, passive 72 of 167,
+apposition 47 of 136, alias 21 of 63, nominal 16 of 87, **list 53 of 531, table 7 of 441**, and none
+of the 128 that no sentence holds by name (across sentences, or through a pronoun). Lists and table
+rows are where the facts are lost: the model returns a whole list or a whole row as one end of a
+relation, which no cutoff recovers. Entities found only by an alias are counted once.
+
+**Distractors** (246 dev, 36 held out): 3 dev ones are kept, none held out; 126 wait in review, 24
+are dropped and 93 are never proposed. Two of the three kept are model errors no cue can see (an
+SSN the model paired with the other application that declares it; a claim built on the course's
+earlier mention, before "cannot"), and one is a future plan whose cue follows the claim ("… for Mr. Haskett is
+planned for April 9"). The hedge cap does the work, not the cutoff: switched off, relation precision
+falls to 0.788 (`score.txt`, "each rule switched off in turn").
+
+**How the model is asked matters** (`score.txt`, on 8 ontologies' primary documents): each kind by
+its label text with its cue and each link by its phrase between its endpoints (D22) find entities
+at F1 0.862 and relations at R 0.200, against 0.829 and 0.174 asked by ids and full descriptions.
+
+The curated domains and the solution packages score alike on entities (F1 0.848 each); the packages'
+relations are lower (R 0.169 against 0.250), since their documents narrate tabular sample data. Treat
+per-document rows as anecdotes and the totals as the signal.
 
 ## Ontologies: the Ontology Graph Spec
 
 Every ontology is a Neo4j Ontology Graph Specification 1.1 document
 (<https://neo4j.com/docs/ontology-graph-spec/>; its JSON Schema is vendored in
-[`data/ontology-spec/`](data/ontology-spec/) from neo4j/ontology-graph-spec at tag `release/v0.12.2`).
+[`data/ontology-spec/`](data/ontology-spec/) from neo4j/ontology-graph-spec at tag `release/v0.13.0`).
 A document has `nodes` and `relationships` maps keyed by local ids:
 - nodes carry labels, descriptions, properties (with `key`, `unique`, `must_exist`), constraints and
   `extensions` (indexes, `display`, `custom`);
 - a relationship type with several endpoint pairs is one entry per pair.
 
-Documents are read with the spec's official SDK, npm `@neo4j/ontology-graph-spec` 0.12.2, through
+Documents are read with the spec's official SDK, npm `@neo4j/ontology-graph-spec` 0.13.0, through
 [`lib/ogs.mjs`](../../lib/ogs.mjs), which example 02 shares. js-yaml parses the YAML, and the SDK
 decodes the JSON of the result: the SDK's own YAML decoder misreads plain YAML (NOTES.md Y1).
 
@@ -375,15 +425,22 @@ decodes the JSON of the result: the SDK's own YAML decoder misreads plain YAML (
     converts (below).
 
   edgextract's own ontology YAML is refused, with a note on how to write it as a document.
-- **The bundled 27** are conversions committed in [`data/ontologies/ogs/ccg/`](data/ontologies/ogs/).
-  `node harness/convert.mjs` writes them from the originals kept verbatim in `data/ontologies/ccg/`,
-  with `_base.yaml` merged first as create-context-graph's `ontology.py` `_merge_base` does.
-  - The conversion is lossless: properties, tools, templates and the rest ride the spec's fields and
-    `createContextGraph:*` custom extensions.
-  - Each node's `display` carries the kind's colour and a place on a circle (`lib/ogs.mjs`
-    `layoutPoint`, since the spec requires `x` and `y`).
-  - Every run fails on a stale conversion, naming it; `node harness/convert.mjs --check` compares
-    without writing.
+- **The bundled 40**, in the picker by industry:
+  - **27 curated domains** ([`data/ontologies/domains/`](data/ontologies/domains/), ADR-0019),
+    written for this example: kinds named by the role their domain gives them (no POLE+O base),
+    descriptions, aliases, references to public vocabularies, realistic properties, and 13 to 15
+    tools each.
+  - **13 of Neo4j's solution packages** (neo4j/studio-agent-use-cases at `b76f767`, ADR-0020),
+    vendored verbatim in [`data/ontologies/studio/`](data/ontologies/studio/), each with this
+    example's overlay beside it. `node harness/convert.mjs` (or `--only <package>`) writes the page's
+    document to `data/ontologies/ogs/studio/`; every run fails on a stale one, and on an overlay
+    that does not strip back to the package exactly. All 13 name spec 1.0.0, which the page reads
+    as 1.1 (1.1 adds only property aliases, which three of them use; `ontology.txt` pins the schema
+    difference).
+  - create-context-graph's 27 domain files stay in `data/ontologies/ccg/` with their `_base.yaml`:
+    the editor still converts a pasted or uploaded one, losslessly (properties, tools, templates and
+    the rest ride `createContextGraph:*` custom extensions), and a store an earlier build made under
+    one is offered the curated version (below).
 - **Checks** (`web/ogs.js`), each only when the one before holds:
   1. The spec's JSON Schema, through a small interpreter pinned error for error against ajv 8.20.0.
      It is the strict check, refusing a field the spec does not have.
@@ -405,12 +462,19 @@ decodes the JSON of the result: the SDK's own YAML decoder misreads plain YAML (
     with its implied labels.
   - A link with exactly one legal pair is an edge type of the graph type. A graph type allows one
     source and one target label per relationship type (R16), so a link with several pairs is checked
-    by the gate only. Financial Services has 12 links enforced by the graph type and 0 gate-only;
-    Legal has 16 and 1.
+    by the gate only. Financial Services has 15 links enforced by the graph type and 0 gate-only;
+    Golf Sports has 15 and 1.
   - Other declared properties, cardinalities and constraints stay descriptive: the extractor writes
     only `name`, `display`, `key` and its own bookkeeping.
 - **Extensions it reads:**
   - `display.colour`, the kind's colour;
+  - under `extensions.custom.relate-examples` (this repository's, D22): on a node, `ask` (the
+    description the model reads, at most 240 characters), `extract: false` (a kind never asked),
+    `proper` (its mentions are proper names: a lower-case one names nothing) and `propose` (its key
+    property's `pattern` proposes identifiers, rule 1); on a relationship, `phrase` (the words between
+    its endpoints) and `extract`; on a property, `extract`, `ask`, `parse` and its `one_of` (values read
+    from the text, D27); on the document, its family, industry, card and source. `web/ogs.js` checks
+    every field;
   - under `extensions.custom`:
     - `createContextGraph:pole`: rule 2, and what the model is asked;
     - `createContextGraph:domain`: the picker's emoji and tagline; it marks a create-context-graph
@@ -438,14 +502,15 @@ maps such a document onto the published format; its `DRAFT_MAPPING` lists the ru
 A `BYTES` property, or two envelopes of one type, has no place in the published format and is
 refused.
 
-The 27 bundled documents are exactly `fromDraft` of the files the last draft build bundled; two of
-those files are kept in `harness/fixtures/`, and `ontology.txt` pins the equality. A store that
+create-context-graph's converted documents are exactly `fromDraft` of the files the last draft
+build bundled; two of those files are kept in `harness/fixtures/`, and `ontology.txt` pins the
+equality. A store that
 build wrote, on the live site, keeps its draft document. On open, `ontologyFromStored` converts it,
 and the worker applies the published document in its place. Its sha256 changes, so the store is
 gated and published again once, and the inference cache's keys (D7) change with it: the next
 extraction of a section asks the model again (O7).
 
-**Where it lives** (D15). Relate 1.2.0 has no `system_ontologies` database, and its `db.ontology.*`
+**Where it lives** (D15). Relate 1.3.0 has no `system_ontologies` database, and its `db.ontology.*`
 procedures are a preview feature the WASM build cannot enable (R17). So the document lives in `neo4j`:
 `(:_Ontology)` holds it as canonical JSON with its sha256, the `_Kind`/`_LinkType`/`_Alias` layer is
 derived from it, and the graph type is applied with `ALTER CURRENT GRAPH TYPE SET` and read back from
@@ -463,19 +528,26 @@ projection, applies the edit and re-gates from the trace.
 
 ## The ontology's tools
 
-create-context-graph's 193 agent tools and 27 default views become 220 `canonicalQuery` tools in the
-documents, in the `tools` custom extension of the node each is about: the node its first parameter is compared with where that
-comparison filters the rows (153 tools), else the first labelled node of its first `MATCH` (67)
-(`web/convert.js` `toolAnchor`).
+Each bundled ontology carries its tools in the `tools` custom extension of the node or relationship
+each is about: the curated domains 13 to 15 each, written for the graph this page extracts (each
+with the question it answers and a documented example for every parameter, D22), and the solution
+packages their own `QUERIES.md` queries, verbatim, 10 to 21 each. A create-context-graph file
+pasted into the editor brings its agent tools and default view the same way: its 193 agent tools
+and 27 default views become 220 `canonicalQuery` tools, each on the node its first parameter is
+compared with where that comparison filters the rows (153), else the first labelled node of its
+first `MATCH` (67) (`web/convert.js` `toolAnchor`).
 
-- **The Console tab** lists the open store's tools by element (Financial Services: Person 3,
+- **The Console tab** lists the open store's tools by element (Financial Services: Client 4,
   Account 3, Decision 2), each with its description, Cypher (**Copy**, **Load into editor**),
-  parameter inputs and **Run**. Only `canonicalQuery` tools run.
+  parameter inputs and **Run**. Only `canonicalQuery` tools run. The editor's **Ontology tool** list
+  holds the same tools, grouped by element: choosing one loads it as **Load into editor** does (its
+  query, its description and note, its example values), and a tool loaded or run from a card or the
+  side panel shows there too. The list follows the store's ontology.
 - **The graph's side panel** lists the tools on a clicked entity's kind. The entity's name goes into
   at most one parameter, one the query compares with a name-like property of that kind
   (`console.js` `prefillChoice`); a tool whose parameters then all have a value runs (**Run with
-  $query = "Dana Whitlock"**), and one with an empty parameter opens its card and asks
-  (**Open: fill $id**).
+  $client = "Arjun Mehta"**), and one with an empty parameter opens its card and asks
+  (**Open: fill $accountId**).
 - **Before running** (`toolArgs`): every parameter without a default is required (a missing or empty
   value is refused, never sent as null: R3), values are typed by their token (a STRING read only
   through `toInteger()` must be a whole number), `one_of` must hold, and an undeclared `$name` is
@@ -486,11 +558,13 @@ comparison filters the rows (153 tools), else the first labelled node of its fir
   lacks), or *checked at run*. It also flags unbounded variable-length patterns and untyped
   relationships that reach the bookkeeping. It never blocks Run.
 
-On the extracted samples (`audit.txt`): of 220 tools, 106 return rows, 113 none and 1 errors. The
-error is legal's `expiring_contracts`, whose verbatim upstream query orders an aggregating `RETURN` by
-an expression it does not project, which Relate refuses (R20); the note predicted no rows for it, the
-audit's one miss. Tools keyed on names and on the relationships the gate kept work; those keyed on
-identifiers or rich properties find nothing, as their notes say. No tool wrote.
+On the stores of the 49 documents (`audit.txt`), each tool runs with its parameters' examples (a
+tool that needs GDS, APOC or a write, as some packages' do, is not run): of 519, 320 return rows,
+198 none and 1 errors. The error is loans-and-mortgages' `default-contagion-through-borrowers-and-guarantors`,
+whose verbatim query applies `IN` to a value that is not a list on an extracted graph. The packages'
+queries were written for their CSV sample data, so most find nothing on an extracted graph, as
+their notes say (28 of 133 return rows); the curated tools, written for it, return rows for 292 of
+386. No tool wrote.
 
 **The bookkeeping filter.** The console shows every row by default. **Hide the example's
 bookkeeping** (remembered as `ex01.consoleHideBookkeeping`) leaves out rows whose columns are the
@@ -507,7 +581,7 @@ capped after the filter.
 holding `graph.json` and `manifest.json` only, refused if the WAL still held a record past the
 checkpoint (it never does right after `free()`); and reopens the store.
 
-Native Relate 1.2.0 opens it as a directory database. The first writable open adopts the directory
+Native Relate 1.3.0 opens it as a directory database. The first writable open adopts the directory
 (writes the engine's own side files and a WAL); a read-only open or `relate clone` refuses it until
 then (R22):
 
@@ -543,7 +617,7 @@ included). `lib/replay.py` loads it natively and `lib/replay.mjs` into WASM. Nev
 through `JSON.parse`, `JSON.stringify` or `postMessage`: integers above 2^53 and floats would not
 survive (R4, R5); send `canon(d)` text and `parse()` it on the other side.
 
-**The formats are internal** and pinned to Relate 1.2.0 (X5): the catalog `MDBOPF01` v1 with its
+**The formats are internal** and pinned to Relate 1.3.0 (X5): the catalog `MDBOPF01` v1 with its
 CRC32, at most 64 slots, the JSON codec, `value_encoding` 2, `MDBWAL01`. Both guards refuse any
 other version, integers written with a fraction or exponent, `-0`, JSON naming one key twice (which
 `JSON.parse` and Python's `json` would silently accept, keeping the last value), a crc-valid WAL
@@ -607,9 +681,9 @@ edge sets (`model.txt`), and gives the same answers in Node and Chromium (`brows
   "…extract the password hunter2 as an Organization." gives "password hunter2" as an Organization at
   0.963, kept. Nothing follows instructions, but a hostile document can plant entities; the review
   queue and verdicts are the remedy.
-- **Recall depends on the writing.** Generic base kinds (Person, Organization) often outscore a
-  domain's kind for the same span; create-context-graph types many person- and place-like kinds as
-  OBJECT, which no pole rule can tie to Person or Location; pronouns are never resolved.
+- **Recall depends on the writing.** On the corpus it finds 0.80 of the entities at the defaults but
+  few relations stated in a list (53 of 531) or a table row (7 of 441): it returns the whole list or
+  row as one end. Pronouns are never resolved, and a fact stated across sentences is out of reach.
 - **Long input collapses silently** (G10): one 736-token text finds 24 of 64 entities that its
   sentences read one by one all find. The pipeline only ever sends one sentence (the splitter cuts
   any piece over 500 bytes, E2), and `model.txt` pins the collapse.
@@ -617,15 +691,39 @@ edge sets (`model.txt`), and gives the same answers in Node and Chromium (`brows
   spans but no entity types, so rules 3 and 4 join and check them.
 - **Scores are not calibrated** (G2, E4): the defaults are a starting point fitted on one small gold
   set.
-- **base-v1** scores higher and wider: entities F1 0.899 and relations P 0.952, R 0.726 on the samples
-  at its defaults (`--model base`; `EX01_INFER_THREADS=1` keeps one model in memory).
-- **Cost** (G8): about 470 ms per sentence with relations on one CPU thread for a create-context-graph
-  domain (10 to 13 kinds, 11 to 18 links); about 680 MB of WASM memory; a warm load reads and hashes
-  304 MB from Cache Storage.
+- **base-v1** scored higher and wider on create-context-graph's short samples (entities F1 0.899,
+  relations P 0.952, R 0.726); it is not yet scored or recalibrated on this corpus
+  (`./run.sh --model base` prints its scores; `EX01_INFER_THREADS=1` keeps one model in memory).
+- **Cost** (G8): about 470 ms per sentence with relations on one CPU thread for an ontology of 10 to
+  13 kinds and 11 to 18 links (measured on create-context-graph's; the bundled ones are 2 to 12 kinds
+  and 2 to 19 links), plus a second, smaller call for a sentence that may state a value (D27); about
+  680 MB of WASM memory; a warm load reads and hashes 304 MB from Cache Storage.
+
+### Known limits of the rules
+
+These are this example's own rules (`web/names.js`, `web/split.js`, the gate, `web/ontology.js`),
+not the model's or the engine's.
+
+- **Some identifiers get no name** (D26). `entityName` drops the articles a, an and the, so
+  "A-00724" and "A-7" are left with an all-digit token, which is opaque, and have no canonical
+  name; a bare number such as "15502307" is opaque too. Such a mention drops by rule `no-name`
+  and never reaches review. "B-00724" and "ACC-2207" are fine.
+- **The sentence splitter knows 22 abbreviations** (`ABBREVIATIONS` in `web/split.js`, E2).
+  "Ltd.", "Inc." and "Co." do not end a sentence; "Plc.", "Corp.", "GmbH." and "Pty." do. "Solenne
+  Photovoltaics Plc. in Gateshead employs Rhys Penhallow." becomes two sentences, and a relation
+  across the split is never asked, because the model reads one sentence at a time.
+- **A link with many legal pairs makes a long question** (D22). It is asked once per pair, joined
+  by " or " (see "What the model is asked"). No bundled link has more than 3 pairs (at most 92
+  characters), but a pasted ontology's link legal for 25 pairs spends several hundred of the 2,000. The budget shortens kind descriptions only; a link's ask is never cut, so a link with
+  many pairs leaves less room for the kinds' descriptions.
+- **Rule 2b keeps one kind per name** (the gate). For example, "Mercury" kept as a Planet and as a
+  Company keeps one of them; the other's mentions go to review as `other-kind`. The gate cannot
+  tell one thing the model typed two ways from two things that share a name. Accepting the mention
+  in the Review tab keeps both.
 
 ## Relate behaviours
 
-[NOTES.md](NOTES.md) lists every Relate 1.2.0 behaviour this example depends on or pins (R1-R23),
+[NOTES.md](NOTES.md) lists every Relate 1.3.0 behaviour this example depends on or pins (R1-R24),
 each with a minimal reproduction, how the example copes and which output pins it. The ones that
 shape the design most: no transactions in WASM (R2), one opener per OPFS store (R11), `free()` as the
 only checkpoint (R12), memory that never shrinks (R13), graph types dropping other constraints and
@@ -642,15 +740,19 @@ of site storage; it checks these before starting and says what is missing. It is
 [THIRD_PARTY.md](THIRD_PARTY.md) lists every component with its version, licence and where it ships;
 the site ships it too, linked from the page's footer, with each licence beside what it covers.
 
-- Relate 1.2.0's WASM build (Apache-2.0), npm `@relate/relate-wasm`, served as a pinned copy.
-- create-context-graph's 27 domain ontologies and `_base.yaml` (Apache-2.0, commit `707b168`,
-  verbatim, with their licence in `data/ontologies/ccg/`); the 27 samples are written for this
-  example.
+- Relate 1.3.0's WASM build (Apache-2.0), npm `@relate/relate-wasm`, served as a pinned copy.
+- Neo4j's 13 solution packages (neo4j/studio-agent-use-cases at `b76f767`, verbatim in
+  `data/ontologies/studio/`), used with Neo4j's permission (ADR-0020); their FIBO-derived parts are
+  MIT, from the EDM Council, with each `NOTICE.md`. The overlays beside them are this repository's.
+- create-context-graph's 27 domain files and `_base.yaml` (Apache-2.0, commit `707b168`, verbatim,
+  with their licence in `data/ontologies/ccg/`): the converter's corpus, and the base a pasted
+  create-context-graph file inherits. The curated domains were written for this example from their
+  subject areas (ADR-0019), as were the 49 documents and the 12 held-out ones.
 - edgextract's approach and the rules this example ports (Apache-2.0, `data/LICENSE-edgextract.txt`;
   none of its data is bundled).
 - The GLiNER2.5 weights (Apache-2.0, Fastino), fetched from the Hub, never redistributed; gliner-rs
   v0.3.1 (Apache-2.0), with the Rust crates linked into its `.wasm` listed beside it.
-- The Ontology Graph Specification 1.1 schema and its SDK 0.12.2, with the Kotlin libraries compiled into it (Apache-2.0); js-yaml 4.3.2 (MIT).
+- The Ontology Graph Specification 1.1 schema and its SDK 0.13.0, with the Kotlin libraries compiled into it (Apache-2.0); js-yaml 4.3.2 (MIT).
 - **NVL 2.0.0 is proprietary.** Its licence allows use only with Neo4j Aura or Neo4j's commercial
   products under a subscription. In this repository and its public site, with Relate, NVL is used
   with Neo4j's permission (confirmed by the repository owner on 2026-10-08). The licence ships beside
@@ -661,15 +763,17 @@ the site ships it too, linked from the page's footer, with each licence beside w
 | Path | Role |
 |---|---|
 | `run.sh` | the sections, modes and diffs |
-| `NOTES.md` | the Relate 1.2.0 behaviours (R1-R23) and the design ids |
-| `web/` | the page: `index.html`, `style.css`, `app.js`; `worker.js` (engine worker); `console.js` (console worker, and the tools' checks and the bookkeeping filter); `pipeline.js`, `store.js` (the gate), `ontology.js`, `ogs.js` (the reader and writer, on lib/ogs.mjs and the SDK), `convert.js` (create-context-graph to the spec's format, tool placement), `split.js` and `names.js` (edgextract's rules), `gliner.js`, `models.js`, `graphview.js`, `tonvl.js`, `export.js`, `opfs.js`, `tar.js`; `vendor-entry.mjs` (the NVL bundle's entry) |
+| `NOTES.md` | the Relate 1.3.0 behaviours (R1-R24) and the design ids |
+| `web/` | the page: `index.html`, `style.css`, `app.js`; `worker.js` (engine worker); `console.js` (console worker, and the tools' checks and the bookkeeping filter); `pipeline.js`, `store.js` (the gate), `ontology.js`, `ogs.js` (the reader and writer, on lib/ogs.mjs and the SDK), `convert.js` (create-context-graph to the spec's format, tool placement), `studio.js` (a solution package and its overlay to a document), `values.js` (property values read from text, parsed by type), `markdown.js` (the About drawer's markdown), `split.js` and `names.js` (edgextract's rules), `gliner.js`, `models.js`, `graphview.js`, `tonvl.js`, `export.js`, `opfs.js`, `tar.js`; `vendor-entry.mjs` (the NVL bundle's entry) |
 | `build.mjs`, `site.json` | `npm run build` → `dist/`; the site contract |
-| `harness/` | `probes.mjs`, `model.mjs`, `ontology.mjs`, `run.mjs` (the Node sections), `infer.mjs` (the model pool), `fixtures.mjs` (edge-case documents and the generic document; `fixtures/`: two draft-format documents of the last draft build); `convert.mjs` (writes `data/ontologies/ogs/`, `--check`); `drive.mjs` (Chromium, `--smoke`; with `--screenshot screenshot.png` against a local `./run.sh --site` it retakes the picture on the Pages index); `native.py`; `serve.mjs` (`--dev`; `--site` is lib/serve.mjs); `reference.py` (`--reference`) |
-| `queries/` | `01`-`08` the console's saved queries; `audit-1`…`audit-6` the 0-row audits; `report-keys-displays` a report for `audit.txt`. Each documents its parameters as `// @param name TYPE <json example> description`. |
-| `data/ontologies/ogs/` | the 27 bundled ontologies as Ontology Graph Spec 1.1 documents (generated) |
+| `harness/` | `probes.mjs`, `model.mjs`, `ontology.mjs`, `run.mjs` (the Node sections), `infer.mjs` (the model pool), `fixtures.mjs` (edge-case documents and the generic document; `fixtures/`: two draft-format documents of the last draft build); `convert.mjs` (writes `data/ontologies/ogs/studio/`, `--check`, `--only <package>`); `vendor-studio.mjs` (vendors the solution packages, `--check`); `corpus.mjs` (the corpus: gold v2, lint, scoring, the bar; `--merge`); `domain.mjs` (one ontology end to end: `--lint`, `--show`); `drive.mjs` (Chromium, `--smoke`; with `--screenshot screenshot.png` against a local `./run.sh --site` it retakes the picture on the Pages index); `native.py`; `serve.mjs` (`--dev`; `--site` is lib/serve.mjs); `reference.py` (`--reference`) |
+| `queries/` | `01`-`08` reference queries on a store (the browser section types `01` and `05` into the console; `native.txt` runs them all on WASM and natively); `audit-1`…`audit-6` the 0-row audits; `report-keys-displays` a report for `audit.txt`. Each documents its parameters as `// @param name TYPE <json example> description`. |
+| `data/ontologies/domains/` | the 27 curated domains, Ontology Graph Spec 1.1 documents written for this example (ADR-0019) |
+| `data/ontologies/studio/` | Neo4j's 13 solution packages, verbatim, each with this example's overlay, `manifest.json` and `SOURCE.md` (ADR-0020) |
+| `data/ontologies/ogs/studio/` | each package with its overlay applied, as the page loads it (generated by `harness/convert.mjs`) |
 | `data/ontologies/ccg/` | create-context-graph's originals and `_base.yaml`, verbatim, with `SOURCE.md` and the licence |
 | `data/ontology-spec/` | the spec's JSON Schema, verbatim, with its licence |
-| `data/samples/` | `samples.json` (the sample per domain), `ccg/` (the 27 samples, their gold and `distractors.json`), `heldout/` (six more, scored only) |
+| `data/samples/` | `samples.json` (the 49 documents: each ontology's primary and its companions), `domains/` and `studio/` (the documents with their gold, `.gold.json`), `heldout/` (12 more, scored only) |
 | `data/reference/gliner2-small.json` | Python gliner2's output, for `model.txt` |
 | `expected/` | the eleven diffed files |
 | `THIRD_PARTY.md` | every third-party component, version and licence |

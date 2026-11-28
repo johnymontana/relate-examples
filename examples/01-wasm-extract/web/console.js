@@ -84,8 +84,8 @@ import { MAX_DRAWN_NODES, MAX_DRAWN_RELS, capGraph, collectGraph, isNode, isRel 
 import { paramBindings, paramComparisons } from './convert.js';
 
 const ASSETS = new URL('./assets/', import.meta.url);
-const GLUE = 'relate-1.2.0/relate.js';
-const VERSION = '1.2.0';
+const GLUE = 'relate-1.3.0/relate.js';
+const VERSION = '1.3.0';
 /** The only stores this worker opens: the engine's (D14 names), never another: a read-only open of a missing store leaves an empty one behind (R15). */
 const STORE_URI = /^opfs:\/\/ex01-kg-[A-Za-z0-9_-]{1,56}$/;
 
@@ -949,7 +949,7 @@ export function prefillPlan(tool, name, kind) {
  * An allowlist: a `_` label not listed here (a later build's) shows, and audit.txt fails unless every
  * internal label (ontology.js INTERNAL_LABELS) is either this, the ontology layer or `_Entity`.
  */
-export const BOOKKEEPING_LABELS = Object.freeze(['_Document', '_Section', '_Sentence', '_Inference', '_InferencePart', '_Mention', '_Claim', '_Run',
+export const BOOKKEEPING_LABELS = Object.freeze(['_Document', '_Section', '_Sentence', '_Inference', '_InferencePart', '_Mention', '_Claim', '_Attribute', '_Run',
   '_Verdict', '_Gold']);
 /** The ontology layer (ontology.js): the stored document and the kinds, links and aliases derived from it. Content: shown. */
 export const ONTOLOGY_LABELS = Object.freeze(['_Ontology', '_Kind', '_LinkType', '_Alias']);

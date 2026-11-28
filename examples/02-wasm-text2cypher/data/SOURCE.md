@@ -23,7 +23,7 @@ script checks that, ignoring `schema`):
    document needs nothing else.
 2. The three type tokens with angle brackets are quoted: `type: "LIST<STRING>"` (twice) and
    `type: "VECTOR<FLOAT32>"`. Unquoted they are valid YAML, but the Ontology Graph Spec SDK's own
-   YAML decoder (`@neo4j/ontology-graph-spec` 0.12.2) misreads them and refuses the document
+   YAML decoder (`@neo4j/ontology-graph-spec` 0.13.0) misreads them and refuses the document
    (`Neo4jType does not contain element with name ''`). The example never uses that decoder
    (lib/ogs.mjs parses YAML with js-yaml and hands the SDK JSON), but quoting keeps the file
    readable by the SDK's YAML decoder as well (checked: it reads this file).

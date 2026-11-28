@@ -11,7 +11,7 @@
  * file is a regular file (site/build.mjs refuses anything else). Layout:
  *
  *   index.html style.css favicon.svg app.js ... worker.js console.js   the page and its modules (web/)
- *   assets/relate-1.2.0/            relate.js, relate_bg.wasm, trap.js and snippets/relate-wasm-<hash>/js/opfs.js from
+ *   assets/relate-1.3.0/            relate.js, relate_bg.wasm, trap.js and snippets/relate-wasm-<hash>/js/opfs.js from
  *                                   npm's @relate/relate-wasm (node_modules, npm ci: the lockfile's integrity is the
  *                                   pin), checked as lib/relate_wasm.mjs checks them, and LICENSE.txt (Relate's
  *                                   Apache-2.0 text from data/LICENSE-relate.txt, checked against its pin)
@@ -31,17 +31,18 @@
  *                                   Apache-2.0 text, data/ontology-spec/LICENSE-graph-spec.txt) and
  *                                   THIRD_PARTY.txt (the Kotlin libraries compiled into it)
  *   assets/lib-<sha8>/              lib/replay.mjs, lib/relate_wasm.mjs and lib/ogs.mjs as replay.js, relate_wasm.js and ogs.js
- *   data/ontologies/ogs/            the 27 bundled ontologies as Ontology Graph Spec v1 documents (ogs/ccg/*.ontology.yaml;
- *                                   harness/convert.mjs) and SOURCE.md: what the picker loads
+ *   data/ontologies/domains/        the curated domains (D20), as written, and SOURCE.md
+ *   data/ontologies/ogs/studio/     the solution packages with their overlays applied (D21, harness/convert.mjs),
+ *                                   ogs/SOURCE.md; data/ontologies/studio/<package>/ human_description.md and
+ *                                   NOTICE.md beside them, studio/SOURCE.md and manifest.json: what the picker loads
  *   data/ontologies/ccg/            _base.yaml (verbatim: a pasted or uploaded create-context-graph file inherits it),
  *                                   SOURCE.md and LICENSE-create-context-graph.txt; the 27 originals are not shipped
- *   data/ontologies/index.json      {bases: {_base: 'ccg/_base.yaml'}, groups: [{id: 'ccg', label, files}]}: the
- *                                   picker's groups in order, files sorted
+ *   data/ontologies/index.json      {bases: {_base: 'ccg/_base.yaml'}, groups: [{id: 'domains' | 'studio', label, files}]}:
+ *                                   the picker's groups in order, files sorted
  *   data/ontology-spec/             the spec's JSON Schema, its LICENSE-graph-spec.txt and SOURCE.md
- *   data/samples/                   samples.json and the samples it lists (ccg/<x>.md: a sample may sit one
- *                                   directory down); data/LICENSE-edgextract.txt and data/SOURCE.md (the ported
- *                                   splitter and name rules are edgextract's)
- *   queries/                        the saved queries (queries/*.cypher) and index.json
+ *   data/samples/                   samples.json and the samples it lists (domains/<id>/<x>.md, studio/<id>/<x>.md);
+ *                                   data/LICENSE-edgextract.txt and data/SOURCE.md (the ported splitter and name
+ *                                   rules are edgextract's)
  *   THIRD_PARTY.md
  *
  * The page's modules keep the import specifiers that work in Node (`../../../lib/replay.mjs`,
@@ -68,14 +69,14 @@ import { MODEL_FILES } from './web/gliner.js';
 
 export const EX = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(EX, '../..');
-export const RELATE = '1.2.0';
+export const RELATE = '1.3.0';
 const GLINER_REV = '4fa741eec466660daf4adc8703210138295e0b1b';
 const GLINER_DIR_NAME = `gliner-rs-${GLINER_REV.slice(0, 7)}`;
 const NVL_VERSION = '2.0.0';
 /** The Ontology Graph Spec SDK the page ships (package.json; web/ogs.js SDK_VERSION must agree). */
-const OGS_SDK_VERSION = '0.12.2';
+const OGS_SDK_VERSION = '0.13.0';
 /**
- * The Kotlin libraries compiled into the SDK's modules (neo4j/ontology-graph-spec at release/v0.12.2,
+ * The Kotlin libraries compiled into the SDK's modules (neo4j/ontology-graph-spec at release/v0.13.0,
  * gradle/libs.versions.toml and the module names in its npm package), for THIRD_PARTY.txt. Each is
  * Apache-2.0.
  */
@@ -88,8 +89,8 @@ const OGS_SDK_RUNTIME = [
 ];
 
 /** The page's modules, in web/; every other web/*.js is an error (a module build.mjs forgot). */
-const WEB_MODULES = ['app.js', 'console.js', 'convert.js', 'export.js', 'gliner.js', 'graphview.js', 'models.js', 'names.js',
-  'ogs.js', 'ontology.js', 'opfs.js', 'pipeline.js', 'split.js', 'store.js', 'tar.js', 'tonvl.js', 'worker.js'];
+const WEB_MODULES = ['app.js', 'console.js', 'convert.js', 'export.js', 'gliner.js', 'graphview.js', 'markdown.js', 'models.js', 'names.js',
+  'ogs.js', 'ontology.js', 'opfs.js', 'pipeline.js', 'split.js', 'store.js', 'studio.js', 'tar.js', 'tonvl.js', 'values.js', 'worker.js'];
 const WEB_STATIC = ['index.html', 'style.css', 'favicon.svg'];
 /** The esbuild outputs of `npm run vendor` and their metafiles (the bundled npm packages are read from these). */
 const VENDOR_BUNDLES = ['nvl.js', 'HierarchicalLayout.worker.js'];
@@ -146,7 +147,7 @@ function relateFiles(dir) {
   return ['relate.js', 'relate_bg.wasm', 'trap.js', `snippets/${found[0]}/js/opfs.js`].sort(cmp);
 }
 
-/** Relate's LICENSE at tag v<RELATE> (https://github.com/relatedb/relate/blob/v1.2.0/LICENSE): its sha256. */
+/** Relate's LICENSE at tag v<RELATE> (https://github.com/relatedb/relate/blob/v1.3.0/LICENSE): its sha256. */
 const RELATE_LICENSE_SHA256 = 'ac87d12e27d69f09130a7b4178e48e995ab131e4b476aa188e58ffac7ed7fab3';
 
 /** data/LICENSE-relate.txt, refused unless it is the pinned Apache-2.0 text. */
@@ -705,41 +706,51 @@ export function plan() {
 
   // data and queries
   const dataDir = path.join(EX, 'data');
-  // The ontologies, as Ontology Graph Spec v1 documents (data/ontologies/ogs/ccg/, harness/convert.mjs):
-  // create-context-graph's domains. index.json is the page's list. The base, _base.yaml, ships for a
-  // create-context-graph file pasted or uploaded into the page (its `inherits: _base`); the originals the
-  // documents were converted from stay in the repository.
-  const docs = (/** @type {string} */ group) => fs.readdirSync(path.join(dataDir, 'ontologies', 'ogs', group))
-    .filter((f) => f.endsWith('.ontology.yaml')).sort(cmp).map((f) => `ogs/${group}/${f}`);
-  const ccg = docs('ccg');
-  for (const f of ccg) {
-    if (!/^ogs\/ccg\/[A-Za-z0-9_-]+\.ontology\.yaml$/.test(f)) throw new BuildError(`data/ontologies/${f} is not a plain .ontology.yaml name`);
+  // The ontologies, as Ontology Graph Spec 1.1 documents, in two families (index.json is the page's list):
+  // the curated domains (data/ontologies/domains/, D20) and Neo4j's solution packages converted with this
+  // repository's overlays (data/ontologies/ogs/studio/, harness/convert.mjs, D21). Each package's human
+  // description ships for the page's About drawer, and its NOTICE (FIBO's copyright lines) with it. The base,
+  // _base.yaml, ships for a create-context-graph file pasted or uploaded into the page (its `inherits: _base`).
+  const docs = (/** @type {string} */ dir) => (fs.existsSync(path.join(dataDir, 'ontologies', dir))
+    ? fs.readdirSync(path.join(dataDir, 'ontologies', dir)).filter((f) => f.endsWith('.ontology.yaml')).sort(cmp).map((f) => `${dir}/${f}`) : []);
+  const curated = docs('domains');
+  const studio = docs('ogs/studio');
+  for (const f of [...curated, ...studio]) {
+    if (!/^(?:domains|ogs\/studio)\/[A-Za-z0-9_-]+\.ontology\.yaml$/.test(f)) throw new BuildError(`data/ontologies/${f} is not a plain .ontology.yaml name`);
     add(`data/ontologies/${f}`, { from: path.join(dataDir, 'ontologies', f) });
   }
-  if (!ccg.length) throw new BuildError('data/ontologies/ogs/ccg/ has no converted documents: run node harness/convert.mjs');
-  add('data/ontologies/ogs/SOURCE.md', { from: path.join(dataDir, 'ontologies/ogs/SOURCE.md') });
+  if (!curated.length) throw new BuildError('data/ontologies/domains/ has no curated documents');
+  if (!studio.length) throw new BuildError('data/ontologies/ogs/studio/ has no converted packages: run node harness/convert.mjs');
+  for (const f of ['domains/SOURCE.md', 'ogs/SOURCE.md', 'studio/SOURCE.md', 'studio/manifest.json']) {
+    if (fs.existsSync(path.join(dataDir, 'ontologies', f))) add(`data/ontologies/${f}`, { from: path.join(dataDir, 'ontologies', f) });
+  }
+  for (const f of studio) {
+    const pkg = path.basename(f, '.ontology.yaml');
+    for (const g of ['human_description.md', 'NOTICE.md']) {
+      const src = path.join(dataDir, 'ontologies', 'studio', pkg, g);
+      if (fs.existsSync(src)) add(`data/ontologies/studio/${pkg}/${g}`, { from: src });
+    }
+  }
   const bases = fs.readdirSync(path.join(dataDir, 'ontologies', 'ccg')).filter((f) => /^_[A-Za-z0-9_-]+\.yaml$/.test(f)).sort(cmp);
-  if (!bases.includes('_base.yaml')) throw new BuildError('data/ontologies/ccg/_base.yaml is missing: create-context-graph\'s domains inherit it');
+  if (!bases.includes('_base.yaml')) throw new BuildError('data/ontologies/ccg/_base.yaml is missing: a pasted create-context-graph file inherits it');
   for (const f of [...bases, 'SOURCE.md', 'LICENSE-create-context-graph.txt']) add(`data/ontologies/ccg/${f}`, { from: path.join(dataDir, 'ontologies/ccg', f) });
   for (const f of ['ontology-graph-spec.schema.json', 'LICENSE-graph-spec.txt', 'SOURCE.md']) add(`data/ontology-spec/${f}`, { from: path.join(dataDir, 'ontology-spec', f) });
   const index = {
     bases: Object.fromEntries(bases.map((f) => [f.replace(/\.yaml$/, ''), `ccg/${f}`])),
     groups: [
-      { id: 'ccg', label: 'create-context-graph', files: ccg },
+      { id: 'domains', label: 'Curated domains', files: curated },
+      { id: 'studio', label: "Neo4j's solution packages", files: studio },
     ],
   };
   add('data/ontologies/index.json', { data: () => Buffer.from(`${JSON.stringify(index, null, 2)}\n`) });
   const samples = JSON.parse(fs.readFileSync(path.join(dataDir, 'samples/samples.json'), 'utf8'));
   add('data/samples/samples.json', { from: path.join(dataDir, 'samples/samples.json') });
   for (const s of [...samples].sort((a, b) => cmp(a.file, b.file))) {
-    if (!/^(?:[A-Za-z0-9_-]+\/)?[A-Za-z0-9_-]+\.md$/.test(s.file)) throw new BuildError(`data/samples/samples.json: ${JSON.stringify(s.file)} is not a plain .md name`);
+    if (!/^(?:[A-Za-z0-9_-]+\/){0,2}[A-Za-z0-9_-]+\.md$/.test(s.file)) throw new BuildError(`data/samples/samples.json: ${JSON.stringify(s.file)} is not a plain .md name`);
     add(`data/samples/${s.file}`, { from: path.join(dataDir, 'samples', s.file) });
   }
   add('data/LICENSE-edgextract.txt', { from: path.join(dataDir, 'LICENSE-edgextract.txt') });
   add('data/SOURCE.md', { from: path.join(dataDir, 'SOURCE.md') });
-  const queries = fs.readdirSync(path.join(EX, 'queries')).filter((f) => f.endsWith('.cypher')).sort(cmp);
-  for (const f of queries) add(`queries/${f}`, { from: path.join(EX, 'queries', f) });
-  add('queries/index.json', { data: () => Buffer.from(`${JSON.stringify(queries, null, 2)}\n`) });
   add('THIRD_PARTY.md', { from: path.join(EX, 'THIRD_PARTY.md') });
   return new Map([...files].sort((a, b) => cmp(a[0], b[0])));
 }

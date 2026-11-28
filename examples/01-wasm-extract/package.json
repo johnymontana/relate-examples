@@ -2,7 +2,7 @@
   "name": "relate-example-01-wasm-extract",
   "version": "0.0.0",
   "private": true,
-  "description": "Example 01: edgextract's approach in a browser tab, with GLiNER2.5 (gliner-rs WASM), Relate 1.2.0 WASM, NVL and the Ontology Graph Spec SDK. Install with `npm ci --omit=peer`, then `npm run vendor`.",
+  "description": "Example 01: edgextract's approach in a browser tab, with GLiNER2.5 (gliner-rs WASM), Relate 1.3.0 WASM, NVL and the Ontology Graph Spec SDK. Install with `npm ci --omit=peer`, then `npm run vendor`.",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -15,8 +15,8 @@
   "dependencies": {
     "@neo4j-nvl/base": "2.0.0",
     "@neo4j-nvl/interaction-handlers": "2.0.0",
-    "@neo4j/ontology-graph-spec": "0.12.2",
-    "@relate/relate-wasm": "1.2.0",
+    "@neo4j/ontology-graph-spec": "0.13.0",
+    "@relate/relate-wasm": "1.3.0",
     "js-yaml": "4.3.2"
   },
   "devDependencies": {

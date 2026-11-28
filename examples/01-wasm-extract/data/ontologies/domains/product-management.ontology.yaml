@@ -1,0 +1,551 @@
+# Product Management: example 01's curated ontology for the documents a software company's product
+# teams write while they plan, build and ship features (D20). Written for this repository from
+# create-context-graph's product-management.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/), which
+# it replaces in the page: the inherited POLE+O base (Person, Organization, Location, Event, Object)
+# is gone, and the parties are named for what the domain calls them (Squad, Persona, CustomerCompany).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: product-management
+name: Product Management
+description: >-
+  Product management in a software company as its product managers, designers and researchers write
+  about it in requirements documents, roadmap updates and interview notes: the objectives a company
+  sets for a planning period and the metrics that track them, the epics that serve those objectives
+  and the squads that own them, the features each epic holds, the squad that builds each one, the
+  release that ships it and the features it waits on, the personas it is designed for, the customer
+  feedback it addresses and the customers that raised that feedback, and the experiments that test it.
+  It answers what ships in a release, why a feature is on the roadmap (which objective and which
+  customers put it there), what a feature depends on, how its success is measured, and what the
+  source text says about each fact. People are left out: owners, reviewers and interviewees are named
+  in documents but not kept. Of the values a text gives, a release's date, a feature's priority, a
+  customer's annual recurring revenue and an experiment's design are read; estimates and metric
+  values are not.
+nodes:
+  Squad:
+    label: Squad
+    description: >-
+      A product squad or platform team inside the software company, the engineers and designers who
+      own epics and build features, named by its product area ("the Field Apps squad", "the Sync
+      Platform team"). A squad builds the product; a customer company buys it.
+    aliases: [team, product team, platform team, pod, engineering team]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The squad's name as the documents write it, with its squad or team word."}
+      teamType: {type: STRING, one_of: [stream-aligned, platform, enabling, complicated-subsystem], description: "The squad's type in the Team Topologies sense."}
+      area: {type: STRING, description: "The product area the squad is responsible for (dispatch, mobile, sync)."}
+    extensions:
+      display: {x: -380, y: -140, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "an internal engineering squad or platform team of the software vendor, never a customer or a group of users, named with the word squad or team, such as the Field Apps squad", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: squad-load
+            category: aggregation
+            question: How many epics does each squad own, and how many features does it build?
+            description: Per squad, the epics it owns and the features it builds.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each feature is counted once per epic.
+            cypher: |-
+              MATCH (t:Squad)
+              OPTIONAL MATCH (t)-[:OWNS]->(e:Epic)
+              OPTIONAL MATCH (f:Feature)-[:BUILT_BY]->(t)
+              RETURN t.name AS squad, count(DISTINCT e) AS epics, count(DISTINCT f) AS features
+              ORDER BY features DESC, epics DESC, squad
+  Objective:
+    label: Objective
+    description: >-
+      A company or product objective for a planning period, usually an OKR objective, named by its
+      statement in title case ("Grow Mid-Market Utilities") and often numbered (O2). Epics contribute
+      to objectives; metrics track them.
+    aliases: [OKR, goal, company objective, strategic goal]
+    properties:
+      name: {type: STRING, key: true, description: "The objective's statement as the documents write it."}
+      objectiveId: {type: STRING, pattern: "^O[1-9][0-9]?$", description: "The objective's number in the period's set, O and one or two digits (O2)."}
+      period: {type: STRING, description: "The planning period the objective belongs to, as the company writes it (H1 2027)."}
+      status: {type: STRING, one_of: [on track, at risk, behind, achieved], description: "The objective's status at the last review."}
+    extensions:
+      display: {x: 0, y: -340, colour: "#ca8a04"}
+      custom:
+        relate-examples: {ask: "a company or product objective for a planning period, such as an OKR objective, named by its full statement in title case, such as Reduce Cost to Serve", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: from-objective-to-features
+            category: path
+            question: Which epics and features serve this objective, and which metrics track it?
+            description: The chain feature, epic, objective for every objective whose name holds the text, with the objective's metrics.
+            teaches: A two-hop pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (f:Feature)-[:PART_OF]->(e:Epic)-[:CONTRIBUTES_TO]->(o:Objective)
+              WHERE toLower(o.name) CONTAINS toLower($objective)
+              OPTIONAL MATCH (o)-[:TRACKED_BY]->(m:Metric)
+              RETURN o.name AS objective, e.name AS epic, f.name AS feature, collect(DISTINCT m.name) AS tracked_by
+              ORDER BY epic, feature
+            parameters:
+              - {name: objective, type: STRING, description: "Part of the objective's statement.", example: Mid-Market}
+  Metric:
+    label: Metric
+    description: >-
+      A quantity the product team measures to judge a feature, an experiment or an objective (an
+      activation, retention, conversion or reliability measure), usually written in lower case
+      ("first-time fix rate"). A metric is the measure; an objective is what it is meant to move.
+    aliases: [KPI, success metric, key result, measure, north-star metric]
+    properties:
+      name: {type: STRING, key: true, description: "The metric's name as the documents write it."}
+      metricType: {type: STRING, one_of: [north star, engagement, retention, conversion, revenue, reliability, satisfaction], description: "What the metric measures."}
+      unit: {type: STRING, description: "The metric's unit, as a document gives it (percent, minutes, tickets a month)."}
+      baseline: {type: FLOAT, description: "The value before the work, in the metric's unit."}
+      target: {type: FLOAT, description: "The value the work aims for, in the metric's unit."}
+    extensions:
+      display: {x: 320, y: -220, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a product or business metric that a team measures and sets targets for, a rate, ratio, count or duration written in lower case, such as first-time fix rate or support tickets per account"}
+        tools:
+          - type: canonicalQuery
+            name: how-each-metric-is-used
+            category: aggregation
+            question: Which features, objectives and experiments does each metric judge?
+            description: Per metric, the features measured by it, the objectives tracked by it and the experiments that measure it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (m:Metric)
+              OPTIONAL MATCH (f:Feature)-[:MEASURED_BY]->(m)
+              OPTIONAL MATCH (o:Objective)-[:TRACKED_BY]->(m)
+              OPTIONAL MATCH (x:Experiment)-[:MEASURES]->(m)
+              RETURN m.name AS metric, count(DISTINCT f) AS features, count(DISTINCT o) AS objectives, count(DISTINCT x) AS experiments
+              ORDER BY features DESC, objectives DESC, metric
+          - type: canonicalQuery
+            name: how-success-is-measured
+            category: evidence
+            question: Which sentences say how each feature's success is measured?
+            description: Every MEASURED_BY fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (f:Feature)-[r:MEASURED_BY]->(m:Metric)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN f.name AS feature, m.name AS metric, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY feature, metric
+  Epic:
+    label: Epic
+    description: >-
+      A large body of product work that groups several features under one theme and usually spans
+      releases, named by its theme ("the Offline-First Technician App epic"). An epic is delivered
+      through its features and is never shipped as one.
+    aliases: [initiative, theme, workstream, programme]
+    properties:
+      name: {type: STRING, key: true, description: "The epic's theme as the documents write it."}
+      issueKey: {type: STRING, pattern: "^[A-Z][A-Z0-9]{1,9}-[0-9]{1,5}$", description: "The epic's key in the issue tracker, a project prefix, a hyphen and a number (FLD-112)."}
+      status: {type: STRING, one_of: [draft, active, done, cancelled], description: "The epic's status."}
+      quarter: {type: STRING, description: "The quarter the epic is planned to finish, as the roadmap writes it (Q1 2027)."}
+    extensions:
+      display: {x: -160, y: -200, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a named epic on the product roadmap, a large body of work that groups several features under one theme, named in title case, such as Offline-First Technician App", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-an-epic-holds
+            category: neighbourhood
+            question: Which features does this epic hold, who owns the epic, and who builds and ships each feature?
+            description: Each feature of the epic, with the epic's owners and the feature's squad and release.
+            teaches: OPTIONAL MATCH keeps a feature in the answer even when the text names no squad or release for it.
+            cypher: |-
+              MATCH (f:Feature)-[:PART_OF]->(e:Epic) WHERE toLower(e.name) CONTAINS toLower($epic)
+              OPTIONAL MATCH (t:Squad)-[:OWNS]->(e)
+              OPTIONAL MATCH (f)-[:BUILT_BY]->(b:Squad)
+              OPTIONAL MATCH (f)-[:SHIPS_IN]->(r:Release)
+              RETURN e.name AS epic, collect(DISTINCT t.name) AS owners, f.name AS feature,
+                     collect(DISTINCT b.name) AS built_by, collect(DISTINCT r.name) AS releases
+              ORDER BY epic, feature
+            parameters:
+              - {name: epic, type: STRING, description: "Part of the epic's theme.", example: Offline-First}
+  Feature:
+    label: Feature
+    description: >-
+      A user-facing capability, screen or workflow that a squad specifies, builds and ships, named in
+      title case by what it does ("Offline Job Pack", "Sync Conflict Review"). A feature belongs to one
+      epic and ships in one release; an epic is the larger body of work it is part of.
+    aliases: [capability, enhancement, user story, requirement, fast-follow]
+    properties:
+      name: {type: STRING, key: true, description: "The feature's name as the documents write it."}
+      priority: {type: STRING, one_of: [P0, P1, P2, P3], description: "The feature's priority, P0 the highest.", extensions: {custom: {relate-examples: {extract: true, ask: "the feature's priority in the plan, P0 the highest, then P1, P2 and P3"}}}}
+      status: {type: STRING, one_of: [discovery, defined, in build, beta, shipped, deprecated], description: "Where the feature is in its lifecycle."}
+      effort: {type: STRING, one_of: [XS, S, M, L, XL], description: "The squad's t-shirt-size estimate of the work."}
+    extensions:
+      display: {x: 0, y: 0, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a named feature of the software product, a capability, screen or workflow named in title case, such as Offline Job Pack or Sync Conflict Review", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-feature
+            category: lookup
+            question: What is this feature, and what does the store connect to it?
+            description: Finds features whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (f:Feature) WHERE toLower(f.name) CONTAINS toLower($feature)
+              OPTIONAL MATCH (f)-[r]-(x:_Entity)
+              RETURN f.name AS feature, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY feature, link, other
+            parameters:
+              - {name: feature, type: STRING, description: "Part of the feature's name.", example: Offline Job Pack}
+          - type: canonicalQuery
+            name: what-a-feature-waits-on
+            category: path
+            question: Which features does this feature depend on, directly or through others?
+            description: The chain of DEPENDS_ON links from a feature, up to four steps.
+            teaches: A bounded variable-length pattern (*1..4) walks a chain without risking an unbounded search.
+            cypher: |-
+              MATCH p = (f:Feature)-[:DEPENDS_ON*1..4]->(:Feature)
+              WHERE toLower(f.name) CONTAINS toLower($feature)
+              RETURN f.name AS feature, [n IN nodes(p) | n.name] AS chain, length(p) AS steps
+              ORDER BY steps, chain
+            parameters:
+              - {name: feature, type: STRING, description: "Part of the feature's name.", example: Offline Parts Lookup}
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Offline Job Pack}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Offline Job Pack}
+  Release:
+    label: Release
+    description: >-
+      A numbered version of the software shipped to customers on a planned date, named by its number
+      ("Release 26.3"). Features ship in releases; an experiment may start with one.
+    aliases: [version, launch, build, drop]
+    properties:
+      name: {type: STRING, key: true, description: "The release as the documents name it."}
+      version: {type: STRING, pattern: "^[0-9]{2}\\.[0-9]{1,2}$", description: "The release's calendar version, the year's last two digits and a sequence number (26.3)."}
+      releaseDate: {type: DATE, description: "The date the release reaches every customer, planned or actual.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the release reaches every customer, such as 19 January 2027"}}}}
+      releaseType: {type: STRING, one_of: [major, minor, patch, beta], description: "What kind of release it is."}
+    extensions:
+      display: {x: -300, y: 160, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "a named software release, the word Release and a version number such as Release 26.3", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-ships-in-each-release
+            category: neighbourhood
+            question: Which features ship in each release, when, at what priority, and which personas are they for?
+            description: Each release with its date, its features with their priorities, and the personas each feature is designed for.
+            teaches: Grouping by projected columns gives one row per release and feature, with the personas collected; a value read from the text (releaseDate, priority) is a property like any other, null when no sentence gave it.
+            cypher: |-
+              MATCH (f:Feature)-[:SHIPS_IN]->(r:Release)
+              OPTIONAL MATCH (f)-[:DESIGNED_FOR]->(p:Persona)
+              RETURN r.name AS release, r.releaseDate AS date, f.name AS feature, f.priority AS priority,
+                     collect(DISTINCT p.name) AS personas
+              ORDER BY release, feature
+  Persona:
+    label: Persona
+    description: >-
+      A named archetype of the product's users that user research writes up with goals and pain points,
+      named by role in title case ("the Field Technician persona"). A persona is a kind of user, never a
+      real person or a customer company.
+    aliases: [user persona, user type, archetype, target user]
+    properties:
+      name: {type: STRING, key: true, description: "The persona's name as the documents write it."}
+      role: {type: STRING, description: "The job the persona does (dispatch supervisor)."}
+      segment: {type: STRING, one_of: [enterprise, mid-market, small business], description: "The customer segment the persona is drawn from."}
+      goals: {type: STRING, description: "What the persona is trying to get done, in a sentence."}
+    extensions:
+      display: {x: -120, y: 300, colour: "#e11d48"}
+      custom:
+        relate-examples: {ask: "a user persona: a named archetype of the product's users written up by research, such as the Field Technician persona", proper: true}
+  CustomerCompany:
+    label: CustomerCompany
+    description: >-
+      A customer: a company or public body with a contract or a trial for the product (the account, in
+      sales terms), named by its company name ("Ashgrove Water"). Customers raise feedback; the software
+      company's own squads are never customers.
+    aliases: [customer, customer account, account, client, tenant]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The customer's company name."}
+      plan: {type: STRING, one_of: [trial, starter, growth, enterprise], description: "The plan the customer is on."}
+      segment: {type: STRING, one_of: [enterprise, mid-market, small business], description: "The customer's sales segment."}
+      annualRevenue: {type: FLOAT, description: "The customer's annual recurring revenue (ARR), in the contract's currency.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the customer's annual recurring revenue, the sum it pays a year, such as £184,000"}}}}
+      renewalDate: {type: DATE, description: "The date the customer's contract renews."}
+    extensions:
+      display: {x: 380, y: 260, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "the name of a company that is a customer of the software, such as a utility, contractor or facilities firm, for example Ashgrove Water or Northmere Facilities", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: customers-behind-a-feature
+            category: path
+            question: Which customers asked for this feature, through which feedback?
+            description: The chain feature, feedback, customer for every feature whose name holds the text.
+            teaches: The feedback in the middle carries the evidence; the customer at the end is who asked.
+            cypher: |-
+              MATCH (f:Feature)-[:ADDRESSES]->(fb:Feedback)-[:RAISED_BY]->(c:CustomerCompany)
+              WHERE toLower(f.name) CONTAINS toLower($feature)
+              RETURN f.name AS feature, fb.name AS feedback, c.name AS customer
+              ORDER BY customer, feedback
+            parameters:
+              - {name: feature, type: STRING, description: "Part of the feature's name.", example: Offline Job Pack}
+          - type: canonicalQuery
+            name: feedback-per-customer
+            category: aggregation
+            question: How much feedback has each customer raised, how many features address it, and how much revenue is behind it?
+            description: Per customer, its annual recurring revenue when the text gives it, the feedback items it raised and the features that address them.
+            teaches: A customer with no addressed feedback still comes back, with zero, because both hops are OPTIONAL; c.annualRevenue is grouped on like the name, since it is one value per customer.
+            cypher: |-
+              MATCH (c:CustomerCompany)
+              OPTIONAL MATCH (fb:Feedback)-[:RAISED_BY]->(c)
+              OPTIONAL MATCH (f:Feature)-[:ADDRESSES]->(fb)
+              RETURN c.name AS customer, c.annualRevenue AS arr, count(DISTINCT fb) AS feedback, count(DISTINCT f) AS features
+              ORDER BY feedback DESC, features DESC, customer
+  Feedback:
+    label: Feedback
+    description: >-
+      One recorded piece of customer feedback (a feature request, bug report, support ticket, sales-call
+      note or interview insight), identified by its reference (FB-3107). Feedback comes from a customer,
+      and features address it.
+    aliases: [feature request, insight, customer request, ticket, user feedback]
+    properties:
+      feedbackId: {type: STRING, key: true, pattern: "^FB-[0-9]{4}$", description: "The feedback reference, FB- and four digits."}
+      name: {type: STRING, description: "The feedback as a document names it."}
+      feedbackType: {type: STRING, one_of: [feature request, bug report, complaint, praise], description: "What kind of feedback it is."}
+      source: {type: STRING, one_of: [support ticket, sales call, interview, survey, app review], description: "Where the feedback was recorded."}
+      receivedOn: {type: DATE, description: "The date the feedback was recorded."}
+    extensions:
+      display: {x: 160, y: 220, colour: "#c026d3"}
+      custom:
+        relate-examples: {ask: "a recorded piece of customer feedback, such as a feature request or support ticket, identified by a reference such as FB-3107", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: feedback-by-reference
+            category: lookup
+            question: Which feedback has this reference, who raised it, and which features address it?
+            description: The feedback whose reference is the parameter, with its customer and the features that address it.
+            teaches: An identifier the text states is the entity's key property (feedbackId, from its name), so an exact match finds it.
+            cypher: |-
+              MATCH (fb:Feedback) WHERE fb.feedbackId = $feedbackId
+              OPTIONAL MATCH (fb)-[:RAISED_BY]->(c:CustomerCompany)
+              OPTIONAL MATCH (f:Feature)-[:ADDRESSES]->(fb)
+              RETURN fb.feedbackId AS feedback, collect(DISTINCT c.name) AS raised_by, collect(DISTINCT f.name) AS addressed_by
+            parameters:
+              - {name: feedbackId, type: STRING, description: "A feedback reference, FB- and four digits.", example: FB-3107}
+  Experiment:
+    label: Experiment
+    description: >-
+      A controlled product test (an A/B test, holdout or beta cohort) run to measure a feature's effect
+      on a metric, identified by its reference (EXP-214). An experiment tests a feature; a release ships
+      it.
+    aliases: [A/B test, test, holdout test, beta cohort, trial]
+    properties:
+      experimentId: {type: STRING, key: true, pattern: "^EXP-[0-9]{3}$", description: "The experiment reference, EXP- and three digits."}
+      name: {type: STRING, description: "The experiment as a document names it."}
+      design: {type: STRING, one_of: [A/B test, holdout, beta cohort, prototype test], description: "How the experiment is run.", extensions: {custom: {relate-examples: {extract: true, ask: "how the experiment is run, an A/B test, a holdout, a beta cohort or a prototype test"}}}}
+      startedOn: {type: DATE, description: "The date the experiment started."}
+      result: {type: STRING, one_of: [running, win, loss, inconclusive], description: "The experiment's outcome so far."}
+    extensions:
+      display: {x: 320, y: 40, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a product experiment such as an A/B test, holdout or beta cohort that tests a feature, identified by a reference such as EXP-214", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: experiment-by-reference
+            category: lookup
+            question: Which experiment has this reference, which feature does it test, and on which metrics?
+            description: The experiment whose reference is the parameter, with the features it tests and the metrics it measures.
+            teaches: The key property (experimentId) is filled from the entity's name when the text gives the identifier, so an exact match works here.
+            cypher: |-
+              MATCH (x:Experiment) WHERE x.experimentId = $experimentId
+              OPTIONAL MATCH (x)-[:TESTS]->(f:Feature)
+              OPTIONAL MATCH (x)-[:MEASURES]->(m:Metric)
+              RETURN x.experimentId AS experiment, x.design AS design, collect(DISTINCT f.name) AS features, collect(DISTINCT m.name) AS metrics
+            parameters:
+              - {name: experimentId, type: STRING, description: "An experiment reference, EXP- and three digits.", example: EXP-214}
+relationships:
+  featurePartOfEpic:
+    type: PART_OF
+    description: >-
+      The feature is part of the epic: one epic per feature in this ontology, many features per epic.
+    aliases: [belongs to, sits in, is delivered under, is a deliverable of]
+    from: {node: Feature}
+    to: {node: Epic, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is part of}
+  epicContributesToObjective:
+    type: CONTRIBUTES_TO
+    description: >-
+      The epic contributes to the objective: it is planned to move it; an epic serves one or more
+      objectives, and an objective has many epics.
+    aliases: [supports, serves, advances, rolls up to]
+    from: {node: Epic}
+    to: {node: Objective}
+    extensions:
+      custom:
+        relate-examples: {phrase: contributes to}
+  squadOwnsEpic:
+    type: OWNS
+    description: >-
+      The squad owns the epic and is accountable for its delivery; one owning squad per epic, and a
+      squad may own several epics.
+    aliases: [is accountable for, leads, runs]
+    from: {node: Squad}
+    to: {node: Epic}
+    extensions:
+      custom:
+        relate-examples: {phrase: owns}
+  featureBuiltBySquad:
+    type: BUILT_BY
+    description: >-
+      The feature is built by the squad; one building squad per feature in this ontology, many features
+      per squad. The building squad need not own the feature's epic.
+    aliases: [is developed by, is delivered by, is implemented by]
+    from: {node: Feature}
+    to: {node: Squad, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is built by}
+  featureShipsInRelease:
+    type: SHIPS_IN
+    description: >-
+      The feature ships, or shipped, in the release; one release per feature (its first general
+      availability), many features per release.
+    aliases: [shipped in, is released in, goes out in, lands in]
+    from: {node: Feature}
+    to: {node: Release, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: ships in}
+  featureDependsOnFeature:
+    type: DEPENDS_ON
+    description: >-
+      The feature depends on the other feature, which must ship first or alongside it; read from the
+      dependent feature to the one it needs; many to many.
+    aliases: [needs, requires, is blocked by, builds on]
+    from: {node: Feature}
+    to: {node: Feature}
+    extensions:
+      custom:
+        relate-examples: {phrase: depends on}
+  featureDesignedForPersona:
+    type: DESIGNED_FOR
+    description: >-
+      The feature is designed for the persona, its intended user; a feature serves one or more
+      personas, a persona many features.
+    aliases: [is for, targets, serves, is built for]
+    from: {node: Feature}
+    to: {node: Persona}
+    extensions:
+      custom:
+        relate-examples: {phrase: is designed for}
+  featureAddressesFeedback:
+    type: ADDRESSES
+    description: >-
+      The feature addresses the feedback: shipping it answers the request or fixes the problem the
+      feedback records; many to many.
+    aliases: [answers, resolves, responds to, closes]
+    from: {node: Feature}
+    to: {node: Feedback}
+    extensions:
+      custom:
+        relate-examples: {phrase: addresses}
+  feedbackRaisedByCustomer:
+    type: RAISED_BY
+    description: >-
+      The feedback was raised by the customer company, through its users or its contacts; one customer
+      per feedback item, many items per customer.
+    aliases: [came from, was logged by, was submitted by, was reported by]
+    from: {node: Feedback}
+    to: {node: CustomerCompany, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was raised by}
+  featureMeasuredByMetric:
+    type: MEASURED_BY
+    description: >-
+      The feature's success is measured by the metric; a feature has one or more success metrics, and a
+      metric may judge many features.
+    aliases: [is judged by, has the success metric, is expected to move]
+    from: {node: Feature}
+    to: {node: Metric}
+    extensions:
+      custom:
+        relate-examples: {phrase: is measured by}
+  objectiveTrackedByMetric:
+    type: TRACKED_BY
+    description: >-
+      The objective's progress is tracked by the metric, as a key result; an objective has one or more
+      metrics, and a metric may track several objectives.
+    aliases: [has the key result, is measured by, is scored on]
+    from: {node: Objective}
+    to: {node: Metric}
+    extensions:
+      custom:
+        relate-examples: {phrase: is tracked by}
+  experimentTestsFeature:
+    type: TESTS
+    description: >-
+      The experiment tests the feature against a control or holdout; one feature per experiment in this
+      ontology, many experiments per feature.
+    aliases: [trials, evaluates, validates]
+    from: {node: Experiment}
+    to: {node: Feature, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: tests}
+  experimentMeasuresMetric:
+    type: MEASURES
+    description: >-
+      The experiment measures the metric, as its primary metric or a guardrail; an experiment measures
+      one or more metrics, a metric is measured by many experiments.
+    aliases: [uses the primary metric, tracks, reads out on]
+    from: {node: Experiment}
+    to: {node: Metric}
+    extensions:
+      custom:
+        relate-examples: {phrase: measures}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Software & AI
+      card:
+        title: Product Management
+        description: Trace a feature from the objective and the customer feedback behind it through its epic, squad and release to the experiment that tests it.
+      source:
+        derived_from: create-context-graph's product-management.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; UserPersona became Persona, and Squad,
+          CustomerCompany and Experiment are new kinds, for who builds a feature, who asks for it and how
+          it is tested (a product team is a Squad and a customer account a CustomerCompany, because the
+          model reads "team" as any organisation and "customer account" as no company at all);
+          Feature, Epic, Metric, Release, Feedback and Objective keep their meaning with new descriptions
+          and properties. PRIORITIZED_IN became PART_OF and PART_OF_RELEASE became SHIPS_IN;
+          REQUESTED_BY became DESIGNED_FOR, SUBMITTED_BY became RAISED_BY (feedback comes from a customer,
+          not a persona), and OWNS, BUILT_BY, TRACKED_BY, TESTS and MEASURES are new; every link was given a
+          cardinality, the tools were written anew for an extracted graph, and four properties are read
+          from the text (releaseDate, priority, annualRevenue, design).

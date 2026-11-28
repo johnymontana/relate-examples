@@ -1,0 +1,655 @@
+# Retail & E-Commerce: example 01's curated ontology for online-retail customer service, fulfilment
+# and merchandising documents (D20). Written for this repository from create-context-graph's
+# retail-ecommerce.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page:
+# the inherited POLE+O base (Person, Organization, Location, Event, Object) is gone, and the parties
+# are named for what a retailer calls them (Customer, SupportAgent), beside the retailer's own things
+# (Product, Brand, Category, Warehouse, Campaign) and what follows an order (Return, Review,
+# SupportCase).
+#
+# Every kind carries the description a reader needs, aliases, a reference where schema.org has the
+# concept, realistic properties (identifiers with patterns, vocabularies with one_of), and under
+# extensions.custom.relate-examples the words the model reads (ask) and whether its mentions are
+# proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link says its
+# direction and cardinality and carries the phrase the model reads. The tools are the ontology's
+# competency questions, written for the graph the page extracts: entities carry name, display, key
+# and their key property; relationships carry p, claims, sentences and docs, and the trace
+# (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: retail-ecommerce
+name: Retail & E-Commerce
+description: >-
+  Online retail as its customer service, fulfilment and merchandising teams write about it: the
+  customers who place orders, the products in those orders with the brands that make them and the
+  catalogue categories they are listed in, the warehouses that stock and ship them, the returns and
+  reviews that follow a delivery, the campaigns that sold them, and the support cases customers raise
+  with the agents who handle and take escalations of them. It answers what a customer ordered and
+  where it shipped from, which order a return or a replacement belongs to, which products and
+  warehouses draw returns, which other customers bought a faulty product, which campaign an order came
+  through, who holds a case, and what the source text says about each fact. Prices, stock levels,
+  refunds, delivery dates, couriers and payment details are out of scope: a document states them, the
+  extractor does not keep them.
+nodes:
+  Customer:
+    label: Customer
+    description: >-
+      A person who buys from the retailer, named in full ("Delphine Arkwright") and often afterwards as
+      "Ms Arkwright". Customers place orders, write reviews and raise support cases; the retailer's
+      own staff are support agents, never customers.
+    aliases: [shopper, buyer, consumer, account holder, member]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The customer's full name as the documents write it."}
+      customerId: {type: STRING, pattern: "^CUS-[0-9]{7}$", description: "The customer account number, CUS- and seven digits."}
+      segment: {type: STRING, one_of: [new, returning, vip, at risk, lapsed], description: "The customer's segment in the retailer's CRM."}
+      preferredChannel: {type: STRING, one_of: [web, app, store, phone], description: "Where the customer usually shops."}
+      email: {type: STRING, description: "The e-mail address on the customer's account."}
+    extensions:
+      display: {x: -320, y: -20, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a person who buys from an online retailer, named in full or as Mr or Ms and a surname; never a member of staff", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-customer
+            category: lookup
+            question: Who is this customer, and what does the store connect to them?
+            description: Finds customers whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (c:Customer) WHERE toLower(c.name) CONTAINS toLower($customer)
+              OPTIONAL MATCH (c)-[r]-(x:_Entity)
+              RETURN c.name AS customer, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY customer, link, other
+            parameters:
+              - {name: customer, type: STRING, description: "Part of the customer's name.", example: Arkwright}
+          - type: canonicalQuery
+            name: orders-of-a-customer
+            category: neighbourhood
+            question: Which orders has this customer placed, what was in them, where did they ship from, and were they returned?
+            description: Each order the customer placed, with its products, the warehouses it shipped from and the returns raised against it.
+            teaches: OPTIONAL MATCH keeps an order in the answer even when the text names no product, warehouse or return for it.
+            cypher: |-
+              MATCH (c:Customer)-[:PLACED]->(o:Order) WHERE toLower(c.name) CONTAINS toLower($customer)
+              OPTIONAL MATCH (o)-[:CONTAINS]->(p:Product)
+              OPTIONAL MATCH (o)-[:SHIPPED_FROM]->(w:Warehouse)
+              OPTIONAL MATCH (r:Return)-[:FOR_ORDER]->(o)
+              RETURN c.name AS customer, o.name AS order_ref, collect(DISTINCT p.name) AS products,
+                     collect(DISTINCT w.name) AS shipped_from, collect(DISTINCT r.name) AS returns
+              ORDER BY customer, order_ref
+            parameters:
+              - {name: customer, type: STRING, description: "Part of the customer's name.", example: Delphine Arkwright}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Avonmere}
+  SupportAgent:
+    label: SupportAgent
+    description: >-
+      A member of the retailer's customer service staff (an adviser, team leader or manager) who
+      handles support cases or takes them on escalation, named in full and usually given a role.
+      Support agents are the retailer's staff; customers are not.
+    aliases: [customer service adviser, agent, advisor, team leader, case owner]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The agent's full name."}
+      role: {type: STRING, one_of: [customer service adviser, senior adviser, team leader, customer relations, manager], description: "The agent's role in customer service."}
+      tier: {type: INTEGER, description: "The support tier the agent works in (1 for the front line, 2 for escalations)."}
+      site: {type: STRING, description: "The contact centre the agent works from (Leeds)."}
+    extensions:
+      display: {x: -120, y: -340, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a member of a retailer's staff who handles support cases, such as a customer service adviser, team leader or manager, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: agent-caseload
+            category: aggregation
+            question: How many cases has each agent handled, and how many were escalated to them?
+            description: Per support agent, the cases they handled and the cases escalated to them.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each handled case is counted once per escalated one.
+            cypher: |-
+              MATCH (a:SupportAgent)
+              OPTIONAL MATCH (h:SupportCase)-[:HANDLED_BY]->(a)
+              OPTIONAL MATCH (e:SupportCase)-[:ESCALATED_TO]->(a)
+              RETURN a.name AS agent, count(DISTINCT h) AS handled, count(DISTINCT e) AS escalated_to_them
+              ORDER BY escalated_to_them DESC, handled DESC, agent
+  SupportCase:
+    label: SupportCase
+    description: >-
+      A customer service case or ticket, opened by chat, e-mail, phone or social media and identified
+      by its case number (CS-771204). A case concerns orders; a return is the goods coming back, not
+      the case about them.
+    aliases: [case, ticket, support ticket, contact, enquiry, escalation]
+    properties:
+      caseNumber: {type: STRING, key: true, pattern: "^CS-[0-9]{6}$", description: "The case number, CS- and six digits."}
+      name: {type: STRING, description: "The case as a document names it."}
+      channel: {type: STRING, one_of: [chat, email, phone, social, store], description: "How the customer opened the case."}
+      priority: {type: STRING, one_of: [low, normal, high, urgent], description: "The case's priority."}
+      status: {type: STRING, one_of: [open, escalated, resolved, closed], description: "Where the case stands.", extensions: {custom: {relate-examples: {extract: true, ask: "where the case stands, open, escalated, resolved or closed"}}}}
+      openedOn: {type: DATE, description: "The date the case was opened."}
+    extensions:
+      display: {x: -320, y: -230, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a customer service case or support ticket, identified by a case number such as CS-100234", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: case-by-number
+            category: lookup
+            question: Which case has this number, who raised it, which orders does it concern, and who holds it?
+            description: The case whose number is the parameter, with the customer who raised it, its orders, its handlers and the agents it was escalated to.
+            teaches: An identifier the text states is the entity's key property (caseNumber, from its name), so an exact match finds it.
+            cypher: |-
+              MATCH (k:SupportCase) WHERE k.caseNumber = $caseNumber
+              OPTIONAL MATCH (c:Customer)-[:RAISED]->(k)
+              OPTIONAL MATCH (k)-[:CONCERNS]->(o:Order)
+              OPTIONAL MATCH (k)-[:HANDLED_BY]->(h:SupportAgent)
+              OPTIONAL MATCH (k)-[:ESCALATED_TO]->(e:SupportAgent)
+              RETURN k.caseNumber AS case_number, collect(DISTINCT c.name) AS raised_by, collect(DISTINCT o.name) AS orders,
+                     collect(DISTINCT h.name) AS handled_by, collect(DISTINCT e.name) AS escalated_to
+            parameters:
+              - {name: caseNumber, type: STRING, description: "A case number, CS- and six digits.", example: CS-771204}
+          - type: canonicalQuery
+            name: from-case-to-returns
+            category: path
+            question: Which returns hang off the orders this case concerns, for which products, and where were they received?
+            description: The chain case, order, return, with each return's products and the warehouse that received it.
+            teaches: A pattern can point both ways; each hop follows the direction the ontology declares (a return points at its order).
+            cypher: |-
+              MATCH (k:SupportCase)-[:CONCERNS]->(o:Order)<-[:FOR_ORDER]-(r:Return)
+              WHERE toLower(k.name) CONTAINS toLower($case)
+              OPTIONAL MATCH (r)-[:COVERS]->(p:Product)
+              OPTIONAL MATCH (r)-[:RECEIVED_AT]->(w:Warehouse)
+              RETURN k.name AS case_ref, o.name AS order_ref, r.name AS return_ref,
+                     collect(DISTINCT p.name) AS products, collect(DISTINCT w.name) AS received_at
+              ORDER BY case_ref, order_ref, return_ref
+            parameters:
+              - {name: case, type: STRING, description: "Part of a case number.", example: CS-771204}
+  Order:
+    label: Order
+    description: >-
+      A customer's order from the retailer, identified by its order number (ORD-4418207) and dated. An
+      order contains products and ships from a warehouse; a replacement order is a new order, not a
+      return.
+    aliases: [purchase, basket, replacement order, sale]
+    reference: https://schema.org/Order
+    properties:
+      orderId: {type: STRING, key: true, pattern: "^ORD-[0-9]{7}$", description: "The order number, ORD- and seven digits."}
+      name: {type: STRING, description: "The order as a document names it."}
+      placedOn: {type: DATE, description: "The date the order was placed.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the order was placed, such as 6 November 2026"}}}}
+      total: {type: FLOAT, description: "The order total in pounds sterling, VAT and delivery included."}
+      status: {type: STRING, one_of: [placed, picked, shipped, delivered, returned, cancelled], description: "Where the order stands."}
+      fulfilment: {type: STRING, one_of: [home delivery, click and collect, ship from store], description: "How the order reaches the customer."}
+    extensions:
+      display: {x: -60, y: -60, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "a customer's order from an online retailer, written as its order number, such as ORD-1002345", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: order-by-number
+            category: lookup
+            question: Which order has this number, who placed it, what was in it, where did it ship from, and which campaign did it come through?
+            description: The order whose number is the parameter, with its customer, products, warehouse and campaign.
+            teaches: The key property (orderId) is filled from the entity's name when the text gives the identifier, so an exact match works here.
+            cypher: |-
+              MATCH (o:Order) WHERE o.orderId = $orderId
+              OPTIONAL MATCH (c:Customer)-[:PLACED]->(o)
+              OPTIONAL MATCH (o)-[:CONTAINS]->(p:Product)
+              OPTIONAL MATCH (o)-[:SHIPPED_FROM]->(w:Warehouse)
+              OPTIONAL MATCH (o)-[:ATTRIBUTED_TO]->(m:Campaign)
+              RETURN o.orderId AS order_ref, collect(DISTINCT c.name) AS customers, collect(DISTINCT p.name) AS products,
+                     collect(DISTINCT w.name) AS shipped_from, collect(DISTINCT m.name) AS campaigns
+            parameters:
+              - {name: orderId, type: STRING, description: "An order number, ORD- and seven digits.", example: ORD-4418207}
+          - type: canonicalQuery
+            name: replacement-chain
+            category: path
+            question: Which earlier orders does this order replace?
+            description: The chain of REPLACES links back from an order, up to four steps.
+            teaches: A bounded variable-length pattern (*1..4) walks a chain without risking an unbounded search.
+            cypher: |-
+              MATCH p = (o:Order)-[:REPLACES*1..4]->(:Order)
+              WHERE toLower(o.name) CONTAINS toLower($order)
+              RETURN o.name AS order_ref, [n IN nodes(p) | n.name] AS chain, length(p) AS steps
+              ORDER BY steps
+            parameters:
+              - {name: order, type: STRING, description: "Part of an order number.", example: ORD-4426630}
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Arkwright}
+  Product:
+    label: Product
+    description: >-
+      An item the retailer sells, named by its brand, range and kind ("the Avonmere Atelier stand
+      mixer") and identified by its SKU. A product is one sellable item; its brand and its catalogue
+      category are kinds of their own.
+    aliases: [item, SKU, line, model, article]
+    reference: https://schema.org/Product
+    properties:
+      sku: {type: STRING, key: true, pattern: "^[0-9]{8}$", description: "The retailer's stock-keeping unit, eight digits (50449231)."}
+      name: {type: STRING, description: "The product as the documents name it."}
+      gtin: {type: STRING, pattern: "^[0-9]{13}$", description: "The product's GTIN-13 barcode number."}
+      price: {type: FLOAT, description: "The selling price in pounds sterling, VAT included.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the list price of the product in pounds, a sum with a £ sign such as £349"}}}}
+      colour: {type: STRING, description: "The colour or finish the SKU is sold in."}
+    extensions:
+      display: {x: 180, y: 60, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "an item an online retailer sells, named in full by its brand, range and kind together, such as a stand mixer or kettle, or by an eight-digit SKU", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: who-else-bought-it
+            category: path
+            question: Which customers bought this product, in which orders, and where did those orders ship from?
+            description: The chain customer, order, product for every product whose name holds the text, with each order's warehouse.
+            teaches: A two-hop pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (c:Customer)-[:PLACED]->(o:Order)-[:CONTAINS]->(p:Product)
+              WHERE toLower(p.name) CONTAINS toLower($product)
+              OPTIONAL MATCH (o)-[:SHIPPED_FROM]->(w:Warehouse)
+              RETURN p.name AS product, c.name AS customer, o.name AS order_ref, collect(DISTINCT w.name) AS shipped_from
+              ORDER BY product, customer, order_ref
+            parameters:
+              - {name: product, type: STRING, description: "Part of the product's name.", example: stand mixer}
+          - type: canonicalQuery
+            name: returns-and-reviews-by-product
+            category: aggregation
+            question: Which products draw the most returns and reviews, and whose brand are they?
+            description: Per product, its brands, the returns that cover it and the reviews written of it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (p:Product)
+              OPTIONAL MATCH (p)-[:MADE_BY]->(b:Brand)
+              OPTIONAL MATCH (r:Return)-[:COVERS]->(p)
+              OPTIONAL MATCH (v:Review)-[:REVIEW_OF]->(p)
+              RETURN p.name AS product, collect(DISTINCT b.name) AS brands, count(DISTINCT r) AS returns, count(DISTINCT v) AS reviews
+              ORDER BY returns DESC, reviews DESC, product
+  Brand:
+    label: Brand
+    description: >-
+      The brand or maker whose name a product carries, written alone ("Avonmere"). A brand makes
+      many products; the retailer that sells them is not a brand.
+    aliases: [manufacturer, maker, label, supplier]
+    reference: https://schema.org/Brand
+    properties:
+      name: {type: STRING, key: true, description: "The brand's name."}
+      owner: {type: STRING, description: "The company that owns the brand, when the documents say."}
+      relationship: {type: STRING, one_of: [own label, exclusive, third party], description: "How the retailer carries the brand."}
+    extensions:
+      display: {x: 390, y: -60, colour: "#c026d3"}
+      custom:
+        relate-examples: {ask: "a brand or manufacturer whose name products carry, usually a single word written on its own, such as a maker's name", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: brand-catalogue
+            category: neighbourhood
+            question: Which products does each brand make, which categories are they listed in, and which warehouses stock them?
+            description: Each brand's products, with their catalogue categories and the warehouses that stock them.
+            teaches: Start from the brand and fan out; OPTIONAL MATCH on each side keeps a product whose category or stock the text leaves out.
+            cypher: |-
+              MATCH (b:Brand)<-[:MADE_BY]-(p:Product)
+              OPTIONAL MATCH (p)-[:BELONGS_TO]->(k:Category)
+              OPTIONAL MATCH (w:Warehouse)-[:STOCKS]->(p)
+              RETURN b.name AS brand, p.name AS product, collect(DISTINCT k.name) AS categories, collect(DISTINCT w.name) AS stocked_at
+              ORDER BY brand, product
+  Category:
+    label: Category
+    description: >-
+      A category or department of the retailer's catalogue that products are listed in, usually
+      written in lower case ("stand mixers", "mixer accessories"). A category groups many brands'
+      products; a brand is one maker.
+    aliases: [department, product category, range, aisle]
+    properties:
+      name: {type: STRING, key: true, description: "The category as the catalogue names it (stand mixers)."}
+      department: {type: STRING, description: "The top-level department the category sits in (kitchen)."}
+      path: {type: STRING, description: "The category's place in the catalogue tree, as breadcrumbs (Home > Kitchen > Stand mixers)."}
+    extensions:
+      display: {x: 390, y: 190, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a product category or department of a retailer's catalogue that products are listed in, such as kettles or bed linen"}
+  Warehouse:
+    label: Warehouse
+    description: >-
+      A warehouse, fulfilment centre or returns centre that stocks products, ships orders or receives
+      returns, named by its town and function ("the Daventry Fulfilment Centre"). A shop or contact
+      centre is not a warehouse.
+    aliases: [fulfilment centre, distribution centre, DC, returns centre, depot]
+    properties:
+      name: {type: STRING, key: true, description: "The site's name as the documents write it."}
+      siteCode: {type: STRING, pattern: "^[A-Z]{3}[0-9]$", description: "The site code, three letters and a digit (DAV1)."}
+      siteType: {type: STRING, one_of: [fulfilment centre, returns centre, cross-dock, store], description: "What the site does."}
+      town: {type: STRING, description: "The town the site is in."}
+    extensions:
+      display: {x: 80, y: 260, colour: "#0f766e"}
+      custom:
+        relate-examples: {ask: "a warehouse, fulfilment centre or returns centre where goods are stored, shipped from or sent back to, named by its town", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: warehouse-activity
+            category: aggregation
+            question: How many orders has each warehouse shipped and returns received, and what does it stock?
+            description: Per warehouse, the orders shipped from it, the returns received at it and the products it stocks.
+            teaches: Three independent neighbourhoods of one node come back as two counts and a collected list, each DISTINCT.
+            cypher: |-
+              MATCH (w:Warehouse)
+              OPTIONAL MATCH (o:Order)-[:SHIPPED_FROM]->(w)
+              OPTIONAL MATCH (r:Return)-[:RECEIVED_AT]->(w)
+              OPTIONAL MATCH (w)-[:STOCKS]->(p:Product)
+              RETURN w.name AS warehouse, count(DISTINCT o) AS orders_shipped, count(DISTINCT r) AS returns_received,
+                     collect(DISTINCT p.name) AS stocks
+              ORDER BY orders_shipped DESC, returns_received DESC, warehouse
+  Return:
+    label: Return
+    description: >-
+      A customer's return of goods from an order, authorised under a return number (RMA-208815) and
+      given a reason. A return sends products back to a warehouse; the support case about it is a
+      kind of its own.
+    aliases: [RMA, return request, refund request, returned item]
+    reference: https://schema.org/ReturnAction
+    properties:
+      rmaNumber: {type: STRING, key: true, pattern: "^RMA-[0-9]{6}$", description: "The return authorisation number, RMA- and six digits."}
+      name: {type: STRING, description: "The return as a document names it."}
+      reason: {type: STRING, one_of: [damaged, faulty, not as described, wrong item, unwanted, late], description: "The reason code the customer gave."}
+      outcome: {type: STRING, one_of: [refund, replacement, repair, rejected], description: "How the return was settled."}
+      raisedOn: {type: DATE, description: "The date the return was raised.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the return was raised, such as 9 November 2026"}}}}
+    extensions:
+      display: {x: -120, y: 150, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a return of goods by a customer, identified by a return number such as RMA-100234", proper: true, propose: true}
+  Review:
+    label: Review
+    description: >-
+      A customer's published review or rating of a product, identified by its review number
+      (RV-339201) and given a star rating. A review is about a product; a complaint made to the
+      retailer is a support case.
+    aliases: [product review, rating, customer review, star rating]
+    reference: https://schema.org/Review
+    properties:
+      reviewId: {type: STRING, key: true, pattern: "^RV-[0-9]{6}$", description: "The review number, RV- and six digits."}
+      name: {type: STRING, description: "The review as a document names it."}
+      rating: {type: INTEGER, description: "The star rating, 1 to 5."}
+      verifiedPurchase: {type: BOOLEAN, description: "Whether the retailer matched the review to an order."}
+      postedOn: {type: DATE, description: "The date the review was published."}
+      status: {type: STRING, one_of: [published, held for moderation, removed], description: "Whether the review is shown."}
+    extensions:
+      display: {x: -330, y: 200, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a customer's product review or star rating, identified by a review number such as RV-100234", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: reviews-in-graph-and-text
+            category: evidence
+            question: Who wrote each review, of which product, and which sentences say so?
+            description: Every review's links to its author and its product, with the sentences they were read from.
+            teaches: A relationship pattern may name several types (WROTE|REVIEW_OF); UNWIND its sentence keys to read the words behind each.
+            cypher: |-
+              MATCH (v:Review)-[r:WROTE|REVIEW_OF]-(x:_Entity)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN v.name AS review, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY review, link, other
+  Campaign:
+    label: Campaign
+    description: >-
+      A named marketing campaign, sale or promotion ("the Winter Kitchen Event"), run over set dates by
+      e-mail, search, social media or the website. A campaign features products and orders are
+      attributed to it; a discount code alone is not a campaign.
+    aliases: [promotion, sale, marketing campaign, offer, event]
+    properties:
+      name: {type: STRING, key: true, description: "The campaign's name."}
+      campaignType: {type: STRING, one_of: [sale, email, paid search, social, loyalty, affiliate], description: "How the campaign reaches customers."}
+      startDate: {type: DATE, description: "The campaign's first day."}
+      endDate: {type: DATE, description: "The campaign's last day."}
+      discount: {type: FLOAT, description: "The headline discount, as a fraction (0.20 for 20% off)."}
+    extensions:
+      display: {x: 200, y: -230, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a named marketing campaign, sale, event or promotion that a retailer runs over set dates, such as a seasonal sale or an e-mail offer", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: campaign-orders-and-returns
+            category: neighbourhood
+            question: What did each campaign feature, which orders came through it, and which of them were returned?
+            description: Each campaign with the products it featured, the orders attributed to it and the returns raised against those orders.
+            teaches: An OPTIONAL MATCH can build on a variable an earlier one bound (o); when o is null, the next hop is null too.
+            cypher: |-
+              MATCH (m:Campaign)
+              OPTIONAL MATCH (m)-[:FEATURES]->(p:Product)
+              OPTIONAL MATCH (o:Order)-[:ATTRIBUTED_TO]->(m)
+              OPTIONAL MATCH (r:Return)-[:FOR_ORDER]->(o)
+              RETURN m.name AS campaign, collect(DISTINCT p.name) AS featured, collect(DISTINCT o.name) AS orders,
+                     collect(DISTINCT r.name) AS returns
+              ORDER BY campaign
+relationships:
+  customerPlacedOrder:
+    type: PLACED
+    description: >-
+      The customer placed the order: at most one customer per order (a free replacement has none); a
+      customer may place many orders.
+    aliases: [ordered, bought, purchased, checked out]
+    from: {node: Customer}
+    to: {node: Order, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: placed}
+  orderContainsProduct:
+    type: CONTAINS
+    description: >-
+      The order includes the product as one of its lines; an order contains one or more products, a
+      product appears in many orders.
+    aliases: [included, was for, held]
+    from: {node: Order, min_count: 1}
+    to: {node: Product}
+    extensions:
+      custom:
+        relate-examples: {phrase: contains}
+  orderShippedFromWarehouse:
+    type: SHIPPED_FROM
+    description: >-
+      The order was picked and dispatched from the warehouse; one warehouse per order in this ontology,
+      many orders per warehouse.
+    aliases: [was dispatched from, went out from, was fulfilled by]
+    from: {node: Order, max_count: 1}
+    to: {node: Warehouse}
+    extensions:
+      custom:
+        relate-examples: {phrase: was shipped from}
+  orderAttributedToCampaign:
+    type: ATTRIBUTED_TO
+    description: >-
+      The order came through the campaign (its e-mail, advert or sale), as the retailer's attribution
+      records it; at most one campaign per order, many orders per campaign.
+    aliases: [came through, was placed through, was placed during, converted from]
+    from: {node: Order, max_count: 1}
+    to: {node: Campaign}
+    extensions:
+      custom:
+        relate-examples: {phrase: was placed through}
+  orderReplacesOrder:
+    type: REPLACES
+    description: >-
+      The order was sent free of charge in place of the earlier order; read from the replacement to
+      the order it replaces, one earlier order per replacement.
+    aliases: [is a replacement for, was sent to replace, superseded]
+    from: {node: Order, max_count: 1}
+    to: {node: Order}
+    extensions:
+      custom:
+        relate-examples: {phrase: replaces}
+  productMadeByBrand:
+    type: MADE_BY
+    description: >-
+      The product carries the brand and is made by or for it; one brand per product, many products
+      per brand.
+    aliases: [is a product of, is branded, is manufactured by]
+    from: {node: Product, count: 1}
+    to: {node: Brand}
+    extensions:
+      custom:
+        relate-examples: {phrase: is made by}
+  productBelongsToCategory:
+    type: BELONGS_TO
+    description: >-
+      The product is listed in the catalogue category; a product belongs to one or more categories, a
+      category holds many products.
+    aliases: [is listed in, is listed under, sits in, is filed under]
+    from: {node: Product, min_count: 1}
+    to: {node: Category}
+    extensions:
+      custom:
+        relate-examples: {phrase: belongs to}
+  warehouseStocksProduct:
+    type: STOCKS
+    description: >-
+      The warehouse holds the product as saleable stock at the time the document describes; many to
+      many.
+    aliases: [holds, carries, has units of]
+    from: {node: Warehouse}
+    to: {node: Product}
+    extensions:
+      custom:
+        relate-examples: {phrase: stocks}
+  returnForOrder:
+    type: FOR_ORDER
+    description: >-
+      The return was raised against the order the goods came in; exactly one order per return, an
+      order may have several returns.
+    aliases: [was raised against, was raised on, is against]
+    from: {node: Return, count: 1}
+    to: {node: Order}
+    extensions:
+      custom:
+        relate-examples: {phrase: was raised against}
+  returnCoversProduct:
+    type: COVERS
+    description: >-
+      The return sends the product back; a return covers one or more of its order's products, a product
+      has many returns.
+    aliases: [returned, sent back, was a return of]
+    from: {node: Return, min_count: 1}
+    to: {node: Product}
+    extensions:
+      custom:
+        relate-examples: {phrase: covers}
+  returnReceivedAtWarehouse:
+    type: RECEIVED_AT
+    description: >-
+      The returned goods arrived at and were booked in by the warehouse; at most one warehouse per
+      return, many returns per warehouse.
+    aliases: [reached, was booked in at, arrived at]
+    from: {node: Return, max_count: 1}
+    to: {node: Warehouse}
+    extensions:
+      custom:
+        relate-examples: {phrase: was received at}
+  customerWroteReview:
+    type: WROTE
+    description: >-
+      The customer wrote and posted the review; at most one known author per review, many reviews per
+      customer.
+    aliases: [posted, left, submitted]
+    from: {node: Customer}
+    to: {node: Review, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: wrote}
+  reviewOfProduct:
+    type: REVIEW_OF
+    description: >-
+      The review rates and describes the product; exactly one product per review, many reviews per
+      product.
+    aliases: [reviews, rates, is about]
+    from: {node: Review, count: 1}
+    to: {node: Product}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a review of}
+  campaignFeaturesProduct:
+    type: FEATURES
+    description: >-
+      The campaign promotes the product by name or as an offer; a campaign features one or more
+      products, a product may feature in many campaigns.
+    aliases: [promotes, featured, advertises, leads with]
+    from: {node: Campaign}
+    to: {node: Product}
+    extensions:
+      custom:
+        relate-examples: {phrase: features}
+  customerRaisedCase:
+    type: RAISED
+    description: >-
+      The customer opened the support case; exactly one customer per case, many cases per customer.
+    aliases: [opened, logged, contacted us about]
+    from: {node: Customer}
+    to: {node: SupportCase, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: raised}
+  caseConcernsOrder:
+    type: CONCERNS
+    description: >-
+      The support case is about the order; a case concerns one or more orders, an order may have
+      several cases.
+    aliases: [is about, relates to, was opened on]
+    from: {node: SupportCase}
+    to: {node: Order}
+    extensions:
+      custom:
+        relate-examples: {phrase: concerns}
+  caseHandledByAgent:
+    type: HANDLED_BY
+    description: >-
+      The support agent worked the case at the front line; one or more handlers per case, many cases
+      per agent.
+    aliases: [was worked by, was owned by, was taken by]
+    from: {node: SupportCase}
+    to: {node: SupportAgent}
+    extensions:
+      custom:
+        relate-examples: {phrase: was handled by}
+  caseEscalatedToAgent:
+    type: ESCALATED_TO
+    description: >-
+      The case was passed up to the agent (a team leader or a specialist team) for a decision; a case
+      may be escalated more than once, to different agents.
+    aliases: [was referred to, was passed to, went up to]
+    from: {node: SupportCase}
+    to: {node: SupportAgent}
+    extensions:
+      custom:
+        relate-examples: {phrase: was escalated to}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Consumer & Retail
+      card:
+        title: Retail & E-Commerce
+        description: Follow an order from the campaign that sold it and the warehouse that shipped it to the returns, reviews and support cases that came after.
+      source:
+        derived_from: create-context-graph's retail-ecommerce.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Customer, Product, Category, Order, Review and
+          Campaign keep their meaning with new descriptions and properties; Brand, which the original kept
+          as a product property, and Warehouse and Return, which it left to stock counts and an order
+          status, became kinds; SupportCase and SupportAgent are new, for the cases customers raise and
+          the staff who hold them; PURCHASED became PLACED, REVIEWED became WROTE, BELONGS_TO_CATEGORY
+          became BELONGS_TO, CONTAINS and REVIEW_OF stay; BROWSED, RECOMMENDED and TARGETED_BY gave way
+          to links a document states (FEATURES, ATTRIBUTED_TO), each with a cardinality; the tools were
+          written anew for an extracted graph.

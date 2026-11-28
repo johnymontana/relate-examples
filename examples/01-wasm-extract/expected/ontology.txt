@@ -1,20 +1,47 @@
-# Ontologies in Relate WASM 1.2.0 (harness/ontology.mjs)
+# Ontologies in Relate WASM 1.3.0 (harness/ontology.mjs)
 Every ontology is an Ontology Graph Spec 1.1 document (web/ogs.js): parsed by web/ontology.js, kept in an in-memory
-store by applyOntology (the D8 layer and a CIP-176 graph type, D15) and read back. The 27 bundled ones are converted
-(web/convert.js) from create-context-graph's domain files (data/ontologies/ccg/); the page and the harnesses load the
-converted documents (data/ontologies/ogs/ccg/), and a create-context-graph file is converted on load. edgextract 0.1.0 (npm,
+store by applyOntology (the D8 layer and a CIP-176 graph type, D15) and read back. The bundled ones are the curated domains
+(data/ontologies/domains/) and the solution packages with their overlays (data/ontologies/ogs/studio/); create-context-graph's
+domain files (data/ontologies/ccg/) are converted (web/convert.js) as the editor converts a pasted one. edgextract 0.1.0 (npm,
 its own WASM) is the parity oracle for the ported splitter and names.
 The example's own labels and relationship types all start with _ (_Entity, _Claim, _IN, ...); an ontology id may not.
 
-## the Ontology Graph Spec 1.1.0 (data/ontology-spec/: neo4j/ontology-graph-spec release/v0.12.2, Apache-2.0)
+## the Ontology Graph Spec 1.1.0 (data/ontology-spec/: neo4j/ontology-graph-spec release/v0.13.0, Apache-2.0)
 schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json (draft 2020-12; 35 definitions)
 web/ogs.js SCHEMA equals the vendored file: yes; SCHEMA_ID is its $id: yes
 keywords it uses (the ones web/ogs.js interprets, annotations aside): $ref, additionalProperties, const, enum, items, oneOf, properties, required, type
-the SDK: npm @neo4j/ontology-graph-spec 0.12.2 (web/ogs.js SDK_VERSION 0.12.2), through lib/ogs.mjs
+the SDK: npm @neo4j/ontology-graph-spec 0.13.0 (web/ogs.js SDK_VERSION 0.13.0), through lib/ogs.mjs
 
-### the bundled documents (data/ontologies/ogs/, harness/convert.mjs): fresh conversions of their originals
-documents: 27, from create-context-graph (with _base.yaml)
-each byte for byte a fresh conversion of its original: yes
+### create-context-graph's 27 domain files, converted as the page converts a pasted one (harness/convert.mjs ccgConversions, with _base.yaml)
+They are no longer bundled (the curated documents replace them, D20): they are the converter's corpus, converted in memory.
+Each conversion's sha256 (of its canonical JSON), so that a change of the converter shows here:
+  agent-memory           96d17421ca7c5ebe
+  conservation           63ed24b7d59dcd0f
+  cybersecurity          e2785f7a7ff39a6a
+  data-journalism        62154a0770606ed6
+  digital-twin           294a855de2eb871c
+  education              c22282050d697382
+  financial-services     75bbedc6da779f5f
+  gaming                 b4368ecd9331fd55
+  genai-llm-ops          a8f772a60dccefc9
+  gis-cartography        f9e9aebcb71b4d4a
+  golf-sports            d28706d4040940e9
+  government             922a924d94f6ea3e
+  healthcare             6bb055418411cc36
+  hospitality            241f9c30e1cfdf5f
+  legal                  89ea7331671c2611
+  manufacturing          c5c074a3acb680cb
+  oil-gas                977a503a997479f2
+  options-intelligence   b8b2be41b0b7cbe1
+  personal-knowledge     46a3ffbca9a0e08d
+  product-management     3b44e1d44da9a712
+  real-estate            d2e3b9b2ef457d64
+  retail-ecommerce       97e3d6b1f0d1c17d
+  scientific-research    84f37c34fc3c2711
+  software-engineering   263ac40609b8dc4d
+  trip-planning          91117298542b8c00
+  vacation-industry      4635004ceb2ef846
+  wildlife-management    48f2bc80291acb26
 each gives the ontology its original gives (kinds, links, legal pairs, asks, the graph type, the model's schema, the tools): 27 of 27
 each reads back from toYaml and from toCanonicalJson to the same document, its sha256 taken over the canonical JSON: 27 of 27
 create-context-graph, read back from each document into its own model (domain, inherits, entity types with their
@@ -22,12 +49,113 @@ properties, colours and icons, relationships, agent tools, document templates, d
 prompt, visualization; harness/convert.mjs toCreateContextGraph) and compared with the file flattened by _merge_base: nothing lost in 27 of 27
 keys a conversion dropped (keys the format's own reader ignores): none
 
+### spec 1.0.0 beside it (data/ontology-spec/ontology-graph-spec-1.0.0.schema.json, tag release-spec/v1.0.0): what 1.1.0 changed
+1.0.0 -> 1.1.0: + /$defs/Property/properties/aliases, ~ /$id
+Neo4j's solution packages name 1.0.0; under the 1.0.0 schema, and under 1.1.0 once they name it (web/ogs.js fromSpec10):
+  attack-path-analysis           1.0.0: valid; as 1.1.0: valid
+  business-entities              1.0.0: valid; as 1.1.0: valid
+  competitive-intelligence       1.0.0: 4 errors (4 properties with aliases, a 1.1.0 field); as 1.1.0: valid
+  configurable-bom               1.0.0: valid; as 1.1.0: valid
+  ev-route-planning              1.0.0: valid; as 1.1.0: valid
+  identity-validation            1.0.0: valid; as 1.1.0: valid
+  insurance-claims-fraud         1.0.0: valid; as 1.1.0: valid
+  loans-and-mortgages            1.0.0: 6 errors (6 properties with aliases, a 1.1.0 field); as 1.1.0: valid
+  multi-omics                    1.0.0: valid; as 1.1.0: valid
+  patient-journey                1.0.0: valid; as 1.1.0: valid
+  regulatory-dependency-mapping  1.0.0: valid; as 1.1.0: valid
+  retail-banking                 1.0.0: valid; as 1.1.0: valid
+  securities-reference-data      1.0.0: 5 errors (5 properties with aliases, a 1.1.0 field); as 1.1.0: valid
+
+## the bundled ontologies: the curated documents (data/ontologies/domains/, D20) and Neo4j's solution packages (D21)
+
+### the vendored packages (data/ontologies/studio/<package>/, harness/vendor-studio.mjs)
+neo4j/studio-agent-use-cases at b76f767 (committed 2026-11-17T11:55:52Z): 43 files, every sha256 the manifest's and none spelling the engine's earlier product name: yes
+
+### the packages converted with their overlays (web/studio.js, harness/convert.mjs studioConversions)
+documents: 13; each byte for byte a fresh conversion: yes
+attack-path-analysis: lossless yes; tools 14 of 14 queries (node-pattern 1, parameter 6, first-node 7); requiring gds 0, apoc 0, write 7
+business-entities: lossless yes; tools 13 of 13 queries (parameter 2, node-pattern 10, first-node 1); requiring gds 0, apoc 0, write 1
+competitive-intelligence: lossless yes; tools 11 of 11 queries (first-node 2, parameter 1, node-pattern 8); requiring gds 0, apoc 0, write 1
+configurable-bom: lossless yes; tools 10 of 10 queries (node-pattern 6, first-node 4); requiring gds 0, apoc 0, write 5
+ev-route-planning: lossless yes; tools 21 of 21 queries (node-pattern 8, relationship-type 1, parameter 11, first-node 1); requiring gds 0, apoc 0, write 1
+identity-validation: lossless yes; tools 15 of 15 queries (node-pattern 12, parameter 2, first-node 1); requiring gds 0, apoc 2, write 3
+insurance-claims-fraud: lossless yes; tools 11 of 11 queries (node-pattern 6, first-node 5); requiring gds 4, apoc 0, write 1
+loans-and-mortgages: lossless yes; tools 13 of 13 queries (parameter 3, node-pattern 9, first-node 1); requiring gds 0, apoc 0, write 1
+multi-omics: lossless yes; tools 14 of 14 queries (node-pattern 2, parameter 11, first-node 1); requiring gds 0, apoc 0, write 1
+patient-journey: lossless yes; tools 14 of 14 queries (node-pattern 3, first-node 2, parameter 9); requiring gds 0, apoc 0, write 1
+regulatory-dependency-mapping: lossless yes; tools 12 of 12 queries (parameter 3, node-pattern 6, first-node 3); requiring gds 4, apoc 0, write 1
+retail-banking: lossless yes; tools 14 of 14 queries (first-node 4, node-pattern 9, parameter 1); requiring gds 3, apoc 2, write 1
+securities-reference-data: lossless yes; tools 13 of 13 queries (parameter 7, node-pattern 5, first-node 1); requiring gds 0, apoc 0, write 1
+
+### each bundled ontology: its size, what the model reads, what the graph type enforces, and the bar (harness/corpus.mjs lintBar)
+agent-memory (domains): 10 kinds (cue 10), 18 links (18 in the graph type, 0 gate only), 18 legal pairs, 15 tools; the model reads 1594 characters per sentence; identifiers proposed: Session, Message, Memory, Tool, ToolCall; the bar holds
+conservation (domains): 10 kinds (cue 10), 18 links (17 in the graph type, 1 gate only), 19 legal pairs, 13 tools; the model reads 1943 characters per sentence; identifiers proposed: Grant, Indicator; the bar holds
+cybersecurity (domains): 11 kinds (cue 11), 18 links (18 in the graph type, 0 gate only), 18 legal pairs, 15 tools; the model reads 1830 characters per sentence; identifiers proposed: Vulnerability, Technique, Indicator, Alert, Incident, Control; the bar holds
+data-journalism (domains): 10 kinds (cue 10), 18 links (18 in the graph type, 0 gate only), 18 legal pairs, 14 tools; the model reads 1778 characters per sentence; identifiers proposed: Claim, Correction; the bar holds
+digital-twin (domains): 10 kinds (cue 10), 16 links (16 in the graph type, 0 gate only), 16 legal pairs, 15 tools; the model reads 1838 characters per sentence; identifiers proposed: Asset, Sensor, Alert, WorkOrder, DigitalTwin; the bar holds
+education (domains): 9 kinds (cue 9), 16 links (16 in the graph type, 0 gate only), 16 legal pairs, 14 tools; the model reads 1793 characters per sentence; identifiers proposed: Submission, LearningOutcome; the bar holds
+financial-services (domains): 10 kinds (cue 10), 15 links (15 in the graph type, 0 gate only), 15 legal pairs, 15 tools; the model reads 1543 characters per sentence; identifiers proposed: Account, Security, Transaction; the bar holds
+gaming (domains): 10 kinds (cue 10), 16 links (16 in the graph type, 0 gate only), 16 legal pairs, 14 tools; the model reads 1696 characters per sentence; identifiers proposed: Exploit, Sanction; the bar holds
+genai-llm-ops (domains): 10 kinds (cue 10), 16 links (16 in the graph type, 0 gate only), 16 legal pairs, 13 tools; the model reads 1627 characters per sentence; identifiers proposed: Experiment, Evaluation, Deployment, Incident; the bar holds
+gis-cartography (domains): 11 kinds (cue 11), 17 links (15 in the graph type, 2 gate only), 19 legal pairs, 14 tools; the model reads 1700 characters per sentence; identifiers proposed: Survey, Parcel, SurveyMonument; the bar holds
+golf-sports (domains): 9 kinds (cue 9), 16 links (15 in the graph type, 1 gate only), 17 legal pairs, 14 tools; the model reads 1453 characters per sentence; identifiers proposed: none; the bar holds
+government (domains): 10 kinds (cue 10), 17 links (17 in the graph type, 0 gate only), 17 legal pairs, 14 tools; the model reads 1259 characters per sentence; identifiers proposed: Grant; the bar holds
+healthcare (domains): 9 kinds (cue 9), 17 links (17 in the graph type, 0 gate only), 17 legal pairs, 15 tools; the model reads 1687 characters per sentence; identifiers proposed: Encounter; the bar holds
+hospitality (domains): 9 kinds (cue 9), 15 links (15 in the graph type, 0 gate only), 15 legal pairs, 15 tools; the model reads 1373 characters per sentence; identifiers proposed: Reservation, Incident, Complaint; the bar holds
+legal (domains): 11 kinds (cue 11), 19 links (19 in the graph type, 0 gate only), 19 legal pairs, 15 tools; the model reads 1739 characters per sentence; identifiers proposed: Case; the bar holds
+manufacturing (domains): 11 kinds (cue 11), 18 links (18 in the graph type, 0 gate only), 18 legal pairs, 15 tools; the model reads 1915 characters per sentence; identifiers proposed: Machine, Part, Lot, Nonconformance, CorrectiveAction; the bar holds
+oil-gas (domains): 12 kinds (cue 12), 18 links (18 in the graph type, 0 gate only), 18 legal pairs, 14 tools; the model reads 1986 characters per sentence; identifiers proposed: Well, Inspection, Incident; the bar holds
+options-intelligence (domains): 9 kinds (cue 9), 15 links (15 in the graph type, 0 gate only), 15 legal pairs, 14 tools; the model reads 1644 characters per sentence; identifiers proposed: OptionsContract, Trade; the bar holds
+personal-knowledge (domains): 8 kinds (cue 8), 15 links (15 in the graph type, 0 gate only), 15 legal pairs, 15 tools; the model reads 1576 characters per sentence; identifiers proposed: JournalEntry; the bar holds
+product-management (domains): 10 kinds (cue 10), 13 links (13 in the graph type, 0 gate only), 13 legal pairs, 14 tools; the model reads 1861 characters per sentence; identifiers proposed: Feedback, Experiment; the bar holds
+real-estate (domains): 11 kinds (cue 11), 15 links (15 in the graph type, 0 gate only), 15 legal pairs, 14 tools; the model reads 1730 characters per sentence; identifiers proposed: Inspection; the bar holds
+retail-ecommerce (domains): 11 kinds (cue 11), 18 links (18 in the graph type, 0 gate only), 18 legal pairs, 15 tools; the model reads 1819 characters per sentence; identifiers proposed: SupportCase, Order, Return, Review; the bar holds
+scientific-research (domains): 10 kinds (cue 10), 18 links (18 in the graph type, 0 gate only), 18 legal pairs, 15 tools; the model reads 1813 characters per sentence; identifiers proposed: Grant, Paper; the bar holds
+software-engineering (domains): 10 kinds (cue 10), 19 links (19 in the graph type, 0 gate only), 19 legal pairs, 13 tools; the model reads 1633 characters per sentence; identifiers proposed: Repository, Issue, Release, Deployment, Incident; the bar holds
+trip-planning (domains): 11 kinds (cue 11), 16 links (16 in the graph type, 0 gate only), 16 legal pairs, 15 tools; the model reads 1768 characters per sentence; identifiers proposed: Itinerary, Flight, Booking; the bar holds
+vacation-industry (domains): 11 kinds (cue 11), 15 links (15 in the graph type, 0 gate only), 15 legal pairs, 14 tools; the model reads 1911 characters per sentence; identifiers proposed: Booking, Review; the bar holds
+wildlife-management (domains): 9 kinds (cue 9), 16 links (16 in the graph type, 0 gate only), 16 legal pairs, 13 tools; the model reads 1642 characters per sentence; identifiers proposed: Sighting, CameraTrap, Patrol; the bar holds
+attack-path-analysis (studio): 7 kinds (cue 7), 7 links (6 in the graph type, 1 gate only), 8 legal pairs, 14 tools; the model reads 1094 characters per sentence; identifiers proposed: CVE; the bar holds
+business-entities (studio): 5 kinds (cue 5), 12 links (10 in the graph type, 2 gate only), 15 legal pairs, 13 tools; the model reads 1566 characters per sentence; identifiers proposed: none; the bar holds
+competitive-intelligence (studio): 7 kinds (cue 7), 7 links (5 in the graph type, 2 gate only), 9 legal pairs, 11 tools; the model reads 1260 characters per sentence; identifiers proposed: Drug, ClinicalTrial, Patent; the bar holds
+configurable-bom (studio): 4 kinds (cue 4), 3 links (1 in the graph type, 2 gate only), 6 legal pairs, 10 tools; the model reads 388 characters per sentence; identifiers proposed: Product, Assembly, ConfigGroup, Part; the bar holds
+ev-route-planning (studio): 3 kinds (cue 3), 2 links (1 in the graph type, 1 gate only), 4 legal pairs, 21 tools; the model reads 501 characters per sentence; identifiers proposed: Car; the bar holds
+identity-validation (studio): 9 kinds (cue 9), 8 links (8 in the graph type, 0 gate only), 8 legal pairs, 15 tools; the model reads 1569 characters per sentence; identifiers proposed: Identity, Phone, Email, SSN, DOB, IPAddress, Location; the bar holds
+insurance-claims-fraud (studio): 4 kinds (cue 4), 5 links (5 in the graph type, 0 gate only), 5 legal pairs, 11 tools; the model reads 663 characters per sentence; identifiers proposed: Claim, Vehicle; the bar holds
+loans-and-mortgages (studio): 9 kinds (cue 9), 12 links (12 in the graph type, 0 gate only), 12 legal pairs, 13 tools; the model reads 1964 characters per sentence; identifiers proposed: Loan, Property, Appraisal, Payment; the bar holds
+multi-omics (studio): 11 kinds (cue 11), 15 links (13 in the graph type, 2 gate only), 17 legal pairs, 14 tools; the model reads 1831 characters per sentence; identifiers proposed: Project, Sample, Experiment, Comparison, Protein, Pathway; the bar holds
+patient-journey (studio): 8 kinds (cue 8), 8 links (8 in the graph type, 0 gate only), 8 legal pairs, 14 tools; the model reads 1658 characters per sentence; identifiers proposed: Observation; the bar holds
+regulatory-dependency-mapping (studio): 2 kinds (cue 2), 2 links (1 in the graph type, 1 gate only), 3 legal pairs, 12 tools; the model reads 432 characters per sentence; identifiers proposed: none; the bar holds
+retail-banking (studio): 12 kinds (cue 12), 13 links (12 in the graph type, 1 gate only), 14 legal pairs, 14 tools; the model reads 1712 characters per sentence; identifiers proposed: Account, Transaction, Email, Session, Device, IP; the bar holds
+securities-reference-data (studio): 7 kinds (cue 7), 12 links (12 in the graph type, 0 gate only), 12 legal pairs, 13 tools; the model reads 1777 characters per sentence; identifiers proposed: Security, Listing, Fund, Offering; the bar holds
+=> the bar holds for 40 of 40
+
+### the relate-examples extension and the schema budget (D22, D25, D26), on tampered documents
+a cue of 241 characters: refused at /nodes/A/extensions/custom/relate-examples/ask: the description the model reads is text of 1 to 240 characters, not "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+a link phrase with a capital: refused at /relationships/ab/extensions/custom/relate-examples/phrase: a link phrase is lower-case words (at most 60 characters, single spaces), not "Links To"
+extract as text: refused at /nodes/A/extensions/custom/relate-examples/extract: is true or false, not "no"
+propose on a node keyed by name: refused at /nodes/A/extensions/custom/relate-examples/propose: proposes identifiers by the pattern of the node's one key property other than name, which this node does not have
+two entries of one type with two phrases: refused at /relationships: the entries of LINKS disagree on their relate-examples phrase: give all of them the same one, or none
+a tool whose question is not text: refused at /nodes/A/extensions/custom/tools/0/question: a tool's question is text, not 7
+extract on the key: refused at /nodes/B/properties/code/extensions/custom/relate-examples/extract: the name and the key come from the entity's mentions, not from a value
+extract on a vector: refused at /nodes/A/properties/v/extensions/custom/relate-examples/extract: this page extracts STRING, INTEGER, FLOAT, DATE, BOOLEAN values, not "VECTOR<FLOAT32>"
+extract on a relationship property: refused at /relationships/ab/properties/since/extensions/custom/relate-examples/extract: a relationship's properties are not extracted (only a node's)
+an ask with the structure syntax's ;: refused at /nodes/A/properties/n/extensions/custom/relate-examples/ask: the description the model reads is text of 1 to 240 characters without ; = | :: [ or ], not "a count; or not"
+parse: MONEY on a STRING: refused at /nodes/A/properties/s/extensions/custom/relate-examples/parse: parse is DATE on a STRING (read as a date, written YYYY-MM-DD), MONEY on an INTEGER or a FLOAT (an amount, never a percentage) or PERCENT on a FLOAT (a percentage, as a fraction); not "MONEY" on "STRING"
+a cue, a phrase and a proposing key pattern: Beta asked {"label":"beta","description":"a beta, named by its code such as B-123"} (cue), key code ~ /^B-[0-9]{3}$/; the link asked "alpha links to beta"; "see B-042, then B-1." proposes [{"start":4,"end":9,"text":"B-042","label":"Beta"}]
+extract: false on Beta: asked null (extract); LINKS asked null; the model's schema ["alpha"], links 0
+Beta reads amount (FLOAT, money), opened (DATE), tier (STRING); the first call unchanged: true; the second: ["beta=beta::str::A beta.;amount::str::The amount.;opened::str::the date it opened;tier::[gold|silver]"]
+which sentences get the second call: [true,true,false] ("It cost £12.", "It is gold.", "Nothing here.")
+values: 410000; refused (a percentage, not an amount); 0.127; refused (a percentage, and the property is not one (parse: PERCENT)); 150; 12; 1200000; "2024-01-09"; refused (not a date with day, month and year); refused (not a date with day, month and year)
+two properties that read alike to the model: The properties Amount and amount of Beta both read as "amount" to the model. Rename one of them.
+three descriptions of 900 characters (budget 2000): asked as first, first, first, 156 characters
+
 ### the SDK on the bundled documents (lib/ogs.mjs: GraphSpec.Json decodes the js-yaml reading; the SDK's validation sets)
-decoded, with no core issue: 27 of 27
-the other validation sets (informational: the page checks core): consistentSchema missing_property_name 1507
+the 40 bundled documents and create-context-graph's 27 converted: decoded, with no core issue: 67 of 67
+the other validation sets (informational: the page checks core): consistentSchema missing_property_name 3090
 Y1: through the SDK's YAML decoder: type: LIST<STRING> -> refused: Neo4jType does not contain element with name ''; quoted -> decoded
     schema: <a plain URL> then version: '1' -> refused: Top-level decoder: deserializing nested class for '1' in 'kotlin.collections.LinkedHashMap'; the URL quoted -> decoded
-    the bundled documents (js-yaml's YAML) -> 0 of 27 decoded; through js-yaml and GraphSpec.Json (lib/ogs.mjs) -> decoded, and all 27 above
+    the 40 bundled documents and create-context-graph's 27 converted -> 0 of 67 decoded; through js-yaml and GraphSpec.Json (lib/ogs.mjs) -> decoded, and all 67 above
 Y2: a document with an integer version and an unknown field: the SDK -> accepted; the JSON Schema -> /version type, / additionalProperties
 
 ### the draft format earlier builds shipped (lib/ogs.mjs fromDraft; harness/fixtures/*.draft.ontology.yaml: the last draft build's own files)
@@ -42,7 +170,7 @@ Y2: a document with an integer version and an unknown field: the SDK -> accepted
   node or relationship tools [...]  ->  extensions.custom.tools [...] on the same element
   constraints [{constraint_type: key|unique|mustExist, name?, properties}]  ->  constraints {<name, else kind_props>: {type: KEY|UNIQUE|EXISTS, properties, name?}}
   custom envelope with $schema or name  ->  extensions.custom.T: {definition, $schema, name, …}
-financial-services as the last draft build bundled it: isDraft true; fromDraft gives the bundled document: yes
+financial-services as the last draft build bundled it: isDraft true; fromDraft gives create-context-graph's converted document (no longer bundled: D20): yes
 pasted into the page (parseOntology): converted from ontology-graph-spec-draft; the same kinds, links, asks and sha as the bundled one: yes
 the generic document (harness/fixtures.mjs GENERIC_YAML) as the last draft build had it: fromDraft gives it: yes
 fromDraft on a BYTES property: OntologyError: This draft Ontology Graph Spec document cannot be converted: nodes.person.properties.photo: type BYTES has no equivalent in the published spec
@@ -102,13 +230,13 @@ on another node than the query's first labelled node pattern (rule 2 alone), by 
 with parameters, none of them compared with a node property (placed by rules 2-5): 32, 27 list_* tools ($limit only) and education at_risk_students, gaming get_top_players, government budget_variance, legal expiring_contracts, legal upcoming_hearings
 with parameters compared with a node property only where that cannot filter the rows (placed by rules 2-5): 2: oil-gas inspection_history ($query in an OPTIONAL MATCH); wildlife-management sightings_by_area ($habitat_name in an OPTIONAL MATCH)
 a tool on another node than the one its first bound parameter compares: 0
-o.tools (financial-services, the interface the page's tools view reads): 8; the first: {"anchor":{"kind":"node","key":"Person","label":"Person"},"type":"canonicalQuery","name":"search_customer","description":"Search for clients, advisors, or other people by name or role","cypher":"MATCH (p:Person) …","url":null,"parameters":[{"name":"query","type":"STRING","description":"Name or role to search for"}]}
+o.tools (financial-services, the interface the page's tools view reads): 8; the first: {"anchor":{"kind":"node","key":"Person","label":"Person"},"type":"canonicalQuery","name":"search_customer","description":"Search for clients, advisors, or other people by name or role","cypher":"MATCH (p:Person) …","url":null,"parameters":[{"name":"query","type":"STRING","description":"Name or role to search for"}],"question":"","teaches":"","category":"","requires":[]}
 
 ### the checks: ajv 8.20.0 and web/ogs.js validateSchema (the JSON Schema), the SDK (validateSpec), the rules (checkDocument)
 The two schema validators are compared error for error, as (instance path, keyword) pairs; ajv runs with allErrors, strict
 mode (strictTypes off) and strictNumbers. A document the schema accepts goes to the SDK (decode, Validations.core), and one
 the SDK accepts to the rules web/ogs.js adds, which neither can say.
-the 27 bundled documents: valid for both validators and the SDK, no rule broken: 27 of 27
+the 40 bundled documents and create-context-graph's 27 converted: valid for both validators and the SDK, no rule broken: 67 of 67
 valid: implied and optional labels, a constraint, a VECTOR with its dimension, cardinalities, an externalRequest tool: valid for all three, no rule broken
 no schema: both validators refuse: / required
 schema a number: both validators refuse: /schema type
@@ -156,7 +284,7 @@ a gazetteer naming a node the document does not have: schema- and SDK-valid; the
 tools that are not a list: schema- and SDK-valid; the rules: /nodes/team/extensions/custom/tools the tools are a list, not {"type":"canonicalQuery"}
 two tools with one name: schema- and SDK-valid; the rules: /nodes/employee/extensions/custom/tools/1/name two tools here are named "hr"
 => the two validators report the same errors on 46 of 46 documents; 46 of 46 refused (or accepted) where designed
-ajv and web/ogs.js agree on all 73 documents: yes
+ajv and web/ogs.js agree on all 113 documents: yes
 parseOntology on the bad type token: OntologyError: This document does not follow the Ontology Graph Spec 1.1.0 schema (1 problem): /nodes/Account/properties/balance/type: "TEXT" is not one of the spec's type tokens (STRING, INTEGER, FLOAT, BOOLEAN, DATE, ZONED DATETIME, LOCAL DATETIME, ZONED TIME, LOCAL TIME, DURATION, POINT, UUID, ANY, the sized INTEGER8/16/32 and FLOAT32, LIST<…> of most of them, VECTOR<…> of a number type)
 parseOntology on the endpoint to an unknown node: OntologyError: This document is refused by the Ontology Graph Spec SDK (1 problem): /relationships/OWNS/to/node: Missing node with id 'Acount' for relationship 'OWNS'
 parseOntology on the valid one: kinds Person, Employee (implied Person), Team; links MEMBER_OF, KNOWS (symmetric); asked as generic; tools hr on node employee
@@ -164,7 +292,7 @@ the same document as JSON: the same ontology and sha: yes
 a file with schema and domain: OntologyError: This file mixes two formats: `schema` marks an Ontology Graph Spec document, `domain` and `entity_types` are create-context-graph's. Keep one of them.
 
 ## create-context-graph's domains (data/ontologies/ccg/, neo4j-labs/create-context-graph 707b168): 27, each inheriting _base.yaml
-Each is loaded as the page loads it, its document (data/ontologies/ogs/ccg/), converted from the file and _base.yaml.
+Each is loaded as the editor loads a pasted one, converted from the file and _base.yaml.
 Labels and relationship types are the files' own, verbatim. _base.yaml is merged as ontology.py _merge_base does: the
 base's entity types and relationships first, unless the domain declares that label or relationship type itself. Entries
 sharing a relationship type are one link with several legal (source, target) pairs, which is what the gate checks; a link
@@ -184,7 +312,7 @@ asked, the base alone: "person", "organization", "location", "event", "object"; 
 two kinds that read alike (TaxForm, Tax_Form) -> OntologyError: The entity types TaxForm and Tax_Form both read as "tax form" to the model. Rename one of them.
 a domain kind for OBJECT and one for EVENT, a link naming Event: asked "person", "organization", "location", "event", "gadget: small device in cover test", "gala"; not asked Object
 
-### agent-memory (ogs/ccg/agent-memory.ontology.yaml, from agent-memory.yaml): 🧠 Agent Memory
+### agent-memory (agent-memory, converted, from agent-memory.yaml): 🧠 Agent Memory
 AI agent conversation tracking, entity extraction, memory management, and tool usage analysis; store ex01-kg-agent-memory
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Agent, Conversation, Entity, Memory, ToolCall, Session
 described: Agent "ai agent (object)", Conversation "dialogue (event)", Entity "extracted entity (object)", Memory "agent memory (object)", ToolCall "tool invocation (event)", Session "agent session (event)"
@@ -197,7 +325,7 @@ applyOntology: altered true; graph type read back: 11 node types and 10 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 10, _Alias 0; _IN 21, _DOMAIN 10, _RANGE 10, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### conservation (ogs/ccg/conservation.ontology.yaml, from conservation.yaml): 🌿 Conservation
+### conservation (conservation, converted, from conservation.yaml): 🌿 Conservation
 Wildlife conservation, habitat protection, species monitoring, and environmental stewardship; store ex01-kg-conservation
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Site, Species, Program, Funding, Stakeholder, Monitoring
 described: Site "conservation site (object)", Species "biological species (object)", Program "conservation program (object)", Funding "financial grant (event)", Stakeholder "stakeholder entity (object)", Monitoring "monitoring event (event)"
@@ -210,7 +338,7 @@ applyOntology: altered true; graph type read back: 11 node types and 10 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 10, _Alias 0; _IN 21, _DOMAIN 10, _RANGE 10, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### cybersecurity (ogs/ccg/cybersecurity.ontology.yaml, from cybersecurity.yaml): 🛡️ Cybersecurity
+### cybersecurity (cybersecurity, converted, from cybersecurity.yaml): 🛡️ Cybersecurity
 Assets, vulnerabilities, alerts, incidents, threat actors, and controls for security operations centers; store ex01-kg-cybersecurity
 kinds 12 (5 from _base): Person, Organization, Location, Event, Object, Asset, Vulnerability, Alert, Incident, ThreatActor, Control, User
 described: Asset "it asset (object)", Vulnerability "vulnerability (object)", Alert "security alert (event)", Incident "security incident (event)", ThreatActor "threat actor (organization)", Control "security control (object)", User "system user (person)"
@@ -223,7 +351,7 @@ applyOntology: altered true; graph type read back: 12 node types and 17 edge typ
 layer: _Ontology 1, _Kind 12, _LinkType 17, _Alias 0; _IN 29, _DOMAIN 17, _RANGE 17, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### data-journalism (ogs/ccg/data-journalism.ontology.yaml, from data-journalism.yaml): 📰 Data Journalism
+### data-journalism (data-journalism, converted, from data-journalism.yaml): 📰 Data Journalism
 Investigative journalism, source management, fact-checking, and data-driven storytelling; store ex01-kg-data-journalism
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Source, Story, Dataset, Claim, Correction, Investigation
 described: Source "information source (object)", Story "news story (object)", Dataset "journalism dataset (object)", Claim "factual claim (object)", Correction "editorial correction (event)", Investigation "journalistic investigation (event)"
@@ -236,7 +364,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### digital-twin (ogs/ccg/digital-twin.ontology.yaml, from digital-twin.yaml): 🏭 Digital Twin
+### digital-twin (digital-twin, converted, from digital-twin.yaml): 🏭 Digital Twin
 IoT asset monitoring, sensor data management, predictive maintenance, and system health analysis; store ex01-kg-digital-twin
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Asset, Sensor, Reading, Alert, MaintenanceRecord, System
 described: Asset "physical asset (object)", Sensor "iot sensor (object)", Reading "sensor reading (event)", Alert "system alert (event)", MaintenanceRecord "maintenance (event)", System "asset system (object)"
@@ -249,7 +377,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### education (ogs/ccg/education.ontology.yaml, from education.yaml): 🎓 Education
+### education (education, converted, from education.yaml): 🎓 Education
 Students, instructors, courses, enrollments, assessments, and outcomes for K-12, higher-ed, or training organizations; store ex01-kg-education
 kinds 12 (5 from _base): Person, Organization, Location, Event, Object, Student, Instructor, Course, Term, Enrollment, Assessment, Submission
 described: Student "learner (person)", Instructor "educator (person)", Course "course (object)", Term "academic term (event)", Enrollment "enrollment (event)", Assessment "assessment (event)", Submission "submission (event)"
@@ -262,7 +390,7 @@ applyOntology: altered true; graph type read back: 12 node types and 17 edge typ
 layer: _Ontology 1, _Kind 12, _LinkType 17, _Alias 0; _IN 29, _DOMAIN 17, _RANGE 17, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### financial-services (ogs/ccg/financial-services.ontology.yaml, from financial-services.yaml): 💰 Financial Services
+### financial-services (financial-services, converted, from financial-services.yaml): 💰 Financial Services
 Investment management, trading, compliance, and risk assessment; store ex01-kg-financial-services
 kinds 10 (5 from _base): Person, Organization, Location, Event, Object, Account, Transaction, Decision, Policy, Security
 described: Account "financial account (object)", Transaction "financial transaction (event)", Decision "decision (event)", Policy "regulation (object)", Security "financial instrument (object)"
@@ -275,7 +403,7 @@ applyOntology: altered true; graph type read back: 10 node types and 12 edge typ
 layer: _Ontology 1, _Kind 10, _LinkType 12, _Alias 0; _IN 22, _DOMAIN 12, _RANGE 12, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### gaming (ogs/ccg/gaming.ontology.yaml, from gaming.yaml): 🎮 Gaming
+### gaming (gaming, converted, from gaming.yaml): 🎮 Gaming
 Player management, game economy, quest tracking, and community analytics; store ex01-kg-gaming
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Player, Character, Item, Quest, Guild, Achievement
 described: Player "game user (object)", Character "game character (object)", Item "game item (object)", Quest "game quest (event)", Guild "game organization (object)", Achievement "game milestone (event)"
@@ -288,7 +416,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### genai-llm-ops (ogs/ccg/genai-llm-ops.ontology.yaml, from genai-llm-ops.yaml): 🤖 GenAI & LLM Ops
+### genai-llm-ops (genai-llm-ops, converted, from genai-llm-ops.yaml): 🤖 GenAI & LLM Ops
 Machine learning model lifecycle, experiment tracking, prompt engineering, and deployment management; store ex01-kg-genai-llm-ops
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Model, Experiment, Dataset, Prompt, Evaluation, Deployment
 described: Model "ml model (object)", Experiment "ml experiment (event)", Dataset "data asset (object)", Prompt "prompt template (object)", Evaluation "model evaluation (event)", Deployment "model deployment (event)"
@@ -301,7 +429,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### gis-cartography (ogs/ccg/gis-cartography.ontology.yaml, from gis-cartography.yaml): 🗺 GIS & Cartography
+### gis-cartography (gis-cartography, converted, from gis-cartography.yaml): 🗺 GIS & Cartography
 Geographic information systems, spatial analysis, surveying, and map production; store ex01-kg-gis-cartography
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Feature, Layer, Survey, Coordinate, Boundary, MapProject
 described: Feature "geographic feature (object)", Layer "map layer (object)", Survey "field survey (event)", Coordinate "spatial coordinate (object)", Boundary "administrative boundary (object)", MapProject "cartographic project (object)"
@@ -314,7 +442,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### golf-sports (ogs/ccg/golf-sports.ontology.yaml, from golf-sports.yaml): ⛳ Golf Sports
+### golf-sports (golf-sports, converted, from golf-sports.yaml): ⛳ Golf Sports
 Golf course management, player performance tracking, tournaments, and handicap analysis; store ex01-kg-golf-sports
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Course, Player, Round, Tournament, Handicap, Hole
 described: Course "golf course (object)", Player "golf player (object)", Round "golf round (event)", Tournament "golf tournament (event)", Handicap "handicap record (object)", Hole "golf hole (object)"
@@ -327,7 +455,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### government (ogs/ccg/government.ontology.yaml, from government.yaml): 🏛️ Government
+### government (government, converted, from government.yaml): 🏛️ Government
 Agencies, programs, policies, regulations, citizens, services, and budgets for public-sector operations; store ex01-kg-government
 kinds 13 (5 from _base): Person, Organization, Location, Event, Object, Agency, Program, Policy, Regulation, Service, Citizen, Official, Budget
 described: Agency "government agency (organization)", Program "program (object)", Policy "policy (object)", Regulation "regulation (object)", Service "public service (object)", Citizen "constituent (person)", Official "public official (person)", Budget "appropriation (object)"
@@ -341,7 +469,7 @@ applyOntology: altered true; graph type read back: 13 node types and 17 edge typ
 layer: _Ontology 1, _Kind 13, _LinkType 18, _Alias 0; _IN 31, _DOMAIN 18, _RANGE 19, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### healthcare (ogs/ccg/healthcare.ontology.yaml, from healthcare.yaml): 🏥 Healthcare
+### healthcare (healthcare, converted, from healthcare.yaml): 🏥 Healthcare
 Patient care, clinical encounters, diagnoses, treatments, and provider networks; store ex01-kg-healthcare
 kinds 12 (5 from _base): Person, Organization, Location, Event, Object, Patient, Provider, Diagnosis, Treatment, Encounter, Facility, Medication
 described: Patient "patient (person)", Provider "provider (person)", Diagnosis "diagnosis (object)", Treatment "treatment (event)", Encounter "clinical encounter (event)", Facility "healthcare facility (location)", Medication "medication (object)"
@@ -354,7 +482,7 @@ applyOntology: altered true; graph type read back: 12 node types and 16 edge typ
 layer: _Ontology 1, _Kind 12, _LinkType 16, _Alias 0; _IN 28, _DOMAIN 16, _RANGE 16, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### hospitality (ogs/ccg/hospitality.ontology.yaml, from hospitality.yaml): 🏨 Hospitality
+### hospitality (hospitality, converted, from hospitality.yaml): 🏨 Hospitality
 Hotel operations, guest services, room management, and revenue optimization; store ex01-kg-hospitality
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Hotel, Room, Reservation, Guest, Service, Staff
 described: Hotel "hospitality property (object)", Room "hotel room (object)", Reservation "hotel reservation (event)", Guest "hotel guest (object)", Service "hotel service (object)", Staff "hotel staff (object)"
@@ -367,7 +495,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### legal (ogs/ccg/legal.ontology.yaml, from legal.yaml): ⚖️ Legal
+### legal (legal, converted, from legal.yaml): ⚖️ Legal
 Cases, matters, contracts, filings, hearings, and counsel for a legal practice or in-house team; store ex01-kg-legal
 kinds 12 (5 from _base): Person, Organization, Location, Event, Object, Case, Matter, Contract, Filing, Hearing, Counsel, Statute
 described: Case "legal case (event)", Matter "legal matter (event)", Contract "contract (object)", Filing "court filing (event)", Hearing "hearing (event)", Counsel "attorney (person)", Statute "authority (object)"
@@ -381,7 +509,7 @@ applyOntology: altered true; graph type read back: 12 node types and 16 edge typ
 layer: _Ontology 1, _Kind 12, _LinkType 17, _Alias 0; _IN 29, _DOMAIN 18, _RANGE 18, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### manufacturing (ogs/ccg/manufacturing.ontology.yaml, from manufacturing.yaml): 🏭 Manufacturing
+### manufacturing (manufacturing, converted, from manufacturing.yaml): 🏭 Manufacturing
 Production management, quality control, supply chain, and equipment maintenance; store ex01-kg-manufacturing
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Machine, Part, WorkOrder, Supplier, QualityReport, ProductionLine
 described: Machine "equipment (object)", Part "component (object)", WorkOrder "production order (event)", Supplier "vendor (object)", QualityReport "inspection report (event)", ProductionLine "facility (object)"
@@ -394,7 +522,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### oil-gas (ogs/ccg/oil-gas.ontology.yaml, from oil-gas.yaml): 🛢️ Oil & Gas
+### oil-gas (oil-gas, converted, from oil-gas.yaml): 🛢️ Oil & Gas
 Upstream operations, drilling, production monitoring, and regulatory compliance; store ex01-kg-oil-gas
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Well, Reservoir, Equipment, Inspection, Permit, Formation
 described: Well "drilling well (object)", Reservoir "geological unit (object)", Equipment "field equipment (object)", Inspection "safety inspection (event)", Permit "regulatory permit (object)", Formation "geological formation (object)"
@@ -407,7 +535,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### options-intelligence (ogs/ccg/options-intelligence.ontology.yaml, from options-intelligence.yaml): 📈 Options Intelligence
+### options-intelligence (options-intelligence, converted, from options-intelligence.yaml): 📈 Options Intelligence
 Real-time options analysis, dealer positioning, gamma exposure, and 0DTE trading intelligence; store ex01-kg-options-intelligence
 kinds 13 (5 from _base): Person, Organization, Location, Event, Object, Underlying, OptionsContract, ExposureLevel, Regime, KeyLevel, Trade, MarketEvent, Strategy
 described: Underlying "financial instrument (object)", OptionsContract "derivative (object)", ExposureLevel "metric (object)", Regime "market state (event)", KeyLevel "price level (object)", Trade "order execution (event)", MarketEvent "catalyst (event)", Strategy "trading plan (object)"
@@ -420,7 +548,7 @@ applyOntology: altered true; graph type read back: 13 node types and 17 edge typ
 layer: _Ontology 1, _Kind 13, _LinkType 17, _Alias 0; _IN 30, _DOMAIN 17, _RANGE 17, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### personal-knowledge (ogs/ccg/personal-knowledge.ontology.yaml, from personal-knowledge.yaml): 📝 Personal Knowledge
+### personal-knowledge (personal-knowledge, converted, from personal-knowledge.yaml): 📝 Personal Knowledge
 Personal note-taking, contact management, project tracking, and knowledge connections; store ex01-kg-personal-knowledge
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Note, Contact, Project, Topic, Bookmark, JournalEntry
 described: Note "knowledge note (object)", Contact "person contact (object)", Project "personal project (object)", Topic "knowledge topic (object)", Bookmark "web bookmark (object)", JournalEntry "journal (event)"
@@ -433,7 +561,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### product-management (ogs/ccg/product-management.ontology.yaml, from product-management.yaml): 📋 Product Management
+### product-management (product-management, converted, from product-management.yaml): 📋 Product Management
 Feature planning, roadmap management, user research, and product analytics; store ex01-kg-product-management
 kinds 12 (5 from _base): Person, Organization, Location, Event, Object, Feature, Epic, UserPersona, Metric, Release, Feedback, Objective
 described: Feature "product feature (object)", Epic "product epic (object)", UserPersona "user persona (object)", Metric "product metric (object)", Release "product release (event)", Feedback "user feedback (event)", Objective "product objective (object)"
@@ -446,7 +574,7 @@ applyOntology: altered true; graph type read back: 12 node types and 11 edge typ
 layer: _Ontology 1, _Kind 12, _LinkType 11, _Alias 0; _IN 23, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### real-estate (ogs/ccg/real-estate.ontology.yaml, from real-estate.yaml): 🏠 Real Estate
+### real-estate (real-estate, converted, from real-estate.yaml): 🏠 Real Estate
 Property management, listings, transactions, inspections, and market analysis; store ex01-kg-real-estate
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Property, Listing, Agent, Transaction, Inspection, Neighborhood
 described: Property "real property (object)", Listing "property listing (event)", Agent "real estate agent (object)", Transaction "real estate transaction (event)", Inspection "property inspection (event)", Neighborhood "geographic area (object)"
@@ -459,7 +587,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### retail-ecommerce (ogs/ccg/retail-ecommerce.ontology.yaml, from retail-ecommerce.yaml): 🛒 Retail & E-Commerce
+### retail-ecommerce (retail-ecommerce, converted, from retail-ecommerce.yaml): 🛒 Retail & E-Commerce
 Customer management, product catalog, order fulfillment, and marketing campaigns; store ex01-kg-retail-ecommerce
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Customer, Product, Order, Review, Campaign, Category
 described: Customer "consumer (object)", Product "merchandise (object)", Order "purchase order (event)", Review "feedback (event)", Campaign "marketing campaign (event)", Category "product category (object)"
@@ -472,7 +600,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### scientific-research (ogs/ccg/scientific-research.ontology.yaml, from scientific-research.yaml): 🔬 Scientific Research
+### scientific-research (scientific-research, converted, from scientific-research.yaml): 🔬 Scientific Research
 Research collaboration, publication tracking, grant management, and experiment analysis; store ex01-kg-scientific-research
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Researcher, Paper, Dataset, Experiment, Grant, Institution
 described: Researcher "academic (object)", Paper "publication (object)", Dataset "data resource (object)", Experiment "research activity (event)", Grant "funding (object)", Institution "academic org (object)"
@@ -485,7 +613,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### software-engineering (ogs/ccg/software-engineering.ontology.yaml, from software-engineering.yaml): 💻 Software Engineering
+### software-engineering (software-engineering, converted, from software-engineering.yaml): 💻 Software Engineering
 Software development lifecycle, repositories, issues, deployments, and team collaboration; store ex01-kg-software-engineering
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Repository, Issue, PullRequest, Deployment, Service, Incident
 described: Repository "code repository (object)", Issue "issue (event)", PullRequest "pull request (event)", Deployment "deployment (event)", Service "microservice (object)", Incident "incident (event)"
@@ -498,7 +626,7 @@ applyOntology: altered true; graph type read back: 11 node types and 17 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 17, _Alias 0; _IN 28, _DOMAIN 17, _RANGE 17, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### trip-planning (ogs/ccg/trip-planning.ontology.yaml, from trip-planning.yaml): 🌍 Trip Planning
+### trip-planning (trip-planning, converted, from trip-planning.yaml): 🌍 Trip Planning
 Travel planning, destination research, booking management, and itinerary optimization; store ex01-kg-trip-planning
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Destination, Hotel, Activity, Restaurant, Itinerary, Review
 described: Destination "travel destination (object)", Hotel "accommodation (object)", Activity "travel activity (object)", Restaurant "dining (object)", Itinerary "travel plan (event)", Review "travel review (event)"
@@ -511,7 +639,7 @@ applyOntology: altered true; graph type read back: 11 node types and 11 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 11, _Alias 0; _IN 22, _DOMAIN 11, _RANGE 11, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### vacation-industry (ogs/ccg/vacation-industry.ontology.yaml, from vacation-industry.yaml): 🏖 Vacation Industry
+### vacation-industry (vacation-industry, converted, from vacation-industry.yaml): 🏖 Vacation Industry
 Resort management, vacation bookings, guest experiences, and seasonal operations; store ex01-kg-vacation-industry
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Resort, Booking, Guest, Activity, Season, Package
 described: Resort "vacation resort (object)", Booking "vacation booking (event)", Guest "vacation guest (object)", Activity "vacation activity (object)", Season "vacation season (object)", Package "vacation package (object)"
@@ -524,7 +652,7 @@ applyOntology: altered true; graph type read back: 11 node types and 10 edge typ
 layer: _Ontology 1, _Kind 11, _LinkType 10, _Alias 0; _IN 21, _DOMAIN 10, _RANGE 10, _OF 0
 stored _Ontology: the document (canonical JSON), spec 1.1.0, its sha and graph_type; _LinkType.typed and .pairs as derived; parsed again alone: yes
 
-### wildlife-management (ogs/ccg/wildlife-management.ontology.yaml, from wildlife-management.yaml): 🐻 Wildlife Management
+### wildlife-management (wildlife-management, converted, from wildlife-management.yaml): 🐻 Wildlife Management
 Wildlife tracking, conservation, habitat monitoring, and species management; store ex01-kg-wildlife-management
 kinds 11 (5 from _base): Person, Organization, Location, Event, Object, Species, Individual, Sighting, Habitat, Camera, Threat
 described: Species "biological species (object)", Individual "tagged animal (object)", Sighting "observation (event)", Habitat "geographic area (object)", Camera "monitoring device (object)", Threat "risk factor (object)"
@@ -638,7 +766,7 @@ two entity types with one label: refused: Two entity types share the label Perso
 a label not in NFC form: refused: bad entity type id: Ärzte. It is not in Unicode NFC form; type it composed.
 financial-services.yaml with no base loaded: refused: This file inherits _base, but no base of that name is loaded (none is). create-context-graph's domains inherit _base.
 isOntologyId('_Entity') false; isOntologyId('Entity') true; store.js ident('_Entity') -> StoreError ident: "_Entity" is not a label or type this store writes (ontology.js isOntologyId)
-the example's own labels: _Document, _Section, _Sentence, _Inference, _InferencePart, _Mention, _Entity, _Claim, _Run, _Verdict, _Gold, _Ontology, _Kind, _LinkType, _Alias; relationship types: _IN, _OF, _HEAD, _TAIL, _EVIDENCE, _DOMAIN, _RANGE, _READ, _ON, _INFERRED
+the example's own labels: _Document, _Section, _Sentence, _Inference, _InferencePart, _Mention, _Entity, _Claim, _Attribute, _Run, _Verdict, _Gold, _Ontology, _Kind, _LinkType, _Alias; relationship types: _IN, _OF, _HEAD, _TAIL, _EVIDENCE, _DOMAIN, _RANGE, _READ, _ON, _INFERRED
 
 ### a store an earlier build wrote, with unprefixed labels, is refused before anything is written
 store.openStore on it -> StoreError legacy: this store was written by an earlier build of this page, before its own labels took a leading _ (index document_id is on :Document); empty it to use it with this page, or open another store
@@ -656,7 +784,7 @@ gazetteer: Ada Lovelace (Person), Northwind (Company), Acme Inc (Company), 東�
 typed (4): FOUNDED (Person -> Company), WORKS_FOR (Person -> Company), PARTNER_OF (Company -> Company), HEADQUARTERED_IN (Company -> Location)
 untyped (1):
   INVESTED_IN: domain has 2 kinds (Person, Company): a graph type allows one source kind (O5)
-default cutoffs (store.defaultGate('generic', 'small')): kinds keep 0.50, links keep 0.35; the same as create-context-graph's: yes; base-v1's the same too: yes
+default cutoffs (store.defaultGate('generic', 'small')): kinds keep 0.70, links keep 0.20; the same as create-context-graph's: yes; base-v1's the same too: yes
 applyOntology: altered true, previous sha none
 graph type read back (SHOW CURRENT GRAPH TYPE, CONSTRAINT entries aside):
   {
@@ -691,12 +819,12 @@ audits: 0 rows each
 edgextract's YAML pasted or loaded -> OntologyError: This looks like edgextract's ontology YAML (`types`, `relations`, `gazetteer`), which this page no longer reads. Write it as an Ontology Graph Spec document: `schema`, `id`, `version`, `nodes` (one per type, with `label` and `description`) and `relationships` (one entry per pair: `type`, `from: {node}`, `to: {node}`); README "The ontology format" has the mapping. [legacyFormat edgextract]
 a file of neither format -> OntologyError: This is neither an Ontology Graph Spec document (`schema`, `nodes`) nor a create-context-graph domain file (`domain`, `entity_types`).
 an earlier build's store for edgextract's company_news (its document, converted_from edgextract, format edgextract): ontologyFromStored reads it as generic (converted from edgextract); asked "person", "company"
-  open: the default cutoffs move from that build's 0.85/0.70 to 0.50/0.35 (3 moved; kinds now 0.5/0.5); the claim at 0.65: review by band -> keep by band; stored format now generic
+  open: the default cutoffs move from that build's 0.85/0.70 to 0.70/0.20 (3 moved; kinds now 0.7/0.7); the claim at 0.65: review by band -> keep by band; stored format now generic
 a store an earlier build made before the Ontology Graph Spec documents, holding edgextract's YAML -> OntologyError: this store was written by an earlier build of this page for an ontology in edgextract's format, which this build no longer reads; delete it to free its space, or open another store [legacyFormat edgextract]
   (web/worker.js turns it into StoreError legacy-ontology: the earlier-build banner, whose button deletes the store, delete-store)
 
-### samples (data/samples/samples.json): 27, each with its ontology
-create-context-graph domains with samples: agent-memory (1), conservation (1), cybersecurity (1), data-journalism (1), digital-twin (1), education (1), financial-services (1), gaming (1), genai-llm-ops (1), gis-cartography (1), golf-sports (1), government (1), healthcare (1), hospitality (1), legal (1), manufacturing (1), oil-gas (1), options-intelligence (1), personal-knowledge (1), product-management (1), real-estate (1), retail-ecommerce (1), scientific-research (1), software-engineering (1), trip-planning (1), vacation-industry (1), wildlife-management (1)
+### samples (data/samples/samples.json): 49, each with its ontology
+bundled ontologies with documents: agent-memory (2), conservation (1), cybersecurity (2), data-journalism (1), digital-twin (1), education (1), financial-services (2), gaming (1), genai-llm-ops (1), gis-cartography (1), golf-sports (1), government (1), healthcare (2), hospitality (1), legal (2), manufacturing (2), oil-gas (1), options-intelligence (1), personal-knowledge (1), product-management (1), real-estate (1), retail-ecommerce (1), scientific-research (1), software-engineering (2), trip-planning (1), vacation-industry (1), wildlife-management (1), attack-path-analysis (1), business-entities (1), competitive-intelligence (1), configurable-bom (1), ev-route-planning (1), identity-validation (1), insurance-claims-fraud (2), loans-and-mortgages (1), multi-omics (1), patient-journey (1), regulatory-dependency-mapping (1), retail-banking (2), securities-reference-data (1)
 
 ## the graph type enforces endpoints and names (O4), on edge_cases
 seed (dynamic labels) -> [{"n":3}]
@@ -735,8 +863,8 @@ FOUNDED now -> [{"domain":"Company","range":"Company"}]
 the gate moves FOUNDED's keep cutoff -> [{"keep":0.9}]
 edit: drop WORKS_FOR, drop the name 東京, move Ada Lovelace from Person to Company
 applyOntology -> altered true; previous sha the old document's yes
-links and cutoffs -> [{"drop":0.2,"id":"FOUNDED","keep":0.9},{"drop":0.2,"id":"PARTNER_OF","keep":0.8},{"drop":0.2,"id":"INVESTED_IN","keep":0.8},{"drop":0.2,"id":"HEADQUARTERED_IN","keep":0.8}]
-names -> [{"kind":"Company","name":"Ada Lovelace"},{"kind":"Company","name":"Northwind"},{"kind":"Company","name":"Acme Inc"}]
+links and cutoffs -> [{"id":"FOUNDED","keep":0.9,"drop":0.2},{"id":"PARTNER_OF","keep":0.8,"drop":0.2},{"id":"INVESTED_IN","keep":0.8,"drop":0.2},{"id":"HEADQUARTERED_IN","keep":0.8,"drop":0.2}]
+names -> [{"name":"Ada Lovelace","kind":"Company"},{"name":"Northwind","kind":"Company"},{"name":"Acme Inc","kind":"Company"}]
 layer: _Ontology 1, _Kind 3, _LinkType 4, _Alias 3; _IN 7, _DOMAIN 5, _RANGE 4, _OF 3
 applyOntology(financial-services) on this store -> OntologyApplyError other-ontology: this store holds the ontology "edge_cases", not "financial-services"; each ontology has its own store (D14): open ex01-kg-financial-services
 
@@ -753,7 +881,7 @@ graph type read back:
 write through dynamic labels and type -> [{"type":"ARBEITET_IN"}]
 the reverse direction -> constraint: ConstraintValidationFailed: endpoint label presence verification failed: expected KLINIK
 read back, unquoted -> [{"arzt":"Dr. Müller","klinik":"Charité"}]
-the derived layer -> [{"alias":"Dr. Müller","domain":"ÄRZTE","link":"ARBEITET_IN","range":"KLINIK"}]
+the derived layer -> [{"link":"ARBEITET_IN","domain":"ÄRZTE","range":"KLINIK","alias":"Dr. Müller"}]
 
 ## combining marks and the length cap: one id rule from the document to the published graph (D8; ontology.js isOntologyId, at most 64)
 parseOntology: kinds व्यक्ति, COMPANY (7 code points, 3 of them combining marks); links व्यक्ति_SE, WORKS_FOR
@@ -766,8 +894,8 @@ store.openStore: typed व्यक्ति_SE, WORKS_FOR; graph type read back
     (:`व्यक्ति` =>)-[:`व्यक्ति_SE` =>]->(:`व्यक्ति` =>)
   }
 publish -> 3 entities, 3 labelled, 2 relationships
-read back by label and type -> [{"a":"Asha Rao","b":["_Entity","COMPANY"],"type":"WORKS_FOR"},{"a":"Asha Rao","b":["_Entity","व्यक्ति"],"type":"व्यक्ति_SE"}]
-exportCypher's graph.cypher, run in a fresh database -> [{"n":1,"type":"WORKS_FOR"},{"n":1,"type":"व्यक्ति_SE"}]
+read back by label and type -> [{"a":"Asha Rao","type":"WORKS_FOR","b":["_Entity","COMPANY"]},{"a":"Asha Rao","type":"व्यक्ति_SE","b":["_Entity","व्यक्ति"]}]
+exportCypher's graph.cypher, run in a fresh database -> [{"type":"WORKS_FOR","n":1},{"type":"व्यक्ति_SE","n":1}]
 a 64-character label: accepted; store.js ident() takes it
 a 65-character label: refused (This document breaks the rules this page needs (1 problem): /nodes/PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP/label: The label id PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP… is 65 characters long; ids become labels and relationship types, so they hold at most 64. Shorten it.)
 a 65-character relationship type: refused (This document breaks the rules this page needs (1 problem): /relationships/RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR/type: The relationship type id RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR… is 65 characters long; ids become labels and relationship types, so they hold at most 64. Shorten it.)
@@ -789,7 +917,7 @@ the reverse (:BY)-[:RETURN]->(:MATCH) -> constraint: ConstraintValidationFailed:
 read back, backticked -> [{"a":"m","b":"b"}]
 
 ## system_ontologies does not exist (R17)
-SHOW DATABASES -> [{"access":"read-write","name":"neo4j","type":"standard"},{"access":"read-write","name":"system","type":"system"}]
+SHOW DATABASES -> [{"name":"neo4j","access":"read-write","type":"standard"},{"name":"system","access":"read-write","type":"system"}]
 A store has two databases, neo4j and system. Every statement that names system_ontologies is refused as a
 missing graph, reads included, so the ontology lives in neo4j beside the data (D15):
 USE system_ontologies MATCH (n) -> semantic: semantic error: DatabaseNotFound: Graph not found: system_ontologies
@@ -844,33 +972,55 @@ edgextract's own engine runs each document with a zero model (every question ans
 format, written here as the oracle's input; this example no longer reads that format (section 2).
 
 ### the splitter (markdown.rs split_sentences): text, offsets (bytes -> code points), heading path, index
-samples/ccg/agent-memory.md: 13 sentences, same
-samples/ccg/conservation.md: 12 sentences, same
-samples/ccg/cybersecurity.md: 13 sentences, same
-samples/ccg/data-journalism.md: 12 sentences, same
-samples/ccg/digital-twin.md: 14 sentences, same
-samples/ccg/education.md: 15 sentences, same
-samples/ccg/financial-services.md: 13 sentences, same
-samples/ccg/gaming.md: 12 sentences, same
-samples/ccg/genai-llm-ops.md: 11 sentences, same
-samples/ccg/gis-cartography.md: 12 sentences, same
-samples/ccg/golf-sports.md: 12 sentences, same
-samples/ccg/government.md: 13 sentences, same
-samples/ccg/healthcare.md: 13 sentences, same
-samples/ccg/hospitality.md: 13 sentences, same
-samples/ccg/legal.md: 13 sentences, same
-samples/ccg/manufacturing.md: 12 sentences, same
-samples/ccg/oil-gas.md: 11 sentences, same
-samples/ccg/options-intelligence.md: 10 sentences, same
-samples/ccg/personal-knowledge.md: 11 sentences, same
-samples/ccg/product-management.md: 11 sentences, same
-samples/ccg/real-estate.md: 10 sentences, same
-samples/ccg/retail-ecommerce.md: 12 sentences, same
-samples/ccg/scientific-research.md: 12 sentences, same
-samples/ccg/software-engineering.md: 15 sentences, same
-samples/ccg/trip-planning.md: 12 sentences, same
-samples/ccg/vacation-industry.md: 12 sentences, same
-samples/ccg/wildlife-management.md: 13 sentences, same
+samples/domains/agent-memory/session-review.md: 69 sentences, same
+samples/domains/agent-memory/memory-snapshot.md: 33 sentences, same
+samples/domains/conservation/impact-assessment.md: 70 sentences, same
+samples/domains/cybersecurity/post-incident-review.md: 69 sentences, same
+samples/domains/cybersecurity/threat-brief.md: 27 sentences, same
+samples/domains/data-journalism/fact-check-report.md: 61 sentences, same
+samples/domains/digital-twin/root-cause-analysis.md: 64 sentences, same
+samples/domains/education/progression-board.md: 78 sentences, same
+samples/domains/financial-services/compliance-memo.md: 51 sentences, same
+samples/domains/financial-services/risk-review.md: 17 sentences, same
+samples/domains/gaming/live-ops-report.md: 69 sentences, same
+samples/domains/genai-llm-ops/evaluation-report.md: 58 sentences, same
+samples/domains/gis-cartography/boundary-survey-report.md: 52 sentences, same
+samples/domains/golf-sports/tournament-recap.md: 51 sentences, same
+samples/domains/government/programme-evaluation.md: 62 sentences, same
+samples/domains/healthcare/discharge-summary.md: 59 sentences, same
+samples/domains/healthcare/referral-letter.md: 32 sentences, same
+samples/domains/hospitality/incident-report.md: 84 sentences, same
+samples/domains/legal/case-summary.md: 69 sentences, same
+samples/domains/legal/contract-review.md: 32 sentences, same
+samples/domains/manufacturing/8d-report.md: 68 sentences, same
+samples/domains/manufacturing/supplier-evaluation.md: 33 sentences, same
+samples/domains/oil-gas/daily-drilling-report.md: 80 sentences, same
+samples/domains/options-intelligence/pre-market-brief.md: 54 sentences, same
+samples/domains/personal-knowledge/weekly-review.md: 60 sentences, same
+samples/domains/product-management/requirements-document.md: 75 sentences, same
+samples/domains/real-estate/inspection-report.md: 49 sentences, same
+samples/domains/retail-ecommerce/support-escalation.md: 58 sentences, same
+samples/domains/scientific-research/progress-report.md: 72 sentences, same
+samples/domains/software-engineering/postmortem.md: 80 sentences, same
+samples/domains/software-engineering/design-doc.md: 29 sentences, same
+samples/domains/trip-planning/travel-itinerary.md: 67 sentences, same
+samples/domains/vacation-industry/season-report.md: 83 sentences, same
+samples/domains/wildlife-management/camera-trap-patrol-report.md: 72 sentences, same
+samples/studio/attack-path-analysis/pentest-findings.md: 62 sentences, same
+samples/studio/business-entities/due-diligence-memo.md: 61 sentences, same
+samples/studio/competitive-intelligence/lrrk2-landscape.md: 77 sentences, same
+samples/studio/configurable-bom/change-notice.md: 65 sentences, same
+samples/studio/ev-route-planning/charging-plan.md: 62 sentences, same
+samples/studio/identity-validation/case-note.md: 70 sentences, same
+samples/studio/insurance-claims-fraud/siu-referral.md: 55 sentences, same
+samples/studio/insurance-claims-fraud/assessment-review.md: 38 sentences, same
+samples/studio/loans-and-mortgages/underwriting-memo.md: 73 sentences, same
+samples/studio/multi-omics/liver-results-summary.md: 70 sentences, same
+samples/studio/patient-journey/care-summary.md: 82 sentences, same
+samples/studio/regulatory-dependency-mapping/impact-assessment.md: 64 sentences, same
+samples/studio/retail-banking/aml-investigation.md: 72 sentences, same
+samples/studio/retail-banking/sar-draft.md: 22 sentences, same
+samples/studio/securities-reference-data/exception-report.md: 104 sentences, same
 fixtures: markup: 4 sentences, same
 fixtures: fence: 3 sentences, same
 fixtures: negation: 2 sentences, same
@@ -901,7 +1051,7 @@ stress: not headings: 4 sentences, same
 stress: lone CR line ends: 3 sentences, same
 stress: only whitespace: 0 sentences, same
 stress: no trailing newline: 2 sentences, same
-=> 57 of 57 documents split identically (423 sentences)
+=> 79 of 79 documents split identically (3055 sentences)
 
 ### names (names.rs normalize_entity_name): every accepted gazetteer mention, through edgextract's entities
 The names document lists awkward names; then each sample's text with every gold entity name of the 27 samples listed.
@@ -925,8 +1075,8 @@ the names document: 19 accepted mentions
   "Jane Doe" -> JANE_DOE
   "R2-D2" -> R2_D2
   "ſtraße" -> TRA_E
-the 27 samples, with the 340 gold entity names listed: 658 accepted mentions
-=> 677 of 677 names agree
+the 49 samples, with the 1510 gold entity names listed: 5000 accepted mentions
+=> 5019 of 5019 names agree
 
 ### the entity key (names.js entityName): a pinned difference from edgextract's names, not a parity failure
 An entity's key takes edgextract's canonical name (above) after dropping leading titles (names.js HONORIFICS) and the
@@ -945,4 +1095,4 @@ written with and without them is one entity (the example's README, "The graph mo
   "billing agent" (agent) -> BILLING_AGENT (as edgextract)
   "Taberna do Tavik restaurant" (restaurant) -> TABERNA_DO_TAVIK (edgextract: TABERNA_DO_TAVIK_RESTAURANT)
   "Issue #4470" (issue) -> ISSUE_4470 (as edgextract)
-the samples' 340 gold entities: 87 keyed apart from edgextract's name, e.g. Brennan Freight entity (Entity) BRENNAN_FREIGHT; Fenland Restoration Program (Program) FENLAND_RESTORATION; IR-2026-031 incident (Incident) IR_2026_031; AL-88213 alert (Alert) AL_88213
+the samples' 1682 gold entities: 83 keyed apart from edgextract's name, e.g. Ravensike Wetland Restoration Programme (Programme) RAVENSIKE_WETLAND_RESTORATION; 2026 habitat mapping survey (Survey) 2026_HABITAT_MAPPING; 2026 bittern survey (Survey) 2026_BITTERN; 2026 breeding wader survey (Survey) 2026_BREEDING_WADER

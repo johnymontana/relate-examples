@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# edgextract's approach in a browser tab: GLiNER2.5 (gliner-rs WASM), Relate 1.2.0 WASM and NVL.
+# edgextract's approach in a browser tab: GLiNER2.5 (gliner-rs WASM), Relate 1.3.0 WASM and NVL.
 #   ./run.sh               offline: the Node sections, then browser, then native; checked against expected/
 #   ./run.sh --update      rewrite expected/ from this run
 #   ./run.sh --reference   re-record data/reference/gliner2-small.json from Python gliner2 (no Node; uv)
@@ -12,7 +12,7 @@
 # `npm ci --omit=peer && npm run vendor` (--omit=peer skips NVL's unused neo4j-driver peer; npm ci also
 # installs @relate/relate-wasm, pinned with its integrity in package-lock.json).
 # The native section runs on the repository's engine: `relate` on PATH and the project env's
-# binding (uv run python: relate-db), both 1.2.0 like the WASM bundle; another version fails the run.
+# binding (uv run python: relate-db), both 1.3.0 like the WASM bundle; another version fails the run.
 # EXAMPLES_REQUIRE keys: without `wasm` (Node >= 20, the pinned Relate bundle in node_modules, the
 # gliner-rs build, npm ci, the NVL vendor bundle) or `gliner` (the small-v1 weights) the whole example
 # prints SKIP and exits 0; without `browser` (Playwright's Chromium) only that section is skipped, with
@@ -22,7 +22,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 source ../../scripts/env.sh   # loads <repo>/.env; RELATE_TELEMETRY=off, RELATE_MAX_ROWS=0, RELATE_AGENT_MODE=0
 root="$(cd ../.. && pwd)"
-ver=1.2.0                     # Relate: the WASM bundle (package.json), and the release the native section checks the project engine is
+ver=1.3.0                     # Relate: the WASM bundle (package.json), and the release the native section checks the project engine is
 gliner_rev=4fa741e            # gliner-rs v0.3.1 (D4)
 model=gliner2.5-small-v1      # the default checkpoint (D4), at revision 7132dc4
 model_rev=7132dc4
@@ -210,13 +210,15 @@ fi
 diffed+=(model.txt)
 
 # ---- ontology: every bundled ontology, its graph type, the D15 canary -> out/ontology.txt ---
-# web/ontology.js, split.js and names.js on the WASM bundle (in memory): create-context-graph's 27
-# domains with _base.yaml (data/ontologies/ccg/), three of them through the gate and publish without
-# the model, the id rule (no leading _), a generic document (harness/fixtures.mjs), edgextract's YAML
-# refused and the stores earlier builds made for its ontologies, the example's limits, and the ported
-# splitter and names checked against edgextract 0.1.0's own WASM (the dev dependency). A pin that stops
-# reproducing, a parity mismatch, or the canary finding db.ontology.* prints `PIN: ...` on stderr and
-# fails the run.
+# web/ontology.js, split.js and names.js on the WASM bundle (in memory): the 40 bundled ontologies (the
+# curated domains, data/ontologies/domains/, and the solution packages with their overlays,
+# data/ontologies/ogs/studio/) against ajv, the SDK and each one's bar; the vendored packages against
+# their manifest; create-context-graph's 27 domains with _base.yaml (data/ontologies/ccg/), converted
+# as the editor converts a pasted one, three of them through the gate and publish without the model;
+# the id rule (no leading _), a generic document (harness/fixtures.mjs), edgextract's YAML refused and
+# the stores earlier builds made for its ontologies, the example's limits, and the ported splitter and
+# names checked against edgextract 0.1.0's own WASM (the dev dependency). A pin that stops reproducing,
+# a parity mismatch, or the canary finding db.ontology.* prints `PIN: ...` on stderr and fails the run.
 if ! node harness/ontology.mjs "$ver" > out/ontology.txt 2> out/ontology.err; then
   grep -h '^PIN:' out/ontology.err >&2 || tail -n 20 out/ontology.err >&2
   echo "FAIL: harness/ontology.mjs (stderr in out/ontology.err)" >&2
@@ -226,10 +228,11 @@ diffed+=(ontology.txt)
 
 # ---- the pipeline in Node: extract, gate, audit, review, score -> out/{extract,gate,audit,review,score}.txt, graph.cypher
 # web/pipeline.js and web/store.js on the real model (small-v1) and the WASM bundle, one in-memory store
-# per ontology (D14): create-context-graph's 27 synthetic samples, one per domain, and the harness's
-# fixtures (harness/fixtures.mjs: edge cases, in a store of their own); the floor and rule invariants; the
-# audits (queries/audit-*.cypher); verdicts; P/R/F1 against the samples' gold (per domain, with the
-# distractor check) and phase C's grids; the typed graph exported as Cypher. gliner-rs answers every question first on a
+# per ontology (D14): the 49 documents of the 40 bundled ontologies (data/samples/samples.json), and the
+# harness's fixtures (harness/fixtures.mjs: edge cases, in a store of their own); the floor and rule
+# invariants; the audits (queries/audit-*.cypher); verdicts; P/R/F1 against the gold (per ontology and
+# document, entities, relations and property values, with the distractors by family), the 12 held-out
+# documents, and the grids that set the defaults (D23); the typed graph exported as Cypher. gliner-rs answers every question first on a
 # pool of worker threads (harness/infer.mjs; EX01_INFER_THREADS overrides the count, at most 6 by default).
 # An audit with rows or a refusal that is not the pinned one prints `run.mjs: FAIL: ...` on stderr and
 # fails the run.
@@ -248,7 +251,7 @@ diffed+=(extract.txt gate.txt audit.txt review.txt score.txt graph.cypher)
 # with web/pipeline.js and web/store.js run in Node. It runs before the native section, which reads
 # the page's dump.json and database tar from work/browser/ (and makes equivalents when this section
 # is skipped). Its X4 restore input is made by harness/native.py x4 with the project engine, or, without
-# a 1.2.0 `relate` on PATH, is the download re-tarred by lib/opfsfmt.py (a note on stderr).
+# a 1.3.0 `relate` on PATH, is the download re-tarred by lib/opfsfmt.py (a note on stderr).
 if check_browser; then
   if ! node harness/drive.mjs --out out/browser.txt > out/browser.err 2>&1; then
     grep -h '^drive.mjs: FAIL' out/browser.err >&2 || tail -n 20 out/browser.err >&2
@@ -258,7 +261,7 @@ if check_browser; then
   diffed+=(browser.txt)
 fi
 
-# ---- native 1.2.0: lib/replay, queries/*.cypher, the download route -> out/native.txt ------
+# ---- native 1.3.0: lib/replay, queries/*.cypher, the download route -> out/native.txt ------
 # harness/native.py with the project env's interpreter (-I) and `relate` from PATH: the page's dump
 # through lib/replay.py, the saved queries on WASM (Node) and natively, the page's snapshot tar opened
 # natively (a writable open adopts it) and cloned to a .rl, and a native .rl as a restore tar by the X4

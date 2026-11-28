@@ -8,7 +8,7 @@ Shipped in `dist/` (what the GitHub Pages site serves for this example):
 
 | Path in `dist/` | Component | Licence |
 |---|---|---|
-| `assets/relate-1.2.0/`: `relate.js`, `relate_bg.wasm`, `trap.js`, `snippets/relate-wasm-dd0c6225f894802b/js/opfs.js`, `LICENSE.txt` | Relate 1.2.0, WASM build (npm `@relate/relate-wasm`) | Apache-2.0 (`LICENSE.txt`: Relate's `LICENSE` at tag v1.2.0, sha256-pinned) |
+| `assets/relate-1.3.0/`: `relate.js`, `relate_bg.wasm`, `trap.js`, `snippets/relate-wasm-19215b5d5f97ddd6/js/opfs.js`, `LICENSE.txt` | Relate 1.3.0, WASM build (npm `@relate/relate-wasm`) | Apache-2.0 (`LICENSE.txt`: Relate's `LICENSE` at tag v1.3.0, sha256-pinned) |
 | `assets/nvl-2.0.0/`: `nvl.js`, `HierarchicalLayout.worker.js`, their `.LEGAL.txt`, the files those refer to (`base.mjs.LICENSE.txt`, `dagre.esm.js.LEGAL.txt`), `NVL-LICENSE.txt`, `THIRD_PARTY-npm.txt` and one `LICENSE-<package>-<version>.txt` per bundled npm package | NVL 2.0.0, the Neo4j Visualization Library, bundled from the same entry examples 01 and 02 use (only packages that put bytes into the bundle are shipped and listed) | proprietary, used with Neo4j's permission (confirmed by the repository owner on 2026-10-08); the dependencies MIT, ISC, Unlicense |
 | `assets/transformers-4.3.2/`: `transformers.js`, `ort-wasm-simd-threaded.mjs`, `ort-wasm-simd-threaded.wasm`, `LICENSE.txt`, `LICENSE-onnxruntime.txt`, `LICENSE-huggingface-tokenizers-0.2.0.txt`, `LICENSE-huggingface-jinja-0.5.13.txt`, `THIRD_PARTY-npm.txt` | Transformers.js 4.3.2 (npm `@huggingface/transformers`), minified into one module with the onnxruntime-web glue it imports (onnxruntime-web 1.31.0-dev.20260914-8d85527a0 and onnxruntime-common, the versions Transformers.js pins) and the tokenizer and template libraries its own build inlines; and onnxruntime-web's WebAssembly build, unmodified. Loaded only when the visitor types a text the page has no vector for | Transformers.js, `@huggingface/tokenizers` and `@huggingface/jinja`: Apache-2.0 and MIT, each package's own `LICENSE`. onnxruntime: MIT. Its npm packages ship no licence file, so `LICENSE-onnxruntime.txt` is the MIT License with the copyright line of the packages' source headers (NOTES.md T4) |
 | `assets/public-sans-5.3.0/`: `public-sans-latin-wght-normal.woff2`, `LICENSE.txt` | Public Sans (variable, latin subset), from npm `@fontsource-variable/public-sans` 5.3.0 | SIL Open Font License 1.1 |
@@ -37,10 +37,10 @@ The page's colours are the brand kit's (`data/brand/relate-colors.json`).
 None of these is shipped:
 
 - esbuild 0.28.2 (MIT): bundles the page's modules and NVL;
-- the Neo4j Ontology Graph Spec SDK 0.12.2 (npm `@neo4j/ontology-graph-spec`, Apache-2.0):
+- the Neo4j Ontology Graph Spec SDK 0.13.0 (npm `@neo4j/ontology-graph-spec`, Apache-2.0):
   `harness/run.mjs` validates `data/agent-memory.ontology.json` with it;
 - Playwright 1.63.0 (Apache-2.0) and its Chromium: the browser section, and `harness/embed.mjs`;
 - onnxruntime-node and sharp, which npm installs as dependencies of Transformers.js: nothing here
   loads them;
-- the native Relate 1.2.0 `relate-db` Python binding (Apache-2.0), the repository's engine: the
+- the native Relate 1.3.0 `relate-db` Python binding (Apache-2.0), the repository's engine: the
   native section.

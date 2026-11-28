@@ -31,6 +31,9 @@ the code cites goes there too, as a design id.
 | [0016](0016-ex03-one-typed-memory-label-in-memory.md) | Example 03's memory is one typed label, in a store that lives in memory | example 03 |
 | [0017](0017-ex03-real-embeddings-scripted-agent.md) | Example 03's agent is scripted; its memory and its vectors are real | example 03 |
 | [0018](0018-ci-runs-what-a-pull-request-changed.md) | On a pull request, CI runs the examples whose inputs changed; on `main`, all of them | repository |
+| [0019](0019-ex01-curated-ontologies-without-pole-o.md) | Example 01's bundled ontologies are curated, without the POLE+O base | example 01 |
+| [0020](0020-ex01-studio-packages-vendored-with-overlays.md) | Example 01 ships Neo4j's solution packages verbatim, each with an overlay of its own | example 01 |
+| [0021](0021-ex01-property-values-in-a-second-model-call.md) | Example 01 reads property values in a second model call, and joins them by the mentions | example 01 |
 
 ## Writing one
 

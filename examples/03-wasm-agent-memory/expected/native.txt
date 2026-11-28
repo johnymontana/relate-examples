@@ -1,4 +1,4 @@
-# Native Relate 1.2.0 (harness/native.py): the page's statements, replayed natively and compared with WASM
+# Native Relate 1.3.0 (harness/native.py): the page's statements, replayed natively and compared with WASM
 
 ## team: 7 schema statements, then 17 statements in the order the page ran them
 connect: 1 of 1 statements return the same rows as WASM

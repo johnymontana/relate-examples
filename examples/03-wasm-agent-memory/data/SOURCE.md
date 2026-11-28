@@ -54,9 +54,9 @@ Change it together with `SCHEMA`: every run of `run.sh` checks it (`harness/run.
 `expected/ontology.txt`; NOTES.md D10) and fails with `PIN: the ontology: …` when it stops
 holding:
 - against every validation set of the specification's SDK (npm `@neo4j/ontology-graph-spec`
-  0.12.2, the version examples 01 and 02 pin), and field by field against the SDK's own encoding
+  0.13.0, the version examples 01 and 02 pin), and field by field against the SDK's own encoding
   of it, so that a field the specification does not have fails the run (NOTES.md S1 to S3);
-- against Relate 1.2.0 WASM: the graph type derived from the document is
+- against Relate 1.3.0 WASM: the graph type derived from the document is
   `SHOW CURRENT GRAPH TYPE` byte for byte, and its constraints and indexes are those of
   `SHOW CONSTRAINTS` and `SHOW INDEXES`, names included (NOTES.md M8);
 - against the store after every scripted turn of the three conversations and every typed turn of
@@ -65,9 +65,9 @@ holding:
   and the statement that writes each relationship type are the ones the document names.
 
 It was also checked once, by hand on 2026-11-25, against the specification's JSON Schema (as
-example 01 vendors it) and against the SDK's next release, 0.12.3.
+example 01 vendors it) and against SDK 0.12.3 (then the next release; the pin has since moved to 0.13.0).
 
-`LICENSE-relate.txt` is Relate's `LICENSE` at tag v1.2.0 (Apache-2.0), shipped next to the WASM
+`LICENSE-relate.txt` is Relate's `LICENSE` at tag v1.3.0 (Apache-2.0), shipped next to the WASM
 bundle; `build.mjs` checks its sha256. `LICENSE-onnxruntime.txt` is the MIT License with
 onnxruntime's copyright line, shipped next to its WebAssembly build (NOTES.md T4).
 

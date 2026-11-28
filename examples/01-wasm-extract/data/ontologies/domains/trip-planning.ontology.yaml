@@ -1,0 +1,622 @@
+# Trip Planning: example 01's curated ontology for the itineraries and booking summaries a travel
+# company issues (D20). Written for this repository from create-context-graph's trip-planning.yaml
+# at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O
+# base (Person, Organization, Location, Event, Object) is gone, the people are the travellers a trip
+# is for, and the trip is broken into what a travel designer actually books (Booking) and the things
+# each booking reserves (Hotel, Restaurant, Activity, Flight), beside where they are (Destination,
+# Airport) and who provides them (TourOperator, Airline). A booking holds rooms, seats, places or a
+# table through one link each (HOLDS_ROOMS_AT ...), so every link has one pair the graph type checks.
+# The ccg's Review is left out: an itinerary states plans, not opinions.
+#
+# Every kind carries the description a reader needs, aliases, a reference where schema.org has the
+# concept, realistic properties (identifiers with patterns, vocabularies with one_of), and under
+# extensions.custom.relate-examples the words the model reads (ask) and whether its mentions are
+# proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link says its
+# direction and cardinality and carries the phrase the model reads. The tools are the ontology's
+# competency questions, written for the graph the page extracts: entities carry name, display, key
+# and their key property; relationships carry p, claims, sentences and docs, and the trace
+# (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: trip-planning
+name: Trip Planning
+description: >-
+  Leisure travel as a tailor-made travel company plans and books it: the travellers a trip is for,
+  the itinerary that holds their trip, the destinations it visits, the hotels they sleep in, the
+  restaurants and activities around them, the flights that carry them between airports and the
+  airlines that operate those flights, the local tour operators who run the activities, and the
+  bookings that reserve each of these in a traveller's name. It answers who is on a trip and where
+  it goes, where each traveller sleeps each night and in which destination, what a booking reference
+  covers and whose name it is in, how travellers reach a destination by air, which operators a trip
+  depends on, and what the source text says about each fact. A booking's price and status, an
+  itinerary's start date and a hotel's room count are read as properties. Timings, room types,
+  reviews and the travel company's own staff are out of scope.
+nodes:
+  Traveller:
+    label: Traveller
+    description: >-
+      A person going on the trip, named in full ("Margaret Ashworth"): the lead traveller, whose name
+      the bookings carry, or a companion. Travellers are the travel company's clients, never its travel
+      designers, guides or drivers.
+    aliases: [traveler, passenger, guest, lead traveller, client, companion]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The traveller's full name as the documents write it, as on their passport."}
+      role: {type: STRING, one_of: [lead traveller, companion], description: "Whether the traveller is the lead name on the trip or travels with them."}
+      passengerType: {type: STRING, one_of: [adult, child, infant], description: "The fare category airlines and hotels price the traveller by."}
+      dietaryNeeds: {type: STRING, description: "Dietary requirements passed to restaurants and suppliers (vegetarian, coeliac)."}
+    extensions:
+      display: {x: -360, y: -40, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a person going on the trip, named by first name and surname: the lead traveller or a companion; never the travel agent who planned it, a guide, a driver or a business", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-traveller
+            category: lookup
+            question: Who is this traveller, and what does the store connect to them?
+            description: Finds travellers whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (t:Traveller) WHERE toLower(t.name) CONTAINS toLower($traveller)
+              OPTIONAL MATCH (t)-[r]-(x:_Entity)
+              RETURN t.name AS traveller, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY traveller, link, other
+            parameters:
+              - {name: traveller, type: STRING, description: "Part of the traveller's name.", example: Ashworth}
+          - type: canonicalQuery
+            name: where-each-traveller-sleeps
+            category: path
+            question: Where does each traveller sleep, under which booking, and in which destination?
+            description: The chain traveller, booking, hotel, destination, for every hotel booking in a traveller's name.
+            teaches: A booking sits between the traveller and the hotel, so the path reads against BOOKED_FOR's direction and then along HOLDS_ROOMS_AT and LOCATED_IN.
+            cypher: |-
+              MATCH (t:Traveller)<-[:BOOKED_FOR]-(b:Booking)-[:HOLDS_ROOMS_AT]->(h:Hotel)
+              OPTIONAL MATCH (h)-[:LOCATED_IN]->(d:Destination)
+              RETURN t.name AS traveller, b.name AS booking, h.name AS hotel, collect(DISTINCT d.name) AS destinations
+              ORDER BY traveller, booking
+          - type: canonicalQuery
+            name: operators-each-traveller-meets
+            category: path
+            question: Which local operators will each traveller meet, and on which activity?
+            description: Every activity booked in a traveller's name, with the operator that runs it.
+            teaches: Three hops through a booking; the anonymous middle node keeps the pattern short when the booking itself is not wanted.
+            cypher: |-
+              MATCH (t:Traveller)<-[:BOOKED_FOR]-(:Booking)-[:HOLDS_PLACES_ON]->(a:Activity)-[:RUN_BY]->(op:TourOperator)
+              RETURN t.name AS traveller, a.name AS activity, op.name AS operator
+              ORDER BY traveller, activity
+  Itinerary:
+    label: Itinerary
+    description: >-
+      A trip as the travel company plans and issues it, identified by its itinerary reference
+      (ITN-4417) and reissued as a new version when it changes. An itinerary visits destinations and
+      includes bookings; it is the plan, not any one reservation in it.
+    aliases: [trip, tour, holiday, travel plan, trip plan]
+    reference: https://schema.org/Trip
+    properties:
+      itineraryId: {type: STRING, key: true, pattern: "^ITN-[0-9]{4}$", description: "The itinerary reference, ITN- and four digits."}
+      name: {type: STRING, description: "The itinerary as a document names it."}
+      title: {type: STRING, description: "The trip's title on the cover (Lisbon, Sintra, Porto and the Douro Valley)."}
+      startDate: {type: DATE, description: "The first day of travel.", extensions: {custom: {relate-examples: {extract: true, ask: "the day the trip starts, such as 14 May 2027, never the date the itinerary was issued"}}}}
+      endDate: {type: DATE, description: "The last day of travel."}
+      status: {type: STRING, one_of: [enquiry, proposal, confirmed, travelling, completed, cancelled], description: "Where the trip is in its life."}
+      version: {type: INTEGER, description: "The issue number of the itinerary document."}
+    extensions:
+      display: {x: -160, y: -260, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "the reference code of a whole trip plan, ITN- and four digits, such as ITN-4417; never a tour, train, flight or boat trip within it", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: itinerary-at-a-glance
+            category: neighbourhood
+            question: Who travels on this itinerary, where does it go, and which bookings does it include?
+            description: The itinerary with its travellers, its destinations and its bookings, one collected list each.
+            teaches: Three independent neighbourhoods of one node come back as three collected lists, one OPTIONAL MATCH each.
+            cypher: |-
+              MATCH (i:Itinerary) WHERE toLower(i.name) CONTAINS toLower($itinerary)
+              OPTIONAL MATCH (t:Traveller)-[:TRAVELS_ON]->(i)
+              OPTIONAL MATCH (i)-[:VISITS]->(d:Destination)
+              OPTIONAL MATCH (i)-[:INCLUDES]->(b:Booking)
+              RETURN i.name AS itinerary, collect(DISTINCT t.name) AS travellers, collect(DISTINCT d.name) AS destinations,
+                     collect(DISTINCT b.name) AS bookings
+              ORDER BY itinerary
+            parameters:
+              - {name: itinerary, type: STRING, description: "An itinerary reference, or part of one.", example: ITN-4417}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: ITN-4417}
+  Destination:
+    label: Destination
+    description: >-
+      A city, town, wine region or country that a trip visits, named as travellers know it ("Lisbon",
+      "the Douro Valley"). A destination contains hotels and is where activities take place; an airport
+      serves it but is not one.
+    aliases: [place, city, region, stop, leg]
+    reference: https://schema.org/TouristDestination
+    properties:
+      name: {type: STRING, key: true, description: "The destination's name as the documents write it."}
+      destinationType: {type: STRING, one_of: [city, town, region, country, island, national park], description: "What kind of place it is."}
+      country: {type: STRING, pattern: "^[A-Z]{2}$", description: "The country it is in, as an ISO 3166 alpha-2 code (PT)."}
+    extensions:
+      display: {x: 200, y: -280, colour: "#059669"}
+      custom:
+        relate-examples: {ask: "a city, town, wine region or country that a trip visits, such as Lisbon or the Douro Valley; never a hotel, restaurant or airport", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: staying-eating-and-doing-in
+            category: neighbourhood
+            question: Where can travellers stay in this destination, where can they eat near their hotel, and what is there to do?
+            description: Each destination whose name holds the text, with its hotels, the restaurants near those hotels and the activities that take place there.
+            teaches: An OPTIONAL MATCH may start from a variable an earlier one left null; it then finds nothing rather than failing.
+            cypher: |-
+              MATCH (d:Destination) WHERE toLower(d.name) CONTAINS toLower($destination)
+              OPTIONAL MATCH (h:Hotel)-[:LOCATED_IN]->(d)
+              OPTIONAL MATCH (r:Restaurant)-[:NEAR]->(h)
+              OPTIONAL MATCH (a:Activity)-[:TAKES_PLACE_IN]->(d)
+              RETURN d.name AS destination, collect(DISTINCT h.name) AS hotels, collect(DISTINCT r.name) AS restaurants_nearby,
+                     collect(DISTINCT a.name) AS activities
+              ORDER BY destination
+            parameters:
+              - {name: destination, type: STRING, description: "Part of the destination's name.", example: Lisbon}
+  Hotel:
+    label: Hotel
+    description: >-
+      A hotel, guesthouse, wine estate with rooms or other place where travellers stay overnight, named
+      in full ("Casa Verbena", "Quinta do Vale Sereno"). A hotel is in one destination; a restaurant
+      near it is a kind of its own.
+    aliases: [accommodation, guesthouse, quinta, inn, lodging, property]
+    reference: https://schema.org/LodgingBusiness
+    properties:
+      name: {type: STRING, key: true, description: "The hotel's name as the documents write it."}
+      category: {type: STRING, one_of: [hostel, guesthouse, mid-range, boutique, luxury, self-catering], description: "The kind of stay it offers."}
+      starRating: {type: INTEGER, description: "The official star rating, 1 to 5."}
+      rooms: {type: INTEGER, description: "The number of rooms the hotel has.", extensions: {custom: {relate-examples: {extract: true, ask: "how many rooms the hotel has in all, as a number such as 20, not the rooms a booking holds"}}}}
+    extensions:
+      display: {x: 120, y: -100, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a hotel, guesthouse, wine estate or other place where travellers sleep, named in full; never a restaurant, bar or airport", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: hotel-in-graph-and-text
+            category: evidence
+            question: How is this hotel connected in the graph, and where in the text was it read?
+            description: The hotel's links to other entities, then every mention of it in the documents, as one picture.
+            teaches: UNION ALL joins two answers of one shape; the trace links an entity to its mentions (_Mention -[:_OF]->), which the console can hide as the example's bookkeeping.
+            cypher: |-
+              MATCH (h:Hotel) WHERE toLower(h.name) CONTAINS toLower($hotel)
+              MATCH (h)-[r]-(x:_Entity)
+              RETURN h AS entity, r AS link, x AS other
+              UNION ALL
+              MATCH (h:Hotel) WHERE toLower(h.name) CONTAINS toLower($hotel)
+              MATCH (m:_Mention)-[o:_OF]->(h)
+              RETURN h AS entity, o AS link, m AS other
+            parameters:
+              - {name: hotel, type: STRING, description: "Part of the hotel's name.", example: Casa Verbena}
+  Restaurant:
+    label: Restaurant
+    description: >-
+      A restaurant, tavern, wine bar or other place to eat that a trip books or recommends, named in
+      full ("Taberna Fio de Azeite"). Itineraries place restaurants by the hotel they are near.
+    aliases: [taberna, tasca, adega, casa de pasto, tavern, eatery, wine bar]
+    reference: https://schema.org/Restaurant
+    properties:
+      name: {type: STRING, key: true, description: "The restaurant's name as the documents write it."}
+      cuisine: {type: STRING, description: "The food it serves, in a word or two (Portuguese, seafood)."}
+      priceRange: {type: STRING, one_of: [budget, moderate, upscale, fine dining], description: "How expensive a meal there is."}
+      takesReservations: {type: BOOLEAN, description: "Whether the restaurant accepts table bookings."}
+    extensions:
+      display: {x: 380, y: -80, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a restaurant, tavern, café or wine bar where travellers eat, named in full, often with a word such as Taberna, Tasca, Adega, Trattoria or Bistro", proper: true}
+  Activity:
+    label: Activity
+    description: >-
+      A tour, walk, tasting, boat trip or class that travellers book or join, named by its title ("the
+      Palaces and Gardens Day Tour"). An activity takes place in a destination and a tour operator runs
+      it; the operator is the company, the activity what it sells.
+    aliases: [tour, excursion, experience, day trip, tasting, walk, class]
+    reference: https://schema.org/TouristTrip
+    properties:
+      name: {type: STRING, key: true, description: "The activity's title as the documents write it."}
+      activityType: {type: STRING, one_of: [sightseeing, walking tour, food and drink, boat trip, class, adventure, wellness], description: "What kind of activity it is."}
+      durationHours: {type: FLOAT, description: "How long it lasts, in hours."}
+      difficulty: {type: STRING, one_of: [easy, moderate, challenging], description: "How demanding it is on foot."}
+    extensions:
+      display: {x: 120, y: 120, colour: "#d946ef"}
+      custom:
+        relate-examples: {ask: "a tour, walk, tasting, boat trip or class that travellers book or join, named by its full title", proper: true}
+  TourOperator:
+    label: TourOperator
+    description: >-
+      A local company that runs tours, walks, tastings, boat trips or transfers for travellers, named in
+      full ("Serra Clara Tours"). The operator delivers an activity on the ground; an airline or a hotel
+      is not one.
+    aliases: [operator, ground handler, DMC, guide company, excursion company, supplier]
+    reference: https://schema.org/LocalBusiness
+    properties:
+      name: {type: STRING, key: true, description: "The operator's name as the documents write it."}
+      operatorType: {type: STRING, one_of: [walking tours, day tours, boat trips, wine tourism, transfers], description: "What the operator mainly runs."}
+      registration: {type: STRING, description: "The operator's registration with the national tourism authority, as it quotes it."}
+    extensions:
+      display: {x: 380, y: 160, colour: "#a21caf"}
+      custom:
+        relate-examples: {ask: "a local company that runs tours, walks, tastings, boat trips or transfers for travellers, named in full; never an airline or a hotel", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: activities-per-operator
+            category: aggregation
+            question: How many activities does each tour operator run, and where?
+            description: Per operator, the activities it runs and the destinations they take place in.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each activity is counted once per destination.
+            cypher: |-
+              MATCH (op:TourOperator)
+              OPTIONAL MATCH (a:Activity)-[:RUN_BY]->(op)
+              OPTIONAL MATCH (a)-[:TAKES_PLACE_IN]->(d:Destination)
+              RETURN op.name AS operator, count(DISTINCT a) AS activities, collect(DISTINCT d.name) AS destinations
+              ORDER BY activities DESC, operator
+          - type: canonicalQuery
+            name: operators-a-trip-depends-on
+            category: path
+            question: Which local operators does an itinerary depend on, through which bookings?
+            description: The chain itinerary, booking, activity, operator, for every activity booking an itinerary includes.
+            teaches: A four-hop pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (i:Itinerary)-[:INCLUDES]->(b:Booking)-[:HOLDS_PLACES_ON]->(a:Activity)-[:RUN_BY]->(op:TourOperator)
+              RETURN i.name AS itinerary, b.name AS booking, a.name AS activity, op.name AS operator
+              ORDER BY itinerary, booking
+  Flight:
+    label: Flight
+    description: >-
+      A scheduled flight on a given day, identified by its flight number (FW1832): the airline's
+      two-letter code and up to four digits. A flight departs from one airport and arrives at another.
+    aliases: [flight number, sector, leg, departure, service]
+    reference: https://schema.org/Flight
+    properties:
+      flightNumber: {type: STRING, key: true, pattern: "^[A-Z]{2}[0-9]{2,4}$", description: "The flight number, the airline's two-letter code and two to four digits."}
+      name: {type: STRING, description: "The flight as a document names it."}
+      departureDate: {type: DATE, description: "The local date of departure."}
+      departureTime: {type: STRING, pattern: "^[0-2][0-9]:[0-5][0-9]$", description: "The local time of departure, HH:MM on the 24-hour clock."}
+      cabin: {type: STRING, one_of: [economy, premium economy, business, first], description: "The cabin booked."}
+    extensions:
+      display: {x: -120, y: 260, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "a scheduled flight, identified by its flight number such as FW1832", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: flight-by-number
+            category: lookup
+            question: Which flight has this number, where does it go, who operates it and which bookings hold it?
+            description: The flight whose number is the parameter, with its airports, its operating airline and the bookings that reserve it.
+            teaches: An identifier the text states is the entity's key property (flightNumber, from its name), so an exact match finds it.
+            cypher: |-
+              MATCH (f:Flight) WHERE f.flightNumber = $flight
+              OPTIONAL MATCH (f)-[:DEPARTS_FROM]->(a:Airport)
+              OPTIONAL MATCH (f)-[:ARRIVES_AT]->(b:Airport)
+              OPTIONAL MATCH (f)-[:OPERATED_BY]->(c:Airline)
+              OPTIONAL MATCH (bk:Booking)-[:HOLDS_SEATS_ON]->(f)
+              RETURN f.flightNumber AS flight, collect(DISTINCT a.name) AS departs, collect(DISTINCT b.name) AS arrives,
+                     collect(DISTINCT c.name) AS operated_by, collect(DISTINCT bk.name) AS bookings
+            parameters:
+              - {name: flight, type: STRING, description: "A flight number, two letters and two to four digits.", example: FW1854}
+  Airline:
+    label: Airline
+    description: >-
+      An airline that sells or operates flights, named in full ("Fairwind Airways"). When one airline
+      sells a seat on another's aircraft, the flight is operated by the second.
+    aliases: [carrier, operating carrier, marketing carrier, air line]
+    reference: https://schema.org/Airline
+    properties:
+      name: {type: STRING, key: true, description: "The airline's name as the documents write it."}
+      iataCode: {type: STRING, pattern: "^[A-Z0-9]{2}$", description: "The airline's two-character IATA designator (FW)."}
+    extensions:
+      display: {x: -360, y: 300, colour: "#1e3a8a"}
+      custom:
+        relate-examples: {ask: "an airline that sells or operates flights, named in full", proper: true}
+  Airport:
+    label: Airport
+    description: >-
+      An airport, named in full, often for a person, or by its three-letter IATA code ("Humberto Delgado
+      Airport", "LIS"). An airport serves the destinations around it; it is where flights depart and
+      arrive, not a destination.
+    aliases: [airfield, terminal, hub, gateway]
+    reference: https://schema.org/Airport
+    properties:
+      name: {type: STRING, key: true, description: "The airport's name as the documents write it."}
+      iataCode: {type: STRING, pattern: "^[A-Z]{3}$", description: "The three-letter IATA airport code (LIS)."}
+      city: {type: STRING, description: "The city the airport is in or chiefly serves (Lisbon)."}
+    extensions:
+      display: {x: 200, y: 330, colour: "#4d7c0f"}
+      custom:
+        relate-examples: {ask: "an airport, named in full or by its three-letter code, such as London Heathrow (LHR)", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: flying-to-a-destination
+            category: path
+            question: Which flights bring travellers to a destination, into which airport and from where?
+            description: For every destination whose name holds the text, the flights that arrive at an airport serving it, with each flight's departure airport.
+            teaches: A path can meet a destination from the side of the airport that serves it; the flight's other airport comes from a second OPTIONAL MATCH.
+            cypher: |-
+              MATCH (f:Flight)-[:ARRIVES_AT]->(a:Airport)-[:SERVES]->(d:Destination)
+              WHERE toLower(d.name) CONTAINS toLower($destination)
+              OPTIONAL MATCH (f)-[:DEPARTS_FROM]->(o:Airport)
+              RETURN d.name AS destination, a.name AS arrival_airport, f.name AS flight, collect(DISTINCT o.name) AS departs
+              ORDER BY destination, flight
+            parameters:
+              - {name: destination, type: STRING, description: "Part of the destination's name.", example: Douro}
+  Booking:
+    label: Booking
+    description: >-
+      A reservation the travel company holds for a trip, identified by its booking reference
+      (BKG-50311): a ticket, a room, a table or places on an activity. A booking is in one traveller's
+      name and reserves the things it covers.
+    aliases: [reservation, confirmation, booking reference, ticket]
+    reference: https://schema.org/Reservation
+    properties:
+      bookingRef: {type: STRING, key: true, pattern: "^BKG-[0-9]{5}$", description: "The travel company's booking reference, BKG- and five digits."}
+      name: {type: STRING, description: "The booking as a document names it."}
+      status: {type: STRING, one_of: [on hold, confirmed, ticketed, waitlisted, cancelled], description: "Where the reservation stands with the supplier.", extensions: {custom: {relate-examples: {extract: true, ask: "where the booking stands: on hold, confirmed, ticketed, waitlisted or cancelled"}}}}
+      supplierRef: {type: STRING, description: "The supplier's own confirmation number, such as the airline's six-character record locator."}
+      price: {type: FLOAT, description: "The price of the booking, in the currency the client pays.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the price charged for the booking, a sum of money such as £1,120"}}}}
+    extensions:
+      display: {x: -140, y: 40, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a reservation for a trip, identified by a booking reference such as BKG-50311", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: booking-by-reference
+            category: lookup
+            question: What does this booking reserve, whose name is it in, and which itinerary includes it?
+            description: The booking whose reference is the parameter, with what it reserves, its lead name and its itinerary.
+            teaches: The key property (bookingRef) is filled from the entity's name when the text gives the reference, so an exact match works here; one OPTIONAL MATCH per kind of thing a booking holds keeps each answer in its own column.
+            cypher: |-
+              MATCH (b:Booking) WHERE b.bookingRef = $ref
+              OPTIONAL MATCH (b)-[:HOLDS_ROOMS_AT]->(h:Hotel)
+              OPTIONAL MATCH (b)-[:HOLDS_SEATS_ON]->(f:Flight)
+              OPTIONAL MATCH (b)-[:HOLDS_PLACES_ON]->(a:Activity)
+              OPTIONAL MATCH (b)-[:HOLDS_TABLE_AT]->(r:Restaurant)
+              OPTIONAL MATCH (b)-[:BOOKED_FOR]->(t:Traveller)
+              OPTIONAL MATCH (i:Itinerary)-[:INCLUDES]->(b)
+              RETURN b.bookingRef AS booking, collect(DISTINCT h.name) AS rooms_at, collect(DISTINCT f.name) AS seats_on,
+                     collect(DISTINCT a.name) AS places_on, collect(DISTINCT r.name) AS table_at,
+                     collect(DISTINCT t.name) AS lead_name, collect(DISTINCT i.name) AS itineraries
+            parameters:
+              - {name: ref, type: STRING, description: "A booking reference, BKG- and five digits.", example: BKG-50321}
+          - type: canonicalQuery
+            name: bookings-per-traveller
+            category: aggregation
+            question: How many bookings are in each traveller's name, and what kinds of thing do they hold?
+            description: Per traveller, the bookings in their name and the kinds of the things those bookings hold.
+            teaches: The four HOLDS_ links share a prefix, so one pattern with a WHERE on type(r) reads them all; after an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (t:Traveller)
+              OPTIONAL MATCH (b:Booking)-[:BOOKED_FOR]->(t)
+              OPTIONAL MATCH (b)-[r]->(x:_Entity) WHERE type(r) STARTS WITH 'HOLDS_'
+              RETURN t.name AS traveller, count(DISTINCT b) AS bookings, collect(DISTINCT x.kind) AS holds
+              ORDER BY bookings DESC, traveller
+          - type: canonicalQuery
+            name: what-each-booking-holds
+            category: evidence
+            question: Which sentences tie a booking to the room, seat, place or table it holds, kept or still waiting?
+            description: Every claim of a HOLDS_ link the gate kept or holds for review, with its band, its score and the sentence it was read from.
+            teaches: The trace keeps every claim with its band and its sentence (_Claim -[:_EVIDENCE]-> _Sentence), so evidence can include what still waits for a verdict, not only what was published.
+            cypher: |-
+              MATCH (c:_Claim)-[:_EVIDENCE]->(s:_Sentence)
+              WHERE c.rel STARTS WITH 'HOLDS_' AND c.band IN ['keep', 'review']
+              RETURN c.htext AS booking, c.rel AS link, c.ttext AS holds, c.band AS band, round(c.p * 1000) / 1000 AS score,
+                     s.text AS evidence
+              ORDER BY booking, holds
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Margaret Ashworth}
+relationships:
+  travellerTravelsOnItinerary:
+    type: TRAVELS_ON
+    description: >-
+      The traveller goes on the trip the itinerary describes, for all of it or part of it; an itinerary
+      has one or more travellers, and a traveller may be on several itineraries over the years.
+    aliases: [travels on, is travelling on, joins, is booked on, goes on]
+    from: {node: Traveller}
+    to: {node: Itinerary, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: travels on}
+  itineraryVisitsDestination:
+    type: VISITS
+    description: >-
+      The itinerary takes its travellers to the destination; an itinerary visits one or more
+      destinations, and a destination is visited by many itineraries.
+    aliases: [covers, goes to, takes in, includes a stay in]
+    from: {node: Itinerary, min_count: 1}
+    to: {node: Destination}
+    extensions:
+      custom:
+        relate-examples: {phrase: visits}
+  itineraryIncludesBooking:
+    type: INCLUDES
+    description: >-
+      The booking is part of the itinerary; an itinerary includes many bookings, and a booking belongs to
+      exactly one itinerary.
+    aliases: [contains, now includes, has, holds]
+    from: {node: Itinerary}
+    to: {node: Booking, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: includes}
+  bookingBookedForTraveller:
+    type: BOOKED_FOR
+    description: >-
+      The booking is made in the traveller's name, its lead name; exactly one lead name per booking, and
+      a traveller may hold many bookings.
+    aliases: [is in the name of, is booked under, lead name, is held for]
+    from: {node: Booking, count: 1}
+    to: {node: Traveller}
+    extensions:
+      custom:
+        relate-examples: {phrase: is in the name of}
+  bookingHoldsRoomsAtHotel:
+    type: HOLDS_ROOMS_AT
+    description: >-
+      The booking reserves one or more rooms at the hotel for one or more nights; one hotel per booking,
+      many bookings per hotel.
+    aliases: [reserves rooms at, is a stay at, books a room at, covers nights at]
+    from: {node: Booking, count: 1}
+    to: {node: Hotel}
+    extensions:
+      custom:
+        relate-examples: {phrase: holds rooms at}
+  bookingHoldsSeatsOnFlight:
+    type: HOLDS_SEATS_ON
+    description: >-
+      The booking holds ticketed seats on the flight; a booking may cover an outbound and a return
+      flight, and a flight carries many bookings.
+    aliases: [tickets, reserves seats on, is a ticket for, covers]
+    from: {node: Booking}
+    to: {node: Flight}
+    extensions:
+      custom:
+        relate-examples: {phrase: holds seats on}
+  bookingHoldsPlacesOnActivity:
+    type: HOLDS_PLACES_ON
+    description: >-
+      The booking holds places on the activity on a given day; one activity per booking, many bookings
+      per activity.
+    aliases: [reserves places on, books places on, is for, covers]
+    from: {node: Booking, count: 1}
+    to: {node: Activity}
+    extensions:
+      custom:
+        relate-examples: {phrase: holds places on}
+  bookingHoldsTableAtRestaurant:
+    type: HOLDS_TABLE_AT
+    description: >-
+      The booking holds a table at the restaurant at a given time; one restaurant per booking, many
+      bookings per restaurant.
+    aliases: [reserves a table at, is a table at, books a table at]
+    from: {node: Booking, count: 1}
+    to: {node: Restaurant}
+    extensions:
+      custom:
+        relate-examples: {phrase: holds a table at}
+  hotelLocatedInDestination:
+    type: LOCATED_IN
+    description: >-
+      The hotel is in the destination; exactly one destination per hotel in this ontology, many hotels
+      per destination.
+    aliases: [is in, stands in, is based in]
+    from: {node: Hotel, count: 1}
+    to: {node: Destination}
+    extensions:
+      custom:
+        relate-examples: {phrase: is in}
+  restaurantNearHotel:
+    type: NEAR
+    description: >-
+      The restaurant is within walking distance of the hotel, as itineraries recommend places to eat;
+      many to many.
+    aliases: [is a short walk from, is around the corner from, is close to, is below]
+    from: {node: Restaurant}
+    to: {node: Hotel}
+    extensions:
+      custom:
+        relate-examples: {phrase: is near}
+  activityTakesPlaceInDestination:
+    type: TAKES_PLACE_IN
+    description: >-
+      The activity happens in the destination, or starts there; one destination per activity in this
+      ontology, many activities per destination.
+    aliases: [is in, runs in, is held in, goes through]
+    from: {node: Activity, count: 1}
+    to: {node: Destination}
+    extensions:
+      custom:
+        relate-examples: {phrase: takes place in}
+  activityRunByTourOperator:
+    type: RUN_BY
+    description: >-
+      The tour operator runs the activity and supplies its guide or crew; one operator per activity, and
+      an operator runs many activities.
+    aliases: [is operated by, is led by, is guided by, is provided by]
+    from: {node: Activity, count: 1}
+    to: {node: TourOperator}
+    extensions:
+      custom:
+        relate-examples: {phrase: is run by}
+  flightDepartsFromAirport:
+    type: DEPARTS_FROM
+    description: >-
+      The flight leaves from the airport; exactly one departure airport per flight, many flights per
+      airport.
+    aliases: [leaves, leaves from, flies from, takes off from]
+    from: {node: Flight, count: 1}
+    to: {node: Airport}
+    extensions:
+      custom:
+        relate-examples: {phrase: departs from}
+  flightArrivesAtAirport:
+    type: ARRIVES_AT
+    description: >-
+      The flight lands at the airport; exactly one arrival airport per flight, many flights per airport.
+    aliases: [lands at, flies to, gets in to, arrives in]
+    from: {node: Flight, count: 1}
+    to: {node: Airport}
+    extensions:
+      custom:
+        relate-examples: {phrase: arrives at}
+  flightOperatedByAirline:
+    type: OPERATED_BY
+    description: >-
+      The airline flies the aircraft and crew for the flight, whichever airline sold the seat; one
+      operating airline per flight, many flights per airline.
+    aliases: [is flown by, is a flight of, is operated for]
+    from: {node: Flight, count: 1}
+    to: {node: Airline}
+    extensions:
+      custom:
+        relate-examples: {phrase: is operated by}
+  airportServesDestination:
+    type: SERVES
+    description: >-
+      The airport is the usual way in by air for the destination; an airport serves one or more
+      destinations, and a destination may be served by several airports.
+    aliases: [is the airport for, is the nearest airport to, is the gateway to]
+    from: {node: Airport}
+    to: {node: Destination}
+    extensions:
+      custom:
+        relate-examples: {phrase: serves}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Travel & Hospitality
+      card:
+        title: Trip Planning
+        description: Follow travellers through an itinerary to the bookings in their names and the hotels, flights, activities and tables those bookings reserve.
+      source:
+        derived_from: create-context-graph's trip-planning.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Traveller; Review was dropped;
+          Destination, Hotel, Restaurant, Activity and Itinerary keep their meaning with new descriptions
+          and properties; Flight, Airport, Airline, Booking and TourOperator are new, so a booking holds
+          rooms, seats, places or a table, one link for each, and carries the traveller's name; the links
+          were renamed for their meaning and given cardinalities; the tools were written anew for an
+          extracted graph.

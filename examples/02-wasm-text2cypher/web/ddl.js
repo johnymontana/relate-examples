@@ -35,7 +35,7 @@ const map = (m) => (m && typeof m === 'object' && !Array.isArray(m) ? /** @type 
 
 // ---- the graph type ------------------------------------------------------------------------------
 
-/** Spec scalar types a Relate 1.2.0 graph type accepts as property types (probes.txt). */
+/** Spec scalar types a Relate 1.3.0 graph type accepts as property types (probes.txt). */
 const GRAPH_TYPE_SCALARS = new Set(['STRING', 'INTEGER', 'FLOAT', 'BOOLEAN', 'DATE', 'DURATION', 'POINT',
   'LOCAL DATETIME', 'LOCAL TIME', 'ZONED DATETIME', 'ZONED TIME', 'UUID']);
 /** Spec vector coordinate types a graph type accepts, as VECTOR<T>(dimension). */

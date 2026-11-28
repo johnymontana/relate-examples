@@ -3,17 +3,17 @@
 Every engine and library behaviour this example depends on or pins, one row each. The ids are what
 the code, the harnesses and `expected/` cite. **Pinned by** names the file whose run fails when the
 behaviour changes (a `PIN:` line on stderr, or a diff against `expected/`). Every row was checked
-on 2026-11-23 against:
-- Relate 1.2.0: npm `@relate/relate-wasm@1.2.0` and the `relate-db` 1.2.0 binding;
+on 2026-11-26 against:
+- Relate 1.3.0: npm `@relate/relate-wasm@1.3.0` and the `relate-db` 1.3.0 binding;
 - WebLLM 0.2.89;
-- the Ontology Graph Spec SDK 0.12.2.
+- the Ontology Graph Spec SDK 0.13.0.
 
 Example 01's `NOTES.md` rows (R1…R24) hold for this example too, where it touches the same engine
 surface: no transactions in WASM (R2), the JSON envelope (R4), an integral number binding as
 INTEGER (R5), dynamic labels and types (R7), and a trap leaving the handle unusable (R14). The rows
 below are this example's own.
 
-## Engine behaviours (Relate 1.2.0)
+## Engine behaviours (Relate 1.3.0)
 
 | id | behaviour | minimal repro | how the example copes | pinned by |
 |---|---|---|---|---|

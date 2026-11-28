@@ -1,0 +1,646 @@
+# Oil & Gas: example 01's curated ontology for upstream drilling and well-site documents (D20). Written
+# for this repository from create-context-graph's oil-gas.yaml at 707b168 (Apache-2.0,
+# data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base (Person,
+# Organization, Location, Event, Object) is gone, and the parties and things are named for what a
+# drilling engineer calls them (Operator, Contractor, Rig, Equipment, Field, Well, Formation,
+# Reservoir, Permit, Regulator, Inspection, Incident).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: oil-gas
+name: Oil & Gas
+description: >-
+  Upstream drilling as operators, rig crews and regulators write about it in daily drilling reports,
+  well files and incident reports: the operator of each well and the field it lies in, the rig that
+  drills it and the contractor that owns the rig, the rig and downhole equipment and who supplied it,
+  the formations the bit drills through and the reservoir each well targets or produces from, the
+  permits a regulator issued for the well, the inspections and pressure tests of its equipment, and
+  the incidents (kicks, spills, injuries) that happened on it, who they were reported to and which
+  inspection followed them up. It answers who operates and who drills a well, what it penetrated,
+  which offset wells share its target, which equipment was involved in an incident and whose it was,
+  and what the source text says about each fact. From the text it also reads a well's spud date, the
+  date a permit was issued, and the date and kind of each incident. Depths, mud properties, drilling
+  parameters and production volumes are out of scope: they are numbers in the report, not things it
+  names.
+nodes:
+  Operator:
+    label: Operator
+    description: >-
+      The oil and gas company that holds a well's permits and is responsible for drilling and producing
+      it, the operator of record, named in full or by its short name ("Brazos Ridge Energy LLC").
+      The operator hires contractors; it does not own the rig.
+    aliases: [operator of record, E&P company, exploration and production company, producer]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The operator's name as the documents write it."}
+      operatorNumber: {type: STRING, pattern: "^[0-9]{6}$", description: "The operator's number on the regulator's register (in Texas the RRC's P-5 number), six digits."}
+      headquarters: {type: STRING, description: "The city of the operator's head office (Midland)."}
+    extensions:
+      display: {x: -300, y: -160, colour: "#1d4ed8"}
+      custom:
+        relate-examples: {ask: "the oil and gas company that operates wells and holds their permits, often named with Energy, Operating or Resources", proper: true}
+  Contractor:
+    label: Contractor
+    description: >-
+      A service company the operator hires for a well: the drilling contractor that owns and crews the
+      rig, or a directional, drilling-fluids, solids-control or testing company ("Llano Mesa Drilling").
+      A contractor works on the well; it never operates it.
+    aliases: [drilling contractor, service company, service provider, vendor, oilfield services company]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The contractor's name as the documents write it."}
+      service: {type: STRING, one_of: [drilling, directional drilling, drilling fluids, solids control, cementing, wireline, pressure testing], description: "The service the contractor provides on the well."}
+    extensions:
+      display: {x: 420, y: -180, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "an oilfield service company the operator hires, such as the drilling contractor that owns a rig or a directional, mud or solids-control company", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: incidents-on-a-contractors-rig
+            category: path
+            question: Which incidents involved equipment on a rig a contractor owns?
+            description: The chain incident, equipment, rig, contractor, for every incident whose equipment is installed on a rig.
+            teaches: A four-node chain reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (i:Incident)-[:INVOLVED]->(e:Equipment)-[:INSTALLED_ON]->(rig:Rig)-[:OWNED_BY]->(c:Contractor)
+              RETURN i.name AS incident, e.name AS equipment, rig.name AS rig, c.name AS contractor
+              ORDER BY incident, equipment
+  Rig:
+    label: Rig
+    description: >-
+      A drilling rig, named by its contractor and number ("Llano Mesa Rig 27", "Rig 27"). A rig drills
+      one well at a time and walks or skids between the wells of a pad; the equipment on it is
+      Equipment, and the company that owns it is a Contractor.
+    aliases: [drilling rig, land rig, walking rig, unit]
+    properties:
+      name: {type: STRING, key: true, description: "The rig as the documents name it, contractor and number."}
+      rigType: {type: STRING, one_of: [land, walking, jack-up, semi-submersible, drillship], description: "The kind of rig."}
+      horsepower: {type: INTEGER, description: "The rig's drawworks rating, in horsepower (1500)."}
+    extensions:
+      display: {x: 240, y: -60, colour: "#334155"}
+      custom:
+        relate-examples: {ask: "a drilling rig, named as Rig and a number such as Rig 12, often after the company that owns it", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: rig-owner-equipment-and-wells
+            category: neighbourhood
+            question: Who owns this rig, what equipment is on it, and which wells has it drilled?
+            description: Each rig whose name holds the text, with its owner, the equipment installed on it and the wells it drilled.
+            teaches: Three independent neighbourhoods of one node come back as three collected lists.
+            cypher: |-
+              MATCH (rig:Rig) WHERE toLower(rig.name) CONTAINS toLower($rig)
+              OPTIONAL MATCH (rig)-[:OWNED_BY]->(c:Contractor)
+              OPTIONAL MATCH (e:Equipment)-[:INSTALLED_ON]->(rig)
+              OPTIONAL MATCH (w:Well)-[:DRILLED_BY]->(rig)
+              RETURN rig.name AS rig, collect(DISTINCT c.name) AS owners, collect(DISTINCT e.name) AS equipment,
+                     collect(DISTINCT w.name) AS wells
+              ORDER BY rig
+            parameters:
+              - {name: rig, type: STRING, description: "Part of the rig's name.", example: Rig 27}
+  Equipment:
+    label: Equipment
+    description: >-
+      A named piece of rig or downhole equipment, such as the BOP stack, a numbered mud pump or bit, the
+      top drive or the MWD tool. Equipment is installed on a rig or supplied for a run; the rig itself
+      is a Rig.
+    aliases: [rig equipment, downhole tool, blowout preventer, BOP, mud pump, drill bit]
+    properties:
+      name: {type: STRING, key: true, description: "The equipment as the documents name it."}
+      equipmentType: {type: STRING, one_of: [blowout preventer, mud pump, top drive, drill bit, mud motor, MWD tool, choke manifold, closed-loop system], description: "The kind of equipment."}
+      serialNumber: {type: STRING, description: "The manufacturer's or contractor's serial number."}
+      ratedPressure: {type: FLOAT, description: "The working pressure the equipment is rated to, in psi (5000)."}
+      lastTestedOn: {type: DATE, description: "The date of the equipment's last pressure or function test."}
+    extensions:
+      display: {x: 380, y: 100, colour: "#475569"}
+      custom:
+        relate-examples: {ask: "a named piece of rig or downhole equipment, such as the BOP stack, a numbered mud pump or bit, or the MWD tool", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: equipment-record
+            category: aggregation
+            question: Who supplied each piece of equipment, and how often was it inspected or involved in an incident?
+            description: Per piece of equipment, its suppliers and the number of inspections and incidents that name it.
+            teaches: Count DISTINCT after several OPTIONAL MATCHes, or each inspection is counted once per incident.
+            cypher: |-
+              MATCH (e:Equipment)
+              OPTIONAL MATCH (e)-[:SUPPLIED_BY]->(c:Contractor)
+              OPTIONAL MATCH (ins:Inspection)-[:INSPECTED]->(e)
+              OPTIONAL MATCH (inc:Incident)-[:INVOLVED]->(e)
+              RETURN e.name AS equipment, collect(DISTINCT c.name) AS suppliers, count(DISTINCT ins) AS inspections,
+                     count(DISTINCT inc) AS incidents
+              ORDER BY incidents DESC, inspections DESC, equipment
+  Field:
+    label: Field
+    description: >-
+      An oil or gas field as the regulator designates it, the area whose wells produce from the same
+      reservoirs ("Sandhill Draw Field"). A field holds many wells and leases; it is an area, not a
+      rock formation.
+    aliases: [oilfield, oil field, gas field, field area]
+    reference: https://schema.org/Place
+    properties:
+      name: {type: STRING, key: true, description: "The field's name as the documents write it."}
+      fieldNumber: {type: STRING, pattern: "^[0-9]{8}$", description: "The regulator's field number (in Texas the RRC's eight-digit field number)."}
+      basin: {type: STRING, description: "The sedimentary basin the field lies in (Midland Basin)."}
+      county: {type: STRING, description: "The county the field lies in (Midland County)."}
+    extensions:
+      display: {x: -320, y: 60, colour: "#65a30d"}
+      custom:
+        relate-examples: {ask: "an oil or gas field holding many wells, named as the regulator designates it", proper: true}
+  Well:
+    label: Well
+    description: >-
+      A borehole drilled to find or produce oil and gas, named by its lease, section and number
+      ("Hollis Ranch 31-18 2H", H for horizontal) and identified by its API number (42-329-60418). The
+      well is the hole; the rig drilling it is a Rig.
+    aliases: [wellbore, borehole, horizontal, lateral, offset well]
+    properties:
+      apiNumber: {type: STRING, key: true, pattern: "^[0-9]{2}-[0-9]{3}-[0-9]{5}$", description: "The well's API number: state code, county code and a five-digit unique number (42-329-60418)."}
+      name: {type: STRING, description: "The well as the documents name it."}
+      wellType: {type: STRING, one_of: [horizontal, vertical, directional, injection, disposal], description: "The well's trajectory or purpose."}
+      status: {type: STRING, one_of: [permitted, drilling, completing, producing, shut in, plugged and abandoned], description: "The well's status when the document was written."}
+      spudDate: {type: DATE, description: "The date drilling began, the spud date.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the rig began drilling the well, its spud date, such as February 27, 2026"}}}}
+      totalDepth: {type: FLOAT, description: "The well's total measured depth, in feet."}
+    extensions:
+      display: {x: 0, y: 0, colour: "#78350f"}
+      custom:
+        relate-examples: {ask: "an oil or gas well, named by its lease, section numbers and a well number ending in H, such as Smith 12-7 3H, or by an API number such as 42-329-60418", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: well-by-api-number
+            category: lookup
+            question: Which well has this API number, and what does the store connect to it?
+            description: The well whose API number is the parameter, with every entity one link away.
+            teaches: The key property (apiNumber) is filled from the entity's names when the text gives the number, so an exact match works here.
+            cypher: |-
+              MATCH (w:Well) WHERE w.apiNumber = $api
+              OPTIONAL MATCH (w)-[r]-(x:_Entity)
+              RETURN w.name AS well, w.apiNumber AS api, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY link, other
+            parameters:
+              - {name: api, type: STRING, description: "An API number, two, three and five digits.", example: 42-329-60418}
+          - type: canonicalQuery
+            name: who-operates-and-drills-a-well
+            category: neighbourhood
+            question: Who operates this well, which field is it in, which rig drills it, when was it spudded, and which permit is it drilled under?
+            description: Each well whose name holds the text, with its spud date as the text gives it, its operator, field, rigs and permits.
+            teaches: OPTIONAL MATCH keeps a well in the answer even when the text names no rig or permit for it; a value read from the text (spudDate) is a typed property, null when no sentence gave one.
+            cypher: |-
+              MATCH (w:Well) WHERE toLower(w.name) CONTAINS toLower($well)
+              OPTIONAL MATCH (w)-[:OPERATED_BY]->(op:Operator)
+              OPTIONAL MATCH (w)-[:LOCATED_IN]->(f:Field)
+              OPTIONAL MATCH (w)-[:DRILLED_BY]->(rig:Rig)
+              OPTIONAL MATCH (w)-[:PERMITTED_UNDER]->(p:Permit)
+              RETURN w.name AS well, w.spudDate AS spudded, collect(DISTINCT op.name) AS operators, collect(DISTINCT f.name) AS fields,
+                     collect(DISTINCT rig.name) AS rigs, collect(DISTINCT p.name) AS permits
+              ORDER BY well
+            parameters:
+              - {name: well, type: STRING, description: "Part of the well's name.", example: Hollis Ranch}
+          - type: canonicalQuery
+            name: where-is-the-well-mentioned
+            category: evidence
+            question: Where in the documents is this well mentioned, and in which words?
+            description: The well's entity, every mention of it and the sentence each sits in, as a graph to draw.
+            teaches: The trace links an entity to its mentions (_Mention -[:_OF]->) and each mention to its sentence (-[:_IN]-> _Sentence); returning nodes and relationships draws them.
+            cypher: |-
+              MATCH (w:Well) WHERE toLower(w.name) CONTAINS toLower($well)
+              MATCH (m:_Mention)-[o:_OF]->(w)
+              MATCH (m)-[i:_IN]->(s:_Sentence)
+              RETURN w, o, m, i, s
+            parameters:
+              - {name: well, type: STRING, description: "Part of the well's name.", example: Hollis Ranch 31-18 2H}
+  Formation:
+    label: Formation
+    description: >-
+      A named stratigraphic unit of rock that a well drills through, recorded by the depth of its top
+      ("the Dean Formation", "the Spraberry"). A formation is the rock layer; a reservoir is the
+      producing zone or bench within it.
+    aliases: [geological formation, stratigraphic unit, interval, horizon, formation top]
+    properties:
+      name: {type: STRING, key: true, description: "The formation's name as the documents write it."}
+      geologicalAge: {type: STRING, one_of: [Permian, Pennsylvanian, Mississippian, Devonian, Silurian, Ordovician], description: "The geological period the formation was deposited in."}
+      lithology: {type: STRING, one_of: [sandstone, siltstone, shale, limestone, dolomite, mixed carbonate and shale], description: "The formation's dominant rock type."}
+      topDepth: {type: FLOAT, description: "The depth of the formation's top in the well the document describes, in feet true vertical depth."}
+    extensions:
+      display: {x: -320, y: 260, colour: "#a16207"}
+      custom:
+        relate-examples: {ask: "a named rock formation a well drills through, written with the word Formation", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: wells-and-reservoirs-by-formation
+            category: aggregation
+            question: How many wells penetrated each formation, and which reservoirs lie within it?
+            description: Per formation, the wells that drilled into it and the reservoirs it holds.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (f:Formation)
+              OPTIONAL MATCH (w:Well)-[:PENETRATED]->(f)
+              OPTIONAL MATCH (r:Reservoir)-[:LIES_IN]->(f)
+              RETURN f.name AS formation, count(DISTINCT w) AS wells, collect(DISTINCT r.name) AS reservoirs
+              ORDER BY wells DESC, formation
+  Reservoir:
+    label: Reservoir
+    description: >-
+      A hydrocarbon-bearing zone within a formation that wells land in and produce from, named by the
+      bench or pool the operator develops ("Wolfcamp B", "Lower Spraberry"). One reservoir lies in one
+      formation, and the wells of a field share it.
+    aliases: [landing zone, bench, target zone, pay zone, pool]
+    properties:
+      name: {type: STRING, key: true, description: "The reservoir as the documents name it."}
+      reservoirType: {type: STRING, one_of: [shale, tight sandstone, carbonate, conventional sandstone], description: "The kind of reservoir rock."}
+      porePressureGradient: {type: FLOAT, description: "The reservoir's pore pressure gradient, in psi per foot (0.55)."}
+      porosity: {type: FLOAT, description: "The reservoir's average porosity, as a fraction (0.08)."}
+    extensions:
+      display: {x: -120, y: 200, colour: "#0369a1"}
+      custom:
+        relate-examples: {ask: "a producing bench or zone of a formation that wells land in or produce from, named by the formation and a bench letter, such as Wolfcamp B", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: geology-of-a-well
+            category: neighbourhood
+            question: Which formations did this well penetrate, which reservoir does it target, and in which formation does that reservoir lie?
+            description: Each well whose name holds the text, with the formations it penetrated, its target reservoirs and their formations.
+            teaches: An OPTIONAL MATCH can start from a node another OPTIONAL MATCH found; when that one found nothing, this one finds nothing too.
+            cypher: |-
+              MATCH (w:Well) WHERE toLower(w.name) CONTAINS toLower($well)
+              OPTIONAL MATCH (w)-[:PENETRATED]->(f:Formation)
+              OPTIONAL MATCH (w)-[:TARGETS]->(t:Reservoir)
+              OPTIONAL MATCH (t)-[:LIES_IN]->(tf:Formation)
+              RETURN w.name AS well, collect(DISTINCT f.name) AS penetrated, collect(DISTINCT t.name) AS targets,
+                     collect(DISTINCT tf.name) AS target_formations
+              ORDER BY well
+            parameters:
+              - {name: well, type: STRING, description: "Part of the well's name.", example: 2H}
+          - type: canonicalQuery
+            name: offset-wells-in-the-target
+            category: path
+            question: Which other wells already produce from the reservoir this well targets, and who operates them?
+            description: The chain well, target reservoir, offset well producing from it, and the offset's operator.
+            teaches: Two links meeting at one node (TARGETS and PRODUCES_FROM into a Reservoir) find the wells that share it.
+            cypher: |-
+              MATCH (w:Well)-[:TARGETS]->(r:Reservoir)<-[:PRODUCES_FROM]-(o:Well)
+              WHERE toLower(w.name) CONTAINS toLower($well) AND o <> w
+              OPTIONAL MATCH (o)-[:OPERATED_BY]->(op:Operator)
+              RETURN w.name AS well, r.name AS reservoir, o.name AS offset, collect(DISTINCT op.name) AS operators
+              ORDER BY well, reservoir, offset
+            parameters:
+              - {name: well, type: STRING, description: "Part of the well's name.", example: Hollis Ranch}
+  Permit:
+    label: Permit
+    description: >-
+      A regulator's written permission for work on a well, named by its kind and number ("Drilling
+      Permit 884512"). One regulator issues a permit, for one well, and its conditions travel with it.
+    aliases: [drilling permit, permit to drill, W-1 permit, authorization, APD]
+    properties:
+      permitNumber: {type: STRING, key: true, pattern: "^[0-9]{6}$", description: "The permit's number on the regulator's register, six digits (884512)."}
+      name: {type: STRING, description: "The permit as the documents name it."}
+      permitType: {type: STRING, one_of: [drilling, amended drilling, completion, disposal, flaring], description: "The work the permit allows."}
+      issuedOn: {type: DATE, description: "The date the regulator issued (approved) the permit.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the regulator issued the permit, such as January 9, 2026"}}}}
+      expiresOn: {type: DATE, description: "The date the permit lapses if the well is not spudded."}
+    extensions:
+      display: {x: -80, y: -260, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a drilling or other permit a regulator issued for a well, named by its number such as Drilling Permit 884512", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: permit-by-number
+            category: lookup
+            question: Which well does this permit cover, which regulator issued it, and when?
+            description: The permit whose number is the parameter, with the wells drilled under it, the regulator that issued it and the date it was issued.
+            teaches: An identifier the text states is the entity's key property (permitNumber, from its name), so an exact match finds it.
+            cypher: |-
+              MATCH (p:Permit) WHERE p.permitNumber = $permit
+              OPTIONAL MATCH (w:Well)-[:PERMITTED_UNDER]->(p)
+              OPTIONAL MATCH (p)-[:ISSUED_BY]->(r:Regulator)
+              RETURN p.name AS permit, p.permitNumber AS number, p.issuedOn AS issued_on, collect(DISTINCT w.name) AS wells,
+                     collect(DISTINCT r.name) AS issued_by
+            parameters:
+              - {name: permit, type: STRING, description: "A permit number, six digits.", example: "884512"}
+  Regulator:
+    label: Regulator
+    description: >-
+      A public authority that permits, inspects and receives reports on oil and gas operations or on
+      workplace safety (the Railroad Commission of Texas, OSHA), named in full, by its initials or by a
+      district office. A regulator issues permits; it never operates a well.
+    aliases: [regulatory agency, commission, authority, district office, agency]
+    reference: https://schema.org/GovernmentOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The regulator's name."}
+      jurisdiction: {type: STRING, description: "The state or country the regulator acts for, as an ISO 3166 code (US-TX)."}
+      district: {type: STRING, description: "The district office that deals with the well (District 08)."}
+    extensions:
+      display: {x: 200, y: -300, colour: "#b91c1c"}
+      custom:
+        relate-examples: {ask: "a government agency or commission that issues well permits, inspects well sites or takes incident reports, named in full or by its initials", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: regulator-oversight
+            category: aggregation
+            question: How many permits did each regulator issue, how many inspections did it conduct, and how many incidents were reported to it?
+            description: Per regulator, the permits it issued, the inspections it conducted and the incidents reported to it.
+            teaches: Three OPTIONAL MATCHes from one node, each counted DISTINCT, keep the counts independent of each other.
+            cypher: |-
+              MATCH (r:Regulator)
+              OPTIONAL MATCH (p:Permit)-[:ISSUED_BY]->(r)
+              OPTIONAL MATCH (ins:Inspection)-[:CONDUCTED_BY]->(r)
+              OPTIONAL MATCH (i:Incident)-[:REPORTED_TO]->(r)
+              RETURN r.name AS regulator, count(DISTINCT p) AS permits, count(DISTINCT ins) AS inspections,
+                     count(DISTINCT i) AS incidents
+              ORDER BY permits DESC, inspections DESC, regulator
+  Inspection:
+    label: Inspection
+    description: >-
+      A recorded inspection or test of a well site or its equipment (a regulator's field inspection, a
+      BOP pressure test), identified by its number (INS-26-0331). An inspection is planned or ordered;
+      an incident is something that went wrong.
+    aliases: [field inspection, BOP test, pressure test, site visit, function test]
+    properties:
+      inspectionId: {type: STRING, key: true, pattern: "^INS-[0-9]{2}-[0-9]{4}$", description: "The inspection number in the operator's compliance log, INS-, the two-digit year and four digits."}
+      name: {type: STRING, description: "The inspection as the documents name it."}
+      inspectionType: {type: STRING, one_of: [regulatory field inspection, BOP pressure test, BOP function test, environmental inspection, safety audit], description: "What kind of inspection it was."}
+      inspectedOn: {type: DATE, description: "The date of the inspection."}
+      result: {type: STRING, one_of: [pass, pass with findings, violation, fail], description: "The inspection's outcome."}
+    extensions:
+      display: {x: 380, y: 300, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "an inspection or pressure test of a well site or rig equipment, identified by a number such as INS-26-0331", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: IR-26-0418}
+  Incident:
+    label: Incident
+    description: >-
+      An unplanned event at a well that the operator records and may have to report (a kick, a spill, an
+      injury, a dropped object), identified by its report number (IR-26-0417). An incident happens; an
+      inspection is carried out.
+    aliases: [HSE incident, near miss, kick, well control event, spill, release]
+    properties:
+      incidentId: {type: STRING, key: true, pattern: "^IR-[0-9]{2}-[0-9]{4}$", description: "The incident report number, IR-, the two-digit year and four digits."}
+      name: {type: STRING, description: "The incident as the documents name it."}
+      incidentType: {type: STRING, one_of: [kick, spill, injury, dropped object, equipment failure, near miss], description: "What kind of incident it was.", extensions: {custom: {relate-examples: {extract: true, ask: "what kind of incident it was, such as a kick, a spill or an injury"}}}}
+      occurredOn: {type: DATE, description: "The date the incident happened.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the incident happened, such as March 11, 2026"}}}}
+      volume: {type: FLOAT, description: "For a kick or a spill, the volume gained or released, in barrels."}
+    extensions:
+      display: {x: 120, y: 220, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "an unplanned event at a well, such as a kick, spill or injury, identified by a report number such as IR-26-0417", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: incident-follow-up
+            category: path
+            question: For each incident that an inspection followed up, what kind was it, when and where did it happen, who was told, and who inspected?
+            description: The chain inspection, incident, well, with the incident's kind and date as the text gives them, the regulators it was reported to and the regulator that conducted the inspection.
+            teaches: Start from the chain the question is about and hang the rest on it with OPTIONAL MATCH.
+            cypher: |-
+              MATCH (ins:Inspection)-[:FOLLOWED]->(i:Incident)-[:OCCURRED_AT]->(w:Well)
+              OPTIONAL MATCH (i)-[:REPORTED_TO]->(r:Regulator)
+              OPTIONAL MATCH (ins)-[:CONDUCTED_BY]->(by:Regulator)
+              RETURN w.name AS well, i.name AS incident, i.incidentType AS kind, i.occurredOn AS occurred,
+                     collect(DISTINCT r.name) AS reported_to, ins.name AS inspection, collect(DISTINCT by.name) AS inspected_by
+              ORDER BY well, incident
+          - type: canonicalQuery
+            name: what-each-incident-involved
+            category: evidence
+            question: Which sentences say what each incident involved and where it happened?
+            description: Every INVOLVED and OCCURRED_AT fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (i:Incident)-[r]->(x:_Entity) WHERE type(r) IN ['INVOLVED', 'OCCURRED_AT']
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN i.name AS incident, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY incident, link, other
+relationships:
+  wellOperatedByOperator:
+    type: OPERATED_BY
+    description: >-
+      The well is operated by the company, its operator of record: exactly one operator per well at a
+      time, many wells per operator.
+    aliases: [is run by, belongs to, is an operated well of]
+    from: {node: Well, count: 1}
+    to: {node: Operator}
+    extensions:
+      custom:
+        relate-examples: {phrase: is operated by}
+  wellLocatedInField:
+    type: LOCATED_IN
+    description: >-
+      The well lies in the field the regulator assigns it to: one field per well, many wells per field.
+    aliases: [is in, lies in, is a well of]
+    from: {node: Well, count: 1}
+    to: {node: Field}
+    extensions:
+      custom:
+        relate-examples: {phrase: is located in}
+  wellDrilledByRig:
+    type: DRILLED_BY
+    description: >-
+      The well was or is being drilled by the rig; usually one rig per well, though a pre-set surface
+      section may have its own, and a rig drills many wells in turn.
+    aliases: [is being drilled by, was spudded by, drilled with]
+    from: {node: Well, min_count: 1}
+    to: {node: Rig}
+    extensions:
+      custom:
+        relate-examples: {phrase: was drilled by}
+  rigOwnedByContractor:
+    type: OWNED_BY
+    description: >-
+      The rig is owned and crewed by the drilling contractor: one owner per rig, many rigs per
+      contractor.
+    aliases: [belongs to, is operated by the contractor, is a rig of]
+    from: {node: Rig, count: 1}
+    to: {node: Contractor}
+    extensions:
+      custom:
+        relate-examples: {phrase: is owned by}
+  equipmentInstalledOnRig:
+    type: INSTALLED_ON
+    description: >-
+      The equipment is rigged up on the rig as part of its equipment: at most one rig per piece at a
+      time, many pieces per rig.
+    aliases: [is rigged up on, is on, runs on, is part of]
+    from: {node: Equipment, max_count: 1}
+    to: {node: Rig}
+    extensions:
+      custom:
+        relate-examples: {phrase: is installed on}
+  equipmentSuppliedByContractor:
+    type: SUPPLIED_BY
+    description: >-
+      The contractor supplied, rents out or owns the equipment: one supplier per piece, many pieces per
+      contractor.
+    aliases: [was provided by, is rented from, is owned by, belongs to]
+    from: {node: Equipment, max_count: 1}
+    to: {node: Contractor}
+    extensions:
+      custom:
+        relate-examples: {phrase: was supplied by}
+  wellPenetratedFormation:
+    type: PENETRATED
+    description: >-
+      The well drilled into or through the formation, usually recorded with the depth of the
+      formation's top; a well penetrates many formations, and a formation is penetrated by many wells.
+    aliases: [drilled into, drilled through, encountered, topped, entered]
+    from: {node: Well}
+    to: {node: Formation}
+    extensions:
+      custom:
+        relate-examples: {phrase: penetrated}
+  wellTargetsReservoir:
+    type: TARGETS
+    description: >-
+      The well is designed to land in and produce from the reservoir; usually one target per lateral,
+      many wells per reservoir.
+    aliases: [is landed in, is targeting, is designed to land in, is aimed at]
+    from: {node: Well, max_count: 1}
+    to: {node: Reservoir}
+    extensions:
+      custom:
+        relate-examples: {phrase: targets}
+  wellProducesFromReservoir:
+    type: PRODUCES_FROM
+    description: >-
+      The well is producing, or has produced, oil or gas from the reservoir; a well may produce from
+      more than one, and a reservoir feeds many wells.
+    aliases: [is producing from, drains, is completed in, is on production from]
+    from: {node: Well}
+    to: {node: Reservoir}
+    extensions:
+      custom:
+        relate-examples: {phrase: produces from}
+  reservoirLiesInFormation:
+    type: LIES_IN
+    description: >-
+      The reservoir is a zone or bench within the formation: exactly one formation per reservoir, many
+      reservoirs per formation.
+    aliases: [is a bench of, is part of, lies within, is within]
+    from: {node: Reservoir, count: 1}
+    to: {node: Formation}
+    extensions:
+      custom:
+        relate-examples: {phrase: lies within}
+  wellPermittedUnderPermit:
+    type: PERMITTED_UNDER
+    description: >-
+      The well is drilled under the permit: one well per permit, and a well may hold more than one
+      (an original and an amended permit).
+    aliases: [is drilled under, is covered by, holds]
+    from: {node: Well, min_count: 1}
+    to: {node: Permit, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is permitted under}
+  permitIssuedByRegulator:
+    type: ISSUED_BY
+    description: >-
+      The regulator issued or approved the permit: exactly one issuer per permit, many permits per
+      regulator.
+    aliases: [was approved by, was granted by, was signed off by]
+    from: {node: Permit, count: 1}
+    to: {node: Regulator}
+    extensions:
+      custom:
+        relate-examples: {phrase: was issued by}
+  inspectionInspectedEquipment:
+    type: INSPECTED
+    description: >-
+      The inspection examined or pressure tested the equipment; an inspection may cover several pieces,
+      and a piece is inspected many times.
+    aliases: [tested, checked, examined, covered]
+    from: {node: Inspection}
+    to: {node: Equipment}
+    extensions:
+      custom:
+        relate-examples: {phrase: inspected}
+  inspectionConductedByRegulator:
+    type: CONDUCTED_BY
+    description: >-
+      The regulator's inspector carried out the inspection; at most one regulator per inspection (the
+      crew's own tests have none), many inspections per regulator.
+    aliases: [was carried out by, was made by, was performed by]
+    from: {node: Inspection, max_count: 1}
+    to: {node: Regulator}
+    extensions:
+      custom:
+        relate-examples: {phrase: was conducted by}
+  incidentOccurredAtWell:
+    type: OCCURRED_AT
+    description: >-
+      The incident happened at the well or on its location: exactly one well per incident in this
+      ontology, many incidents per well.
+    aliases: [happened at, took place at, was recorded on]
+    from: {node: Incident, count: 1}
+    to: {node: Well}
+    extensions:
+      custom:
+        relate-examples: {phrase: occurred at}
+  incidentInvolvedEquipment:
+    type: INVOLVED
+    description: >-
+      The equipment failed, leaked or was used to control the incident; an incident may involve several
+      pieces, and a piece many incidents.
+    aliases: [was caused by, began at, was shut in on, failed]
+    from: {node: Incident}
+    to: {node: Equipment}
+    extensions:
+      custom:
+        relate-examples: {phrase: involved}
+  incidentReportedToRegulator:
+    type: REPORTED_TO
+    description: >-
+      The operator notified the regulator of the incident; an incident may be reported to several
+      regulators, or to none.
+    aliases: [was notified to, was called in to, was filed with]
+    from: {node: Incident}
+    to: {node: Regulator}
+    extensions:
+      custom:
+        relate-examples: {phrase: was reported to}
+  inspectionFollowedIncident:
+    type: FOLLOWED
+    description: >-
+      The inspection was carried out because of the incident, to follow it up; an incident may be
+      followed by several inspections, an inspection follows at most one incident.
+    aliases: [followed up, was prompted by, was ordered after]
+    from: {node: Inspection, max_count: 1}
+    to: {node: Incident}
+    extensions:
+      custom:
+        relate-examples: {phrase: followed up}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Energy
+      card:
+        title: Oil & Gas
+        description: Follow a well from its operator, rig and permit through the formations it penetrates to the incidents on it and the inspections that followed them up.
+      source:
+        derived_from: create-context-graph's oil-gas.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Organization became Operator, Contractor and
+          Regulator; Well, Reservoir, Formation, Equipment, Inspection and Permit keep their meaning with
+          new descriptions and properties; Rig, Field and Incident are new; MAINTAINED_BY (to a person)
+          was dropped; DRILLED_IN became PENETRATED, CONTAINS was turned round as LIES_IN, PERMITTED_FOR
+          was turned round as PERMITTED_UNDER, INSPECTED_BY and INSPECTED_EQUIPMENT became INSPECTED and
+          CONNECTED_TO became INSTALLED_ON (to the rig); the links were given cardinalities; a well's
+          spud date, a permit's issue date and an incident's date and kind are read from the text; the
+          tools were written anew for an extracted graph.

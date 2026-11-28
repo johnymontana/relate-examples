@@ -1,0 +1,99 @@
+# What example 01 adds to Neo4j's attack-path-analysis package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for identifiers the documents state, the
+# properties whose values the model reads from the text (D27), and example arguments for the package's
+# queries, in the words of this example's documents.
+package: attack-path-analysis
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: Attack Path Analysis
+  category: Cybersecurity
+  description: Trace the multi-hop routes an attacker would take from an internet-facing foothold to a crown-jewel application or restricted cloud data, and find the single hosts and permissions most of those routes depend on.
+industry: Cybersecurity
+nodes:
+  # Endpoints, identities, policies and cloud resources are named in lower case without digits
+  # (shop.northwind.example, svc-web-front, edge-logs-write, db-backups): not proper, or every one would be dropped.
+  # The small model reads many hostnames (and a sentence's first lower-case name) as an endpoint
+  # whatever this ask says: asks naming a web address, a URL or a domain suffix, and a ComputeInstance
+  # ask naming hosts, bastions and gateways, scored no better on either document. The label word
+  # "endpoint", which the package fixes, carries it.
+  Endpoint:
+    colour: "#0891b2"
+    ask: a public DNS name with dots, such as www.example.com or vpn.example.org
+  ComputeInstance:
+    colour: "#2563eb"
+    proper: true
+    ask: a server or virtual machine named by its hostname, words and a number joined by hyphens, such as app-billing-02, web-portal-01 or db-ledger-01
+    pattern:
+      instanceId: "^CI-[0-9]{3}$"
+  CVE:
+    colour: "#dc2626"
+    proper: true
+    propose: true
+    ask: a vulnerability identifier of the form CVE-year-number, such as CVE-2021-44228
+    pattern:
+      cveId: "^CVE-[0-9]{4}-[0-9]{4,7}$"
+    # D27: the values the model reads from the text, which a pentest report gives beside a CVE's
+    # identifier or in its row of a table. Not Endpoint.port: in prose a port is nearly always the
+    # port one host reaches another on (a CAN_REACH property), and the model read those as endpoints'.
+    properties:
+      cvssScore:
+        extract: true
+        ask: the CVSS base score of the vulnerability, a number from 0.0 to 10.0 such as 9.8, written after CVSS or in a CVSS column
+      severity:
+        extract: true
+        ask: the severity rating of the vulnerability on the CVSS scale, written as critical, high, medium or low
+      epssScore:
+        extract: true
+        ask: the EPSS probability that the vulnerability is exploited in the next 30 days, a number from 0 to 1 such as 0.97, written after EPSS or in an EPSS column
+  Application:
+    colour: "#d97706"
+    proper: true
+    ask: a business application or service named in capitalised words, such as Expense Portal, Payroll or Claims Processing Service
+  Identity:
+    colour: "#7c3aed"
+    ask: a service account or IAM role a host runs as, such as svc-reporting or role-data-reader
+    pattern:
+      identityId: "^ID-[0-9]{3}$"
+  IAMPolicy:
+    colour: "#059669"
+    ask: an IAM permission policy held by a role, such as audit-logs-read, billing-admin or s3-write-all
+  CloudService:
+    colour: "#db2777"
+    ask: a cloud storage bucket, managed database, secret vault or message queue, named in lower case, such as invoice-archive or ledger-db
+relationships:
+  resolvesTo:
+    phrase: resolves to
+  hasVulnerability:
+    phrase: is vulnerable to
+  canReach:
+    phrase: can reach
+  runs:
+    phrase: hosts
+  runsAs:
+    phrase: runs as
+  assumes:
+    phrase: holds
+  # Both HAS_ACCESS_TO links read as one phrase (the model is asked one relation per type).
+  policyAccessesService:
+    phrase: grants access to
+  policyAccessesApplication:
+    phrase: grants access to
+tools:
+  # minCvss 9.4: the lowest score among the report's footholds (CVE-2023-4966 on legacy-portal-01).
+  exposed-hosts-carrying-an-exploited-vulnerability:
+    args: {minCvss: 9.4}
+  attack-paths-from-an-exposed-foothold-to-a-crown-jewel-application:
+    args: {minCvss: 9.4, crownJewelTier: P0, maxLateralHops: 4}
+  lateral-reachability-from-a-compromised-host:
+    args: {instanceId: CI-007, maxLateralHops: 4}
+  blast-radius-of-a-compromised-identity:
+    args: {identityId: ID-006}
+  full-kill-chain-from-the-internet-to-sensitive-cloud-data:
+    args: {minCvss: 9.4, maxLateralHops: 4, classifications: [restricted]}
+  choke-points-on-crown-jewel-attack-paths:
+    args: {minCvss: 9.4, crownJewelTier: P0, maxLateralHops: 3, minPathsThrough: 2}
+  crown-jewel-exposure-summary:
+    args: {minCvss: 9.4, crownJewelTier: P0, maxLateralHops: 4}

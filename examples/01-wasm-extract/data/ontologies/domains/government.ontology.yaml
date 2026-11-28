@@ -1,0 +1,596 @@
+# Government: example 01's curated ontology for public-sector programme documents (D20). Written for
+# this repository from create-context-graph's government.yaml at 707b168 (Apache-2.0,
+# data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base (Person,
+# Organization, Location, Event, Object) is gone, and the parties are named for what the public
+# sector calls them (Agency, Official, Jurisdiction). Citizen is gone too: an evaluation reports
+# households in aggregate and never names them.
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: government
+name: Government
+description: >-
+  Public programmes as the evaluators, finance teams and policy officers who run them write about
+  them: the agencies that administer programmes and hold budgets, the officials who lead programmes
+  and approve grants, the grants a programme awards to other public bodies, the budgets that fund it,
+  the services it delivers to residents and the places it covers, the strategies it implements, and
+  the regulations and Acts it operates under and that agencies enforce. It answers who runs and who
+  leads a programme, where its money comes from and where it goes, which bodies received grants and
+  who approved them, which areas a programme reaches, what legal basis it has, which policy it
+  delivers and what that policy replaced, and what the source text says about each fact. Performance
+  measures, spending over time, individual households and contractors are out of scope: a document
+  reports them, the extractor does not keep them.
+nodes:
+  Agency:
+    label: Agency
+    description: >-
+      A public body: a government department, executive agency, board, combined authority or local
+      council, named in full or by its initials ("Kelderby Borough Council", "NHEA"). An agency is the
+      body, never the officials who work for it.
+    aliases: [public body, department, authority, council, board, local authority]
+    reference: https://schema.org/GovernmentOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The body's name as the documents write it in full."}
+      agencyType: {type: STRING, one_of: [central government department, executive agency, non-departmental public body, combined authority, joint body, unitary authority, district council, county council], description: "The kind of public body."}
+      acronym: {type: STRING, pattern: "^[A-Z]{2,6}$", description: "The initials the body goes by (NHEA)."}
+      established: {type: INTEGER, description: "The year the body was set up."}
+    extensions:
+      display: {x: -220, y: -170, colour: "#1d4ed8"}
+      custom:
+        relate-examples: {ask: "a public body such as a government department, agency, board or council", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: agency-portfolio
+            category: neighbourhood
+            question: What does this agency run, adopt, enforce and hold, and who works for it?
+            description: Each agency whose name holds the text, with its programmes, policies, the regulations it enforces, the budgets it holds and its staff.
+            teaches: One node's neighbourhood by link type comes back as one collected list per type; OPTIONAL MATCH keeps the agency when a list is empty.
+            cypher: |-
+              MATCH (a:Agency) WHERE toLower(a.name) CONTAINS toLower($agency)
+              OPTIONAL MATCH (a)-[:ADMINISTERS]->(p:Programme)
+              OPTIONAL MATCH (a)-[:ADOPTED]->(pol:Policy)
+              OPTIONAL MATCH (a)-[:ENFORCES]->(r:Regulation)
+              OPTIONAL MATCH (b:Budget)-[:HELD_BY]->(a)
+              OPTIONAL MATCH (o:Official)-[:WORKS_FOR]->(a)
+              RETURN a.name AS agency, collect(DISTINCT p.name) AS programmes, collect(DISTINCT pol.name) AS policies,
+                     collect(DISTINCT r.name) AS enforces, collect(DISTINCT b.name) AS budgets, collect(DISTINCT o.name) AS staff
+              ORDER BY agency
+            parameters:
+              - {name: agency, type: STRING, description: "Part of the agency's name.", example: Kelderby}
+  Official:
+    label: Official
+    description: >-
+      A named person who holds public office or works for a public body: a civil servant, council
+      officer, programme director, board member or elected councillor ("Ruth Oyelaran, NHEA's programme
+      director"). Officials are people; the agencies they serve are not.
+    aliases: [public official, civil servant, officer, councillor, director, senior responsible owner]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The official's full name, without a title such as Councillor."}
+      jobTitle: {type: STRING, description: "The post as the documents give it (Director of Finance)."}
+      role: {type: STRING, one_of: [civil servant, council officer, programme director, board member, elected member, evaluator], description: "The kind of public role the person holds."}
+    extensions:
+      display: {x: -220, y: 200, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a named public official, civil servant, council officer or councillor", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: officials-and-their-roles
+            category: neighbourhood
+            question: Where does each official work, what do they lead, and how many grants did they approve?
+            description: Per official, the bodies they work for, the programmes they lead and the grants they approved.
+            teaches: A relationship read against its arrow (the grant points at its approver) is matched from the other end with <-.
+            cypher: |-
+              MATCH (o:Official)
+              OPTIONAL MATCH (o)-[:WORKS_FOR]->(a:Agency)
+              OPTIONAL MATCH (o)-[:LEADS]->(p:Programme)
+              OPTIONAL MATCH (o)<-[:APPROVED_BY]-(g:Grant)
+              RETURN o.name AS official, collect(DISTINCT a.name) AS works_for, collect(DISTINCT p.name) AS leads,
+                     count(DISTINCT g) AS grants_approved
+              ORDER BY grants_approved DESC, official
+          - type: canonicalQuery
+            name: what-the-report-says-about
+            category: evidence
+            question: What does the report say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY entity, link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Ruth Oyelaran}
+  Programme:
+    label: Programme
+    description: >-
+      A named public programme or scheme that funds or delivers a defined body of work over a set
+      period, often known by its initials ("the Home Warmth Retrofit Programme", "HWRP"). A programme
+      delivers a policy and its services; it is neither the policy nor the agency that runs it.
+    aliases: [program, scheme, initiative, project, pilot]
+    properties:
+      name: {type: STRING, key: true, description: "The programme's name as the documents write it in full."}
+      acronym: {type: STRING, pattern: "^[A-Z]{2,6}$", description: "The initials the programme goes by (HWRP)."}
+      status: {type: STRING, one_of: [proposed, active, paused, closed, evaluated], description: "Where the programme is in its life."}
+      startDate: {type: DATE, description: "The date delivery started."}
+      endDate: {type: DATE, description: "The date delivery is due to end."}
+      totalAllocation: {type: FLOAT, description: "The money allocated to the programme over its life, in pounds sterling."}
+    extensions:
+      display: {x: 0, y: 0, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a named public programme or scheme that funds or delivers work, not a strategy", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-programme
+            category: lookup
+            question: Which programme is this, and what does the store connect to it?
+            description: Finds programmes whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (p:Programme) WHERE toLower(p.name) CONTAINS toLower($programme)
+              OPTIONAL MATCH (p)-[r]-(x:_Entity)
+              RETURN p.name AS programme, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY programme, link, other
+            parameters:
+              - {name: programme, type: STRING, description: "Part of the programme's name.", example: Home Warmth}
+          - type: canonicalQuery
+            name: programme-at-a-glance
+            category: neighbourhood
+            question: Who runs and leads this programme, which policy does it implement, what services does it deliver and where?
+            description: Each programme with its administering agency, its leads, the policies it implements, the services it delivers and the areas it covers.
+            teaches: Five independent neighbourhoods of one node come back as five collected lists; DISTINCT keeps the cross product from repeating names.
+            cypher: |-
+              MATCH (p:Programme)
+              OPTIONAL MATCH (a:Agency)-[:ADMINISTERS]->(p)
+              OPTIONAL MATCH (o:Official)-[:LEADS]->(p)
+              OPTIONAL MATCH (p)-[:IMPLEMENTS]->(pol:Policy)
+              OPTIONAL MATCH (p)-[:DELIVERS]->(s:Service)
+              OPTIONAL MATCH (p)-[:COVERS]->(j:Jurisdiction)
+              RETURN p.name AS programme, collect(DISTINCT a.name) AS administered_by, collect(DISTINCT o.name) AS led_by,
+                     collect(DISTINCT pol.name) AS implements, collect(DISTINCT s.name) AS services, collect(DISTINCT j.name) AS areas
+              ORDER BY programme
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Northern Retrofit Capital Fund}
+  Policy:
+    label: Policy
+    description: >-
+      A named strategy, action plan or policy statement that a public body adopts to set its aims
+      ("the Affordable Warmth Strategy", "the Housing Assistance Policy 2024"). A policy is the body's own
+      choice; an Act or regulations are law and are kinds of their own.
+    aliases: [strategy, action plan, policy statement, plan, framework]
+    properties:
+      name: {type: STRING, key: true, description: "The policy's title."}
+      policyType: {type: STRING, one_of: [strategy, action plan, policy statement, framework], description: "What kind of policy document it is."}
+      status: {type: STRING, one_of: [draft, consultation, adopted, superseded, withdrawn], description: "Where the policy stands."}
+      adoptedOn: {type: DATE, description: "The date the body adopted it."}
+      endYear: {type: INTEGER, description: "The last year the policy covers (2030)."}
+    extensions:
+      display: {x: 60, y: -330, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "a titled strategy, action plan or policy document, such as a fuel poverty strategy", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: policy-lineage
+            category: path
+            question: Which earlier policies does each policy replace, and who adopted it?
+            description: The chain of SUPERSEDES links back from each policy, up to four steps, with the bodies that adopted the newer policy.
+            teaches: A bounded variable-length pattern (*1..4) walks a chain without risking an unbounded search; nodes(p) lists the chain in order.
+            cypher: |-
+              MATCH p = (n:Policy)-[:SUPERSEDES*1..4]->(:Policy)
+              OPTIONAL MATCH (a:Agency)-[:ADOPTED]->(n)
+              RETURN n.name AS policy, [x IN nodes(p) | x.name] AS chain, length(p) AS steps, collect(DISTINCT a.name) AS adopted_by
+              ORDER BY policy, steps
+  Legislation:
+    label: Legislation
+    description: >-
+      An Act of Parliament or other primary legislation, named by its short title and year ("the
+      Energy Act 2011"). Acts give the powers that regulations are made under; regulations are their
+      own kind.
+    aliases: [Act, Act of Parliament, statute, primary legislation]
+    reference: https://schema.org/Legislation
+    properties:
+      name: {type: STRING, key: true, description: "The Act's short title with its year (Energy Act 2011)."}
+      year: {type: INTEGER, description: "The year the Act was passed."}
+      chapter: {type: STRING, pattern: "^[0-9]{4} c\\. [0-9]{1,3}$", description: "The Act's chapter number, the year then c. and the number (2011 c. 16)."}
+      extent: {type: STRING, one_of: [England, England and Wales, Great Britain, United Kingdom, Scotland, Wales, Northern Ireland], description: "Where the Act applies."}
+    extensions:
+      display: {x: 390, y: 330, colour: "#9f1239"}
+      custom:
+        relate-examples: {ask: "an Act of Parliament, such as the Energy Act 2011", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: regulations-under-an-act
+            category: lookup
+            question: Which regulations were made under this Act, and who enforces them?
+            description: For each Act whose title holds the text, the regulations made under it and the agencies that enforce them.
+            teaches: Two hops from one anchor, the second optional, answer "made under what, enforced by whom" in one row per regulation.
+            cypher: |-
+              MATCH (r:Regulation)-[:MADE_UNDER]->(l:Legislation) WHERE toLower(l.name) CONTAINS toLower($act)
+              OPTIONAL MATCH (a:Agency)-[:ENFORCES]->(r)
+              RETURN l.name AS act, r.name AS regulation, collect(DISTINCT a.name) AS enforced_by
+              ORDER BY act, regulation
+            parameters:
+              - {name: act, type: STRING, description: "Part of the Act's title.", example: Energy Act}
+  Regulation:
+    label: Regulation
+    description: >-
+      Secondary legislation: regulations, an order or another statutory instrument made under an Act,
+      named in full with its year or by a short form ("the 2015 Regulations", "the 2002 Order"). It is
+      made under an Act, and agencies enforce it.
+    aliases: [regulations, order, statutory instrument, SI, secondary legislation, rules]
+    properties:
+      name: {type: STRING, key: true, description: "The instrument's title with its year."}
+      siNumber: {type: STRING, pattern: "^SI [0-9]{4}/[0-9]{1,4}$", description: "The statutory instrument number, SI then the year and number (SI 2015/962)."}
+      instrumentType: {type: STRING, one_of: [regulations, order, rules, scheme, direction], description: "The kind of instrument."}
+      madeOn: {type: DATE, description: "The date the instrument was made."}
+      inForceFrom: {type: DATE, description: "The date it came into force."}
+    extensions:
+      display: {x: 240, y: 190, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "secondary legislation: regulations or an order made under an Act", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: legal-basis-of-programmes
+            category: path
+            question: Under which regulations does each programme operate, and which Acts are they made under?
+            description: The chain programme, regulation, Act, for every programme the store gives a legal basis.
+            teaches: A chain of declared links reads as a sentence; OPTIONAL MATCH on the last hop keeps a regulation whose Act the text leaves out.
+            cypher: |-
+              MATCH (p:Programme)-[:OPERATES_UNDER]->(r:Regulation)
+              OPTIONAL MATCH (r)-[:MADE_UNDER]->(l:Legislation)
+              RETURN p.name AS programme, r.name AS regulation, collect(DISTINCT l.name) AS made_under
+              ORDER BY programme, regulation
+  Service:
+    label: Service
+    description: >-
+      A named public service that residents use, such as an advice line, an assessment or an inspection
+      service ("the Home Energy Advice Service"). A service is what residents receive; the programme that
+      pays for it is a different kind.
+    aliases: [public service, advice line, helpline, assessment service]
+    reference: https://schema.org/GovernmentService
+    properties:
+      name: {type: STRING, key: true, description: "The service's name."}
+      serviceType: {type: STRING, one_of: [advice, assessment, installation, helpline, inspection, referral], description: "What the service does."}
+      channel: {type: STRING, one_of: [phone, online, in person, home visit, hybrid], description: "How residents reach it."}
+    extensions:
+      display: {x: 330, y: 10, colour: "#14b8a6"}
+      custom:
+        relate-examples: {ask: "a named public service for residents, such as an advice line or an assessment service", proper: true}
+  Budget:
+    label: Budget
+    description: >-
+      A named budget or fund of public money, capital or revenue, for a financial year or a span of
+      years ("the Northern Retrofit Capital Fund", "the Core Revenue Budget 2025/26"). A budget is held
+      by one body and funds programmes; a grant is one award paid out of it.
+    aliases: [fund, allocation, appropriation, budget line, capital budget, revenue budget]
+    properties:
+      name: {type: STRING, key: true, description: "The budget's name, with its year where it has one."}
+      budgetType: {type: STRING, one_of: [capital, revenue], description: "Whether it pays for assets and works or for running costs.", extensions: {custom: {relate-examples: {extract: true, ask: "whether the budget is a capital budget or a revenue budget"}}}}
+      period: {type: STRING, description: "The financial year (2025/26) or span of years (2024 to 2027) it covers."}
+      amount: {type: FLOAT, description: "The money in the budget, in pounds sterling."}
+    extensions:
+      display: {x: 250, y: -190, colour: "#10b981"}
+      custom:
+        relate-examples: {ask: "a named budget or fund, such as a capital fund or revenue budget", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: follow-the-money
+            category: path
+            question: Who holds each budget, which programme does it fund, and which bodies received that programme's grants?
+            description: The chain budget holder, budget, programme, grant, recipient, one row per budget and grant.
+            teaches: Start from the money and walk forward; OPTIONAL MATCH on each later hop keeps a budget whose grants the text does not list.
+            cypher: |-
+              MATCH (b:Budget)-[:FUNDS]->(p:Programme)
+              OPTIONAL MATCH (b)-[:HELD_BY]->(h:Agency)
+              OPTIONAL MATCH (g:Grant)-[:AWARDED_UNDER]->(p)
+              OPTIONAL MATCH (g)-[:AWARDED_TO]->(r:Agency)
+              RETURN h.name AS holder, b.name AS budget, p.name AS programme, g.name AS grant, r.name AS recipient
+              ORDER BY budget, grant
+  Grant:
+    label: Grant
+    description: >-
+      One award of public money to a recipient body under a programme, identified by its reference
+      (GR-2025-011) and dated when approved. A grant is paid out of a budget but is not the budget.
+    aliases: [award, grant award, funding award, grant offer]
+    reference: https://schema.org/MonetaryGrant
+    properties:
+      grantId: {type: STRING, key: true, pattern: "^GR-[0-9]{4}-[0-9]{3}$", description: "The grant reference, GR-, the year, and three digits."}
+      name: {type: STRING, description: "The grant as a document names it."}
+      amount: {type: FLOAT, description: "The sum awarded, in pounds sterling.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the amount of the grant, a sum such as £2,600,000"}}}}
+      approvedOn: {type: DATE, description: "The date the award was approved.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the grant was approved, such as 14 March 2025"}}}}
+      status: {type: STRING, one_of: [offered, accepted, in delivery, paid, withdrawn, clawed back], description: "Where the award stands."}
+    extensions:
+      display: {x: 40, y: 280, colour: "#65a30d"}
+      custom:
+        relate-examples: {ask: "a grant award, identified by a reference such as GR-2025-011", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: grant-by-reference
+            category: lookup
+            question: Who received this grant, and who approved it?
+            description: The grant whose reference is the parameter, with its recipient, its approvers and the bodies they work for.
+            teaches: The key property (grantId) is filled from the entity's name when the text gives the reference, so an exact match works here.
+            cypher: |-
+              MATCH (g:Grant) WHERE g.grantId = $grant
+              OPTIONAL MATCH (g)-[:AWARDED_TO]->(a:Agency)
+              OPTIONAL MATCH (g)-[:APPROVED_BY]->(o:Official)
+              OPTIONAL MATCH (o)-[:WORKS_FOR]->(e:Agency)
+              RETURN g.grantId AS grant, collect(DISTINCT a.name) AS recipients, collect(DISTINCT o.name) AS approved_by,
+                     collect(DISTINCT e.name) AS approvers_work_for
+            parameters:
+              - {name: grant, type: STRING, description: "A grant reference.", example: GR-2025-019}
+          - type: canonicalQuery
+            name: grants-by-recipient
+            category: aggregation
+            question: How many grants has each body received, and under which programmes?
+            description: Per recipient body, the number of grants awarded to it, their references and the programmes they came from.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (g:Grant)-[:AWARDED_TO]->(a:Agency)
+              OPTIONAL MATCH (g)-[:AWARDED_UNDER]->(p:Programme)
+              RETURN a.name AS recipient, count(DISTINCT g) AS grants, collect(DISTINCT g.name) AS references,
+                     collect(DISTINCT p.name) AS programmes
+              ORDER BY grants DESC, recipient
+          - type: canonicalQuery
+            name: what-the-file-says-about-grants
+            category: evidence
+            question: Which sentences say what each grant was for, who received it and who approved it?
+            description: Every extracted fact about a grant, with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (g:Grant)-[r]-(x:_Entity)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN g.name AS grant, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY grant, link, other
+  Jurisdiction:
+    label: Jurisdiction
+    description: >-
+      A place a public body serves or a programme covers, such as a borough, district, county or region,
+      named as a place ("Kelderby", "North East England"). A jurisdiction is the area, never the council
+      that governs it.
+    aliases: [area, council area, borough, district, county, region, locality]
+    reference: https://schema.org/AdministrativeArea
+    properties:
+      name: {type: STRING, key: true, description: "The place's name."}
+      level: {type: STRING, one_of: [nation, region, county, unitary area, district, borough, ward], description: "The tier of geography it is."}
+      gssCode: {type: STRING, pattern: "^[ENSW][0-9]{8}$", description: "The Office for National Statistics GSS code, a letter and eight digits."}
+    extensions:
+      display: {x: -390, y: 30, colour: "#57534e"}
+      custom:
+        relate-examples: {ask: "a named place a public body serves or a programme covers, such as a borough or region", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: reach-by-area
+            category: aggregation
+            question: How many programmes cover each area, and which bodies serve it?
+            description: Per jurisdiction, the number of programmes that cover it and the agencies that serve it.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each programme is counted once per agency.
+            cypher: |-
+              MATCH (j:Jurisdiction)
+              OPTIONAL MATCH (p:Programme)-[:COVERS]->(j)
+              OPTIONAL MATCH (a:Agency)-[:SERVES]->(j)
+              RETURN j.name AS area, count(DISTINCT p) AS programmes, collect(DISTINCT a.name) AS served_by
+              ORDER BY programmes DESC, area
+relationships:
+  agencyAdministersProgramme:
+    type: ADMINISTERS
+    description: >-
+      The agency administers the programme and answers for it; one administering agency per programme,
+      and an agency may administer several programmes.
+    aliases: [runs, manages, is responsible for, is administered by]
+    from: {node: Agency}
+    to: {node: Programme}
+    extensions:
+      custom:
+        relate-examples: {phrase: administers}
+  officialWorksForAgency:
+    type: WORKS_FOR
+    description: >-
+      The official works for, or holds office in, the agency; one body per official in this ontology,
+      many officials per body.
+    aliases: [is employed by, is director at, is an officer of, sits on]
+    from: {node: Official}
+    to: {node: Agency, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: works for}
+  officialLeadsProgramme:
+    type: LEADS
+    description: >-
+      The official leads the programme as its director or senior responsible owner; usually one lead
+      per programme at a time, and an official may lead several.
+    aliases: [directs, heads, is senior responsible owner for, is the programme director of]
+    from: {node: Official}
+    to: {node: Programme}
+    extensions:
+      custom:
+        relate-examples: {phrase: leads}
+  programmeImplementsPolicy:
+    type: IMPLEMENTS
+    description: >-
+      The programme puts the policy into effect; a programme implements one or more policies, and a
+      policy may be implemented by several programmes.
+    aliases: [delivers, gives effect to, carries out, puts into practice]
+    from: {node: Programme}
+    to: {node: Policy}
+    extensions:
+      custom:
+        relate-examples: {phrase: implements}
+  agencyAdoptedPolicy:
+    type: ADOPTED
+    description: >-
+      The agency adopted, published or approved the policy; one adopting body per policy in this
+      ontology, many policies per body.
+    aliases: [published, approved, agreed, is adopted by]
+    from: {node: Agency}
+    to: {node: Policy}
+    extensions:
+      custom:
+        relate-examples: {phrase: adopted}
+  policySupersedesPolicy:
+    type: SUPERSEDES
+    description: >-
+      The newer policy replaced the older one, read from the newer to the older; a policy replaces at
+      most one predecessor in this ontology.
+    aliases: [replaced, superseded, took the place of]
+    from: {node: Policy}
+    to: {node: Policy, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: replaced}
+  programmeOperatesUnderRegulation:
+    type: OPERATES_UNDER
+    description: >-
+      The programme draws its legal power from the regulation or order; a programme may operate under
+      several instruments, and an instrument may serve many programmes.
+    aliases: [is delivered under, relies on, uses the powers in, is made under]
+    from: {node: Programme}
+    to: {node: Regulation}
+    extensions:
+      custom:
+        relate-examples: {phrase: operates under}
+  regulationMadeUnderLegislation:
+    type: MADE_UNDER
+    description: >-
+      The regulation or order was made under powers in the Act; an instrument cites one or more Acts,
+      and an Act may have many instruments made under it.
+    aliases: [was made under, is made under powers in, was laid under]
+    from: {node: Regulation}
+    to: {node: Legislation, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was made under}
+  agencyEnforcesRegulation:
+    type: ENFORCES
+    description: >-
+      The agency is an enforcement authority for the regulation in its area; many to many.
+    aliases: [polices, applies, is the enforcement authority for]
+    from: {node: Agency}
+    to: {node: Regulation}
+    extensions:
+      custom:
+        relate-examples: {phrase: enforces}
+  programmeDeliversService:
+    type: DELIVERS
+    description: >-
+      The programme runs or pays for the service residents use; a service belongs to one programme in
+      this ontology, and a programme may deliver several services.
+    aliases: [runs, provides, offers, is delivered by]
+    from: {node: Programme, count: 1}
+    to: {node: Service}
+    extensions:
+      custom:
+        relate-examples: {phrase: delivers}
+  programmeCoversJurisdiction:
+    type: COVERS
+    description: >-
+      The programme operates in the area; a programme covers one or more areas, and an area may be
+      covered by many programmes.
+    aliases: [operates in, was extended to, reaches, is available in]
+    from: {node: Programme}
+    to: {node: Jurisdiction}
+    extensions:
+      custom:
+        relate-examples: {phrase: covers}
+  agencyServesJurisdiction:
+    type: SERVES
+    description: >-
+      The agency serves the area as its public body or one of them; an agency serves one or more areas,
+      and an area is served by several bodies.
+    aliases: [is the authority for, covers, governs]
+    from: {node: Agency}
+    to: {node: Jurisdiction}
+    extensions:
+      custom:
+        relate-examples: {phrase: serves}
+  budgetFundsProgramme:
+    type: FUNDS
+    description: >-
+      The budget pays for the programme's costs; a programme may be funded by several budgets, and a
+      budget may fund several programmes.
+    aliases: [pays for, finances, meets the costs of, is funded from]
+    from: {node: Budget}
+    to: {node: Programme}
+    extensions:
+      custom:
+        relate-examples: {phrase: funds}
+  budgetHeldByAgency:
+    type: HELD_BY
+    description: >-
+      The budget is held and controlled by the agency; one holder per budget, many budgets per agency.
+    aliases: [is controlled by, is managed by, belongs to, holds]
+    from: {node: Budget}
+    to: {node: Agency, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is held by}
+  grantAwardedUnderProgramme:
+    type: AWARDED_UNDER
+    description: >-
+      The grant was awarded under the programme; exactly one programme per grant, many grants per
+      programme.
+    aliases: [was made under, was paid under, came from]
+    from: {node: Grant}
+    to: {node: Programme, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was awarded under}
+  grantAwardedToAgency:
+    type: AWARDED_TO
+    description: >-
+      The grant was awarded to the recipient body; one recipient per grant, and a body may receive many
+      grants.
+    aliases: [was paid to, went to, was made to, received]
+    from: {node: Grant}
+    to: {node: Agency, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was awarded to}
+  grantApprovedByOfficial:
+    type: APPROVED_BY
+    description: >-
+      The official approved the grant, alone or as the decision maker of a panel; one or more approvers
+      per grant.
+    aliases: [was signed off by, was authorised by, was agreed by]
+    from: {node: Grant}
+    to: {node: Official, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was approved by}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Public Sector
+      card:
+        title: Government
+        description: Trace a public programme from the budgets and Acts behind it to the grants it awards, the services it delivers and the places it reaches.
+      source:
+        derived_from: create-context-graph's government.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Official keeps its meaning as a role kind,
+          Citizen is dropped (an evaluation never names residents), Location became Jurisdiction, and
+          Legislation and Grant are new; Program is spelt Programme, and Agency, Policy, Regulation,
+          Service and Budget keep their meaning with new descriptions and properties; the links were
+          renamed for their meaning and given cardinalities; the tools were written anew for an
+          extracted graph.

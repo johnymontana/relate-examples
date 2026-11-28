@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * engine.worker.js: Relate 1.2.0 (WebAssembly) in a dedicated module worker, holding the page's
+ * engine.worker.js: Relate 1.3.0 (WebAssembly) in a dedicated module worker, holding the page's
  * knowledge graph: the demo graph under the ontology's graph type, constraints and indexes, in
  * memory (`:memory:`), rebuilt on every visit (README, "The store").
  *
@@ -10,7 +10,7 @@
  *   run {cypher}               run.js runVariant on the store: a report
  *   graph                      load.js graphPayload: the instance graph for NVL
  *
- * The bundle is served from ./assets/relate-1.2.0/ (build.mjs), so its .wasm is fetched next to it.
+ * The bundle is served from ./assets/relate-1.3.0/ (build.mjs), so its .wasm is fetched next to it.
  * A WebAssembly trap leaves the handle unusable (NOTES.md R14 in example 01): the worker reports it
  * and the page starts a new worker.
  */
@@ -18,7 +18,7 @@ import * as rw from '../../../lib/relate_wasm.mjs';
 import { loadGraph, graphPayload } from './load.js';
 import { runVariant } from './run.js';
 
-export const RELATE = '1.2.0';
+export const RELATE = '1.3.0';
 const GLUE = new URL(`./assets/relate-${RELATE}/relate.js`, import.meta.url);
 
 /** @type {any} */ let glue = null;

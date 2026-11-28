@@ -1,4 +1,4 @@
-"""harness/native.py: example 01's store on native Relate 1.2.0, the repository's engine (native.txt).
+"""harness/native.py: example 01's store on native Relate 1.3.0, the repository's engine (native.txt).
 
 Run it with the project env's interpreter, isolated, from anywhere in the repository (run.sh does):
 
@@ -6,13 +6,13 @@ Run it with the project env's interpreter, isolated, from anywhere in the reposi
     uv run --quiet python -I examples/01-wasm-extract/harness/native.py x4 DOWNLOAD.tar OUT.tar
 
 The CLI is `relate` from PATH and the binding is this interpreter's `relate` (relate-db): both must
-report 1.2.0 (they share files here), or it exits 2 before doing anything. The CLI is called as
+report 1.3.0 (they share files here), or it exits 2 before doing anything. The CLI is called as
 `relate --version`, `relate --mode jsonl -d DB 'Q'` and `relate clone [--to-snapshot-format F] SOURCE
 DEST`. Node (for the WASM side) must be on PATH.
 
 Inputs. The browser section (harness/drive.mjs) saves the page's dump.json and its database
 download in work/browser/, taken at the same moment (the financial-services sample in
-opfs://ex01-kg-financial-services, create-context-graph's format, after a reload). When they are not
+opfs://ex01-kg-financial-services, the curated ontology, after a reload). When they are not
 there (the browser section was skipped), this script makes equivalents, and says so on stderr: the
 dump with `node harness/drive.mjs node-dump` (web/pipeline.js and web/store.js in Node: the same
 sample, the same store, so the same content but for the (:_Run) timestamps, which nothing here
@@ -25,7 +25,7 @@ generic`) for one more lib/replay.py round trip.
 
 What it prints (native.txt; no paths, timings, hashes, ids or the engine's side-file names):
   1. lib/replay.py loads the dump into a fresh .rl: content_digest == digest(dump), the graph type
-     reads back element for element (its node types are create-context-graph's labels), and Python's
+     reads back element for element (its node types are the curated ontology's kinds), and Python's
      dump of the result is the JS dump byte for byte. Then the same for the generic document's store.
   2. queries/*.cypher on WASM (Node: the dump loaded with lib/replay.mjs, by `drive.mjs wasm-queries`)
      and natively (the replayed .rl, and the .rl the download route makes, opened read_only=True):
@@ -63,7 +63,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 EX = HERE.parent
 ROOT = EX.parent.parent
-VER = "1.2.0"
+VER = "1.3.0"
 STORE = "ex01-kg-financial-services"
 sys.path.insert(0, str(ROOT / "lib"))
 
@@ -75,9 +75,9 @@ CLI = shutil.which("relate")  # the project engine, from PATH (engine_problem() 
 ENV = {**os.environ, "RELATE_TELEMETRY": "off", "RELATE_MAX_ROWS": "0", "RELATE_AGENT_MODE": "0"}
 # The query the page's "Open the download with native Relate" commands run (web/app.js renderStoreFacts).
 PAGE_QUERY = "MATCH (e:_Entity) RETURN e.kind AS kind, count(*) AS n"
-# OWNS is typed (:Person)-[:OWNS]->(:Account) in financial-services' graph type, so this edge breaks it.
-ILLEGAL = "CREATE (:Account {name: 'Probe'})-[:OWNS]->(:Person {name: 'Probe Person'})"
-ILLEGAL_SHOWN = "(:Account)-[:OWNS]->(:Person)"
+# OWNS is typed (:Client)-[:OWNS]->(:Account) in financial-services' graph type, so this edge breaks it.
+ILLEGAL = "CREATE (:Account {name: 'Probe'})-[:OWNS]->(:Client {name: 'Probe Client'})"
+ILLEGAL_SHOWN = "(:Account)-[:OWNS]->(:Client)"
 TIMEOUT = 300  # seconds per subprocess: generous (the slowest, `drive.mjs node-dump`, takes a few seconds), but finite
 
 failures: list[str] = []
@@ -297,7 +297,7 @@ def main() -> int:
     say = out.append
 
     say(f"# Native Relate {VER} (harness/native.py): the repository's engine, the CLI on PATH and the project env's binding")
-    say("# The store is the browser section's opfs://ex01-kg-financial-services (create-context-graph's format) after the")
+    say("# The store is the browser section's opfs://ex01-kg-financial-services (the curated ontology) after the")
     say("# financial-services sample: its dump.json and its database download, taken at the same moment (made in Node and")
     say("# natively when the browser section is skipped, with the same content; stderr says which). Then a generic Ontology Graph Spec document's")
     say("# store (harness/fixtures.mjs GENERIC_YAML: a gazetteer, a symmetric link), made in Node. Paths are left out of `path` columns.")
@@ -487,7 +487,7 @@ def main() -> int:
         msg = first_line(e)
         say(f"an illegal typed edge on a writable copy, {ILLEGAL_SHOWN}: {msg[msg.find('ConstraintValidationFailed'):] if 'ConstraintValidationFailed' in msg else msg}")
         yes("ConstraintValidationFailed" in msg, "the graph type refuses an illegal edge natively (O4)")
-    probes = rows(wc, "MATCH (n) WHERE n.name IN ['Probe', 'Probe Person'] RETURN count(n) AS n")[0]["n"]
+    probes = rows(wc, "MATCH (n) WHERE n.name IN ['Probe', 'Probe Client'] RETURN count(n) AS n")[0]["n"]
     say(f"  nothing was written: {yes(probes == 0, 'the refused edge wrote nothing')}")
     wc.close()
     bare = tmp / "bare"

@@ -4,9 +4,9 @@
 Every candidate at p >= 0.10 is stored. For each threshold t, the stored candidates with p >= t (a Cypher
 query on the store) must equal what gliner-rs returns when run at threshold t on the same sentence:
 entity spans with their labels, and relation edges with their spans. A difference is a row below.
-Sentences: the first sentence of every fixture that has one and of every sample (a fixed subset, for runtime), with its
+Sentences: the first sentence of every fixture that has one and of every document (a fixed subset, for runtime), with its
 ontology. Thresholds: 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90.
-289 of 304 (sentence, threshold) pairs equal
+412 of 480 (sentence, threshold) pairs equal
   markup t=0.20: stored only: R WORKS_FOR 0-12 25-50
   markup t=0.20: gliner-rs only: R WORKS_FOR 2-11 25-50
   markup t=0.30: stored only: R WORKS_FOR 0-12 25-50
@@ -38,6 +38,97 @@ ontology. Thresholds: 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90.
   overlap t=0.50: gliner-rs only: E Location 6-16
   unknown t=0.30: stored only: R PARTICIPATED_IN 0-11 12-31
   unknown t=0.30: gliner-rs only: R PARTICIPATED_IN 0-11 20-31
+  cybersecurity t=0.30: stored only: E Asset 23-31
+  cybersecurity t=0.30: gliner-rs only: E Asset 23-44
+  cybersecurity t=0.40: gliner-rs only: E Asset 23-44
+  cybersecurity/threat-brief t=0.20: gliner-rs only: E Asset 76-94
+  cybersecurity/threat-brief t=0.20: gliner-rs only: E ThreatActor 10-23
+  gis-cartography t=0.20: stored only: E Authority 61-87
+  gis-cartography t=0.20: stored only: E Surveyor 35-59
+  gis-cartography t=0.20: stored only: R EMPLOYED_BY 10-35 10-96
+  gis-cartography t=0.20: gliner-rs only: E Authority 61-94
+  gis-cartography t=0.20: gliner-rs only: E Surveyor 30-59
+  gis-cartography t=0.20: gliner-rs only: R EMPLOYED_BY 10-24 61-94
+  gis-cartography t=0.30: stored only: E Authority 61-87
+  gis-cartography t=0.30: stored only: E Surveyor 35-59
+  gis-cartography t=0.30: gliner-rs only: E Authority 61-94
+  gis-cartography t=0.30: gliner-rs only: E Surveyor 30-59
+  gis-cartography t=0.40: gliner-rs only: E Authority 61-94
+  government t=0.30: stored only: R WORKS_FOR 10-21 38-71
+  government t=0.40: stored only: R WORKS_FOR 10-21 38-71
+  government t=0.40: gliner-rs only: R WORKS_FOR 10-21 40-71
+  healthcare t=0.20: gliner-rs only: E Patient 99-117
+  healthcare/referral-letter t=0.30: stored only: E Facility 37-58
+  healthcare/referral-letter t=0.30: gliner-rs only: E Facility 30-58
+  healthcare/referral-letter t=0.40: stored only: E Facility 37-58
+  healthcare/referral-letter t=0.40: gliner-rs only: E Facility 30-58
+  healthcare/referral-letter t=0.50: stored only: E Facility 37-58
+  healthcare/referral-letter t=0.50: gliner-rs only: E Facility 30-58
+  healthcare/referral-letter t=0.60: gliner-rs only: E Facility 30-58
+  hospitality t=0.20: gliner-rs only: E Guest 10-25
+  legal t=0.20: stored only: E Party 51-56
+  legal t=0.20: gliner-rs only: E Party 51-80
+  legal t=0.30: stored only: E Party 51-56
+  legal t=0.30: gliner-rs only: E Party 51-80
+  legal t=0.40: gliner-rs only: E Party 51-80
+  legal t=0.50: gliner-rs only: E Party 51-80
+  legal t=0.60: gliner-rs only: E Party 51-80
+  legal t=0.70: gliner-rs only: E Party 51-80
+  legal t=0.80: gliner-rs only: E Party 51-80
+  legal/contract-review t=0.20: gliner-rs only: E Party 8-40
+  manufacturing t=0.20: stored only: R BASED_AT 8-45 26-70
+  manufacturing t=0.20: gliner-rs only: R BASED_AT 10-45 26-70
+  manufacturing t=0.30: stored only: R BASED_AT 8-45 26-70
+  manufacturing t=0.30: gliner-rs only: R BASED_AT 10-24 26-68
+  manufacturing t=0.40: stored only: R BASED_AT 8-45 26-70
+  manufacturing t=0.40: gliner-rs only: R BASED_AT 10-24 47-66
+  manufacturing/supplier-evaluation t=0.20: gliner-rs only: E Engineer 31-47
+  manufacturing/supplier-evaluation t=0.30: stored only: E Engineer 17-20
+  manufacturing/supplier-evaluation t=0.30: gliner-rs only: E Engineer 17-29
+  manufacturing/supplier-evaluation t=0.40: stored only: E Supplier 49-68
+  manufacturing/supplier-evaluation t=0.40: gliner-rs only: E Supplier 21-68
+  manufacturing/supplier-evaluation t=0.50: gliner-rs only: E Supplier 21-68
+  manufacturing/supplier-evaluation t=0.60: gliner-rs only: E Supplier 21-68
+  oil-gas t=0.20: stored only: E Contractor 52-68
+  oil-gas t=0.20: gliner-rs only: E Contractor 45-68
+  oil-gas t=0.30: gliner-rs only: E Contractor 45-68
+  options-intelligence t=0.20: stored only: R WORKS_ON 10-37 27-62
+  options-intelligence t=0.20: gliner-rs only: R WORKS_ON 10-25 27-60
+  options-intelligence t=0.20: gliner-rs only: R WORKS_ON 10-25 39-62
+  product-management t=0.30: stored only: E Persona 32-39
+  product-management t=0.30: gliner-rs only: E Persona 24-39
+  product-management t=0.40: gliner-rs only: E Persona 24-39
+  real-estate t=0.20: stored only: E RealEstateAgent 77-109
+  real-estate t=0.20: gliner-rs only: E Inspector 51-75
+  real-estate t=0.20: gliner-rs only: E RealEstateAgent 38-87
+  real-estate t=0.30: gliner-rs only: E RealEstateAgent 38-87
+  trip-planning t=0.40: gliner-rs only: E Itinerary 87-108
+  trip-planning t=0.50: gliner-rs only: E Itinerary 87-108
+  vacation-industry t=0.30: gliner-rs only: E Guest 10-24
+  wildlife-management t=0.20: gliner-rs only: E ProtectedArea 78-86
+  attack-path-analysis t=0.20: gliner-rs only: E Endpoint 60-105
+  loans-and-mortgages t=0.20: stored only: E FinancialInstitution 71-78
+  loans-and-mortgages t=0.20: stored only: E Person 79-99
+  loans-and-mortgages t=0.20: stored only: E Person 8-20
+  loans-and-mortgages t=0.20: gliner-rs only: E FinancialInstitution 71-86
+  loans-and-mortgages t=0.20: gliner-rs only: E Person 28-58
+  loans-and-mortgages t=0.20: gliner-rs only: E Person 71-99
+  loans-and-mortgages t=0.20: gliner-rs only: E Person 8-28
+  loans-and-mortgages t=0.30: gliner-rs only: E FinancialInstitution 71-86
+  loans-and-mortgages t=0.30: gliner-rs only: E Person 8-28
+  patient-journey t=0.20: stored only: E Organisation 143-149
+  patient-journey t=0.20: gliner-rs only: E Organisation 140-149
+  patient-journey t=0.30: stored only: E Organisation 143-149
+  patient-journey t=0.30: gliner-rs only: E Organisation 140-169
+  patient-journey t=0.40: gliner-rs only: E Organisation 140-169
+  patient-journey t=0.50: gliner-rs only: E Organisation 140-169
+  patient-journey t=0.60: stored only: E Speciality 98-106
+  patient-journey t=0.60: gliner-rs only: E Speciality 90-106
+  patient-journey t=0.70: stored only: E Speciality 98-106
+  patient-journey t=0.70: gliner-rs only: E Speciality 90-106
+  patient-journey t=0.80: gliner-rs only: E Speciality 90-106
+  patient-journey t=0.90: gliner-rs only: E Speciality 90-106
+  retail-banking t=0.20: gliner-rs only: E Session 166-194
 The differences are gliner-rs decoding, not storage: with the flat overlap policy an entity span picked at
 the floor can give way to a longer overlapping one once the lower-scoring candidates are gone, and a
 relation's head or tail span is picked per threshold (under every overlap policy). A cutoff in the store
@@ -47,64 +138,90 @@ filters what the floor found and never re-decodes, so these spans differ from a 
 Each store's gate (store.gateStatements, rules 1-7 in Cypher) against jsGate in harness/run.mjs, which
 reads only the cached raw JSON, the ontology (its kinds' poles from the parsed YAML) and the verdicts. Compared:
 every mention's band and rule, every claim's band, rule, joined entity keys and hedge cue. Run at the defaults, with each
-rule switched off, and with rule 2's POLE preference off (pole margin null), on every create-context-graph store and
-on the fixtures' store.
-agent-memory: 66 mentions, 38 claims, 0 pole-specific, 2 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-conservation: 44 mentions, 19 claims, 1 pole-specific, 1 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-cybersecurity: 64 mentions, 42 claims, 1 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-data-journalism: 49 mentions, 37 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-digital-twin: 48 mentions, 30 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-education: 61 mentions, 39 claims, 7 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-financial-services: 50 mentions, 30 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-gaming: 50 mentions, 39 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-genai-llm-ops: 49 mentions, 35 claims, 1 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-gis-cartography: 58 mentions, 37 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-golf-sports: 53 mentions, 34 claims, 3 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-government: 60 mentions, 33 claims, 1 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-healthcare: 67 mentions, 30 claims, 2 pole-specific, 2 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-hospitality: 75 mentions, 38 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-legal: 53 mentions, 36 claims, 2 pole-specific, 2 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-manufacturing: 61 mentions, 56 claims, 0 pole-specific, 1 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-oil-gas: 48 mentions, 26 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-options-intelligence: 35 mentions, 21 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-personal-knowledge: 61 mentions, 36 claims, 0 pole-specific, 1 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-product-management: 43 mentions, 28 claims, 0 pole-specific, 1 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-real-estate: 49 mentions, 35 claims, 0 pole-specific, 1 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-retail-ecommerce: 58 mentions, 25 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-scientific-research: 55 mentions, 34 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-software-engineering: 59 mentions, 41 claims, 0 pole-specific, 1 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-trip-planning: 67 mentions, 35 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-vacation-industry: 43 mentions, 21 claims, 0 pole-specific, 1 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-wildlife-management: 48 mentions, 34 claims, 0 pole-specific, 1 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
-fixtures: 112 mentions, 57 claims, 0 pole-specific, 0 end-in-review
-  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; pole off equal
+rule switched off, and with rule 2's POLE preference off (pole margin null), on every bundled ontology's store and on the
+fixtures' store (the POLE preference reaches only the fixtures' create-context-graph ontology: no bundled one has poles).
+agent-memory: 568 mentions, 198 claims, 0 pole-specific, 4 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+conservation: 400 mentions, 147 claims, 0 pole-specific, 10 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+cybersecurity: 498 mentions, 164 claims, 0 pole-specific, 6 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+data-journalism: 294 mentions, 114 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+digital-twin: 394 mentions, 90 claims, 0 pole-specific, 5 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+education: 366 mentions, 111 claims, 0 pole-specific, 5 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+financial-services: 300 mentions, 136 claims, 0 pole-specific, 5 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+gaming: 353 mentions, 144 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+genai-llm-ops: 325 mentions, 95 claims, 0 pole-specific, 11 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+gis-cartography: 351 mentions, 126 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+golf-sports: 216 mentions, 133 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+government: 271 mentions, 116 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+healthcare: 291 mentions, 131 claims, 0 pole-specific, 9 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+hospitality: 432 mentions, 144 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+legal: 457 mentions, 210 claims, 0 pole-specific, 7 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+manufacturing: 559 mentions, 143 claims, 0 pole-specific, 5 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+oil-gas: 377 mentions, 118 claims, 0 pole-specific, 11 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+options-intelligence: 378 mentions, 88 claims, 0 pole-specific, 2 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+personal-knowledge: 206 mentions, 155 claims, 0 pole-specific, 5 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+product-management: 249 mentions, 89 claims, 0 pole-specific, 6 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+real-estate: 275 mentions, 50 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+retail-ecommerce: 340 mentions, 143 claims, 0 pole-specific, 5 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+scientific-research: 362 mentions, 156 claims, 0 pole-specific, 10 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+software-engineering: 549 mentions, 231 claims, 0 pole-specific, 11 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+trip-planning: 405 mentions, 107 claims, 0 pole-specific, 7 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+vacation-industry: 777 mentions, 116 claims, 0 pole-specific, 11 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+wildlife-management: 411 mentions, 174 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+attack-path-analysis: 320 mentions, 97 claims, 0 pole-specific, 8 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+business-entities: 205 mentions, 114 claims, 0 pole-specific, 13 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+competitive-intelligence: 399 mentions, 85 claims, 0 pole-specific, 1 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+configurable-bom: 426 mentions, 66 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+ev-route-planning: 149 mentions, 43 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+identity-validation: 299 mentions, 98 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+insurance-claims-fraud: 326 mentions, 96 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+loans-and-mortgages: 321 mentions, 71 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+multi-omics: 509 mentions, 154 claims, 0 pole-specific, 5 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+patient-journey: 270 mentions, 73 claims, 0 pole-specific, 8 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+regulatory-dependency-mapping: 193 mentions, 90 claims, 0 pole-specific, 0 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+retail-banking: 487 mentions, 151 claims, 0 pole-specific, 4 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+securities-reference-data: 593 mentions, 131 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
+fixtures: 112 mentions, 57 claims, 0 pole-specific, 3 end-in-review
+  defaults equal; gazetteer off equal; one-kind off equal; name-kind off equal; span-join off equal; legality off equal; band off equal; hedge off equal; ambiguity off equal; verdicts off equal; attributes off equal; pole off equal
 
 ## edge cases the bundled data does not reach, under the same invariant
 A generic Ontology Graph Spec 1.1 document (harness/fixtures.mjs GENERIC_YAML: no createContextGraph extension, so its kinds are
@@ -130,7 +247,7 @@ Organization, Venue Location; USES and VISITED have two legal pairs each, TREATE
 and a model that answers each sentence from a script (harness/run.mjs SCRIPTED), at the create-context-graph defaults.
 review.txt puts verdicts on the same store.
 asked as (pipeline.modelSchema): Person "person", Organization "organization", Location "location", Event "event", Patient "patient", Clinic "clinic", Venue "venue", Device "device", Visitor "visitor"; not asked: Object
-rule 2 at the pole margin 0.250: "Ola Berg" Person 0.750, Patient 0.500 (exactly at the margin): Patient wins, keep by pole-specific
+rule 2 at the pole margin 0.250: "Ola Berg" Person 0.750, Patient 0.500 (exactly at the margin): Patient wins, review by pole-specific
 rule 2 at the pole margin 0.250: "Per Vik" Person 0.750, Patient 0.490 (just past the margin): Person wins, keep by band
 rule 2 with two specialisations within the margin: "Lia Dorn" Person 0.800, Patient 0.700, Visitor 0.600: Patient wins, keep by pole-specific
 rule 2 never gives the words to a specialisation at or under its drop cutoff (0.300): "Noor Vale" Person 0.400, Patient 0.180: Person wins, review by band
@@ -143,7 +260,7 @@ rule 5's hedge cap (a cue from the sentence's start to the end of the later span
   "Ivy Roe was treated at Oak Clinic, not at home." (after both spans): TREATED_AT 0.900 keep by band;
   "In May, Jon Bly was treated at Fen Clinic." ("may" and "no" are cues in lower case only): TREATED_AT 0.900 keep by band
 rule 3's name join (no mention contains the end; one of its sentence has its canonical name): "Tod Fry" -[TREATED_AT]-> "the Ash Clinic" -> Clinic:ASH: keep by band;
-  "Wes Pell" -[TREATED_AT]-> "at the Birch Clinic" -> Clinic:BIRCH: keep by band (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> "the Pine Clinic ward" -> nothing: drop by unanchored
+  "Wes Pell" -[TREATED_AT]-> "at the Birch Clinic" -> Clinic:BIRCH: keep by band (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> "the Pine Clinic ward" -> Clinic:PINE: keep by band (no name, but the end holds a mention of one entity: the inside join)
   "by Zed Pry" -[REFERRED]-> "Dov Kim" (Zed Pry: Person 0.600 dropped by one-kind, Patient 0.450 review by pole-specific): head Patient:ZED_PRY, review by end-in-review
 rule 2b, one kind per name in the store: "Rae Holm": Patient 0.900 (key Patient:RAE_HOLM) keep by band, Person 0.950 (key Person:RAE_HOLM) review by other-kind (kept as Patient);
   its claims: VISITED keep by band, WORKS_FOR review by end-in-review

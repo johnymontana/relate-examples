@@ -11,13 +11,13 @@
  *   statements.cypher  the memory's schema and the statement behind each tool (web/memory.js), as
  *                      the page runs them
  *   scenarios.txt      every scripted conversation (data/scenarios/*.json) through web/agent.js and
- *                      web/memory.js on Relate 1.2.0 WASM, exactly as the page runs them: each tool
+ *                      web/memory.js on Relate 1.3.0 WASM, exactly as the page runs them: each tool
  *                      call's rows (how each memory was reached, its score and its trail), what was
  *                      stored, the reply and its citations; then the same writes replayed, which
  *                      must change nothing
  *   typed.txt          turns nobody scripted (web/agent.js freeTurn): which tool the rules pick,
  *                      and the reply assembled from what it returned
- *   probes.txt         M1...: the Relate 1.2.0 behaviours the example depends on, each a minimal
+ *   probes.txt         M1...: the Relate 1.3.0 behaviours the example depends on, each a minimal
  *                      repro (NOTES.md has one row per probe); and what the embedding model's
  *                      vectors (data/embeddings.json) say about a few pairs of texts
  *   ontology.txt       the memory model as an Ontology Graph Spec document
@@ -343,15 +343,32 @@ function probesSection(mod) {
     const tests = q('tests');
     const test = q('test');
     const either = q('kenji bun');
-    const marks = q('who (really) reviews? a:b "x" -y +z ~ *');
     const empty = q('');
-    probe('M4', 'SEARCH on a full-text index: terms are ORed and matched whole, with no stemming; punctuation is harmless; an empty query finds nothing', [
+    const none = q(M.NO_WORDS);
+    const star = q('*');
+    const minus = q('-y');
+    const plus = q('+y');
+    const bang = q('!y');
+    const parens = q('(kenji bun)');
+    const phrase = q('"kenji bun"');
+    const where = (/** @type {string} */ w) => attempt(db, `MATCH (m:Memory) SEARCH m IN (FULLTEXT INDEX memory_text FOR 'kenji bun' ${w} LIMIT 8) SCORE AS s RETURN m.id AS id ORDER BY id`, {});
+    const whereEq = where("WHERE m.current = true");
+    const whereBare = where('WHERE m.current');
+    probe('M4', 'SEARCH on a full-text index: terms are ORed and matched whole, with no stemming; an empty query, a -, + or ! modifier, grouping parentheses and a quoted phrase are refused, * matches every memory, a query with no word in it finds nothing; WHERE takes comparisons', [
       `"tests": ${tests.rows.map((r) => r.id).join(', ')}`,
       `"test": ${test.rows.map((r) => r.id).join(', ')} (the same memory holds both words; "tests" alone would not match "test")`,
       `"kenji bun": ${either.rows.map((r) => r.id).join(', ')}`,
-      `a query full of punctuation: ${marks.error ?? marks.rows.map((r) => r.id).join(', ')}`,
       `an empty query: ${empty.error ?? `${empty.rows.length} rows`}`,
-    ], tests.rows.map((r) => r.id).join() === 'a' && test.rows.map((r) => r.id).join() === 'a' && either.rows.length === 2 && !marks.error && marks.rows.length >= 1 && empty.rows.length === 0 && !empty.error);
+      `"${M.NO_WORDS}" (memory.js NO_WORDS): ${none.error ?? `${none.rows.length} rows`}`,
+      `"*": ${star.error ?? `${star.rows.length} rows`}`,
+      `"-y": ${minus.error ?? `${minus.rows.length} rows`}`,
+      `"+y": ${plus.error ?? `${plus.rows.length} rows`}`,
+      `"!y": ${bang.error ?? `${bang.rows.length} rows`}`,
+      `"(kenji bun)": ${parens.error ?? `${parens.rows.length} rows`}`,
+      `"\\"kenji bun\\"" (a quoted phrase): ${phrase.error ?? `${phrase.rows.length} rows`}`,
+      `WHERE m.current = true: ${whereEq.error ?? whereEq.rows.map((r) => r.id).join(', ')}`,
+      `WHERE m.current (a bare boolean): ${whereBare.error ?? whereBare.rows.map((r) => r.id).join(', ')}`,
+    ], tests.rows.map((r) => r.id).join() === 'a' && test.rows.map((r) => r.id).join() === 'a' && either.rows.length === 2 && !!empty.error && !none.error && none.rows.length === 0 && !star.error && star.rows.length > either.rows.length && !!minus.error && !!plus.error && !!bang.error && !!parens.error && !whereEq.error && whereEq.rows.length >= 1 && !!whereBare.error);
     db.free();
   }
   {

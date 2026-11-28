@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The pipeline in Node: GLiNER2.5 through gliner-rs WASM, Relate 1.2.0 WASM in memory, one store
+// The pipeline in Node: GLiNER2.5 through gliner-rs WASM, Relate 1.3.0 WASM in memory, one store
 // per ontology (D14), web/pipeline.js and web/store.js exactly as the page's worker runs them
 // (D7-D11, D14, D16; score.txt also holds the evidence the default cutoffs were settled on).
 //   node harness/run.mjs <ver> [--out <dir>] [--model small|base]
@@ -22,10 +22,11 @@
 //                the evidence for the defaults (how the model is asked, cutoff and margin grids,
 //                scores of true and false facts)
 //   graph.cypher exportCypher of the Financial Services sample's typed graph and of the fixtures' store
-// The stores: every create-context-graph domain with a sample (data/samples/ccg/, its gold beside it),
-// each ontology the Ontology Graph Spec 1.1 document the page loads (data/ontologies/ogs/ccg/), and one
-// more with Financial Services' ontology for the harness's fixtures (harness/fixtures.mjs: the edge
-// cases edgextract's golden set covered, written for that domain).
+// The stores: one per bundled ontology with documents (data/samples/samples.json: the curated domains and
+// the solution packages, gold beside each document), each under the document the page loads, a fresh one
+// per held-out document (data/samples/heldout/), and one more with create-context-graph's Financial Services
+// (converted in memory) for the harness's fixtures (harness/fixtures.mjs: the edge cases edgextract's golden
+// set covered, written for that domain).
 // gliner-rs runs on a pool of worker threads first (harness/infer.mjs): every question this run asks the
 // model is asked once up front, and the pipeline's model calls are answered from those answers.
 // Exit 0 when everything holds; 1 when an audit finds rows, an engine refusal is not the pinned one,
@@ -49,6 +50,8 @@ import { splitSentences } from '../web/split.js';
 import * as store from '../web/store.js';
 import { FIXTURES, FIXTURE_ONTOLOGY, GENERIC_TEXT, GENERIC_YAML } from './fixtures.mjs';
 import { cachedModel, precompute, requestKey, threadCount } from './infer.mjs';
+import * as corpus from './corpus.mjs';
+import { ccgConversions } from './convert.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EX = resolve(HERE, '..');
@@ -124,117 +127,80 @@ const realModel = loadModel({
   ...Object.fromEntries(Object.entries(MODEL_FILES).map(([arg, f]) => [arg, readFileSync(join(MODEL_DIR, f))])),
 });
 note(`${M.name} loaded in ${Math.round(performance.now() - t)} ms, ${memoryBytes(realModel) >> 20} MiB of WASM memory`);
-const freshDb = () => new mod.RelateDb();
+// The stores are spread over a pool of engine instances, round-robin in creation order: a WASM instance's memory
+// never shrinks (R13), and the 40 ontologies' stores, each re-gated for every value of score.txt's grids, outgrew
+// one instance's 4 GiB and trapped (R14). Where a store lives changes nothing it holds.
+const POOL = Number(process.env.EX01_ENGINE_POOL ?? 8);
+const engines = [mod];
+for (let i = 1; i < POOL; i++) engines.push(await cl.loadNode(VER, { fresh: true }));
+let engineNext = 0;
+const freshDb = () => new engines[engineNext++ % engines.length].RelateDb();
 
 // ---- data ------------------------------------------------------------------------------------------
-// The bundled ontologies as the page loads them, Ontology Graph Spec 1.1 documents (data/ontologies/ogs/ccg/,
-// harness/convert.mjs): every create-context-graph domain that has a sample. The base, _base.yaml, is for the
-// scripted ontology below (create-context-graph's format, converted as the page converts a pasted file).
-// `ontologies` and `stores` are keyed by store: a domain's id, and FIX, the fixtures' store, which reads
-// Financial Services' ontology (the same parsed object).
+// The bundled ontologies as the page loads them (harness/corpus.mjs loadOntologies): the curated documents
+// (data/ontologies/domains/, D20) and Neo4j's solution packages converted with their overlays
+// (data/ontologies/ogs/studio/, D21). The corpus (corpus.mjs loadIndex): every document samples.json lists,
+// primary and companion, each in its ontology's store, and the held-out set (data/samples/heldout/), scored
+// apart. The harness's fixtures read create-context-graph's Financial Services ontology as the page converts
+// a pasted create-context-graph file (data/ontologies/ccg/ with _base.yaml): the converter's own corpus, and
+// the ontology the fixtures, the scripted model and the graph-type audits were written for.
+// `ontologies` and `stores` are keyed by store: an ontology's id, and FIX for the fixtures' store.
 const ontologies = new Map();
-/** each store's group: 'ccg' or 'fixtures' */
+/** each store's group: 'domains', 'studio' or 'fixtures' */
 const groupOf = new Map();
-const OGS = join(DATA, 'ontologies/ogs');
 const bases = { _base: readFileSync(join(DATA, 'ontologies/ccg/_base.yaml'), 'utf8') };
-const sampleList = JSON.parse(readFileSync(join(DATA, 'samples/samples.json'), 'utf8'));
-const ccgWanted = new Set(sampleList.filter((s) => s.group === 'ccg').map((s) => s.ontology));
-for (const f of readdirSync(join(OGS, 'ccg')).filter((x) => x.endsWith('.ontology.yaml')).sort()) {
-  const o = parseOntology(readFileSync(join(OGS, 'ccg', f), 'utf8'));
-  if (!ccgWanted.has(o.id)) continue;
-  ontologies.set(o.id, o);
-  groupOf.set(o.id, 'ccg');
-}
-/** The fixtures' store key (harness/fixtures.mjs): Financial Services' ontology, a store of its own. */
-const FIX = 'fixtures';
-if (!ontologies.has(FIXTURE_ONTOLOGY)) missing(`harness/fixtures.mjs: the fixtures' ontology ${FIXTURE_ONTOLOGY} has no sample, so it is not loaded`);
-ontologies.set(FIX, ontologies.get(FIXTURE_ONTOLOGY));
-groupOf.set(FIX, 'fixtures');
-const samples = sampleList.map((s) => ({
-  name: s.id, file: `data/samples/${s.file}`, ontology: s.ontology, group: s.group, about: null,
-  text: readFileSync(join(DATA, 'samples', s.file), 'utf8'),
-  gold: s.gold ? JSON.parse(readFileSync(join(DATA, 'samples', s.gold), 'utf8')) : null,
+const bundled = corpus.loadOntologies();
+// EX01_ONLY=<id,id,...> (development only: its outputs are not expected/'s) runs the named ontologies' documents alone.
+const only = process.env.EX01_ONLY ? new Set(process.env.EX01_ONLY.split(',')) : null;
+if (only) note(`EX01_ONLY: ${[...only].join(', ')} only; these outputs are not comparable with expected/`);
+for (const [id, why] of bundled.errors ?? []) if (!only || only.has(id)) missing(`a bundled ontology does not load: ${why}`);
+const index = corpus.loadIndex().filter((d) => !only || only.has(d.ontology));
+const samples = index.filter((d) => d.role !== 'heldout').map((d) => ({
+  name: d.id, file: d.file, ontology: d.ontology, group: d.group, role: d.role, about: null, text: d.text, gold: d.gold,
 }));
 for (const s of samples) {
-  if (s.group !== 'ccg') missing(`data/samples/samples.json: ${s.name} is in the group ${JSON.stringify(s.group)}; every sample is create-context-graph's (ccg)`);
-  if (!ontologies.has(s.ontology)) missing(`data/samples/samples.json: ${s.name} names the ontology ${s.ontology}, which is not bundled`);
+  if (!bundled.has(s.ontology)) missing(`data/samples/samples.json: ${s.name} names the ontology ${s.ontology}, which is not bundled`);
+  if (!s.gold) missing(`data/samples/samples.json: ${s.name} has no gold file`);
 }
-const ccgSamples = samples;
-const ccgOids = [...new Set(ccgSamples.map((s) => s.ontology))].sort(cmp);
-for (const oid of ccgOids) if (ccgSamples.filter((s) => s.ontology === oid).length !== 1) missing(`data/samples/samples.json: ${oid} needs exactly one create-context-graph sample`);
-for (const s of ccgSamples) if (!s.gold) missing(`data/samples/samples.json: ${s.name} has no gold file`);
-const distractors = JSON.parse(readFileSync(join(DATA, 'samples/ccg/distractors.json'), 'utf8'));
-for (const oid of ccgOids) if (!distractors[oid]) missing(`data/samples/ccg/distractors.json: no distractor for ${oid}`);
+/** The ontologies the corpus documents, in the bundle's order (curated, then the packages). */
+const corpusOids = [...bundled.keys()].filter((oid) => samples.some((s) => s.ontology === oid));
+for (const oid of corpusOids) {
+  ontologies.set(oid, bundled.get(oid).o);
+  groupOf.set(oid, bundled.get(oid).group);
+  if (samples.filter((s) => s.ontology === oid && s.role === 'primary').length !== 1) missing(`data/samples/samples.json: ${oid} needs exactly one primary document`);
+}
+const corpusDocs = corpusOids.flatMap((oid) => samples.filter((s) => s.ontology === oid));
+/** The fixtures' store key (harness/fixtures.mjs): create-context-graph's Financial Services ontology, converted. */
+const FIX = 'fixtures';
+const fixtureOntology = parseOntology(readFileSync(join(DATA, `ontologies/ccg/${FIXTURE_ONTOLOGY}.yaml`), 'utf8'), { bases });
+ontologies.set(FIX, fixtureOntology);
+groupOf.set(FIX, 'fixtures');
 /** The harness's fixtures (harness/fixtures.mjs), all in the FIX store. */
 const fixtureDocs = FIXTURES.map((f) => ({
   name: f.name, file: `harness/fixtures.mjs ${f.name}`, ontology: FIX, group: 'fixtures', about: f.about, text: f.text, gold: null,
 }));
 const docId = (text) => replay.sha256(text);
-/**
- * A gold file's names as the store keys its entities (names.js entityName with the kind's label words, as
- * mentionName does): each entity by its own kind, a relation's ends by the kinds of the gold entities of those names.
- * `key(name, kind)` keys any name.
- */
-function goldKeys(o, gold) {
-  const words = store.kindWordsOf(o);
-  const kindOf = new Map(gold.entities.map((e) => [e.name, e.type]));
-  const key = (name, kind) => entityName(name, words.get(kind) ?? []);
-  return {
-    key, kindOf,
-    entities: gold.entities.map((e) => ({ name: key(e.name, e.type), type: e.type })),
-    relations: gold.relations.map((r) => ({ src: key(r.source, kindOf.get(r.source)), rel: r.type, tgt: key(r.target, kindOf.get(r.target)) })),
-  };
-}
-/** (:_Gold) rows for one create-context-graph store: names keyed as the store keys them, labels and types verbatim. */
-function ccgGoldFor(oid) {
-  return ccgSamples.filter((s) => s.ontology === oid).map((s) => {
+const goldKeys = corpus.goldKeys;
+/** (:_Gold) rows for one store: its documents' gold, names keyed as the store keys them, labels and types verbatim. */
+function goldFor(oid) {
+  return samples.filter((s) => s.ontology === oid).map((s) => {
     const g = goldKeys(ontologies.get(oid), s.gold);
     return { doc: docId(s.text), title: s.name, entities: g.entities, relations: g.relations };
   });
 }
 /**
- * The gold relations of one labelled document that its ontology cannot hold: the (source kind, target kind)
- * pair, the kinds read from the same file's entities, is not one of the link's legal pairs (either way round
- * for a symmetric link). A gold relation the gate can never keep would only lower recall; the samples'
- * gold holds none (checked below, a failure otherwise).
- * @returns {{n: number, illegal: string[]}}
+ * The held-out set (data/samples/heldout/<ontology>.md + .gold.json): documents written to the corpus's
+ * standard, never listed in the page and never used to set a default or a rule; score.txt scores them
+ * apart, each on a fresh store of its ontology. Their distractors are in their gold (gold v2). The corpus
+ * lint (harness/corpus.mjs, corpus.txt) checks every document, held-out ones included: names in the text,
+ * legal pairs, the `how` tags, the distractors.
  */
-function illegalGold(o, gold) {
-  const kindOf = (name) => gold.entities.find((e) => e.name === name)?.type;
-  const illegal = [];
-  for (const r of gold.relations) {
-    const l = o.relations.find((x) => x.id === r.type);
-    const [a, b] = [kindOf(r.source), kindOf(r.target)];
-    const legal = Boolean(l) && l.pairs.some(([s, t]) => (s === a && t === b) || (l.symmetric && s === b && t === a));
-    if (!legal) illegal.push(`${r.source} (${a ?? 'no kind'}) -[${r.type}]-> ${r.target} (${b ?? 'no kind'})`);
-  }
-  return { n: gold.relations.length, illegal };
-}
-const goldLegality = { n: 0, illegal: /** @type {string[]} */ ([]) };
-for (const s of ccgSamples) {
-  const r = illegalGold(ontologies.get(s.ontology), s.gold);
-  goldLegality.n += r.n;
-  goldLegality.illegal.push(...r.illegal.map((x) => `${s.ontology}: ${x}`));
-}
-for (const x of goldLegality.illegal) fail(`data/samples/ccg gold relation outside its domain's legal pairs: ${x}`);
-/**
- * The held-out set (data/samples/heldout/): documents written like the samples, never listed in the page
- * (samples.json does not name them) and never used to set a default or a rule; score.txt scores them beside the samples.
- * <domain>.md and <domain>.gold.json per document, one per domain, and distractors.json.
- */
-const HELD = join(DATA, 'samples/heldout');
-const heldDistractors = existsSync(join(HELD, 'distractors.json')) ? JSON.parse(readFileSync(join(HELD, 'distractors.json'), 'utf8')) : {};
-const heldout = existsSync(HELD) ? readdirSync(HELD).filter((f) => f.endsWith('.md')).sort(cmp).map((f) => {
-  const oid = f.slice(0, -'.md'.length);
-  const goldFile = join(HELD, `${oid}.gold.json`);
-  if (!existsSync(goldFile)) missing(`data/samples/heldout/${oid}.gold.json`);
-  return { name: `heldout/${oid}`, ontology: oid, text: readFileSync(join(HELD, f), 'utf8'), gold: JSON.parse(readFileSync(goldFile, 'utf8')) };
-}) : [];
+const heldout = index.filter((d) => d.role === 'heldout').map((d) => ({ name: d.id, ontology: d.ontology, text: d.text, gold: d.gold }));
 if (!heldout.length) missing('data/samples/heldout/: no held-out documents');
 for (const h of heldout) {
-  if (!ontologies.has(h.ontology)) missing(`data/samples/heldout/${h.ontology}.md: no bundled ontology ${h.ontology} with a sample`);
-  if (!heldDistractors[h.ontology]) missing(`data/samples/heldout/distractors.json: no distractor for ${h.ontology}`);
-  for (const x of illegalGold(ontologies.get(h.ontology), h.gold).illegal) fail(`data/samples/heldout gold relation outside its domain's legal pairs: ${h.ontology}: ${x}`);
+  if (!bundled.has(h.ontology)) missing(`data/samples/heldout/${h.ontology}.md: no bundled ontology ${h.ontology}`);
+  if (!h.gold) missing(`data/samples/heldout/${h.ontology}.gold.json`);
+  if (!ontologies.has(h.ontology)) ontologies.set(h.ontology, bundled.get(h.ontology).o);
 }
 
 /** One store per ontology (D14), opened as the worker opens it, with the defaults of this run's model. */
@@ -251,21 +217,18 @@ const lines = { extract: [], gate: [], audit: [], review: [], score: [] };
 const sayTo = (file) => (s = '') => lines[file].push(s);
 
 // ---- the model, on worker threads (harness/infer.mjs) ---------------------------------------------------
-const docs = [...(FULL ? fixtureDocs : []), ...ccgSamples];
+const docs = [...(FULL ? fixtureDocs : []), ...corpusDocs];
+/** score.txt's comparison of how the model is asked runs on these ontologies' primary documents: every fifth (D24's budget). */
+const ABLATION_OIDS = corpusOids.filter((_, i) => i % 5 === 0);
+const ablationDocs = corpusDocs.filter((d) => d.role === 'primary' && ABLATION_OIDS.includes(d.ontology));
 const SWEEP = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
 /** The floor invariant's sentences: the first of every fixture that has one and of every sample, with its store. */
 const floorSentences = docs.map((d) => ({ d, s: splitSentences(d.text)[0] })).filter((x) => x.s);
 const genericOntology = parseOntology(GENERIC_YAML);
 const requests = [];
-for (const d of docs) {
-  const { schema } = pipeline.modelSchema(ontologies.get(d.ontology));
-  for (const s of splitSentences(d.text)) requests.push({ text: s.text, schema });
-}
+for (const d of docs) requests.push(...pipeline.modelRequests(ontologies.get(d.ontology), d.text));
 // score.txt's held-out set, at every model.
-for (const d of heldout) {
-  const { schema } = pipeline.modelSchema(ontologies.get(d.ontology));
-  for (const s of splitSentences(d.text)) requests.push({ text: s.text, schema });
-}
+for (const d of heldout) requests.push(...pipeline.modelRequests(ontologies.get(d.ontology), d.text));
 if (FULL) {
   for (const { d, s } of floorSentences) {
     const o = ontologies.get(d.ontology);
@@ -273,19 +236,47 @@ if (FULL) {
   }
   // gate.txt's generic document, on its own text.
   for (const s of splitSentences(GENERIC_TEXT)) requests.push({ text: s.text, schema: pipeline.modelSchema(genericOntology).schema });
-  // score.txt's comparison: the create-context-graph samples asked as before experiment B (ids and descriptions).
-  for (const d of ccgSamples) {
+  // score.txt's comparison: primary documents asked as experiment B's "ids" did (each kind by its id and description).
+  for (const d of ablationDocs) {
     const { schema } = pipeline.modelSchema(ontologies.get(d.ontology), { asked: 'ids' });
     for (const s of splitSentences(d.text)) requests.push({ text: s.text, schema });
   }
 }
+// D24: the answers come from .cache/ex01-infer/<scope>/ when it holds them (a call is deterministic, G7), and
+// the rest from the pool; EX01_INFER_CACHE=off asks the model every question. Every 33rd cached answer, in key
+// order, is asked again on the pool and must be byte-identical, so a stale cache cannot pass unseen.
 t = performance.now();
-const threads = threadCount(M.bytesPerThread);
-const answers = await precompute(requests, { wasmDir: WASM_DIR, modelDir: MODEL_DIR, threads });
-note(`${answers.size} model calls on ${threads} worker thread(s) in ${((performance.now() - t) / 1000).toFixed(1)} s (${secs()})`);
-const { handle: model, stats: modelStats } = cachedModel(realModel, answers);
-// Three of the answers asked again on this thread's model: a worker's answer is gliner-rs's own.
+const scope = corpus.modelSetup(WHICH, pipeline.BUILD).scope;
+const cacheDir = join(ROOT, '.cache/ex01-infer', scope);
+const cacheOn = process.env.EX01_INFER_CACHE !== 'off';
+const cacheFile = (k) => join(cacheDir, `${createHash('sha256').update(k).digest('hex')}.json`);
 const byKey = new Map(requests.map((r) => [requestKey(r.text, r.schema), r]));
+/** @type {Map<string, string>} */
+const answers = new Map();
+const cachedKeys = [];
+for (const k of [...byKey.keys()].sort(cmp)) {
+  if (cacheOn && existsSync(cacheFile(k))) {
+    answers.set(k, readFileSync(cacheFile(k), 'utf8'));
+    cachedKeys.push(k);
+  }
+}
+const recheck = cachedKeys.filter((_, i) => i % 33 === 0);
+const ask = [...byKey.entries()].filter(([k]) => !answers.has(k) || recheck.includes(k)).map(([, r]) => r);
+const threads = threadCount(M.bytesPerThread);
+const fresh = ask.length ? await precompute(ask, { wasmDir: WASM_DIR, modelDir: MODEL_DIR, threads }) : new Map();
+const recheckDiffers = recheck.filter((k) => fresh.get(k) !== answers.get(k));
+if (recheckDiffers.length) fail(`${recheckDiffers.length} of ${recheck.length} cached answers re-asked differ from the model's: clear .cache/ex01-infer/${scope}/`);
+mkdirSync(cacheDir, { recursive: true });
+for (const [k, raw] of fresh) {
+  if (!answers.has(k)) {
+    answers.set(k, raw);
+    if (cacheOn) writeFileSync(cacheFile(k), raw);
+  }
+}
+note(`${answers.size} model answers: ${cachedKeys.length} from the cache (${recheck.length} asked again, ${recheckDiffers.length ? `${recheckDiffers.length} DIFFERENT` : 'identical'}), ` +
+  `${fresh.size - recheck.length} asked on ${threads} worker thread(s) in ${((performance.now() - t) / 1000).toFixed(1)} s (${secs()})`);
+const { handle: model, stats: modelStats } = cachedModel(realModel, answers);
+// Three of the answers asked again on this thread's model: a worker's (or the cache's) answer is gliner-rs's own.
 const keys = [...answers.keys()].sort(cmp);
 const spot = [...new Set([0, keys.length >> 1, keys.length - 1])].map((i) => keys[i]);
 const spotSame = spot.every((k) => extractRaw(realModel, byKey.get(k).text, byKey.get(k).schema) === answers.get(k));
@@ -296,13 +287,14 @@ const say = sayTo('extract');
 const D = store.DEFAULT_GATE;
 say(`# Extraction in Node (harness/run.mjs): ${M.name} through gliner-rs, Relate ${VER} WASM in memory`);
 say(`model ${M.repo} @ ${M.rev.slice(0, 7)}, ${pipeline.BUILD}; every candidate at p >= ${pipeline.FLOOR.toFixed(2)} is cached and stored (D7)`);
-say('create-context-graph\'s ontologies are asked by label text ("maintenance record"), "<subtype> in <domain>" for a domain kind,');
-say('base kinds bare, a base kind no link names and a domain kind covers not asked, links between their endpoints ("person works');
-say(`for organization"); sections of about ${pipeline.SECTION_CHARS} bytes`);
-say(`gliner-rs ran on worker threads first, each question once (harness/infer.mjs); three answers asked again on this thread: ${spotSame ? 'identical' : 'DIFFERENT'}`);
-say(`one store per ontology (D14): the ${ccgOids.length} create-context-graph domains with a sample, and one for the harness's ${FULL ? fixtureDocs.length : 0} fixtures`);
-say(`(harness/fixtures.mjs: edge cases, with the ${FIXTURE_ONTOLOGY} ontology); the fixtures, then the samples (samples.json order); each`);
-say('document is extracted, gated and published');
+say('each kind is asked by its label as text ("medical professional") with its relate-examples cue as the description (D22), each');
+say('link between its endpoints\' label texts with its phrase ("claimant filed claim"); identifiers a kind\'s pattern proposes are');
+say(`listed names (rule 1, D26); sections of about ${pipeline.SECTION_CHARS} bytes`);
+say(`every question answered once, from the inference cache or the worker threads (harness/infer.mjs, D24); three answers asked again on this thread: ${spotSame ? 'identical' : 'DIFFERENT'}`);
+say(`one store per ontology (D14): the ${corpusOids.length} bundled ontologies (${corpusOids.filter((o) => groupOf.get(o) === 'domains').length} curated, ` +
+  `${corpusOids.filter((o) => groupOf.get(o) === 'studio').length} solution packages), each with its documents, and one for the harness's ${FULL ? fixtureDocs.length : 0} fixtures`);
+say(`(harness/fixtures.mjs: edge cases, under create-context-graph's ${FIXTURE_ONTOLOGY} ontology as the page converts it); the fixtures,`);
+say('then each ontology\'s documents (primary, then companions); each document is extracted, gated and published');
 const cutsLine = (x) => `entity keep ${f3(x.entKeep)} drop ${f3(x.entDrop)}; relation keep ${f3(x.relKeep)} drop ${f3(x.relDrop)}`;
 say(`default gate (store.defaultGate, ${M.name}; every ontology): ${cutsLine(DEF)};`);
 say(`  type margin ${f3(D.typeMargin)}; relation margin ${f3(D.relMargin)}; pole margin ${f3(D.poleMargin)}`);
@@ -347,14 +339,17 @@ const countBy = (rows, f) => {
 let heading = '';
 for (const { d, r, id, first } of perDoc) {
   const c = r.counters;
-  const isCcg = d.group === 'ccg';
+  const isCcg = d.group !== 'fixtures';
   if (d.group !== heading) {
     heading = d.group;
     say();
-    if (isCcg) {
-      say(`# create-context-graph's samples: one synthetic document per domain, each in its domain's store (data/samples/ccg/)`);
-      say("Labels and links are the domain's own (Person, Account, WORKS_FOR). Listed: kept mentions, and kept and review claims;");
-      say('the rest are counted by band and rule (gate.txt holds every candidate to the JS gate).');
+    if (d.group === 'domains') {
+      say('# The curated domains (data/ontologies/domains/, D20): each ontology\'s documents in its store (data/samples/domains/)');
+      say('Listed: kept mentions, and kept and review claims; the rest are counted by band and rule (gate.txt holds every candidate');
+      say('to the JS gate).');
+    } else if (d.group === 'studio') {
+      say('# Neo4j\'s solution packages (data/ontologies/studio/, D21): each package\'s documents in its store (data/samples/studio/)');
+      say('Listed as the curated domains are.');
     } else {
       say(`# The harness's fixtures: edge cases, each a document in the fixtures' store, with the ${FIXTURE_ONTOLOGY} ontology (harness/fixtures.mjs)`);
       say("They follow the cases edgextract's golden set covered, written for this domain; no gold. Listed: every mention and claim.");
@@ -416,6 +411,16 @@ const unchanged = [...stores].every(([oid, s]) => gateFingerprint(s.db) === befo
 say(`${seen.size} distinct documents: ${secondInferences} inferences, ${secondHits} cache hits; bands and the typed graph unchanged: ${unchanged ? 'yes' : 'NO'}`);
 if (secondInferences !== 0) fail(`the second pass ran ${secondInferences} inferences`);
 if (!unchanged) fail('the second pass changed the gate or the typed graph');
+// Reopening a store, as the worker does on a reload (store.openStore: the stored cutoffs, refreshNames), writes
+// nothing on a store this build extracted: the browser section compares a reloaded store with Node's, so a rule
+// that names a mention one way at extraction and another on reopen would show only there otherwise.
+const reopenDiffers = [...stores].filter(([oid, s]) => {
+  const was = store.dumpStore(s.db);
+  store.openStore(s.db, cl, ontologies.get(oid), {}, { model: WHICH });
+  return store.dumpStore(s.db) !== was;
+}).map(([oid]) => oid);
+say(`each store reopened as a reload reopens it: its dump unchanged: ${reopenDiffers.length ? `NO (${reopenDiffers.join(', ')})` : `yes (${stores.size} stores)`}`);
+if (reopenDiffers.length) fail(`reopening a store changed it: ${reopenDiffers.join(', ')}`);
 note(`second pass done (${secs()})`);
 
 /** Everything the gate and publish decide, as one string (Run nodes and timestamps left out). */
@@ -478,7 +483,7 @@ RETURN count(m) AS n`).rows[0].n;
  * D10 rules 1-7 in plain JavaScript over the raw JSON in the cache: an independent implementation
  * of what store.gateStatements() does in Cypher, for the rule invariant.
  */
-function jsGate(db, oid, { typeMargin = D.typeMargin, relMargin = D.relMargin, poleMargin = D.poleMargin, off = [] } = {}) {
+function jsGate(db, oid, { typeMargin = D.typeMargin, relMargin = D.relMargin, poleMargin = D.poleMargin, attrKeep = D.attrKeep, attrDrop = D.attrDrop, off = [] } = {}) {
   const on = (r) => !off.includes(r);
   const o = ontologies.get(oid);
   const so = store.storedOntology(db, cl);
@@ -493,7 +498,9 @@ function jsGate(db, oid, { typeMargin = D.typeMargin, relMargin = D.relMargin, p
   }]));
   const { schema, kindOf, relOf } = pipeline.modelSchema(o);
   const words = store.kindWordsOf(o);
-  const sentences = cl.exec(db, `MATCH (sec:_Section {complete: true})<-[:_IN]-(s:_Sentence)-[:_INFERRED]->(i:_Inference)
+  const proper = new Set(o.types.filter((t) => t.proper).map((t) => t.id));
+  const patterns = pipeline.proposedPatterns(o);
+  const sentences = cl.exec(db, `MATCH (sec:_Section {complete: true})<-[:_IN]-(s:_Sentence)-[:_INFERRED]->(i:_Inference) WHERE i.task IS NULL
 RETURN s.key AS key, s.doc AS doc, s.start AS start, s.text AS text, i.key AS inference ORDER BY key`).rows;
   const verdicts = cl.exec(db, 'MATCH (v:_Verdict) RETURN v.target AS target, v.value AS value, v.ts AS ts, v.seq AS seq').rows;
   const latest = new Map();
@@ -505,16 +512,22 @@ RETURN s.key AS key, s.doc AS doc, s.start AS start, s.text AS text, i.key AS in
   const claims = [];
   for (const s of sentences) {
     const raw = store.readInference(db, cl, s.inference);
-    const out = normalize(raw, schema);
+    const out = pipeline.clampToSentence(normalize(raw, schema), s.text);
     const cp = Array.from(s.text);
     for (const e of out.entities) {
       const text = cp.slice(e.start, e.end).join('');
       const label = kindOf.get(e.label); // the model's label text -> the kind's id
       if (!label) throw new Error(`jsGate: the model's label ${JSON.stringify(e.label)} is not asked on ${oid}`);
-      mentions.push({ key: `${s.key}|m|${label}|${s.start + e.start}-${s.start + e.end}`, sentence: s.key, start: s.start + e.start, end: s.start + e.end, label, name: pipeline.mentionName(text, words.get(label)), plain: pipeline.mentionName(text), p: e.score, source: 'model' });
+      // D26: a kind of proper names names nothing with a mention that has no capital letter and no digit.
+      const named = !proper.has(label) || /[\p{Lu}\p{Lt}\p{Nd}]/u.test(text);
+      mentions.push({ key: `${s.key}|m|${label}|${s.start + e.start}-${s.start + e.end}`, sentence: s.key, start: s.start + e.start, end: s.start + e.end, label, name: named ? pipeline.mentionName(text, words.get(label)) : '', plain: pipeline.mentionName(text), p: e.score, source: 'model' });
     }
     for (const g of pipeline.gazetteerMentions(s.text, o.names)) {
       mentions.push({ key: `${s.key}|g|${g.label}|${s.start + g.start}-${s.start + g.end}`, sentence: s.key, start: s.start + g.start, end: s.start + g.end, label: g.label, name: pipeline.mentionName(g.text, words.get(g.label)), plain: pipeline.mentionName(g.text), p: 1, source: 'gazetteer' });
+    }
+    // D26: identifiers a kind's key pattern proposes are listed names, as the gazetteer's are.
+    for (const g of pipeline.patternMentions(s.text, patterns)) {
+      mentions.push({ key: `${s.key}|p|${g.label}|${s.start + g.start}-${s.start + g.end}`, sentence: s.key, start: s.start + g.start, end: s.start + g.end, label: g.label, name: pipeline.mentionName(g.text, words.get(g.label)), plain: pipeline.mentionName(g.text), p: 1, source: 'gazetteer' });
     }
     const seenClaims = new Map();
     for (const r of out.relations) {
@@ -645,6 +658,13 @@ RETURN s.key AS key, s.doc AS doc, s.start AS start, s.text AS text, i.key AS in
     const ms = (bySentence.get(sk) ?? []).filter(anchorOk);
     let x = ms.filter((y) => y.start <= a && b <= y.end).sort(order)[0] ?? null;
     if (!x && on('span-join')) x = ms.filter((y) => keys.includes(`${y.label}|${y.name}`)).sort(order)[0] ?? null;
+    // then the mentions inside the end, when they all name one entity (the longest first)
+    if (!x && on('span-join')) {
+      const ins = ms.filter((y) => y.name !== '' && a <= y.start && y.end <= b);
+      if (new Set(ins.map((y) => `${y.label}|${y.name}`)).size === 1) {
+        x = ins.sort((y, z) => rank(y) - rank(z) || (z.end - z.start) - (y.end - y.start) || z.p - y.p || cmp(y.label, z.label) || cmp(y.key, z.key))[0];
+      }
+    }
     return x && on('span-join') && isRejected(x) ? null : x;
   };
   for (const c of claims) {
@@ -696,7 +716,7 @@ RETURN s.key AS key, s.doc AS doc, s.start AS start, s.text AS text, i.key AS in
     for (const c of claims) {
       if (c.band !== 'keep') continue;
       const upto = Array.from(c.stext).slice(0, Math.max(c.he, c.te) - c.sstart).join('');
-      const hit = cues.find(([, re]) => re.test(upto));
+      const hit = cues.find(([, re, whole]) => re.test(whole ? c.stext : upto));
       if (hit) { set(c, 'review', 'hedged'); c.cue = hit[0]; }
     }
   }
@@ -737,7 +757,50 @@ RETURN s.key AS key, s.doc AS doc, s.start AS start, s.text AS text, i.key AS in
       if (v && ['band', 'floor', 'hedged', 'end-in-review', 'ambiguous', 'reversed'].includes(c.rule)) set(c, v.value === 'accept' ? 'keep' : 'drop', 'verdict');
     }
   }
-  return { mentions: mentions.filter((m) => m.band), claims: claims.filter((c) => c.band) };
+  // 8 (D27): the candidates as the pipeline stored them; the rule from the mentions decided above
+  const attrs = cl.exec(db, `MATCH (sec:_Section {complete: true})<-[:_IN]-(s:_Sentence)<-[:_IN]-(a:_Attribute)
+RETURN a.key AS key, a.sentence AS sentence, a.kind AS kind, a.prop AS prop, a.astart AS astart, a.aend AS aend, a.aname AS aname,
+       a.start AS start, a.end AS end, a.p AS p, a.valid AS valid, a.value AS value, s.start AS sstart, s.text AS stext ORDER BY key`).rows;
+  for (const a of attrs) a.entity = null;
+  if (!on('attributes')) for (const a of attrs) set(a, 'drop', 'off');
+  else {
+    for (const a of attrs) {
+      if (!a.valid) { set(a, 'drop', 'unparsed'); continue; }
+      const live = mentions.filter((m) => m.sentence === a.sentence && m.label === a.kind && (m.band === 'keep' || m.band === 'review') && m.name !== '');
+      const named = (m) => (a.astart !== null && ((m.start <= a.astart && m.end >= a.aend) || (a.astart <= m.start && a.aend >= m.end))) || (a.aname !== '' && m.name === a.aname);
+      const hits = live.filter(named);
+      const cand = hits.length ? hits : new Set(live.map((m) => m.name)).size === 1 ? live : [];
+      if (!cand.length) { set(a, 'drop', 'unanchored'); continue; }
+      const m = [...cand].sort((x, y) => (x.band === 'keep' ? 0 : 1) - (y.band === 'keep' ? 0 : 1) || y.p - x.p || cmp(x.key, y.key))[0];
+      a.entity = `${m.label}:${m.name}`;
+      if (m.band === 'review') { set(a, 'review', 'end-in-review'); continue; }
+      set(a, a.p >= attrKeep ? 'keep' : a.p <= attrDrop ? 'drop' : 'review', 'band');
+    }
+    if (on('hedge')) {
+      const cues = store.hedgeCueRegExps();
+      for (const a of attrs) {
+        if (a.band !== 'keep') continue;
+        // the sentence without the value's own text: before it, then (to the anchor's end) after it
+        const cp = Array.from(a.stext);
+        const before = cp.slice(0, a.start - a.sstart).join('');
+        const after = cp.slice(a.end - a.sstart);
+        const upto = `${before} ${a.aend !== null && a.aend > a.end ? after.slice(0, a.aend - a.end).join('') : ''}`;
+        const rest = `${before} ${after.join('')}`;
+        const hit = cues.find(([, re, whole]) => re.test(whole ? rest : upto));
+        if (hit) { set(a, 'review', 'hedged'); a.cue = hit[0]; }
+      }
+    }
+    const groups = new Map();
+    for (const a of attrs.filter((x) => x.band === 'keep' && x.entity)) {
+      const k = `${a.entity}${SEP}${a.prop}`;
+      groups.set(k, [...(groups.get(k) ?? []), a]);
+    }
+    for (const xs of groups.values()) {
+      const best = [...xs].sort((x, y) => y.p - x.p || cmp(x.key, y.key))[0];
+      for (const a of xs) if (a.value !== best.value) set(a, 'review', 'other-value');
+    }
+  }
+  return { mentions: mentions.filter((m) => m.band), claims: claims.filter((c) => c.band), attributes: attrs.filter((a) => a.band) };
 }
 
 /** The rule invariant's gate settings: the defaults, each rule off, and rule 2's POLE preference off. */
@@ -759,6 +822,7 @@ function compareGates(cy, js) {
   };
   cmpSet('mention', cy.mentions, js.mentions, (m) => `${m.band}/${m.rule}${m.rule === 'other-kind' ? `/${m.alt}` : ''}`);
   cmpSet('claim', cy.claims, js.claims, (c) => `${c.band}/${c.rule}/${c.head}/${c.tail}${c.rule === 'hedged' ? `/${c.cue}` : ''}`);
+  cmpSet('attribute', cy.attributes ?? [], js.attributes ?? [], (a) => `${a.band}/${a.rule}/${a.entity ?? null}${a.rule === 'hedged' ? `/${a.cue}` : ''}`);
   return diffs.sort(cmp);
 }
 
@@ -836,8 +900,8 @@ const SCRIPTED = {
     'Ivy Roe was': { ents: [['Ivy Roe', 'Patient', 0.9], ['Oak Clinic', 'Clinic', 0.9]], rels: [['TREATED_AT', 'Ivy Roe', 0.9, 'Oak Clinic', 0.9]] },
     'Jon Bly was': { ents: [['Jon Bly', 'Patient', 0.9], ['Fen Clinic', 'Clinic', 0.9]], rels: [['TREATED_AT', 'Jon Bly', 0.9, 'Fen Clinic', 0.9]] },
     // rule 3's name join: no mention contains the tail "the Ash Clinic", whose canonical name is the mention "Ash Clinic"'s
-    // (joined), nor "at the Birch Clinic" (a leading preposition dropped: joined); "the Pine Clinic ward" names no mention
-    // (unanchored)
+    // (joined), nor "at the Birch Clinic" (a leading preposition dropped: joined); "the Pine Clinic ward" names no mention,
+    // but holds one, of one entity, so the inside join takes it (joined)
     'Tod Fry was': { ents: [['Tod Fry', 'Patient', 0.9], ['Ash Clinic', 'Clinic', 0.9]], rels: [['TREATED_AT', 'Tod Fry', 0.9, 'the Ash Clinic', 0.9]] },
     'Wes Pell was': { ents: [['Wes Pell', 'Patient', 0.9], ['Birch Clinic', 'Clinic', 0.9]], rels: [['TREATED_AT', 'Wes Pell', 0.9, 'at the Birch Clinic', 0.9]] },
     // and the name join takes the mention rule 2 left in review ("Zed Pry" Patient, pole-specific at 0.45), never the
@@ -917,7 +981,7 @@ if (FULL) {
   g(`Every candidate at p >= ${pipeline.FLOOR.toFixed(2)} is stored. For each threshold t, the stored candidates with p >= t (a Cypher`);
   g('query on the store) must equal what gliner-rs returns when run at threshold t on the same sentence:');
   g('entity spans with their labels, and relation edges with their spans. A difference is a row below.');
-  g('Sentences: the first sentence of every fixture that has one and of every sample (a fixed subset, for runtime), with its');
+  g('Sentences: the first sentence of every fixture that has one and of every document (a fixed subset, for runtime), with its');
   g(`ontology. Thresholds: ${SWEEP.map((x) => x.toFixed(2)).join(', ')}.`);
   let pairs = 0;
   let equal = 0;
@@ -966,8 +1030,8 @@ RETURN c.rel AS rel, c.hs - s.start AS hs, c.he - s.start AS he, c.ts - s.start 
   g('Each store\'s gate (store.gateStatements, rules 1-7 in Cypher) against jsGate in harness/run.mjs, which');
   g('reads only the cached raw JSON, the ontology (its kinds\' poles from the parsed YAML) and the verdicts. Compared:');
   g('every mention\'s band and rule, every claim\'s band, rule, joined entity keys and hedge cue. Run at the defaults, with each');
-  g("rule switched off, and with rule 2's POLE preference off (pole margin null), on every create-context-graph store and");
-  g("on the fixtures' store.");
+  g("rule switched off, and with rule 2's POLE preference off (pole margin null), on every bundled ontology's store and on the");
+  g("fixtures' store (the POLE preference reaches only the fixtures' create-context-graph ontology: no bundled one has poles).");
   for (const [oid, s] of stores) {
     const res = [];
     for (const { label, opts } of INVARIANT_CONFIGS) {
@@ -1061,7 +1125,7 @@ RETURN c.rel AS rel, c.hs - s.start AS hs, c.he - s.start AS he, c.ts - s.start 
   g(`  "In May, Jon Bly was treated at Fen Clinic." ("may" and "no" are cues in lower case only): ${hedgeOf('Jon Bly')}`);
   const joinOf = (head) => sg.claims.filter((c) => c.htext === head).map((c) => `${JSON.stringify(c.ttext)} -> ${c.tail ?? 'nothing'}: ${c.band} by ${c.rule}`).join(', ');
   g(`rule 3's name join (no mention contains the end; one of its sentence has its canonical name): "Tod Fry" -[TREATED_AT]-> ${joinOf('Tod Fry')};`);
-  g(`  "Wes Pell" -[TREATED_AT]-> ${joinOf('Wes Pell')} (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> ${joinOf('Uma Lee')}`);
+  g(`  "Wes Pell" -[TREATED_AT]-> ${joinOf('Wes Pell')} (a leading preposition dropped); "Uma Lee" -[TREATED_AT]-> ${joinOf('Uma Lee')} (no name, but the end holds a mention of one entity: the inside join)`);
   const zed = sg.claims.find((c) => c.htext === 'by Zed Pry');
   g(`  "by Zed Pry" -[REFERRED]-> "Dov Kim" (Zed Pry: Person ${f3(mOf('Zed Pry', 'Person').p)} dropped by one-kind, Patient ${f3(mOf('Zed Pry', 'Patient').p)} ` +
     `${mOf('Zed Pry', 'Patient').band} by ${mOf('Zed Pry', 'Patient').rule}): head ${zed.head ?? 'nothing'}, ${zed.band} by ${zed.rule}`);
@@ -1100,12 +1164,12 @@ function queryFile(name) {
   const title = (/^\/\/ (.+)$/m.exec(text) ?? [, name])[1];
   return { name, text, params, title };
 }
-const ccgStores = () => [...stores].filter(([oid]) => groupOf.get(oid) === 'ccg');
+const corpusStores = () => [...stores].filter(([oid]) => groupOf.get(oid) !== 'fixtures');
 if (FULL) {
   const a = sayTo('audit');
   a('# Audits of the stores after the first pass (harness/run.mjs; queries/audit-*.cypher)');
   a("Each audit is a query that must return 0 rows, on every store, at the default gate after publish: the fixtures' store");
-  a(`(listed) and the ${ccgStores().length} create-context-graph stores (counted).`);
+  a(`(listed) and the ${corpusStores().length} bundled ontologies' stores (counted).`);
   const audits = readdirSync(QUERIES).filter((f) => /^audit-.*\.cypher$/.test(f)).sort().map(queryFile);
   for (const qf of audits) {
     const got = [];
@@ -1118,17 +1182,17 @@ if (FULL) {
       if (rows.length) fail(`${qf.name} found ${rows.length} rows on ${oid}`);
     }
     a(`${qf.name}: ${qf.title.replace(/^Audit: /, '')}`);
-    a(`  rows: ${got.join(', ')}; create-context-graph: ${ccgRows.length ? ccgRows.join(', ') : `0 on each of ${ccgStores().length}`}`);
+    a(`  rows: ${got.join(', ')}; bundled: ${ccgRows.length ? ccgRows.join(', ') : `0 on each of ${corpusStores().length}`}`);
   }
 
   a();
   a('## the graph type is the backstop: a deliberately illegal publish is refused (O4, D16)');
   {
-    const s = stores.get(FIXTURE_ONTOLOGY);
+    const s = stores.get(FIX);
     const ents = cl.exec(s.db, "MATCH (e:_Entity) WHERE e.kind IN ['Location', 'Organization'] RETURN e.kind AS kind, e.key AS key ORDER BY kind, key").rows;
     const loc = ents.find((e) => e.kind === 'Location');
     const org = ents.find((e) => e.kind === 'Organization');
-    a(`${FIXTURE_ONTOLOGY}: WORKS_FOR is typed (:Person)-[:WORKS_FOR]->(:Organization); publish ${loc?.key} -[WORKS_FOR]-> ${org?.key} through store.writeTypedEdges`);
+    a(`the fixtures' store (create-context-graph's ${FIXTURE_ONTOLOGY}): WORKS_FOR is typed (:Person)-[:WORKS_FOR]->(:Organization); publish ${loc?.key} -[WORKS_FOR]-> ${org?.key} through store.writeTypedEdges`);
     let res;
     try {
       res = `written (${store.writeTypedEdges(s.db, cl, 'WORKS_FOR', [{ a: loc.key, b: org.key, p: 0.99, claims: [], sentences: [], docs: [] }], 999)})`;
@@ -1151,7 +1215,7 @@ if (FULL) {
   a();
   a('## R16: an ontology edit (ALTER CURRENT GRAPH TYPE SET) drops every UNIQUE constraint; the store puts its own back');
   {
-    const o = ontologies.get(FIXTURE_ONTOLOGY);
+    const o = ontologies.get(FIX);
     // one more kind, first: a node Product at the top of the document's nodes
     if (!o.yaml.includes('\nnodes:\n')) throw new Error(`${FIXTURE_ONTOLOGY}: the document has no nodes map to edit`);
     const edited = parseOntology(o.yaml.replace('\nnodes:\n', '\nnodes:\n  Product:\n    label: Product\n    description: A named product.\n' +
@@ -1162,13 +1226,13 @@ if (FULL) {
         .filter((r) => r.type === 'NODE_PROPERTY_UNIQUENESS').map((r) => r.name));
       return `${names.filter((x) => got.has(x)).length} of ${names.length}`;
     };
-    const x = newStore(FIXTURE_ONTOLOGY);
+    const x = newStore(FIX);
     a(`a fresh ${FIXTURE_ONTOLOGY} store: its UNIQUE constraints ${have(x.db)}`);
     const r1 = applyOntology(x.db, edited, cl);
     a(`ontology.js applyOntology(${FIXTURE_ONTOLOGY} + Product): altered ${r1.altered}; the store's UNIQUE constraints ${have(x.db)}`);
     store.ensureConstraints(x.db, cl);
     a(`store.ensureConstraints: ${have(x.db)}; the lookup-index check passes (R9): ${store.checkLookupIndexes(x.db, cl).length} lookup indexes built`);
-    const y = newStore(FIXTURE_ONTOLOGY);
+    const y = newStore(FIX);
     const r2 = store.applyOntologyToStore(y.db, cl, edited);
     a(`store.applyOntologyToStore(${FIXTURE_ONTOLOGY} + Product) on another fresh store: altered ${r2.altered}; the store's UNIQUE constraints ${have(y.db)}`);
     x.db.free();
@@ -1202,7 +1266,7 @@ if (FULL) {
 
   a();
   a('## the saved console queries (queries/[0-9]*.cypher, D11): rows on each store');
-  a("The fixtures' store alone; the create-context-graph stores as a total and the stores with rows.");
+  a("The fixtures' store alone; the bundled ontologies' stores as a total and the stores with rows.");
   for (const qf of readdirSync(QUERIES).filter((f) => /^\d.*\.cypher$/.test(f)).sort().map(queryFile)) {
     const got = [];
     let total = 0;
@@ -1221,7 +1285,7 @@ if (FULL) {
       }
     }
     const ps = Object.entries(qf.params).map(([k, v]) => `$${k}=${JSON.stringify(v)}`).join(' ');
-    a(`${qf.name}${ps ? ` (${ps})` : ''}: ${got.join(', ')}; create-context-graph: ${total} rows, from ${withRows} of ${ccgStores().length} stores`);
+    a(`${qf.name}${ps ? ` (${ps})` : ''}: ${got.join(', ')}; bundled: ${total} rows, from ${withRows} of ${corpusStores().length} stores`);
   }
 
   a();
@@ -1255,7 +1319,10 @@ function sampleArgs(tool, name) {
   /** @type {Record<string, string>} */
   const raw = {};
   for (const s of toolParams(tool)) {
-    if (s.oneOf) raw[s.name] = typeof s.oneOf[0] === 'string' ? s.oneOf[0] : JSON.stringify(s.oneOf[0]);
+    // A parameter's example (D22: every curated tool's parameters carry one, taken from its documents) first.
+    const ex = (tool.parameters ?? []).find((p) => p.name === s.name)?.example;
+    if (ex !== undefined) raw[s.name] = typeof ex === 'string' ? ex : JSON.stringify(ex);
+    else if (s.oneOf) raw[s.name] = typeof s.oneOf[0] === 'string' ? s.oneOf[0] : JSON.stringify(s.oneOf[0]);
     else if (s.default !== undefined) raw[s.name] = '';
     else if (s.hint !== null) raw[s.name] = s.hint;
     else if (/^(?:INTEGER|INT|FLOAT)$/.test(s.type)) raw[s.name] = '10';
@@ -1276,16 +1343,19 @@ function sampleArgs(tool, name) {
  * @param {(s?: string) => void} a
  */
 function toolsAudit(a) {
-  const ccg = ccgStores().sort((x, y) => cmp(x[0], y[0]));
+  const ccg = corpusStores().sort((x, y) => cmp(x[0], y[0]));
   const indexes = storeIndexNames(store.LOOKUP_INDEXES, [...store.STORE_CONSTRAINTS, ...ONTOLOGY_CONSTRAINTS, store.STORE_FULLTEXT]);
   const procedures = cl.exec(ccg[0][1].db, 'SHOW PROCEDURES YIELD name RETURN name ORDER BY name').rows.map((r) => String(r.name));
-  a("## the ontologies' example queries (the `tools` custom extension) on the create-context-graph stores");
-  a("create-context-graph's agent tools and default views, written for its full Neo4j graphs, run on the graphs this example");
-  a('extracts from the samples: every canonicalQuery tool of each domain, on a copy of its store (store.dumpStore loaded by');
+  a("## the ontologies' example queries (the `tools` custom extension) on the stores");
+  a("The curated ontologies' tools were written for the graph this example extracts (D20, D22); the packages' queries for their");
+  a('CSV sample data. Every canonicalQuery tool of each ontology runs on a copy of its store (store.dumpStore loaded by');
   a('lib/replay.mjs into a fresh in-memory database), with its arguments checked and typed as the page checks them');
-  a('(web/console.js toolArgs: never a missing or null parameter, R3). Arguments: a STRING gets the name of the store\'s');
-  a('first kept entity of the tool\'s kind (else its first kept entity, else "x"); a parameter whose description suggests a');
-  a('value ("(default: 10)") that value; a default its default; numbers 10, booleans true, dates 2024-01-01, lists one name.');
+  a('(web/console.js toolArgs: never a missing or null parameter, R3). Arguments: each parameter\'s example when it has one (every');
+  a('curated tool\'s do, from its documents); else a STRING gets the name of the store\'s first kept entity of the tool\'s kind (else');
+  a('its first kept entity, else "x"); a parameter whose description suggests a value ("(default: 10)") that value; a default its');
+  a('default; numbers 10, booleans true, dates 2024-01-01, lists one name. A tool that requires GDS, APOC or a write (the packages\'');
+  a("projections, placeholder flags and constraints) is not run: the page's engine has neither library, and its console's lease");
+  a('is read-only (R15).');
   a('Outcome: rows (1 or more), empty (0 rows), or error (the first line of the engine\'s message). Beside it, what the');
   a("page's note on the tool (web/console.js toolCompat, which never runs the query) predicted: rows, empty, error, an error if");
   a('reached (a clause before a call on a missing index can leave no rows) or checked at run (an index named by a parameter).');
@@ -1307,6 +1377,8 @@ function toolsAudit(a) {
   const wrong = [];
   const withRows = [];
   const refused = [];
+  /** tools that require GDS, APOC or a write, not run */
+  const notRun = [];
   /** predicted rows, got empty: on a store with no entity of the tool's kind, or with one */
   const emptyWhy = { noKind: 0, kind: 0, /** @type {string[]} */ withKind: [] };
   /** (domain, kind) pairs that carry tools, and those whose store holds an entity of the kind */
@@ -1327,6 +1399,10 @@ function toolsAudit(a) {
     const row = { tools: 0, rows: 0, empty: 0, error: 0, predicted: zero() };
     const got = [];
     for (const tool of o.tools.filter((t) => t.type === 'canonicalQuery' && t.cypher)) {
+      if (tool.requires.length) {
+        notRun.push(`${oid} ${tool.name} (${tool.requires.join(', ')})`);
+        continue;
+      }
       row.tools++;
       const note = toolCompat(tool, { kinds: o.types, links: o.relations, procedures, indexes });
       const args = toolArgs(tool, sampleArgs(tool, nameFor(tool)));
@@ -1378,6 +1454,7 @@ function toolsAudit(a) {
   a(`  the (domain, kind) pairs that carry tools: ${kindPairs.all}, of which ${kindPairs.withEntity} have an entity of the kind in their store`);
   a(`  misses: ${wrong.length ? '' : 'none'}`);
   for (const w of wrong) a(`    ${w}`);
+  a(`not run, requiring GDS, APOC or a write (${notRun.length}): ${notRun.join(', ') || 'none'}`);
   a(`refused by the page's checks before running: ${refused.length ? '' : 'none'}`);
   for (const r of refused) a(`  ${r}`);
   if (refused.length) fail(`${refused.length} tool runs refused by toolArgs on sampleArgs`);
@@ -1415,11 +1492,13 @@ function toolsAudit(a) {
     if (!ok && premise) fail(`toolCompat predicted ${note.predict} for ${label}, which gave ${outcome}`);
     return ok;
   };
-  // The two bundled vector tools on four stores: extracted (no decision_id, no embedding) with and without the
-  // index; then with both properties written by hand, which an extracted graph never has (the note's premise).
+  // create-context-graph's two vector tools (in its documents converted as the page converts a pasted file,
+  // harness/convert.mjs ccgConversions) on four stores: extracted (no decision_id, no embedding) with and without
+  // the index; then with both properties written by hand, which an extracted graph never has (the note's premise).
+  const ccgConverted = new Map(ccgConversions().map((c) => [c.o.id, c.o]));
   for (const [oid, toolName, kind, index, idProp] of [['financial-services', 'find_similar_decisions', 'Decision', 'decision_embeddings', 'decision_id'],
     ['software-engineering', 'find_similar_incidents', 'Incident', 'incident_embeddings', 'incident_id']]) {
-    const o = ontologies.get(oid);
+    const o = ccgConverted.get(oid);
     const tool = o.tools.find((t) => t.name === toolName);
     for (const shape of ['extracted, no index', 'extracted, with the index', `${idProp} and embedding written by hand, no index`, `${idProp} and embedding written by hand, with the index`]) {
       const db = freshDb();
@@ -1436,12 +1515,12 @@ function toolsAudit(a) {
       db.free();
     }
   }
-  // Queries on a copy of the financial-services sample store (Person, Decision and _Sentence nodes; no index 'nope').
+  // Queries on a copy of the fixtures' store (create-context-graph's Financial Services: Person and _Sentence nodes; no index 'nope').
   const fsCopy = freshDb();
-  replay.load(fsCopy, replay.parse(store.dumpStore(ccg.find(([id]) => id === 'financial-services')[1].db)));
-  const fo = ontologies.get('financial-services');
+  replay.load(fsCopy, replay.parse(store.dumpStore(stores.get(FIX).db)));
+  const fo = ontologies.get(FIX);
   for (const [label, cypher, params] of /** @type {Array<[string, string, Record<string, any>|undefined]>} */ ([
-    ['a full-text index the store has', "MATCH (s:_Sentence) WITH s LIMIT 1 CALL db.index.fulltext.queryNodes('sentence_text', 'Whitlock') YIELD node RETURN node"],
+    ['a full-text index the store has', "MATCH (s:_Sentence) WITH s LIMIT 1 CALL db.index.fulltext.queryNodes('sentence_text', 'Holt') YIELD node RETURN node"],
     ['the call first, then a MATCH that finds nothing', "CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node MATCH (n:Nope) RETURN n"],
     ['a MATCH on a label the ontology lacks before the call', "MATCH (d:Nope) CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node"],
     ['a MATCH on a kind before the call', "MATCH (d:Decision) CALL db.index.fulltext.queryNodes('nope', 'x') YIELD node RETURN node"],
@@ -1456,7 +1535,7 @@ function toolsAudit(a) {
     ['the call alone', "CALL db.index.vector.queryNodes('nope', 5, [1.0, 0.0]) YIELD node RETURN node"],
     ['the call alone, the name in double quotes', 'CALL db.index.fulltext.queryNodes("nope", "x") YIELD node RETURN node'],
     ['the index named by a parameter', "CALL db.index.fulltext.queryNodes($i, 'x') YIELD node RETURN node", { i: 'nope' }],
-    ['the index named by a parameter, one the store has', "CALL db.index.fulltext.queryNodes($i, 'Whitlock') YIELD node RETURN node", { i: 'sentence_text' }],
+    ['the index named by a parameter, one the store has', "CALL db.index.fulltext.queryNodes($i, 'Holt') YIELD node RETURN node", { i: 'sentence_text' }],
     ['queryRelationships alone', "CALL db.index.vector.queryRelationships('nope', 5, [1.0, 0.0]) YIELD relationship RETURN relationship"],
     ['a never-written vector, spaced', "MATCH (p:Person) WITH p LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, p . embedding) YIELD node RETURN node"],
     ['a never-written vector on a WITH alias', "MATCH (p:Person) WITH p AS q LIMIT 1 CALL db.index.vector.queryNodes('nope', 5, q.embedding) YIELD node RETURN node"],
@@ -1540,14 +1619,16 @@ function prefillAudit(a, ccg) {
   a(`  prefilled, by parameter: ${list(filled)}`);
   a(`  by its name alone: ${named.join('; ') || 'none'}`);
   a(`  tools with none, by parameter: ${list(left)}`);
-  const dt = ontologies.get('digital-twin').tools.find((t) => t.name === 'list_assets');
+  // two create-context-graph tools (its documents converted in memory, harness/convert.mjs ccgConversions) on the rules' edges
+  const ccgO = new Map(ccgConversions().map((c) => [c.o.id, c.o]));
+  const dt = ccgO.get('digital-twin').tools.find((t) => t.name === 'list_assets');
   const dtPlan = prefillPlan(dt, 'pump P-12');
-  a(`  digital-twin list_assets on an Asset named "pump P-12" (only $limit, read through toInteger()): fills ${JSON.stringify(dtPlan.fill)}, ` +
+  a(`  create-context-graph's digital-twin list_assets on an Asset named "pump P-12" (only $limit, read through toInteger()): fills ${JSON.stringify(dtPlan.fill)}, ` +
     `${dtPlan.run ? `runs with ${JSON.stringify(dtPlan.values)}${dtPlan.kindLevel ? ', as a tool about the kind' : ''}` : `asks for ${dtPlan.missing.map((x) => `$${x}`).join(', ')}`}`);
-  const fsTools = ontologies.get('financial-services').tools;
+  const fsTools = ccgO.get('financial-services').tools;
   for (const name of ['list_accounts', 'get_account_by_id']) {
     const plan = prefillPlan(fsTools.find((t) => t.name === name), 'ACC-2207', 'Account');
-    a(`  financial-services ${name} on the Account "ACC-2207": ${plan.run ? `runs with ${JSON.stringify(plan.values)}${plan.kindLevel ? ', as a tool about the kind' : ''}` : `asks for ${plan.missing.map((x) => `$${x}`).join(', ')}`}`);
+    a(`  create-context-graph's financial-services ${name} on the Account "ACC-2207": ${plan.run ? `runs with ${JSON.stringify(plan.values)}${plan.kindLevel ? ', as a tool about the kind' : ''}` : `asks for ${plan.missing.map((x) => `$${x}`).join(', ')}`}`);
   }
   // Synthetic tools for the edges of the rules (none of the 220 has these shapes; function-wrapped equality none either).
   a('  synthetic tools, on a Person:');
@@ -1614,8 +1695,8 @@ function bookkeepingAudit(a, ccg) {
     replay.load(db, replay.parse(store.dumpStore(ccg.find(([id]) => id === oid)?.[1].db ?? stores.get(oid).db)));
     return db;
   };
-  a('on a copy of the financial-services store:');
-  const fs = copy('financial-services');
+  a("on a copy of the fixtures' store (create-context-graph's financial-services):");
+  const fs = copy(FIX);
   const saved = (f) => readFileSync(join(EX, 'queries', f), 'utf8');
   const n = (q) => Number(cl.exec(fs, q).rows[0].n);
   const nEnt = n('MATCH (e:_Entity) RETURN count(e) AS n');
@@ -1663,10 +1744,10 @@ if (FULL) {
   const v = sayTo('review');
   const s = stores.get(FIXTURE_ONTOLOGY);
   const o = ontologies.get(FIXTURE_ONTOLOGY);
-  const doc = ccgSamples.find((x) => x.ontology === FIXTURE_ONTOLOGY);
+  const doc = corpusDocs.find((x) => x.ontology === FIXTURE_ONTOLOGY && x.role === "primary");
   const id = docId(doc.text);
   v('# Review: verdicts are graph state, latest wins (D10 rule 7; harness/run.mjs)');
-  v(`On the ${FIXTURE_ONTOLOGY} store, its sample. A verdict names its target by key, so it outlives the`);
+  v(`On the ${FIXTURE_ONTOLOGY} store, its primary document. A verdict names its target by key, so it outlives the`);
   v('target node; the gate takes the latest per target (ORDER BY ts DESC, seq DESC, then head(collect())).');
   const claimsOf = () => store.readGate(s.db, cl).claims.filter((c) => c.doc === id);
   const show = (c) => `${JSON.stringify(c.htext)} -[${c.rel}]-> ${JSON.stringify(c.ttext)} ${f3(c.p)}`;
@@ -1727,10 +1808,32 @@ if (FULL) {
   v();
   v('## a verdict on a mention: rejecting a kept name unanchors the claims that joined it (rule 3)');
   const mentions = store.readGate(s.db, cl).mentions.filter((m) => m.doc === id);
-  const target = mentions.filter((m) => m.band === 'keep' && m.source === 'model').sort((a, b) => a.p - b.p || cmp(a.key, b.key))[0] ??
-    mentions.filter((m) => m.band === 'keep').sort((a, b) => cmp(a.key, b.key))[0];
-  const joined = () => cl.exec(s.db, `MATCH (c:_Claim)-[:_HEAD|_TAIL]->(m:_Mention {key: $k}) WHERE $k IS NOT NULL RETURN count(DISTINCT c) AS n`, { k: target.key }).rows[0].n;
+  const joinedTo = (/** @type {any} */ db, /** @type {string} */ k) =>
+    cl.exec(db, `MATCH (c:_Claim)-[:_HEAD|_TAIL]->(m:_Mention {key: $k}) WHERE $k IS NOT NULL RETURN count(DISTINCT c) AS n`, { k }).rows[0].n;
+  const unanchoredIn = (/** @type {any} */ db) => store.readGate(db, cl).claims.filter((c) => c.doc === id && c.rule === 'unanchored').length;
+  // The target: the lowest-scoring kept model mention whose rejection leaves a claim unanchored, tried on a copy of
+  // the store (dumpStore loaded into a fresh database). A claim whose sentence holds another mention of the same
+  // entity rejoins it (rule 3's name or inside join) and stays anchored, so the lowest-scoring one may show nothing.
+  const candidates = mentions.filter((m) => m.band === 'keep' && m.source === 'model' && joinedTo(s.db, m.key) > 0)
+    .sort((a, b) => a.p - b.p || cmp(a.key, b.key));
+  const baseUnanchored = unanchoredIn(s.db);
+  let tried = 0;
+  const unanchors = (/** @type {any} */ m) => {
+    tried++;
+    const t = freshDb();
+    try {
+      replay.load(t, replay.parse(store.dumpStore(s.db)));
+      store.addVerdict(t, cl, { target: m.key, value: 'reject' });
+      store.gate(t, cl);
+      return unanchoredIn(t) > baseUnanchored;
+    } finally {
+      t.free();
+    }
+  };
+  const target = candidates.find(unanchors) ?? candidates[0] ?? mentions.filter((m) => m.band === 'keep').sort((a, b) => cmp(a.key, b.key))[0];
+  const joined = () => joinedTo(s.db, target.key);
   const unanchored = () => claimsOf().filter((c) => c.rule === 'unanchored').length;
+  v(`the target: the lowest-scoring kept model mention whose rejection unanchors a claim (${tried} of ${candidates.length} joined kept mentions tried on a copy)`);
   v(`mention ${JSON.stringify(target.text)} (${target.label}) ${f3(target.p)}, ${target.band} by ${target.rule}: ${joined()} claims join it; unanchored claims in the document: ${unanchored()}`);
   const v5 = store.addVerdict(s.db, cl, { target: target.key, value: 'reject' });
   store.gate(s.db, cl);
@@ -1754,18 +1857,18 @@ if (FULL) {
   store.gate(s.db, cl);
   store.publish(s.db, cl);
 
-  // Rule 3's cap on a create-context-graph store: the highest-scoring claim decided by end-in-review.
+  // Rule 3's cap on a bundled ontology's store: the highest-scoring claim decided by end-in-review.
   v();
   v("## rule 3's cap: a claim with an end in review waits in review; a verdict on that end, or on the claim, lifts it");
   let cap = null;
-  for (const oid of ccgOids) {
+  for (const oid of corpusOids) {
     const rows = cl.exec(stores.get(oid).db, `MATCH (c:_Claim) WHERE c.rule = 'end-in-review'
 MATCH (c)-[:_HEAD|_TAIL]->(m:_Mention) WHERE m.band = 'review'
 RETURN c.key AS claim, m.key AS mention, c.p AS p ORDER BY p DESC, claim, mention LIMIT 1`).rows;
     if (rows.length) { cap = { oid, ...rows[0] }; break; }
   }
   if (!cap) {
-    v('no claim is decided by end-in-review at the defaults on any create-context-graph store');
+    v("no claim is decided by end-in-review at the defaults on any bundled ontology's store");
     fail('review.txt: no end-in-review claim to exercise rule 3\'s cap');
   } else {
     const cs = stores.get(cap.oid);
@@ -1796,7 +1899,7 @@ RETURN a.name AS a, type(r) AS rel, b.name AS b, labels(a) AS la, labels(b) AS l
       store.gate(cs.db, cl);
       store.publish(cs.db, cl);
     };
-    v(`On the ${cap.oid} store (create-context-graph): the highest-scoring claim decided by end-in-review, and its end in review.`);
+    v(`On the ${cap.oid} store: the highest-scoring claim decided by end-in-review, and its end in review.`);
     v('at the defaults:');
     state();
     v('accept the end (a mention verdict): the claim joins a kept mention and the band decides it:');
@@ -1957,596 +2060,377 @@ AND NOT EXISTS { MATCH (c:_Claim)-[:_HEAD|_TAIL]->(m) WHERE c.band = 'keep' } RE
 // ==== score.txt =====================================================================================
 {
   const sc = sayTo('score');
-  sc(`# Scores against the samples' gold, in Cypher (store.scoreAgainstGold; harness/run.mjs, ${M.name})`);
-  sc(`create-context-graph's samples (${ccgOids.length}): one synthetic document per domain, written for this example, each scored on its`);
-  sc('domain\'s store against data/samples/ccg/<domain>.gold.json, which leaves out one hedged or negated claim per document on');
-  sc('purpose (data/samples/ccg/distractors.json).');
-  sc('As edgextract\'s eval: entities are (NAME, TYPE), relations (SOURCE, TARGET, TYPE), names canonical (names.js);');
-  sc('micro-averaged over the documents. Predictions are the kept band; review and drop count as not predicted.');
-  sc('A leading honorific is ignored as well, on both sides (store.withoutHonorific: Dr., Mr., Mrs., Ms., Prof., the first token');
-  sc('of a canonical name): the text writes "Dr. Imani Okafor", the gold "Imani Okafor".');
-  sc('Kinds and links are compared as written: create-context-graph\'s own labels (Person, Account) and types (WORKS_FOR).');
-  sc(`The samples' gold holds only relations their domain's ontology can hold: ${goldLegality.n - goldLegality.illegal.length} of ` +
-    `${goldLegality.n} legal for their (source kind, target kind) pair${goldLegality.illegal.length ? ` (ILLEGAL: ${goldLegality.illegal.join('; ')})` : ''}.`);
-  for (const oid of ccgOids) store.loadGold(stores.get(oid).db, cl, ccgGoldFor(oid));
   const fmt = (x) => `P ${f3(x.precision)} R ${f3(x.recall)} F1 ${f3(x.f1)} (tp ${x.tp}, fp ${x.fp}, fn ${x.fn})`;
-  /** Micro-average stores' totals. */
-  const total = (scores, what) => {
-    const tp = scores.reduce((s, x) => s + x[what].total.tp, 0);
-    const fp = scores.reduce((s, x) => s + x[what].total.fp, 0);
-    const fn = scores.reduce((s, x) => s + x[what].total.fn, 0);
+  const fmt2 = (x) => `${f3(x.precision)}/${f3(x.recall)}/${f3(x.f1)} (${x.tp}/${x.fp}/${x.fn})`;
+  const prf = (tp, fp, fn) => {
     const precision = tp + fp ? tp / (tp + fp) : 0;
     const recall = tp + fn ? tp / (tp + fn) : 0;
     return { tp, fp, fn, precision, recall, f1: precision + recall ? (2 * precision * recall) / (precision + recall) : 0 };
   };
-  /** The gold set: its stores and how names are matched. */
-  const SETS = {
-    ccg: { oids: ccgOids, names: 'honorific', docs: (oid) => ccgGoldFor(oid).map((g) => g.doc), D: DEF },
+  /**
+   * One scored document's gold (gold v2, harness/corpus.mjs goldKeys): its keys, the entity and relation keys with
+   * aliases folded in, and each canonical name's other names.
+   */
+  const goldInfo = (o, d) => {
+    const g = goldKeys(o, d.gold);
+    const names = new Map();
+    for (const [a, c] of g.alias) {
+      const [an] = a.split('|');
+      const [cn] = c.split('|');
+      names.set(cn, [...(names.get(cn) ?? []), an]);
+    }
+    return { g, names, ent: new Set(g.entities.map((e) => `${e.name}|${e.type}`)), rel: new Set(g.relations.map((r) => `${r.src}|${r.tgt}|${r.rel}`)) };
   };
-  const scoreSet = (set, opts = {}) => set.oids.map((oid) => store.scoreAgainstGold(stores.get(oid).db, cl, undefined, { ...opts, names: set.names }));
-  const totals = (set, opts = {}) => {
-    const s = scoreSet(set, opts);
-    return { entities: total(s, 'entities'), relations: total(s, 'relations') };
-  };
-  const regate = (set, opts = {}) => { for (const oid of set.oids) store.gate(stores.get(oid).db, cl, opts); };
-  const setAll = (set, c, src = 'user') => { for (const oid of set.oids) store.setAllCutoffs(stores.get(oid).db, cl, c, { src }); };
-  /** Every cutoff of the set's stores back to the defaults, following them again. */
-  const resetCutoffs = (set) => setAll(set, set.D, 'default');
-  const restore = (set) => { resetCutoffs(set); regate(set); };
-  /** How many mentions or claims of the set's gold documents have this band or rule. */
-  const inGold = (set, label, what) => set.oids.reduce((acc, oid) => acc + cl.exec(stores.get(oid).db,
-    `MATCH (x:${label}) WHERE (x.band = $what OR x.rule = $what) AND x.doc IN $docs RETURN count(x) AS n`, { what, docs: set.docs(oid) }).rows[0].n, 0);
+  /** A set of scored units: {key, db, o, docs: [{name, text, id, gold, info, group, role}]}. */
+  const unitsFor = (oids, which, list) => oids.map((oid) => ({
+    key: oid, db: which.get(oid).db, o: ontologies.get(oid),
+    docs: list.filter((d) => d.ontology === oid).map((d) => ({ ...d, id: docId(d.text), info: goldInfo(ontologies.get(oid), d) })),
+  }));
+  for (const oid of corpusOids) store.loadGold(stores.get(oid).db, cl, goldFor(oid));
+  const DEV = unitsFor(corpusOids, stores, corpusDocs);
+  // The held-out set: each document on a fresh store of its ontology, extracted, gated and published as the page does.
+  const heldStores = new Map();
+  for (const h of heldout) {
+    const x = newStore(h.ontology);
+    await pipeline.run({ db: x.db, cl, model, modelInfo: MODEL_INFO, ontology: ontologies.get(h.ontology), text: h.text, title: h.name });
+    const g = goldKeys(ontologies.get(h.ontology), h.gold);
+    store.loadGold(x.db, cl, [{ doc: docId(h.text), title: h.name, entities: g.entities, relations: g.relations }]);
+    heldStores.set(h.name, x);
+  }
+  const HELD = heldout.map((h) => ({
+    key: h.name, db: heldStores.get(h.name).db, o: ontologies.get(h.ontology),
+    docs: [{ ...h, group: 'heldout', role: 'heldout', id: docId(h.text), info: goldInfo(ontologies.get(h.ontology), h) }],
+  }));
+  note(`held-out set extracted (${secs()})`);
 
-  // ---- create-context-graph's samples ----
-  regate(SETS.ccg);
-  const ccgGate = scoreSet(SETS.ccg);
-  const ccgGraph = scoreSet(SETS.ccg, { from: 'graph' });
-  sc();
-  sc(`## create-context-graph's samples (${ccgOids.length} domains), at the default cutoffs (${cutsLine(DEF)})`);
-  for (const what of ['entities', 'relations']) {
-    sc(`${what}: ${fmt(total(ccgGate, what))}`);
-    const g2 = total(ccgGraph, what);
-    const same = JSON.stringify(total(ccgGate, what)) === JSON.stringify(g2);
-    sc(`  scored from the published typed graph instead of the gate: ${same ? 'the same' : `DIFFERENT: ${fmt(g2)}`}`);
-    if (!same) fail(`create-context-graph: score from the graph differs from the gate's (${what})`);
-  }
-  const plain = ccgOids.map((oid) => store.scoreAgainstGold(stores.get(oid).db, cl, undefined, { names: 'canonical' }));
-  sc(`without the honorific rule (names canonical only): entities ${fmt(total(plain, 'entities'))}; relations ${fmt(total(plain, 'relations'))}`);
-  // The demos' floor: at small-v1's defaults the samples' kept relations keep precision 0.90 or more and
-  // recall 0.50 or more, and the page's default sample publishes at least 10 entities and 8 relationships, none of
-  // them outside its gold. A rewrite of the samples or a change of the defaults that drops below it fails the run.
-  if (FULL) {
-    const DEMO = 'financial-services'; // web/app.js DEFAULT_SAMPLE
-    const rel = total(ccgGate, 'relations');
-    const fsAt = ccgOids.indexOf(DEMO);
-    const fsE = ccgGate[fsAt].entities.total;
-    const fsR = ccgGate[fsAt].relations.total;
-    sc(`the demos' floor: relations P ${f3(rel.precision)} (at least 0.900) and R ${f3(rel.recall)} (at least 0.500); ${DEMO}, ` +
-      `the page's default sample, keeps ${fsE.tp + fsE.fp} entities (at least 10) and ${fsR.tp + fsR.fp} relationships (at least 8), ` +
-      `${fsE.fp + fsR.fp} of them outside its gold (0)`);
-    if (rel.precision < 0.9 || rel.recall < 0.5) fail(`the samples' relations at the defaults: P ${f3(rel.precision)}, R ${f3(rel.recall)} (the floor is 0.900 and 0.500)`);
-    if (fsE.tp + fsE.fp < 10 || fsR.tp + fsR.fp < 8 || fsE.fp + fsR.fp > 0) fail(`${DEMO}'s sample at the defaults: ${fsE.tp + fsE.fp} entities, ${fsR.tp + fsR.fp} relationships, ${fsE.fp + fsR.fp} outside its gold`);
-  }
-  sc();
-  sc('## per domain (entities; relations)');
-  sc(`${'domain'.padEnd(21)} ${'entities'.padEnd(46)} relations`);
-  ccgOids.forEach((oid, i) => sc(`${oid.padEnd(21)} ${fmt(ccgGate[i].entities.total).padEnd(46)} ${fmt(ccgGate[i].relations.total)}`));
-  sc();
-  sc('## per domain: what was missed and what was kept wrongly (names as matched: canonical, no honorific)');
-  ccgOids.forEach((oid, i) => {
-    const e = ccgGate[i].entities.docs[0];
-    const r = ccgGate[i].relations.docs[0];
-    sc(`${oid}:`);
-    if (e.false_pos.length) sc(`  entities false: ${e.false_pos.join('; ')}`);
-    if (e.missed.length) sc(`  entities missed: ${e.missed.join('; ')}`);
-    if (r.false_pos.length) sc(`  relations false: ${r.false_pos.join('; ')}`);
-    if (r.missed.length) sc(`  relations missed: ${r.missed.join('; ')}`);
+  /** Every document of a set scored: its breakdown (aliases folded, by how), raw rows, and its unit. */
+  const scoreUnits = (units, opts = {}) => units.flatMap((u) => {
+    const s = store.scoreAgainstGold(u.db, cl, undefined, opts);
+    return u.docs.map((d) => {
+      const e = s.entities.docs.find((x) => x.title === d.name);
+      const r = s.relations.docs.find((x) => x.title === d.name);
+      return { u, d, e, r, b: corpus.breakdown({ entities: e, relations: r }, d.info.g) };
+    });
   });
+  /** A list of document scores summed: entities, relations (aliases folded), by how, reachable recall. */
+  const sum = (rows) => {
+    const t = { e: [0, 0, 0, 0], r: [0, 0, 0, 0] };
+    const byHow = {};
+    const reach = { gold: 0, found: 0 };
+    for (const { b } of rows) {
+      for (const [k, x] of [['e', b.entities], ['r', b.relations]]) {
+        t[k][0] += x.tp;
+        t[k][1] += x.fp;
+        t[k][2] += x.fn;
+        t[k][3] += x.dup;
+      }
+      for (const [h, x] of Object.entries(b.byHow)) {
+        const y = (byHow[h] ??= { gold: 0, found: 0 });
+        y.gold += x.gold;
+        y.found += x.found;
+      }
+      reach.gold += b.reachable.gold;
+      reach.found += b.reachable.found;
+    }
+    return { entities: { ...prf(t.e[0], t.e[1], t.e[2]), dup: t.e[3] }, relations: { ...prf(t.r[0], t.r[1], t.r[2]), dup: t.r[3] }, byHow, reach };
+  };
+  const regate = (units, opts = {}) => { for (const u of units) store.gate(u.db, cl, opts); };
+  const setAll = (units, c, src = 'user') => { for (const u of units) store.setAllCutoffs(u.db, cl, c, { src }); };
+  const restore = (units) => { setAll(units, DEF, 'default'); regate(units); };
+  const BAND_RANK = { keep: 0, review: 1, drop: 2 };
+  /** A document's claims of (head, tail, link), canonical names or their aliases, best band first. */
+  const claimsOf = (u, d, h, t, rel) => cl.exec(u.db, `MATCH (c:_Claim {doc: $doc}) WHERE c.rel = $rel AND c.hn IN $hs AND c.tn IN $ts
+RETURN c.band AS band, c.rule AS rule, c.p AS p, c.key AS key`, { doc: d.id, rel, hs: [h, ...(d.info.names.get(h) ?? [])], ts: [t, ...(d.info.names.get(t) ?? [])] }).rows
+    .sort((a, b) => (BAND_RANK[a.band] ?? 3) - (BAND_RANK[b.band] ?? 3) || b.p - a.p || cmp(a.key, b.key));
+  /** Every distractor of a set with its fate: the best claim the gate made of it (kept, review, drop) or never proposed. */
+  const distractorFates = (units) => units.flatMap((u) => u.docs.flatMap((d) => d.info.g.distractors.map((x) => {
+    const [h, t, rel] = x.key.split('|');
+    const c = claimsOf(u, d, h, t, rel)[0] ?? null;
+    return { u, d, x, c, fate: c ? c.band : 'never' };
+  })));
+  const FATES = ['keep', 'review', 'drop', 'never'];
+  const howTable = (byHow) => Object.keys(corpus.HOW).filter((h) => byHow[h]).map((h) =>
+    `${h} ${byHow[h].found}/${byHow[h].gold}${corpus.HOW[/** @type {keyof typeof corpus.HOW} */ (h)] ? '' : ' (unreachable)'}`).join(', ');
+
+  sc(`# Scores against the corpus's gold, in Cypher (store.scoreAgainstGold; harness/run.mjs, ${M.name})`);
+  sc(`The corpus (D23): ${corpusDocs.length} documents for ${corpusOids.length} ontologies (${corpusDocs.filter((d) => d.role === 'primary').length} primary, ` +
+    `${corpusDocs.filter((d) => d.role === 'companion').length} companions), the dev set the defaults are set on, and ${heldout.length} held-out documents,`);
+  sc('never listed in the page and never used to set anything. Gold v2 (harness/corpus.mjs): entities as (NAME, TYPE) and relations');
+  sc('as (SOURCE, TARGET, TYPE), names canonical (names.js), micro-averaged; a prediction named by a gold alias counts as its entity');
+  sc('(found through the alias, or a duplicate, neither right nor wrong). Predictions are the kept band; review and drop count as not');
+  sc('predicted. Each gold relation says how the text states it: "reachable" recall leaves out the facts no sentence holds by name');
+  sc('(cross-sentence, coreference), which a sentence-level model cannot find. Distractors are claims a text makes but does not');
+  sc('assert (negation, hedge, conditional, future, alleged, retracted): none is in the gold, and each is shown by where the gate left it.');
+
+  // ---- dev, at the defaults ----
+  regate(DEV);
+  const dev = scoreUnits(DEV);
+  const devG = scoreUnits(DEV, { from: 'graph' });
+  const D0 = sum(dev);
+  sc();
+  sc(`## the dev set at the defaults (${cutsLine(DEF)})`);
+  sc(`entities:  ${fmt(D0.entities)}; alias duplicates ${D0.entities.dup}`);
+  sc(`relations: ${fmt(D0.relations)}; reachable recall ${D0.reach.found}/${D0.reach.gold} (${f3(D0.reach.gold ? D0.reach.found / D0.reach.gold : 0)})`);
+  sc(`relations by how the text states them: ${howTable(D0.byHow)}`);
+  const sameGraph = JSON.stringify(dev.map((x) => [x.e.tp, x.e.fp, x.r.tp, x.r.fp])) === JSON.stringify(devG.map((x) => [x.e.tp, x.e.fp, x.r.tp, x.r.fp]));
+  sc(`scored from the published typed graph instead of the gate: ${sameGraph ? 'the same' : 'DIFFERENT'}`);
+  if (!sameGraph) fail('score from the graph differs from the gate\'s');
+  for (const fam of ['domains', 'studio']) {
+    const x = sum(dev.filter((r) => groupOf.get(r.u.key) === fam));
+    sc(`  ${fam === 'domains' ? 'curated domains' : 'solution packages'}: entities ${fmt(x.entities)}; relations ${fmt(x.relations)}`);
+  }
+  sc();
+  sc('## per ontology (entities; relations; reachable relations found)');
+  sc(`${'ontology'.padEnd(30)} ${'entities'.padEnd(46)} ${'relations'.padEnd(46)} reach`);
+  for (const u of DEV) {
+    const x = sum(dev.filter((r) => r.u === u));
+    sc(`${u.key.padEnd(30)} ${fmt(x.entities).padEnd(46)} ${fmt(x.relations).padEnd(46)} ${x.reach.found}/${x.reach.gold}`);
+  }
+  sc();
+  sc('## per document: what was missed and what was kept wrongly (canonical names; missed relations with how the text states them)');
+  for (const x of dev) {
+    sc(`${x.d.name}:`);
+    if (x.b.entities.false_pos.length) sc(`  entities false: ${x.b.entities.false_pos.join('; ')}`);
+    if (x.b.entities.missed.length) sc(`  entities missed: ${x.b.entities.missed.join('; ')}`);
+    if (x.b.relations.false_pos.length) sc(`  relations false: ${x.b.relations.false_pos.join('; ')}`);
+    if (x.b.relations.missed.length) sc(`  relations missed: ${x.b.relations.missed.map((k) => `${k} (${x.d.info.g.how.get(k)})`).join('; ')}`);
+  }
+
+  // ---- property values (D27) ----
+  /** Every document of a set whose ontology extracts a property: its values scored (corpus.scoreProperties) and its candidates. */
+  const propertyRows = (units) => units.filter((u) => u.o.types.some((t) => t.attributes.length)).flatMap((u) => {
+    const attrs = store.readGate(u.db, cl).attributes;
+    return u.docs.map((d) => ({ u, d, ps: corpus.scoreProperties(attrs, d.info.g, d.id), mine: attrs.filter((a) => a.doc === d.id) }));
+  });
+  const propertyReport = (rows) => {
+    if (!rows.length) {
+      sc('no ontology here marks a property for extraction');
+      return;
+    }
+    const t = rows.reduce((a, r) => ({ tp: a.tp + r.ps.tp, fp: a.fp + r.ps.fp.length, fn: a.fn + r.ps.missed.length }), { tp: 0, fp: 0, fn: 0 });
+    const byHow = {};
+    for (const r of rows) {
+      for (const [h, x] of Object.entries(r.ps.byHow)) {
+        const b = (byHow[h] ??= { gold: 0, found: 0 });
+        b.gold += x.gold;
+        b.found += x.found;
+      }
+    }
+    sc(`values: ${fmt(prf(t.tp, t.fp, t.fn))}`);
+    sc(`values by how the text states them: ${howTable(byHow) || '(no gold values)'}`);
+    const rules = new Map();
+    for (const r of rows) for (const a of r.mine) rules.set(`${a.band}/${a.rule}`, (rules.get(`${a.band}/${a.rule}`) ?? 0) + 1);
+    sc(`candidates by band and rule: ${[...rules].sort((a, b) => cmp(a[0], b[0])).map(([k, n]) => `${k} ${n}`).join(', ')}`);
+    // What publish wrote: each entity's extracted properties are the best kept values, typed (a DATE as date()).
+    let same = true;
+    for (const u of new Set(rows.map((r) => r.u))) {
+      const want = new Map();
+      for (const a of store.readGate(u.db, cl).attributes.filter((x) => x.band === 'keep' && x.entity).sort((x, y) => y.p - x.p || cmp(x.key, y.key))) {
+        if (!want.has(`${a.entity}|${a.prop}`)) want.set(`${a.entity}|${a.prop}`, a.value);
+      }
+      for (const k of u.o.types.filter((x) => x.attributes.length)) {
+        const got = cl.exec(u.db, `MATCH (e:_Entity) WHERE e.key STARTS WITH $p
+RETURN e.key AS key, [x IN $props | properties(e)[x]] AS vals, [x IN $props | valueType(properties(e)[x])] AS types ORDER BY key`,
+        { p: `${k.id}:`, props: k.attributes.map((a) => a.prop) }).rows;
+        for (const e of got) {
+          for (const [i, a] of k.attributes.entries()) {
+            const w = want.get(`${e.key}|${a.prop}`) ?? null;
+            const v = e.vals[i] ?? null;
+            const equal = w === null ? v === null : typeof w === 'number' ? Number(v) === w : String(v) === String(w);
+            // the engine's own type: FLOAT for a FLOAT however integral the amount (R5), DATE for a DATE
+            const typed = w === null || String(e.types[i]).startsWith(a.type);
+            if (!equal || !typed) same = false;
+          }
+        }
+      }
+    }
+    sc(`the published entities carry exactly the best kept values, typed: ${same ? 'yes' : 'NO'}`);
+    if (!same) fail('the published property values differ from the gate\'s best kept ones');
+    for (const r of rows) {
+      sc(`${r.d.name}: ${fmt(prf(r.ps.tp, r.ps.fp.length, r.ps.missed.length))}`);
+      if (r.ps.fp.length) sc(`  values false: ${r.ps.fp.join('; ')}`);
+      if (r.ps.missed.length) sc(`  values missed: ${r.ps.missed.join('; ')}`);
+    }
+  };
+  sc();
+  sc(`## property values read from the text (D27), at the defaults (keep ${D.attrKeep}, drop ${D.attrDrop}): the best kept value per entity and property`);
+  sc('against the gold\'s; a value the text states only in a month or a year has no DATE and is not in the gold');
+  propertyReport(propertyRows(DEV));
 
   sc();
-  sc('## each rule switched off in turn, on the create-context-graph samples');
+  sc('## the distractors, by family: where the gate left each (the best claim it made of it), at the defaults');
+  const fates = distractorFates(DEV);
+  sc(`${'family'.padEnd(12)} ${FATES.map((f) => f.padEnd(7)).join(' ')}`);
+  for (const fam of corpus.FAMILIES) {
+    const xs = fates.filter((f) => f.x.family === fam);
+    if (xs.length) sc(`${fam.padEnd(12)} ${FATES.map((f) => String(xs.filter((y) => y.fate === f).length).padEnd(7)).join(' ')}`);
+  }
+  sc(`${'all'.padEnd(12)} ${FATES.map((f) => String(fates.filter((y) => y.fate === f).length).padEnd(7)).join(' ')}`);
+  for (const f of fates) {
+    sc(`${f.d.name}: (${f.x.family}) ${f.x.d.source} -[${f.x.d.type}]-> ${f.x.d.target}: ${f.c ? `${f.c.band} by ${f.c.rule} at ${f3(f.c.p)}${f.c.band === 'keep' ? ' (KEPT: the gate publishes it)' : ''}` : 'never proposed'}`);
+  }
+  const keptD = fates.filter((f) => f.fate === 'keep').length;
+  if (keptD) note(`finding: ${keptD} distractor claim(s) kept at the defaults (score.txt)`);
+
+  sc();
+  sc('## each rule switched off in turn, on the dev set');
   sc(`${'rule off'.padEnd(12)} ${'entities'.padEnd(52)} relations`);
   for (const r of ['none', ...store.RULES]) {
-    regate(SETS.ccg, { off: r === 'none' ? [] : [r] });
-    const s = totals(SETS.ccg);
+    regate(DEV, { off: r === 'none' ? [] : [r] });
+    const s = sum(scoreUnits(DEV));
     sc(`${r.padEnd(12)} ${fmt(s.entities).padEnd(52)} ${fmt(s.relations)}`);
   }
-  regate(SETS.ccg);
-  sc('(no gazetteer in create-context-graph\'s format and no verdicts here, so rules 1 and 7 change nothing; gate.txt and review.txt');
-  sc('exercise them)');
+  regate(DEV);
+  note(`dev scores done (${secs()})`);
 
-  // The distractors, and where the relations are lost: at the defaults.
-  /** Every claim of a store with its band, joined ends (and their mentions' bands) and span texts. */
-  const allClaims = (oid) => cl.exec(stores.get(oid).db, `MATCH (c:_Claim)
-OPTIONAL MATCH (c)-[:_HEAD]->(h:_Mention)
-OPTIONAL MATCH (c)-[:_TAIL]->(t:_Mention)
-RETURN c.rel AS rel, c.hn AS hn, c.tn AS tn, c.htext AS htext, c.ttext AS ttext,
-       c.p AS p, c.band AS band, c.rule AS rule, c.key AS key, h.band AS hb, t.band AS tb ORDER BY c.p DESC, c.key`).rows;
-  const joinedTo = (c, src, tgt) => c.hn != null && c.tn != null && store.withoutHonorific(c.hn) === src && store.withoutHonorific(c.tn) === tgt;
-  const textTo = (c, src, tgt, key) => key(c.htext) === src && key(c.ttext) === tgt;
-  /**
-   * A domain's distractor, found in its own sentence: the one sentence of the sample that names both
-   * ends (case-insensitive) and hedges or negates (HEDGE); a sentence elsewhere that states the same
-   * pair plainly is not the distractor (education's s4: "Tomas Ferreira passed it last spring" is
-   * true). Its claims are those of the distractor's link in that sentence whose head and tail span
-   * texts each contain the end's name or are contained in it ("ALM-4402" for "alert ALM-4402",
-   * "Dr. Samuel Whitcombe" for "Samuel Whitcombe"). The one reported: kept first, then review, then
-   * the highest score. Exactly one such sentence per domain, or the run fails.
-   */
-  const HEDGE = /\b(?:not|no|never|unclear|may|might|probably|suspected)\b/i;
-  const low = (x) => String(x ?? '').trim().toLowerCase();
-  const contains = (span, name) => low(span) !== '' && (low(span).includes(low(name)) || low(name).includes(low(span)));
-  const distractorSentence = new Map(ccgOids.map((oid) => {
-    const x = distractors[oid];
-    const sample = ccgSamples.find((d) => d.ontology === oid);
-    const hits = splitSentences(sample.text).filter((t) => low(t.text).includes(low(x.source)) && low(t.text).includes(low(x.target)) && HEDGE.test(t.text));
-    if (hits.length !== 1) fail(`data/samples/ccg/distractors.json: ${oid}: ${hits.length} hedged or negated sentences name both ${JSON.stringify(x.source)} and ${JSON.stringify(x.target)} (want 1)`);
-    return [oid, hits.length ? { key: `${docId(sample.text)}#${hits[0].idx}`, idx: hits[0].idx, text: hits[0].text } : null];
-  }));
-  const BAND_RANK = { keep: 0, review: 1, drop: 2 };
-  const distractorClaim = (oid, which = stores) => {
-    const x = distractors[oid];
-    const sent = distractorSentence.get(oid);
-    if (!sent) return null;
-    const cs = cl.exec(which.get(oid).db, `MATCH (c:_Claim)-[:_EVIDENCE]->(s:_Sentence {key: $key}) WHERE $key IS NOT NULL AND $rel IS NOT NULL AND c.rel = $rel
-RETURN c.key AS key, c.htext AS htext, c.ttext AS ttext, c.p AS p, c.band AS band, c.rule AS rule`, { key: sent.key, rel: x.type }).rows
-      .filter((c) => contains(c.htext, x.source) && contains(c.ttext, x.target))
-      .sort((a, b) => (BAND_RANK[a.band] ?? 3) - (BAND_RANK[b.band] ?? 3) || b.p - a.p || cmp(a.key, b.key));
-    return cs[0] ?? null;
-  };
-  const keptDistractors = (which = stores) => ccgOids.filter((oid) => distractorClaim(oid, which)?.band === 'keep').length;
-  /** The kinds' poles of a create-context-graph store, from its parsed YAML: id -> {pole, base}. */
-  const polesOf = (oid) => new Map(ontologies.get(oid).types.map((k) => [k.id, { pole: k.pole, base: k.origin === 'base' }]));
-  const BAND_RULES = ['band', 'pole-specific'];
-  const OUTCOMES = ['kept', 'review by the band', 'review by the type margin', 'another kind won its span', 'drop by the band'];
-  /** Each gold entity's best outcome: the model's mentions of it with its gold kind (canonical name, no honorific). */
-  const entityOutcomes = () => {
-    const out = [];
-    for (const oid of ccgOids) {
-      const sample = ccgSamples.find((x) => x.ontology === oid);
-      const ms = cl.exec(stores.get(oid).db, "MATCH (m:_Mention) WHERE m.source = 'model' RETURN m.sentence AS sentence, m.start AS start, m.end AS end, m.name AS name, m.label AS label, m.band AS band, m.rule AS rule, m.p AS p").rows;
-      const gk = goldKeys(ontologies.get(oid), sample.gold);
-      for (const g of sample.gold.entities) {
-        const name = gk.key(g.name, g.type);
-        const named = ms.filter((m) => store.withoutHonorific(m.name) === name);
-        const mine = named.filter((m) => m.label === g.type);
-        const rank = (m) => (m.band === 'keep' ? 0 : m.band === 'review' && BAND_RULES.includes(m.rule) ? 1 : m.band === 'review' && m.rule === 'type-margin' ? 2 :
-          m.rule === 'one-kind' ? 3 : BAND_RULES.includes(m.rule) ? 4 : 5);
-        const best = Math.min(5, ...mine.map(rank));
-        const why = best < 5 ? OUTCOMES[best] : named.length ? 'found only as another kind' : 'not found';
-        const chosen = best <= 1 && mine.some((m) => rank(m) === best && m.rule === 'pole-specific');
-        // the kind that won: the mention of the same span that rule 2 did not drop
-        const lost = best === 3 ? mine.find((m) => rank(m) === 3) : null;
-        const winner = lost ? ms.find((x) => x.sentence === lost.sentence && x.start === lost.start && x.end === lost.end && x.rule !== 'one-kind') ?? null : null;
-        out.push({ oid, g, why, chosen, winner });
+  // ---- where the facts are lost ----
+  sc();
+  sc('## where the gold relations are lost (dev, at the defaults): the best claim of each missed relation, by how the text states it');
+  const lost = new Map();
+  for (const x of dev) {
+    for (const k of x.b.relations.missed) {
+      const [h, t, rel] = k.split('|');
+      const c = claimsOf(x.u, x.d, h, t, rel)[0];
+      const why = !c ? 'never proposed' : `${c.band} by ${c.rule}`;
+      const how = x.d.info.g.how.get(k) ?? 'plain';
+      const m = lost.get(how) ?? new Map();
+      m.set(why, (m.get(why) ?? 0) + 1);
+      lost.set(how, m);
+    }
+  }
+  for (const how of Object.keys(corpus.HOW).filter((h) => lost.has(h))) {
+    sc(`${how}: ${[...lost.get(how)].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([w, n]) => `${w} ${n}`).join(', ')}`);
+  }
+  sc();
+  sc('## where the gold entities are lost (dev, at the defaults): the model\'s mentions of each missed entity');
+  const lostE = new Map();
+  for (const x of dev) {
+    for (const k of x.b.entities.missed) {
+      const [name, kind] = k.split('|');
+      const ms = cl.exec(x.u.db, `MATCH (m:_Mention {doc: $doc}) WHERE m.name IN $names RETURN m.label AS label, m.band AS band, m.rule AS rule, m.p AS p`,
+        { doc: x.d.id, names: [name, ...(x.d.info.names.get(name) ?? [])] }).rows;
+      const mine = ms.filter((m) => m.label === kind).sort((a, b) => (BAND_RANK[a.band] ?? 3) - (BAND_RANK[b.band] ?? 3) || b.p - a.p);
+      const why = mine.length ? `${mine[0].band} by ${mine[0].rule}` : ms.length ? 'found only as another kind' : 'not found';
+      lostE.set(why, (lostE.get(why) ?? 0) + 1);
+    }
+  }
+  sc([...lostE].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([w, n]) => `${w} ${n}`).join(', ') || 'none missed');
+
+  sc();
+  sc('## reliability (G2): the model\'s score against how often it is right, on the dev set (every candidate at the floor and above)');
+  sc('A mention is right when its (name, kind) is a gold entity of its document, a claim when its (head, tail, link) is a gold relation');
+  sc('(aliases folded in), whatever the gate decided. Scores are not calibrated probabilities: this is how far they are off, where.');
+  const BINS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+  const bin = (p) => BINS.filter((b) => p >= b).length - 1;
+  const rel = { m: BINS.map(() => [0, 0]), c: BINS.map(() => [0, 0]) };
+  const fold = (d, name) => d.info.g.alias.get(name) ?? name;
+  for (const u of DEV) {
+    for (const d of u.docs) {
+      for (const m of cl.exec(u.db, "MATCH (m:_Mention {doc: $doc}) WHERE m.source = 'model' AND m.name <> '' RETURN m.name AS name, m.label AS label, m.p AS p", { doc: d.id }).rows) {
+        const i = bin(m.p);
+        rel.m[i][0]++;
+        if (d.info.ent.has(fold(d, `${m.name}|${m.label}`))) rel.m[i][1]++;
+      }
+      for (const c of cl.exec(u.db, 'MATCH (c:_Claim {doc: $doc}) WHERE c.hn IS NOT NULL AND c.tn IS NOT NULL RETURN c.hn AS h, c.tn AS t, c.rel AS rel, c.p AS p', { doc: d.id }).rows) {
+        const i = bin(c.p);
+        rel.c[i][0]++;
+        const name = (n) => [...d.info.g.alias].find(([a]) => a.split('|')[0] === n)?.[1].split('|')[0] ?? n;
+        if (d.info.rel.has(`${name(c.h)}|${name(c.t)}|${c.rel}`)) rel.c[i][1]++;
       }
     }
-    return out;
-  };
-  sc();
-  sc('## the distractors: one hedged or negated claim per document, left out of the gold on purpose');
-  sc(`Each must not be kept at the defaults (relation keep ${f3(DEF.relKeep)}). Each is looked for in its own sentence (the one that names both ends and hedges`);
-  sc('or negates): a claim of its link there whose span texts contain the two names or are contained in them, kept first, then');
-  sc('review, then the highest score. Shown: the sentence, then the claim\'s score, band and deciding rule, or "no claim".');
-  const distractorClaims = [];
-  for (const oid of ccgOids) {
-    const x = distractors[oid];
-    const sent = distractorSentence.get(oid);
-    const best = distractorClaim(oid);
-    if (best) distractorClaims.push({ oid, p: best.p, band: best.band, rule: best.rule });
-    const kept = best?.band === 'keep';
-    sc(`${oid}: ${JSON.stringify(x.source)} -[${x.type}]-> ${JSON.stringify(x.target)}, s${sent?.idx ?? '?'}: ` +
-      `${best ? `claim ${f3(best.p)}, ${best.band} by ${best.rule}${kept ? ' (KEPT: a distractor the gate publishes)' : ''}` : 'no claim'}`);
-    sc(`  ${JSON.stringify(sent?.text ?? '')}`);
   }
-  const nKeptDistractors = keptDistractors();
-  const dps = distractorClaims.map((x) => x.p);
-  sc(`=> kept at the defaults: ${nKeptDistractors} of ${ccgOids.length}; a claim in the distractor's sentence: ${distractorClaims.length}, ` +
-    `scoring ${dps.length ? `${f3(Math.min(...dps))} to ${f3(Math.max(...dps))}` : '-'}; ${dps.filter((p) => p >= 0.55).length} at 0.55 or more, ` +
-    `${dps.filter((p) => p >= DEF.relKeep).length} at the relation keep ${f3(DEF.relKeep)} or more`);
-  sc(`   decided by: ${countBy(distractorClaims, (x) => `${x.band} by ${x.rule}`) || 'none'}`);
-  const atKeep = distractorClaims.filter((x) => x.p >= DEF.relKeep);
-  sc(`   of those at the keep cutoff or more (the band alone would keep them): ${atKeep.length ? countBy(atKeep, (x) => `${x.band} by ${x.rule}`) : 'none'}`);
-  if (nKeptDistractors) note(`finding: ${nKeptDistractors} distractor claim(s) kept at the defaults (score.txt)`);
+  sc(`${'score'.padEnd(10)} ${'mentions'.padEnd(18)} claims`);
+  BINS.forEach((b, i) => {
+    const cell = ([n, ok]) => `${String(n).padStart(5)} ${n ? f3(ok / n) : '  -  '}`;
+    sc(`${`${b.toFixed(1)}-${(b + 0.1).toFixed(1)}`.padEnd(10)} ${cell(rel.m[i]).padEnd(18)} ${cell(rel.c[i])}`);
+  });
 
-  // ---- the held-out set, beside the samples ----
+  // ---- the held-out set ----
   sc();
-  sc(`## the held-out set (data/samples/heldout: ${heldout.length} documents), at the default cutoffs (${cutsLine(DEF)})`);
-  sc('Written like the samples, never listed in the page and never used to set a default or a rule (the defaults and the gate');
-  sc('were settled on the samples alone). Each document on a fresh store of its domain, extracted, gated and published as the page');
-  sc('does, and scored as the samples are; its distractor (data/samples/heldout/distractors.json) is looked for as theirs are.');
-  const held = [];
-  for (const d of heldout) {
-    const hs = newStore(d.ontology);
-    await pipeline.run({ db: hs.db, cl, model, modelInfo: MODEL_INFO, ontology: ontologies.get(d.ontology), text: d.text, title: d.name });
-    const id = docId(d.text);
-    const hg = goldKeys(ontologies.get(d.ontology), d.gold);
-    store.loadGold(hs.db, cl, [{ doc: id, title: d.name, entities: hg.entities, relations: hg.relations }]);
-    const s = store.scoreAgainstGold(hs.db, cl, undefined, { names: 'honorific' });
-    const x = heldDistractors[d.ontology];
-    const hits = splitSentences(d.text).filter((t) => low(t.text).includes(low(x.source)) && low(t.text).includes(low(x.target)) && HEDGE.test(t.text));
-    if (hits.length !== 1) fail(`data/samples/heldout/distractors.json: ${d.ontology}: ${hits.length} hedged or negated sentences name both ${JSON.stringify(x.source)} and ${JSON.stringify(x.target)} (want 1)`);
-    const best = hits.length !== 1 ? null : cl.exec(hs.db, `MATCH (c:_Claim)-[:_EVIDENCE]->(t:_Sentence {key: $key}) WHERE $key IS NOT NULL AND $rel IS NOT NULL AND c.rel = $rel
-RETURN c.key AS key, c.htext AS htext, c.ttext AS ttext, c.p AS p, c.band AS band, c.rule AS rule`, { key: `${id}#${hits[0].idx}`, rel: x.type }).rows
-      .filter((c) => contains(c.htext, x.source) && contains(c.ttext, x.target))
-      .sort((a, b) => (BAND_RANK[a.band] ?? 3) - (BAND_RANK[b.band] ?? 3) || b.p - a.p || cmp(a.key, b.key))[0] ?? null;
-    const review = cl.exec(hs.db, "MATCH (x) WHERE (x:_Mention OR x:_Claim) AND x.band = 'review' RETURN count(x) AS n").rows[0].n;
-    held.push({ d, s, best, review });
-    hs.db.free();
-  }
-  for (const what of ['entities', 'relations']) sc(`${what}: ${fmt(total(held.map((h) => h.s), what))}`);
-  const heldKept = held.filter((h) => h.best?.band === 'keep');
-  sc(`distractors kept: ${heldKept.length} of ${held.length}${heldKept.length ? ` (${heldKept.map((h) => h.d.ontology).join(', ')})` : ''}; ` +
-    `review items per document: ${held.map((h) => h.review).join(', ')}`);
-  for (const h of held) {
-    const rk = h.s.relations.total;
-    sc(`${h.d.ontology.padEnd(21)} entities ${fmt(h.s.entities.total)}`);
-    sc(`${''.padEnd(21)} relations ${fmt(rk)}; distractor ${JSON.stringify(heldDistractors[h.d.ontology].source)} -[${heldDistractors[h.d.ontology].type}]-> ` +
-      `${JSON.stringify(heldDistractors[h.d.ontology].target)}: ${h.best ? `claim ${f3(h.best.p)}, ${h.best.band} by ${h.best.rule}` : 'no claim'}`);
-  }
-  note(`held-out set scored (${secs()})`);
+  sc(`## the held-out set (data/samples/heldout: ${heldout.length} documents), at the defaults (${cutsLine(DEF)})`);
+  sc('Each document on a fresh store of its ontology, extracted, gated and published as the page does, and scored as the dev set is.');
+  const held = scoreUnits(HELD);
+  const H0 = sum(held);
+  sc(`entities:  ${fmt(H0.entities)}; alias duplicates ${H0.entities.dup}`);
+  sc(`relations: ${fmt(H0.relations)}; reachable recall ${H0.reach.found}/${H0.reach.gold} (${f3(H0.reach.gold ? H0.reach.found / H0.reach.gold : 0)})`);
+  sc(`relations by how: ${howTable(H0.byHow)}`);
+  for (const x of held) sc(`${x.d.name.padEnd(32)} entities ${fmt(x.b.entities).padEnd(46)} relations ${fmt(x.b.relations)}`);
+  const hf = distractorFates(HELD);
+  sc(`distractors: ${FATES.map((f) => `${f} ${hf.filter((y) => y.fate === f).length}`).join(', ')}`);
+  for (const f of hf.filter((y) => y.fate === 'keep')) sc(`  KEPT: ${f.d.name}: (${f.x.family}) ${f.x.d.source} -[${f.x.d.type}]-> ${f.x.d.target} at ${f3(f.c.p)}`);
+  note(`held-out scores done (${secs()})`);
 
-  sc();
-  sc('## where the create-context-graph relations are lost (at the defaults)');
-  sc('For each gold relation, the best claim of its link whose span texts name its two ends (canonical, no honorific):');
-  sc('kept; in review by the band; in review because an end is in review (rule 3\'s cap: end-in-review); dropped by the');
-  sc('band; dropped as unanchored (an end joins no kept mention and none in review: rule 3); dropped as illegal (an end joins');
-  sc('a mention of another kind: rule 4); or no such claim (the model did not pair them in one sentence).');
-  const reasons = new Map();
-  const byLink = new Map();
-  let illegalOnReview = 0;
-  let illegal = 0;
-  for (const oid of ccgOids) {
-    const sample = ccgSamples.find((s) => s.ontology === oid);
-    const cs = allClaims(oid);
-    const gk = goldKeys(ontologies.get(oid), sample.gold);
-    for (const g of sample.gold.relations) {
-      const src = gk.key(g.source, gk.kindOf.get(g.source));
-      const tgt = gk.key(g.target, gk.kindOf.get(g.target));
-      const mine = cs.filter((c) => c.rel === g.type && (joinedTo(c, src, tgt) || textTo(c, src, tgt, (t) => entityName(t))));
-      const best = mine.find((c) => c.band === 'keep') ?? mine.find((c) => c.band === 'review') ?? mine.find((c) => c.rule === 'band') ?? mine[0] ?? null;
-      const why = !best ? 'no claim' : best.band === 'keep' ? 'kept' : best.rule === 'band' ? `${best.band} by the band` :
-        best.rule === 'end-in-review' ? 'review: an end in review' : `${best.band === 'review' ? 'review' : 'dropped'} as ${best.rule}`;
-      reasons.set(why, (reasons.get(why) ?? 0) + 1);
-      if (best?.rule === 'illegal') {
-        illegal++;
-        if (best.hb === 'review' || best.tb === 'review') illegalOnReview++;
-      }
-      const l = byLink.get(g.type) ?? { n: 0, kept: 0 };
-      l.n++;
-      if (why === 'kept') l.kept++;
-      byLink.set(g.type, l);
-    }
-  }
-  const nGold = [...reasons.values()].reduce((a, b) => a + b, 0);
-  sc(`${nGold} gold relations: ${[...reasons].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-  sc(`of those dropped as illegal, an end joined a mention in review for ${illegalOnReview} of ${illegal} (rule 3 anchors on review, rule 4 then checks its kind)`);
-  sc(`kept, by link (links with a gold relation kept): ${[...byLink].filter(([, l]) => l.kept).sort((a, b) => b[1].kept - a[1].kept || cmp(a[0], b[0])).map(([k, l]) => `${k} ${l.kept} of ${l.n}`).join(', ')}`);
-  sc(`links with gold relations and none kept: ${[...byLink].filter(([, l]) => !l.kept).length} of ${byLink.size}`);
-  sc();
-  sc('## where the create-context-graph entities are lost (at the defaults)');
-  sc('For each gold entity, the best outcome of the model\'s mentions of it with its gold kind (canonical name, no honorific):');
-  sc('kept; in review by the band or by the type margin (rule 2); dropped because another kind won the same span (rule 2,');
-  sc('one-kind); dropped by the band; found only under another kind; or not found at all. A kind rule 2\'s POLE preference');
-  sc('chose (pole-specific) counts by its band.');
-  const eo = entityOutcomes();
-  const eReasons = new Map();
-  for (const x of eo) eReasons.set(x.why, (eReasons.get(x.why) ?? 0) + 1);
-  sc(`${eo.length} gold entities: ${[...eReasons].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-  const chosen = eo.filter((x) => x.chosen);
-  sc(`kept or in review with the kind the POLE preference chose: ${chosen.length} (kept ${chosen.filter((x) => x.why === 'kept').length}): ` +
-    `${countBy(chosen, (x) => x.g.type) || 'none'}`);
-  const won = eo.filter((x) => x.why === 'another kind won its span');
-  const winners = new Map();
-  let samePole = 0;
-  for (const x of won) {
-    const k = `${x.g.type} lost to ${x.winner?.label ?? '?'}`;
-    winners.set(k, (winners.get(k) ?? 0) + 1);
-    const poles = polesOf(x.oid);
-    if (x.winner && poles.get(x.g.type)?.pole === poles.get(x.winner.label)?.pole) samePole++;
-  }
-  const baseKinds = new Set(['Person', 'Organization', 'Location', 'Event', 'Object']);
-  const toBase = [...winners].filter(([k]) => baseKinds.has(k.split(' lost to ')[1])).reduce((a, [, v]) => a + v, 0);
-  sc(`of those another kind won, the winner is one of the base's five kinds (Person, Organization, Location, Event, Object) for ${toBase};`);
-  sc(`  the winner has the lost kind's pole for ${samePole} (the POLE preference needs it within the pole margin and above the drop cutoff),`);
-  sc(`  another pole for ${won.length - samePole} (create-context-graph types Player, Agent, Guest, Customer, Researcher and more as OBJECT);`);
-  sc(`  the most frequent: ${[...winners].sort((a, b) => b[1] - a[1] || cmp(a[0], b[0])).slice(0, 8).map(([k, v]) => `${k} ${v}`).join(', ')}`);
-  note(`create-context-graph scores done (${secs()})`);
-
-  if (!FULL) {
-    // --model base (printed, not diffed): this model's defaults (store.MODEL_GATES) against small-v1's.
-    sc();
-    sc(`## ${M.name}'s defaults (store.MODEL_GATES) against small-v1's`);
-    const small = { ccg: store.defaultGate('create-context-graph', 'small') };
-    const keptWhere = () => ccgOids.filter((oid) => distractorClaim(oid)?.band === 'keep');
-    for (const [label, c] of [["small-v1's", small.ccg], [`${M.name}'s`, SETS.ccg.D]]) {
-      setAll(SETS.ccg, c);
-      regate(SETS.ccg);
-      const x = totals(SETS.ccg);
-      const kw = keptWhere();
-      sc(`the samples at ${label} defaults (${cutsLine(c)}): entities ${fmt(x.entities)}; relations ${fmt(x.relations)}; ` +
-        `distractors kept ${kw.length}${kw.length ? ` (${kw.map((oid) => `${oid} ${distractors[oid].type} ${f3(distractorClaim(oid).p)}`).join(', ')})` : ''}`);
-    }
-    sc('distractors kept on the samples by entity keep (rows) and relation keep (columns), 0.40 to 0.95:');
-    const GRID = Array.from({ length: 12 }, (_, i) => Math.round((0.4 + 0.05 * i) * 100) / 100);
-    sc(`${'keep'.padEnd(6)} ${GRID.map((k) => k.toFixed(2).padEnd(5)).join(' ').trimEnd()}`);
-    let zero = 0;
-    for (const e of GRID) {
-      sc(`${e.toFixed(2).padEnd(6)} ${GRID.map((k) => {
-        setAll(SETS.ccg, { entKeep: e, entDrop: Math.min(SETS.ccg.D.entDrop, e), relKeep: k, relDrop: Math.min(SETS.ccg.D.relDrop, k) });
-        regate(SETS.ccg);
-        const n = keptDistractors();
-        if (n === 0) zero++;
-        return String(n).padEnd(5);
-      }).join(' ').trimEnd()}`);
-    }
-    sc(`cutoff pairs that keep no distractor: ${zero} of ${GRID.length * GRID.length}`);
-    restore(SETS.ccg);
-    note(`--model base comparison done (${secs()})`);
-  }
-
+  // ---- settling the defaults, on the dev set ----
   if (FULL) {
     sc();
-    sc('## settling the defaults, on the samples');
-    sc('Grids over the samples\' gold; values on a 0.05 grid, chosen for a good F1 without chasing the last point. Each grid moves one');
-    sc('setting with the others at the defaults (store.defaultGate, the same for every ontology); cutoffs move for every kind or');
-    sc('link at once. (Earlier builds also set the defaults of edgextract\'s format on edgextract\'s golden set: 0.85/0.70.)');
-    const fmt2 = (x) => `${f3(x.precision)}/${f3(x.recall)}/${f3(x.f1)} (${x.tp}/${x.fp}/${x.fn})`;
-
-    // 0. how create-context-graph's kinds and links are asked (experiment B), on the samples, on the real gate
+    sc('## settling the defaults, on the dev set');
+    sc('Each grid moves one setting, with the others at the defaults (store.defaultGate, the same for every ontology), for every kind');
+    sc('or link at once; P/R/F1 (tp/fp/fn). The defaults are chosen precision-first (D23): the setting with the most recall whose kept');
+    sc('precision is at least 0.900; the setting with the best F1 is marked beside it. A wrong fact in the graph costs more than a fact');
+    sc('left in review, and the review queue exists for the uncertain ones. The held-out set never enters these grids.');
+    const pick = (rows, what) => {
+      const ok = rows.filter((r) => r.s[what].precision >= 0.9);
+      const best = ok.length ? ok.reduce((a, b) => (b.s[what].recall > a.s[what].recall ? b : a)) : null;
+      const f1 = rows.reduce((a, b) => (b.s[what].f1 > a.s[what].f1 ? b : a));
+      return { best, f1 };
+    };
+    const grid = (title, values, cutoffs, what) => {
+      sc();
+      sc(`### ${title}`);
+      const rows = values.map((v) => {
+        setAll(DEV, cutoffs(v));
+        regate(DEV);
+        return { v, s: sum(scoreUnits(DEV)), q: DEV.reduce((a, u) => a + Number(cl.exec(u.db, "MATCH (x:_Claim) WHERE x.band = 'review' RETURN count(x) AS n").rows[0].n), 0) };
+      });
+      const { best, f1 } = pick(rows, what);
+      for (const r of rows) {
+        const mark = [r === best ? 'precision-first' : '', r === f1 ? 'best F1' : ''].filter(Boolean).join(', ');
+        sc(`${String(r.v.toFixed(3)).padEnd(7)} entities ${fmt2(r.s.entities).padEnd(32)} relations ${fmt2(r.s.relations).padEnd(32)} claims in review ${String(r.q).padEnd(5)}${mark ? ` <- ${mark}` : ''}`);
+      }
+      restore(DEV);
+      note(`${title} done (${secs()})`);
+    };
+    grid('relation keep cutoff (rule 5, every link), entities at the defaults', [0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6],
+      (k) => ({ relKeep: k, relDrop: Math.min(DEF.relDrop, k) }), 'relations');
+    grid('entity keep cutoff (rule 5, every kind), relations at the defaults', [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8],
+      (k) => ({ entKeep: k, entDrop: Math.min(DEF.entDrop, k) }), 'entities');
     sc();
-    sc("### how create-context-graph's kinds and links are put to the model (experiment B), on the samples");
-    sc('"ids": every kind by its label with the description ontology.js derives ("financial account (object)"), every link as');
-    sc('its phrase ("owns"): what this example asked before. "labels": what it asks now (pipeline.modelSchema): each kind\'s label');
-    sc('as text ("account"), "<subtype> in <domain>" for a domain kind ("financial account in financial services"), the base');
-    sc('kinds bare, a base kind no link names and a domain kind covers not asked (Object in all 27, Event in agent-memory and');
-    sc('vacation-industry), and each link between its endpoints ("person owns account"); a generic document is asked the same');
-    sc('way. Both on a fresh store per domain, gated by the Cypher gate; P/R/F1 (tp/fp/fn), the distractors kept, and the review');
-    sc('queue (mentions, claims).');
-    const idsStores = new Map(ccgOids.map((oid) => [oid, newStore(oid)]));
-    for (const d of ccgSamples) {
-      const x = idsStores.get(d.ontology);
-      await pipeline.run({ db: x.db, cl, model, modelInfo: MODEL_INFO, ontology: ontologies.get(d.ontology), text: d.text, title: d.name, asked: 'ids' });
-      store.loadGold(x.db, cl, ccgGoldFor(d.ontology));
-    }
-    /** The samples at keep cutoffs (ek, rk) on one set of stores: scores, per-document totals, distractors kept, review queue. */
-    const ccgAt = (which, ek, rk) => {
-      for (const oid of ccgOids) {
-        const db = which.get(oid).db;
-        store.setAllCutoffs(db, cl, { entKeep: ek, entDrop: Math.min(DEF.entDrop, ek), relKeep: rk, relDrop: Math.min(DEF.relDrop, rk) });
-        store.gate(db, cl);
+    sc('### the margins (rules 2 and 6): type margin, then relation margin');
+    for (const [label, key] of [['type margin', 'typeMargin'], ['relation margin', 'relMargin']]) {
+      for (const m of [0, 0.025, 0.05, 0.1, 0.15]) {
+        regate(DEV, { [key]: m });
+        const s = sum(scoreUnits(DEV));
+        sc(`${label} ${m.toFixed(3)}: entities ${fmt2(s.entities).padEnd(32)} relations ${fmt2(s.relations)}${m === D[key] ? ' <- the default' : ''}`);
       }
-      const per = ccgOids.map((oid) => store.scoreAgainstGold(which.get(oid).db, cl, undefined, { names: 'honorific' }));
-      const queue = (label) => ccgOids.reduce((acc, oid) => acc + cl.exec(which.get(oid).db, `MATCH (x:${label}) WHERE x.band = 'review' RETURN count(x) AS n`).rows[0].n, 0);
-      return {
-        e: total(per, 'entities'), r: total(per, 'relations'), docs: per.map((x) => ({ entities: x.entities.total, relations: x.relations.total })),
-        kept: keptDistractors(which), revM: queue('_Mention'), revC: queue('_Claim'),
-      };
-    };
-    const PREV = { ek: 0.85, rk: 0.7 };
-    const NOW = { ek: DEF.entKeep, rk: DEF.relKeep };
-    /** The previous defaults (0.75/0.60), on the same samples. */
-    const PREV_Q = { ek: 0.75, rk: 0.6 };
-    const cmpRows = [
-      ['ids', idsStores, PREV], ['ids', idsStores, NOW], ['labels', stores, PREV], ['labels', stores, NOW], ['labels', stores, PREV_Q],
-    ].map(([what, which, c]) => ({ what, c, ...ccgAt(which, c.ek, c.rk) }));
-    sc(`${'asked'.padEnd(7)} ${'keep'.padEnd(10)} ${'entities'.padEnd(32)} ${'relations'.padEnd(29)} ${'distractors kept'.padEnd(17)} review m, c`);
-    for (const x of cmpRows) {
-      sc(`${x.what.padEnd(7)} ${`${x.c.ek.toFixed(2)}/${x.c.rk.toFixed(2)}`.padEnd(10)} ${fmt2(x.e).padEnd(32)} ${fmt2(x.r).padEnd(29)} ${String(x.kept).padEnd(17)} ${x.revM}, ${x.revC}`);
+      regate(DEV);
     }
-    if (cmpRows[3].kept) fail(`the create-context-graph defaults keep ${cmpRows[3].kept} distractor(s)`);
-    /**
-     * A paired bootstrap over the samples' documents (one per domain) of the difference B - A in micro
-     * F1: 2,000 resamples with replacement, a fixed 32-bit LCG seed, the 2.5th and 97.5th percentiles.
-     */
-    const bootstrap = (A, B) => {
-      let seed = 12345;
-      const rnd = () => { seed = (Math.imul(seed, 1103515245) + 12345) >>> 0; return seed / 4294967296; };
-      const microF1 = (rows) => {
-        const tp = rows.reduce((a, x) => a + x.tp, 0);
-        const fp = rows.reduce((a, x) => a + x.fp, 0);
-        const fn = rows.reduce((a, x) => a + x.fn, 0);
-        return tp ? (2 * tp) / (2 * tp + fp + fn) : 0;
-      };
-      const n = A.docs.length;
-      const d = { entities: [], relations: [] };
-      for (let it = 0; it < 2000; it++) {
-        const idx = Array.from({ length: n }, () => Math.floor(rnd() * n));
-        for (const what of ['entities', 'relations']) d[what].push(microF1(idx.map((i) => B.docs[i][what])) - microF1(idx.map((i) => A.docs[i][what])));
+
+    sc();
+    sc(`### how the model is asked, on the primary documents of ${ABLATION_OIDS.length} ontologies (every fifth: ${ABLATION_OIDS.join(', ')})`);
+    sc('"ontology": what the page asks (pipeline.modelSchema: each kind by its label text with its cue, each link by its phrase between its');
+    sc('endpoints); "ids": each kind by its id with its full description and each link as its bare type, as this example asked before');
+    sc('experiment B. Both on fresh stores at the defaults, by the Cypher gate.');
+    const runAs = async (asked) => {
+      const units = [];
+      for (const oid of ABLATION_OIDS) {
+        const x = newStore(oid);
+        const d = ablationDocs.find((y) => y.ontology === oid);
+        await pipeline.run({ db: x.db, cl, model, modelInfo: MODEL_INFO, ontology: ontologies.get(oid), text: d.text, title: d.name, asked });
+        const g = goldKeys(ontologies.get(oid), d.gold);
+        store.loadGold(x.db, cl, [{ doc: docId(d.text), title: d.name, entities: g.entities, relations: g.relations }]);
+        units.push({ key: oid, db: x.db, o: ontologies.get(oid), docs: [{ ...d, id: docId(d.text), info: goldInfo(ontologies.get(oid), d) }] });
       }
-      const q = (xs, p) => [...xs].sort((a, b) => a - b)[Math.floor(p * (xs.length - 1))];
-      const sgn = (x) => `${x >= 0 ? '+' : ''}${f3(x)}`;
-      return ['entities', 'relations'].map((what) => `${what === 'entities' ? 'entity' : 'relation'} F1 ${sgn(B[what === 'entities' ? 'e' : 'r'].f1 - A[what === 'entities' ? 'e' : 'r'].f1)} ` +
-        `[95% ${sgn(q(d[what], 0.025))}, ${sgn(q(d[what], 0.975))}], ahead in ${f3(d[what].filter((x) => x > 0).length / d[what].length)} of resamples`).join('; ');
+      return units;
     };
-    sc('paired bootstrap over the 27 documents (2,000 resamples, seeded), the difference in micro F1 with its 95% interval:');
-    sc(`  labels at ${NOW.ek.toFixed(2)}/${NOW.rk.toFixed(2)} against ids at ${PREV.ek.toFixed(2)}/${PREV.rk.toFixed(2)} (the change): ${bootstrap(cmpRows[0], cmpRows[3])}`);
-    sc(`  labels against ids, both at ${PREV.ek.toFixed(2)}/${PREV.rk.toFixed(2)} (the schema alone): ${bootstrap(cmpRows[0], cmpRows[2])}`);
-    sc(`  labels at ${NOW.ek.toFixed(2)}/${NOW.rk.toFixed(2)} against labels at ${PREV.ek.toFixed(2)}/${PREV.rk.toFixed(2)} (the cutoffs alone): ${bootstrap(cmpRows[2], cmpRows[3])}`);
-    sc(`  labels at ${NOW.ek.toFixed(2)}/${NOW.rk.toFixed(2)} against labels at ${PREV_Q.ek.toFixed(2)}/${PREV_Q.rk.toFixed(2)}, the previous defaults: ${bootstrap(cmpRows[4], cmpRows[3])}`);
-    for (const x of idsStores.values()) x.db.free();
-    sc('the "labels" schema by entity keep (rows) and relation keep (columns): entity F1, relation F1 (tp/fp), distractors kept');
-    const EK = [0.4, 0.5, 0.6, 0.7, 0.75];
-    const RK = [0.25, 0.3, 0.35, 0.4, 0.5, 0.6];
-    sc(`${'keep'.padEnd(6)} ${RK.map((k) => k.toFixed(2).padEnd(22)).join(' ').trimEnd()}`);
-    for (const e of EK) {
-      sc(`${e.toFixed(2).padEnd(6)} ${RK.map((k) => {
-        const x = ccgAt(stores, e, k);
-        return `${f3(x.e.f1)} ${f3(x.r.f1)} (${x.r.tp}/${x.r.fp}) d${x.kept}`.padEnd(22);
-      }).join(' ').trimEnd()}`);
+    for (const asked of ['ontology', 'ids']) {
+      const units = await runAs(asked);
+      const s = sum(scoreUnits(units));
+      sc(`${asked.padEnd(9)} entities ${fmt2(s.entities).padEnd(32)} relations ${fmt2(s.relations)}`);
+      for (const u of units) u.db.free();
     }
-    restore(SETS.ccg);
     note(`asked-as comparison done (${secs()})`);
-
-    // 1. the relation keep cutoff
-    sc();
-    sc('### relation keep cutoff (rule 5, every link), entities at the defaults: relations P/R/F1 (tp/fp/fn)');
-    sc(`${'keep'.padEnd(6)} ccg`);
-    for (const k of [0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]) {
-      setAll(SETS.ccg, { relKeep: k, relDrop: Math.min(SETS.ccg.D.relDrop, k) });
-      regate(SETS.ccg);
-      sc(`${k.toFixed(2).padEnd(6)} ${fmt2(totals(SETS.ccg).relations)}`);
-    }
-    resetCutoffs(SETS.ccg);
-    note(`relation keep grid done (${secs()})`);
-
-    // 2. the entity keep cutoff
-    sc();
-    sc('### entity keep cutoff (rule 5, every kind), relations at the defaults');
-    sc("create-context-graph's format has no gazetteer: this is the model alone, and the relations move with it (rule 3 joins a");
-    sc('claim to a kept mention first, else to one in review, and a claim joined to one in review waits in review: end-in-review).');
-    sc(`${'keep'.padEnd(6)} ${'ccg entities'.padEnd(34)} ccg relations`);
-    for (const k of [0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.85]) {
-      setAll(SETS.ccg, { entKeep: k, entDrop: Math.min(SETS.ccg.D.entDrop, k) });
-      regate(SETS.ccg);
-      const c = totals(SETS.ccg);
-      sc(`${k.toFixed(2).padEnd(6)} ${fmt2(c.entities).padEnd(34)} ${fmt2(c.relations)}`);
-    }
-    resetCutoffs(SETS.ccg);
-    note(`entity keep grid done (${secs()})`);
-
-    // 3. drop cutoffs: what the drop band would lose (it never reaches review), and what review would hold
-    sc();
-    sc('### drop cutoffs: gold facts lost to the drop band, and the review queue (gold documents only)');
-    sc('A gold relation is lost at drop cutoff d when its best claim that the gate could keep (anchored, legal) scores <= d;');
-    sc("a gold entity when the model's best mention of it (its gold kind) scores <= d. The review queue is counted with");
-    sc('the keep cutoffs at their defaults and every kind and link at drop d.');
-    const losses = (set) => {
-      regate(set, { off: ['band', 'ambiguity'] });
-      const lossRel = [];
-      const lossEnt = [];
-      for (const oid of set.oids) {
-        const db = stores.get(oid).db;
-        const claims = cl.exec(db, "MATCH (c:_Claim) WHERE c.band = 'keep' RETURN c.doc AS doc, c.hn AS hn, c.tn AS tn, c.rel AS rel, c.p AS p").rows;
-        const ms = cl.exec(db, "MATCH (m:_Mention) WHERE m.source = 'model' RETURN m.doc AS doc, m.name AS name, m.label AS label, m.p AS p").rows;
-        const key = (x) => (set.names === 'honorific' ? store.withoutHonorific(x) : x);
-        for (const g of cl.exec(db, "MATCH (g:_Gold {kind: 'relation'}) RETURN g.doc AS doc, g.title AS title, g.src AS src, g.rel AS rel, g.tgt AS tgt ORDER BY title, src, rel, tgt").rows) {
-          const ps = claims.filter((c) => c.doc === g.doc && key(c.hn) === key(g.src) && key(c.tn) === key(g.tgt) && c.rel === g.rel).map((c) => c.p);
-          lossRel.push({ ...g, p: ps.length ? Math.max(...ps) : null });
-        }
-        for (const g of cl.exec(db, "MATCH (g:_Gold {kind: 'entity'}) RETURN g.doc AS doc, g.title AS title, g.src AS name, g.rel AS kind ORDER BY title, name, kind").rows) {
-          const ps = ms.filter((m) => m.doc === g.doc && key(m.name) === key(g.name) && m.label === g.kind).map((m) => m.p);
-          lossEnt.push({ ...g, p: ps.length ? Math.max(...ps) : null });
-        }
-      }
-      return { lossRel, lossEnt };
-    };
-    const found = (xs) => xs.filter((x) => x.p != null);
-    const L = { ccg: losses(SETS.ccg) };
-    sc(`gold relations with such a claim: ccg ${found(L.ccg.lossRel).length} of ${L.ccg.lossRel.length}` +
-      ' (the rest need another sentence, a pronoun resolved, or an end the gate keeps);');
-    sc(`gold entities the model finds with their gold kind: ccg ${found(L.ccg.lossEnt).length} of ${L.ccg.lossEnt.length}`);
-    sc(`${'drop'.padEnd(6)} ccg: relations lost, claims in review; entities lost, mentions in review`);
-    for (const d of [0.1, 0.15, 0.2, 0.25, 0.3, 0.35]) {
-      const set = SETS.ccg;
-      setAll(set, { entKeep: set.D.entKeep, entDrop: d, relKeep: set.D.relKeep, relDrop: d });
-      regate(set);
-      sc(`${d.toFixed(2).padEnd(6)} ${found(L.ccg.lossRel).filter((x) => x.p <= d).length}, ${inGold(set, '_Claim', 'review')}; ` +
-        `${found(L.ccg.lossEnt).filter((x) => x.p <= d).length}, ${inGold(set, '_Mention', 'review')}`);
-    }
-    {
-      const low = found(L.ccg.lossRel).sort((a, b) => a.p - b.p || cmp(a.title, b.title)).slice(0, 3);
-      sc(`lowest-scoring gold relations, ccg: ${low.map((x) => `${x.src} -[${x.rel}]-> ${x.tgt} ${f3(x.p)}`).join('; ')}`);
-      const lowE = found(L.ccg.lossEnt).sort((a, b) => a.p - b.p || cmp(a.name, b.name)).slice(0, 3);
-      sc(`lowest-scoring gold entities (the model alone), ccg: ${lowE.map((x) => `${x.name} (${x.kind}) ${f3(x.p)}`).join('; ')}`);
-    }
-    resetCutoffs(SETS.ccg);
-    note(`drop grid done (${secs()})`);
-
-    // 4. margins
-    sc();
-    sc('### margins: rule 2 (type margin) and rule 6 (relation margin)');
-    sc(`${'type margin'.padEnd(12)} ccg entities; sent to review by it`);
-    for (const m of [0, 0.025, 0.05, 0.1, 0.15]) {
-      regate(SETS.ccg, { typeMargin: m });
-      sc(`${m.toFixed(3).padEnd(12)} ${fmt2(totals(SETS.ccg).entities)}; ${inGold(SETS.ccg, '_Mention', 'type-margin')}`);
-    }
-    sc(`${'rel margin'.padEnd(12)} ccg relations; sent to review as ambiguous`);
-    for (const m of [0, 0.05, 0.15]) {
-      regate(SETS.ccg, { relMargin: m });
-      sc(`${m.toFixed(3).padEnd(12)} ${fmt2(totals(SETS.ccg).relations)}; ${inGold(SETS.ccg, '_Claim', 'ambiguous')}`);
-    }
-
-    // 5. rule 2's POLE preference: the pole margin (create-context-graph's poles; a generic document's kinds have none)
-    sc();
-    sc("### rule 2's POLE preference: the pole margin (create-context-graph's samples; a generic document's kinds have no pole)");
-    sc('When a span\'s best label is a base kind, a domain kind of its pole that scored within the pole margin of it, and above');
-    sc('its own drop cutoff, wins the span ("off": no preference). Columns: the samples\' entities and relations, P/R/F1');
-    sc('(tp/fp/fn); the gold entities kept or in review with their gold kind ("in reach"); the mentions the preference chose');
-    sc('(kept); the review queue (mentions, claims); the distractors kept.');
-    const PM = [null, 0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6, 0.8, 1];
-    const perDomain = new Map();
-    sc(`${'margin'.padEnd(7)} ${'ccg entities'.padEnd(32)} ${'ccg relations'.padEnd(29)} ${'in reach'.padEnd(9)} ${'chosen (kept)'.padEnd(14)} ${'review m, c'.padEnd(12)} distractors kept`);
-    for (const pm of PM) {
-      regate(SETS.ccg, { poleMargin: pm });
-      const t = totals(SETS.ccg);
-      const reach = entityOutcomes().filter((x) => x.why === 'kept' || x.why.startsWith('review')).length;
-      const ch = inGold(SETS.ccg, '_Mention', 'pole-specific');
-      const chKept = SETS.ccg.oids.reduce((acc, oid) => acc + cl.exec(stores.get(oid).db, "MATCH (m:_Mention) WHERE m.rule = 'pole-specific' AND m.band = 'keep' RETURN count(m) AS n").rows[0].n, 0);
-      if (pm === null || pm === D.poleMargin) perDomain.set(pm, scoreSet(SETS.ccg).map((x) => [x.entities.total, x.relations.total]));
-      sc(`${(pm === null ? 'off' : pm.toFixed(2)).padEnd(7)} ${fmt2(t.entities).padEnd(32)} ${fmt2(t.relations).padEnd(29)} ${String(reach).padEnd(9)} ` +
-        `${`${ch} (${chKept})`.padEnd(14)} ${`${inGold(SETS.ccg, '_Mention', 'review')}, ${inGold(SETS.ccg, '_Claim', 'review')}`.padEnd(12)} ${keptDistractors()}`);
-    }
-    sc(`per domain, with the preference off and at the default pole margin ${f3(D.poleMargin)} (entity F1; relation F1), where either moves:`);
-    const moved = ccgOids.map((oid, i) => [oid, perDomain.get(null)[i], perDomain.get(D.poleMargin)[i]])
-      .filter(([, a, b]) => f3(a[0].f1) !== f3(b[0].f1) || f3(a[1].f1) !== f3(b[1].f1));
-    for (const [oid, a, b] of moved) sc(`  ${oid.padEnd(21)} entities ${f3(a[0].f1)} -> ${f3(b[0].f1)} (tp ${a[0].tp} -> ${b[0].tp}, fp ${a[0].fp} -> ${b[0].fp}); relations ${f3(a[1].f1)} -> ${f3(b[1].f1)}`);
-    if (!moved.length) sc('  none');
-    regate(SETS.ccg);
-    note(`pole margin grid done (${secs()})`);
-
-    // 6. true and false facts by score: what a lower relation keep would admit
-    sc();
-    sc('### the facts the relation keep cutoff decides, by score: true (in the gold) and false (gold documents only)');
-    sc('Each fact the gate could keep (anchored, legal; rules 5 and 6 off) once, at its best claim\'s score, in bands of 0.05,');
-    sc('entities at the defaults. Below the keep cutoff a fact waits in review; above it, it is published without one.');
-    const facts = (set) => {
-      regate(set, { off: ['band', 'ambiguity'] });
-      const out = [];
-      for (const oid of set.oids) {
-        const db = stores.get(oid).db;
-        const docs = new Set(set.docs(oid));
-        const key = (x) => (set.names === 'honorific' ? store.withoutHonorific(x) : x);
-        const gold = new Set(cl.exec(db, "MATCH (g:_Gold {kind: 'relation'}) RETURN g.doc AS doc, g.src AS src, g.tgt AS tgt, g.rel AS rel").rows
-          .map((g) => [g.doc, key(g.src), key(g.tgt), g.rel].join(SEP)));
-        const bestBy = new Map();
-        for (const c of cl.exec(db, "MATCH (c:_Claim) WHERE c.band = 'keep' RETURN c.doc AS doc, c.hn AS hn, c.tn AS tn, c.rel AS rel, c.p AS p").rows) {
-          if (!docs.has(c.doc)) continue;
-          const k = [c.doc, key(c.hn), key(c.tn), c.rel].join(SEP);
-          bestBy.set(k, Math.max(bestBy.get(k) ?? 0, c.p));
-        }
-        for (const [k, p] of bestBy) out.push({ p, ok: gold.has(k), rel: k.split(SEP)[3] });
-      }
-      return out;
-    };
-    const F = { ccg: facts(SETS.ccg) };
-    sc(`${'score'.padEnd(12)} ccg true, false`);
-    for (let b = 20; b < 100; b += 5) {
-      const lo = b / 100;
-      const hi = (b + 5) / 100;
-      const cell = (xs) => {
-        const inb = xs.filter((x) => x.p >= lo && x.p < hi);
-        return `${inb.filter((x) => x.ok).length}, ${inb.filter((x) => !x.ok).length}`;
-      };
-      sc(`${`${lo.toFixed(2)}-${hi.toFixed(2)}`.padEnd(12)} ${cell(F.ccg)}`);
-    }
-    const within = (xs, lo, hi) => xs.filter((x) => x.p >= lo && x.p < hi);
-    const band = (xs, lo, hi) => `${within(xs, lo, hi).filter((x) => x.ok).length} true and ${within(xs, lo, hi).filter((x) => !x.ok).length} false`;
-    const PREV_RK = 0.6;
-    sc(`from 0.20 up to the default keep ${f3(SETS.ccg.D.relKeep)} (in review at the defaults): ccg ${band(F.ccg, 0.2, SETS.ccg.D.relKeep)}`);
-    sc(`from the default keep ${f3(SETS.ccg.D.relKeep)} up to ${f3(PREV_RK)}, the previous one (kept now, in review before): ccg ${band(F.ccg, SETS.ccg.D.relKeep, PREV_RK)}`);
-    const wf = F.ccg.filter((x) => x.ok && x.rel === 'WORKS_FOR').map((x) => x.p).sort((a, b) => a - b);
-    sc(`true WORKS_FOR facts on the ccg samples: ${wf.length}, scoring ${wf.map(f3).join(', ')}; below ${f3(SETS.ccg.D.relKeep)} (in review at the default): ` +
-      `${wf.filter((p) => p < SETS.ccg.D.relKeep).length}`);
-    const dp = distractorClaims.map((x) => x.p).sort((a, b) => b - a);
-    sc(`the distractors' claims (above, in their own sentences, any anchoring) score ${dp.map(f3).join(', ')}: ${dp.filter((p) => p >= 0.55).length} at 0.55 or more, ` +
-      `${dp.filter((p) => p >= SETS.ccg.D.relKeep).length} at the default keep ${f3(SETS.ccg.D.relKeep)} or more`);
-    restore(SETS.ccg);
-    sc();
-    sc(`chosen (store.defaultGate, ${M.name}; every ontology): ${cutsLine(SETS.ccg.D)};`);
-    sc(`  type margin ${f3(D.typeMargin)}; relation margin ${f3(D.relMargin)}; pole margin ${f3(D.poleMargin)}`);
-    note(`the defaults' grids done (${secs()})`);
   }
+  for (const x of heldStores.values()) x.db.free();
 }
 
 // ==== graph.cypher ==================================================================================
@@ -2555,8 +2439,8 @@ if (FULL) {
   const parts = [];
   // The Financial Services sample's store (after review.txt, which leaves it as the defaults do) and the fixtures' store.
   for (const key of [FIXTURE_ONTOLOGY, FIX]) parts.push(store.exportCypher(stores.get(key).db, cl));
-  graphText = `// graph.cypher: the typed knowledge graphs of the ${FIXTURE_ONTOLOGY} sample and of the harness's fixtures, which read the\n` +
-    '// same ontology (expected/graph.cypher, harness/run.mjs). Each part runs on its own database.\n' + parts.join('');
+  graphText = `// graph.cypher: the typed knowledge graphs of the ${FIXTURE_ONTOLOGY} documents (its curated ontology) and of the harness's fixtures\n` +
+    `// (create-context-graph's ${FIXTURE_ONTOLOGY}, converted; expected/graph.cypher, harness/run.mjs). Each part runs on its own database.\n` + parts.join('');
 }
 
 // ==== write ========================================================================================

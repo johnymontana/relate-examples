@@ -14,7 +14,7 @@ concurrency:
   group: examples-${{ github.ref }}
   cancel-in-progress: true
 env:
-  RELATE_VERSION: v1.2.0
+  RELATE_VERSION: v1.3.0
   RELATE_TELEMETRY: "off"   # examples run offline; no CLI call phones home from CI
   # Under an agent harness the relate CLI turns agent mode on for piped output (toon, 100-row cap).
   # CI sets none of its variables, so this changes nothing here; it keeps a run started by an agent
@@ -28,8 +28,10 @@ jobs:
   run:
     runs-on: ubuntu-24.04
     # On a cold cache example 01 adds a gliner-rs build (cargo install of wasm-pack and
-    # wasm-bindgen, then the crate), 304 MB of weights and Chromium, before its own run.
-    timeout-minutes: 60
+    # wasm-bindgen, then the crate), 304 MB of weights and Chromium, before its own run. That run
+    # takes over an hour since the curated corpus (ADR-0019), and longer with a cold inference
+    # cache: 240 minutes until it is cut back (ci/README.md).
+    timeout-minutes: 240
     env:
       # In this job a missing optional dependency FAILS instead of printing SKIP and passing.
       EXAMPLES_REQUIRE: wasm,gliner,browser   # 01's keys; 02's and 03's (wasm, browser) are among them
@@ -148,6 +150,17 @@ jobs:
         with:
           path: .cache/gliner
           key: ${{ steps.gliner.outputs.cache-primary-key }}
+      # Example 01's harness answers (D24): one file per model call, named by the call's request, so an
+      # older cache answers only what it holds and the rest is asked; run.mjs asks every 33rd cached answer
+      # again and fails on any difference. Restored from the newest earlier run, saved after this one.
+      - name: Restore example 01's inference cache
+        id: ex01-infer
+        if: steps.plan.outputs.ex01 == 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/ex01-infer
+          key: ex01-infer-${{ github.sha }}
+          restore-keys: ex01-infer-
 
       # 01's own package-lock.json: @relate/relate-wasm (the Relate WASM bundle, its sha512
       # integrity pinned there), NVL 2.0.0, js-yaml, esbuild, playwright 1.63.0; --omit=peer
@@ -232,3 +245,9 @@ jobs:
             echo "| $name | $result | $((SECONDS - start)) |" >> "$GITHUB_STEP_SUMMARY"
           done
           if (( ${#failed[@]} > 0 )); then echo "failed: ${failed[*]}"; exit 1; fi
+      - name: Save example 01's inference cache
+        if: always() && steps.plan.outputs.ex01 == 'true' && steps.ex01-infer.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        with:
+          path: .cache/ex01-infer
+          key: ${{ steps.ex01-infer.outputs.cache-primary-key }}

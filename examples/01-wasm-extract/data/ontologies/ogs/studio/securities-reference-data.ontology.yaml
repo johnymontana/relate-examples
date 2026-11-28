@@ -1,0 +1,1529 @@
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: '1'
+id: securities-reference-data
+name: Securities Reference Data and Look-through Exposure
+description: 'A pragmatic reading of the FIBO Securities (SEC) domain for security master and exposure analysis: securities and the legal entities that issue them, issuer groups, market identifiers under several schemes, exchange listings and tickers over time, depositary receipts and convertibles that link one security to another, offerings and their underwriters, and funds that hold securities directly and through other funds'' units. Answers identifier resolution and reconciliation, point-in-time ticker lookup, stale listings, issuer-group capital structure, every route to an issuer''s risk, look-through exposure and concentration, and affiliated underwriting. Adapted from FIBO (Financial Industry Business Ontology), Securities (SEC) domain, https://github.com/edmcouncil/fibo, Copyright (c) 2013-2026 EDM Council, Inc. (also EDM Association dba EDM Council, Inc.) and Copyright (c) 2013-2025 Object Management Group, Inc., used under the MIT License (https://opensource.org/licenses/MIT). A simplification for demonstration, not FIBO itself, and not endorsed by the EDM Council.'
+nodes:
+  LegalEntity:
+    label: LegalEntity
+    properties:
+      entityId:
+        type: STRING
+        key: true
+        description: Identifier of the legal entity, unique within the dataset and stable across loads. Distinct from the LEI, which not every entity has. e.g. `LE-0500`.
+      name:
+        type: STRING
+        must_exist: true
+        description: Registered legal name of the entity, including its legal-form suffix (Inc., plc, AG, K.K., B.V.). e.g. `Sorrel Bay Utilities Technologies Inc.`.
+      lei:
+        type: STRING
+        description: 'ISO 17442 Legal Entity Identifier: 18 alphanumeric characters and two check digits. Empty when the entity has no LEI. e.g. `UBJU0049CG05K8Z4S489`.'
+        pattern: ^[A-Z0-9]{18}[0-9]{2}$
+      countryCode:
+        type: STRING
+        description: Country of incorporation (for a sovereign issuer, the sovereign itself), as an ISO 3166-1 alpha-2 code. e.g. `DE`.
+        pattern: ^[A-Z]{2}$
+      sector:
+        type: STRING
+        description: 'Principal business activity of the entity, as a sector name from the industry classification the user applies (FIBO recognises GICS and ICB classifiers); Government for sovereign and agency issuers. An open set: no fixed list. e.g. `Utilities`.'
+    extensions:
+      display:
+        x: 0
+        'y': 0
+        colour: '#2563eb'
+      custom:
+        relate-examples:
+          ask: a company or bank that issues securities, acts as depositary, underwrites offerings or manages funds, named by its registered name with its legal-form suffix, such as Kairo Denki Finance B.V. or Northgate Capital Management LLC
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: issuer-group-capital-structure
+            question: Issuer group capital structure
+            description: 'Climbs from any entity to its group''s ultimate parent, then lists every outstanding security issued anywhere in the group — by the parent, financing subsidiaries and their subsidiaries — ranked by claim in liquidation: senior secured, senior unsecured, subordinated and junior subordinated debt, then preferred and common shares.'
+            cypher: |-
+              MATCH (e:LegalEntity {entityId: $entityId})-[:DIRECTLY_CONSOLIDATED_BY*0..8]->(top:LegalEntity)
+              WHERE NOT (top)-[:DIRECTLY_CONSOLIDATED_BY]->()
+              MATCH (top)<-[:DIRECTLY_CONSOLIDATED_BY*0..8]-(member:LegalEntity)<-[:ISSUED_BY]-(s:Security)
+              WHERE s.maturityDate IS NULL OR s.maturityDate > datetime($asOf)
+              RETURN top.name AS ultimateParent, member.name AS issuer, s.securityId AS securityId, s.name AS security,
+                     s.securityType AS type, s.seniority AS seniority, s.currency AS currency,
+                     s.faceAmountOutstanding AS faceAmountOutstanding, date(s.maturityDate) AS maturity
+              ORDER BY CASE s.seniority
+                         WHEN 'senior secured' THEN 1 WHEN 'senior unsecured' THEN 2
+                         WHEN 'subordinated' THEN 3 WHEN 'junior subordinated' THEN 4
+                         ELSE CASE s.securityType WHEN 'preferred share' THEN 5 ELSE 6 END
+                       END, maturity, securityId
+            parameters:
+              - name: entityId
+                type: STRING
+                description: 'Any entity in the group: the parent, a subsidiary or a financing vehicle.'
+                example: LE-0483
+              - name: asOf
+                type: STRING
+                description: Date at which a security counts as outstanding (not yet matured), as an ISO string 'YYYY-MM-DD'.
+                example: '2026-10-30'
+            category: query
+            teaches: 'Both walks are bounded at eight levels of DIRECTLY_CONSOLIDATED_BY, deeper than most corporate groups. Face amounts are in each security''s own currency and are not summed across currencies. Depositary receipts on the group''s shares are issued by the depositary, not the group: use Routes to an issuer group to include them.'
+            returns: 'One row per outstanding security: ultimateParent, issuer, securityId, security, type, seniority, currency, faceAmountOutstanding (debt, in units of its currency), maturity; ranked by seniority, then maturity.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - issuer
+              - capital structure
+              - seniority
+              - corporate group
+              - debt
+            upstream:
+              file: QUERIES.md
+              heading: Issuer group capital structure
+              sample: 'Bundled sample data only: $entityId = ''LE-0480'' (Halvorsen Capital LLC) and $asOf = ''2026-10-30'' return 7 rows for Halvorsen Industrie AG: 1 senior secured, 2 senior unsecured, 1 subordinated and 1 junior subordinated note, then the preferred and the ordinary shares, issued by three group entities.'
+          - type: canonicalQuery
+            name: routes-to-an-issuer-group
+            question: Routes to an issuer group
+            description: 'Every security that carries economic exposure to an issuer group: the securities the group''s entities issued; the depositary receipts that represent the group''s shares, issued by a depositary bank outside the group; and convertible or exchangeable securities issued outside the group that convert into the group''s securities.'
+            cypher: |-
+              MATCH (e:LegalEntity {entityId: $entityId})-[:DIRECTLY_CONSOLIDATED_BY*0..8]->(top:LegalEntity)
+              WHERE NOT (top)-[:DIRECTLY_CONSOLIDATED_BY]->()
+              MATCH (top)<-[:DIRECTLY_CONSOLIDATED_BY*0..8]-(:LegalEntity)<-[:ISSUED_BY]-(gs:Security)
+              WITH top, collect(gs) AS groupSecs
+              UNWIND groupSecs AS gs
+              CALL (gs, groupSecs) {
+                RETURN gs AS s, 'issued by group' AS route, null AS via
+                UNION
+                MATCH (dr:Security)-[:REPRESENTS]->(gs)
+                RETURN dr AS s, 'depositary receipt' AS route, gs.name AS via
+                UNION
+                MATCH (cv:Security)-[:CONVERTIBLE_INTO]->(gs)
+                WHERE NOT cv IN groupSecs
+                RETURN cv AS s, 'convertible from outside the group' AS route, gs.name AS via
+              }
+              MATCH (s)-[:ISSUED_BY]->(issuer:LegalEntity)
+              RETURN top.name AS ultimateParent, route, s.securityId AS securityId, s.name AS security,
+                     s.securityType AS type, issuer.name AS issuer, via
+              ORDER BY route, securityId
+            parameters:
+              - name: entityId
+                type: STRING
+                description: Any entity in the group.
+                example: LE-0482
+            category: query
+            teaches: 'This is the instrument universe to screen when the group is restricted, sanctioned or under credit watch: an issuer-name screen misses the second and third routes, whose issuer is someone else. Matured securities are included; filter on maturityDate if only live ones matter. Both walks are bounded at eight levels.'
+            returns: 'One row per security and route: ultimateParent, route (''issued by group'', ''depositary receipt'' or ''convertible from outside the group''), securityId, security, type, issuer, via (the group security a receipt or convertible links to), ordered by route.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - issuer
+              - exposure
+              - depositary receipt
+              - convertible
+              - sanctions
+            upstream:
+              file: QUERIES.md
+              heading: Routes to an issuer group
+              sample: 'Bundled sample data only: $entityId = ''LE-0482'' (Kairo Denki Holdings K.K.) returns 5 rows: 3 issued by the group (ordinary shares, a Kairo Denki Finance B.V. note, a convertible bond), the depositary receipt issued by Harrowgate Depositary Trust Company, and the Sakuragi Capital exchangeable bond.'
+          - type: canonicalQuery
+            name: node-key-constraints
+            question: Node-key constraints
+            cypher: |-
+              CREATE CONSTRAINT entityId_LegalEntity_key IF NOT EXISTS FOR (n:LegalEntity) REQUIRE (n.entityId) IS NODE KEY;
+              CREATE CONSTRAINT securityId_Security_key IF NOT EXISTS FOR (n:Security) REQUIRE (n.securityId) IS NODE KEY;
+              CREATE CONSTRAINT identifierId_Identifier_key IF NOT EXISTS FOR (n:Identifier) REQUIRE (n.identifierId) IS NODE KEY;
+              CREATE CONSTRAINT mic_Exchange_key IF NOT EXISTS FOR (n:Exchange) REQUIRE (n.mic) IS NODE KEY;
+              CREATE CONSTRAINT listingId_Listing_key IF NOT EXISTS FOR (n:Listing) REQUIRE (n.listingId) IS NODE KEY;
+              CREATE CONSTRAINT fundId_Fund_key IF NOT EXISTS FOR (n:Fund) REQUIRE (n.fundId) IS NODE KEY;
+              CREATE CONSTRAINT offeringId_Offering_key IF NOT EXISTS FOR (n:Offering) REQUIRE (n.offeringId) IS NODE KEY;
+            parameters: []
+            category: setup
+            requires:
+              - write
+            upstream:
+              file: QUERIES.md
+              heading: Node-key constraints
+              sample: ''
+    description: 'An organisation that plays a role in the securities lifecycle: it issues securities (a company, a financing subsidiary, a fund vehicle, a sovereign or agency issuer), underwrites offerings, issues depositary receipts as depositary, or manages funds. Roles are relationships, not labels, so one entity can be issuer, underwriter and manager at once. Corporate groups are trees of these nodes joined by DIRECTLY_CONSOLIDATED_BY; the top of the tree is the ultimate parent against which issuer exposure is aggregated.'
+    aliases:
+      - Issuer
+      - Party
+      - Organisation
+      - Company
+  Security:
+    label: Security
+    properties:
+      securityId:
+        type: STRING
+        key: true
+        description: Internal identifier of the security, unique within the dataset and stable across loads. Market identifiers (ISIN, CUSIP, SEDOL, FIGI) are separate Identifier nodes, because they can be missing, change or collide. e.g. `SEC-00191`.
+        pattern: ^SEC-[0-9]{5}$
+      name:
+        type: STRING
+        must_exist: true
+        description: 'Descriptive name of the security: issuer short name plus instrument description, in the spirit of an ISO 18774 financial instrument short name. e.g. `Cobalt Communications Capital LLC 1.500% Sr Notes 2019`.'
+      securityType:
+        type: STRING
+        must_exist: true
+        description: 'Kind of security, using FIBO class labels: common share, preferred share, depositary receipt (evidence of deposited shares of another issuer), corporate, government or municipal bond, convertible bond (also exchangeable bonds that convert into another issuer''s shares), asset-backed or mortgage-backed security, money market instrument (traded short-term debt), or fund unit (a share of a pooled fund). e.g. `corporate bond`.'
+        one_of:
+          - common share
+          - preferred share
+          - depositary receipt
+          - corporate bond
+          - government bond
+          - municipal bond
+          - convertible bond
+          - asset-backed security
+          - mortgage-backed security
+          - money market instrument
+          - fund unit
+      cfiCode:
+        type: STRING
+        description: 'ISO 10962 Classification of Financial Instruments (CFI) code: six capital letters, category and group first (ES common shares, EP preferred, ED depositary receipts, DB bonds, DC convertibles, C* collective investment vehicles). e.g. `DBFUFR`.'
+        aliases:
+          - CFI code
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesClassification/FinancialInstrumentClassificationCode
+        pattern: ^[A-Z]{6}$
+      currency:
+        type: STRING
+        description: 'Currency of denomination: the currency of the face amount and coupon for debt, of the nominal value for shares. ISO 4217 alphabetic code. e.g. `USD`.'
+        pattern: ^[A-Z]{3}$
+      issueDate:
+        type: ZONED DATETIME
+        description: Date the security was first issued (for a share, its first listing or incorporation of the class). Only the calendar date carries meaning; the time is always midnight UTC. e.g. `2016-01-10T00:00:00Z`.
+      maturityDate:
+        type: ZONED DATETIME
+        description: Date the principal falls due for repayment. Empty for shares, fund units and perpetual instruments. A security whose maturity date has passed is expected to be delisted. Only the calendar date carries meaning; the time is always midnight UTC. e.g. `2019-01-10T00:00:00Z`.
+      couponRate:
+        type: FLOAT
+        description: Interest rate the issuer promises to pay, as an annual percentage of the face value (5.25 means 5.25% a year). Debt only; empty for shares and fund units. e.g. `1.500`.
+        aliases:
+          - Coupon
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Debt/Bonds/BondCoupon
+      seniority:
+        type: STRING
+        description: 'Rank of a debt security''s claim in liquidation, highest first: senior secured (backed by collateral), senior unsecured, subordinated (paid after senior debt), junior subordinated (after other subordinated debt). Debt only; empty for shares and fund units. e.g. `senior unsecured`.'
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Debt/DebtInstruments/isSubordinatedTo
+        one_of:
+          - senior secured
+          - senior unsecured
+          - subordinated
+          - junior subordinated
+      faceAmountOutstanding:
+        type: FLOAT
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              parse: MONEY
+              ask: the principal amount of a bond or note issue outstanding, a sum with its currency such as €1.25bn or $500m, never a coupon, a year, a percentage or a number of shares per bond
+        description: Principal amount of the issue outstanding, in units of the security's currency (not thousands or millions). Debt only; empty for shares and fund units. e.g. `300000000`.
+      securityForm:
+        type: STRING
+        description: 'How ownership of the security is evidenced, using FIBO''s security forms: registered (owner recorded on the issuer''s or registrar''s books), bearer (payable to whoever holds the certificate), book entry (recorded electronically by a central depository), bearer and registered, or miscellaneous. e.g. `book entry form`.'
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesIssuance/SecurityForm
+        one_of:
+          - registered form
+          - bearer form
+          - book entry form
+          - bearer and registered form
+          - miscellaneous form
+      restriction:
+        type: STRING
+        description: 'US securities-law exemption that restricts who may hold or resell the security, using FIBO''s US securities restrictions: Rule 144A (resale to qualified institutional buyers only), Regulation S (offered outside the US), Regulation D (private placement), or none when freely transferable. e.g. `none`.'
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesRestrictions/hasRestriction
+        one_of:
+          - none
+          - Rule 144A
+          - Regulation S
+          - Regulation D
+    extensions:
+      display:
+        x: 130
+        'y': 0
+        colour: '#d97706'
+      custom:
+        relate-examples:
+          ask: a share, bond, depositary receipt or fund unit, named by its record id, such as SEC-00518, or by its security master description, such as Kairo Denki Holdings Ordinary Shares or Ostrander Energy 1.625% Sr Notes 2030
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: listings-of-a-security
+            question: Listings of a security
+            description: 'Every exchange listing of one security, past and present: exchange, ticker, whether it is the home (primary) market, and the listing period.'
+            cypher: |-
+              MATCH (s:Security {securityId: $securityId})<-[:LISTS]-(l:Listing)-[:LISTED_ON]->(x:Exchange)
+              RETURN x.mic AS mic, x.name AS exchange, l.ticker AS ticker, l.isPrimary AS isPrimary,
+                     date(l.listingDate) AS listed, date(l.delistingDate) AS delisted,
+                     CASE WHEN l.delistingDate IS NULL THEN 'active' ELSE 'delisted' END AS status
+              ORDER BY isPrimary DESC, listed
+            parameters:
+              - name: securityId
+                type: STRING
+                description: The security's identifier, e.g. one returned by Resolve a security by identifier.
+                example: SEC-00559
+            category: query
+            teaches: A security normally has at most one active primary listing; more than one, or none while secondary listings are active, is worth raising with whoever maintains the security master. Bond listings often carry no ticker.
+            returns: 'One row per listing: mic, exchange, ticker, isPrimary, listed, delisted, status (''active'' or ''delisted''), primary listing first.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - listing
+              - exchange
+              - ticker
+              - mic
+              - home exchange
+            upstream:
+              file: QUERIES.md
+              heading: Listings of a security
+              sample: 'Bundled sample data only: $securityId = ''SEC-00105'' (Tsukimi Foods Ordinary Shares) returns 2 rows: XTKS ticker 5592, primary, active; XLON ticker TF, secondary, active.'
+          - type: canonicalQuery
+            name: isin-inconsistent-with-national-number
+            question: ISIN inconsistent with national number
+            description: 'Checks each ISIN against the national number carried by the same security. An ISIN embeds, in characters 3 to 11, the national number of the country in its prefix, zero-padded on the left to nine characters: a CUSIP for US and CA ISINs, a SEDOL for GB and IE, a Valoren for CH and LI, and the Common Code for international XS ISINs. A mismatch means one of the two identifiers is wrong.'
+            cypher: |-
+              MATCH (s:Security)-[:IDENTIFIED_BY]->(isin:Identifier {scheme: 'ISIN'})
+              WITH s, isin, substring(isin.value, 2, 9) AS embedded,
+                   CASE left(isin.value, 2)
+                     WHEN 'US' THEN 'CUSIP' WHEN 'CA' THEN 'CUSIP'
+                     WHEN 'GB' THEN 'SEDOL' WHEN 'IE' THEN 'SEDOL'
+                     WHEN 'CH' THEN 'Valoren' WHEN 'LI' THEN 'Valoren'
+                     WHEN 'XS' THEN 'Common Code'
+                   END AS nationalScheme
+              WHERE nationalScheme IS NOT NULL
+              MATCH (s)-[:IDENTIFIED_BY]->(n:Identifier {scheme: nationalScheme})
+              WHERE right('000000000' + n.value, 9) <> embedded
+              RETURN s.securityId AS securityId, s.name AS security, isin.value AS isin, embedded AS nsinInIsin,
+                     n.scheme AS nationalScheme, n.value AS nationalNumber
+              ORDER BY securityId, nationalNumber
+            parameters: []
+            category: query
+            teaches: 'Only the national scheme that matches the ISIN''s prefix is compared: a Regulation S bond''s CINS, or a share''s SEDOL on a US ISIN, is ignored. ISINs from other countries (DE, FR, JP, NL …) embed national numbers this reference ontology does not name, so they are not checked; add a CASE branch for each scheme the user''s data carries (WKN for DE). A security carrying two national numbers of the same scheme is reported once for the one its ISIN does not embed.'
+            returns: 'One row per security and disagreeing national number: securityId, security, isin, nsinInIsin (characters 3 to 11 of the ISIN), nationalScheme, nationalNumber.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - isin
+              - cusip
+              - sedol
+              - data quality
+              - reconciliation
+            upstream:
+              file: QUERIES.md
+              heading: ISIN inconsistent with national number
+              sample: 'Bundled sample data only: returns 3 rows — SEC-00054 Hollis & Crane Ordinary Shares (ISIN embeds a different SEDOL), SEC-00552 Varnell Aerospace senior notes (ISIN embeds a CUSIP with two digits transposed), and SEC-00549 Ostrander Energy senior notes (it also carries the shared CUSIP 240345520, which its ISIN does not embed).'
+    description: 'A tradable financial instrument issued by one legal entity: a share, a preferred share, a depositary receipt, a bond, a convertible or a fund unit. FIBO''s security class hierarchy is carried as the securityType property. Its identifiers, exchange listings, the offerings that distributed it, the funds that hold it, and any security it converts into or represents are all reached through relationships.'
+    aliases:
+      - Financial instrument
+      - Instrument
+      - Issue
+    reference: https://spec.edmcouncil.org/fibo/ontology/FBC/FinancialInstruments/FinancialInstruments/Security
+  Identifier:
+    label: Identifier
+    properties:
+      identifierId:
+        type: STRING
+        key: true
+        description: Scheme and value joined by a colon, so that the same value under two schemes is two identifiers. e.g. `ISIN:DE2997156257`.
+      scheme:
+        type: STRING
+        must_exist: true
+        description: 'Identification scheme the value belongs to, spelled ISIN, CUSIP, CINS, SEDOL, Valoren, Common Code or FIGI; other schemes (WKN, RIC, Telekurs) keep their usual names. An open set: no fixed list. e.g. `ISIN`.'
+      value:
+        type: STRING
+        must_exist: true
+        description: 'The identifier exactly as issued by its scheme, upper case, with no spaces or separators: 12 characters for ISIN and FIGI, 9 for CUSIP, CINS and Common Code, 7 for SEDOL. e.g. `DE2902459721`.'
+    extensions:
+      display:
+        x: 130
+        'y': -110
+        colour: '#7c3aed'
+      custom:
+        relate-examples:
+          ask: a market identifier, written as a scheme name followed by its code, such as ISIN US2403455205, CUSIP 240345520 or SEDOL HBX4BB7; the identifier, not the security it identifies
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: resolve-a-security-by-identifier
+            question: Resolve a security by identifier
+            description: Finds the security carrying a market identifier (ISIN, CUSIP, SEDOL, Valoren, Common Code, FIGI or any other scheme), with its issuer, the issuer's ultimate parent, every other identifier the security carries and its active exchange listings.
+            cypher: |-
+              MATCH (i:Identifier {scheme: $scheme, value: $value})<-[:IDENTIFIED_BY]-(s:Security)-[:ISSUED_BY]->(issuer:LegalEntity)
+              OPTIONAL MATCH (issuer)-[:DIRECTLY_CONSOLIDATED_BY*1..8]->(top:LegalEntity)
+                WHERE NOT (top)-[:DIRECTLY_CONSOLIDATED_BY]->()
+              RETURN s.securityId AS securityId, s.name AS security, s.securityType AS type, s.currency AS currency,
+                     issuer.name AS issuer, coalesce(top.name, issuer.name) AS ultimateParent,
+                     COLLECT { MATCH (s)-[:IDENTIFIED_BY]->(o:Identifier) RETURN o.scheme + ' ' + o.value ORDER BY o.scheme, o.value } AS identifiers,
+                     COLLECT { MATCH (x:Exchange)<-[:LISTED_ON]-(l:Listing)-[:LISTS]->(s) WHERE l.delistingDate IS NULL
+                               RETURN x.mic + ':' + coalesce(l.ticker, '') ORDER BY x.mic } AS activeListings
+              ORDER BY securityId
+            parameters:
+              - name: scheme
+                type: STRING
+                description: Identification scheme, spelled as in Identifier.scheme, e.g. 'ISIN' or 'CUSIP'.
+                example: SEDOL
+              - name: value
+                type: STRING
+                description: The identifier exactly as issued, upper case, no separators.
+                example: HBX4BB7
+            category: query
+            teaches: The entry point for any question that starts from an identifier in a trade, a holdings file or a vendor feed. Matching on scheme and value scans Identifier nodes; on a large database match on identifierId (scheme, a colon, the value), which the node key indexes. The ultimate-parent walk is bounded at eight levels of DIRECTLY_CONSOLIDATED_BY.
+            returns: 'One row per security carrying the identifier: securityId, security, type, currency, issuer, ultimateParent, identifiers (scheme and value), activeListings (MIC and ticker). More than one row means the identifier is shared by several securities — a data-quality defect.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - identifier
+              - isin
+              - cusip
+              - sedol
+              - security master
+              - lookup
+            upstream:
+              file: QUERIES.md
+              heading: Resolve a security by identifier
+              sample: 'Bundled sample data only: $scheme = ''ISIN'', $value = ''CH0713286208'' returns 1 row: SEC-00426, Ingleby Communications Ordinary Shares, with 3 identifiers (FIGI, ISIN, Valoren 71328620) and 2 active listings, XLON:IC and XSWX:IC.'
+          - type: canonicalQuery
+            name: identifiers-shared-by-several-securities
+            question: Identifiers shared by several securities
+            description: 'Finds market identifiers attached to more than one security. An identifier is expected to identify exactly one security, so each hit is a security-master defect: a vendor mapping error, a CUSIP keyed against the wrong tranche, a local share''s SEDOL copied onto its depositary receipt.'
+            cypher: |-
+              MATCH (i:Identifier)<-[:IDENTIFIED_BY]-(s:Security)
+              WITH i, collect(s) AS secs
+              WHERE size(secs) > 1
+              UNWIND secs AS s
+              MATCH (s)-[:ISSUED_BY]->(e:LegalEntity)
+              WITH i, s, e ORDER BY s.securityId
+              RETURN i.scheme AS scheme, i.value AS value,
+                     collect(s.securityId + ' ' + s.name + ' (' + s.securityType + ', ' + e.name + ')') AS securities
+              ORDER BY scheme, value
+            parameters: []
+            category: query
+            teaches: The same value under two different schemes is two identifiers and is not reported. Fix the mapping at its source rather than in the graph, then re-import.
+            returns: 'One row per shared identifier: scheme, value, and securities (securityId, name, type and issuer of each security carrying it), ordered by scheme and value.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - identifier
+              - data quality
+              - reconciliation
+              - security master
+            upstream:
+              file: QUERIES.md
+              heading: Identifiers shared by several securities
+              sample: 'Bundled sample data only: returns 2 rows — CUSIP 240345520 on two Ostrander Energy senior notes (SEC-00548, SEC-00549) and SEDOL HBX4BB7 on Wexcombe Breweries Ordinary Shares (SEC-00055) and its depositary receipt (SEC-00528).'
+    description: 'A market identifier for a security under one identification scheme: an ISIN (ISO 6166), a national number assigned by a national numbering agency (CUSIP or CINS in North America, SEDOL in the UK and Ireland, Valoren in Switzerland), a Euroclear/Clearstream Common Code, or a FIGI. One node per distinct scheme and value, so two securities sharing an identifier meet at one node. An ISIN embeds the national number (or Common Code for XS ISINs) in characters 3 to 11.'
+    aliases:
+      - Security identifier
+      - Instrument identifier
+      - Security ID
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesIdentification/SecurityIdentifier
+  Exchange:
+    label: Exchange
+    properties:
+      mic:
+        type: STRING
+        key: true
+        description: 'ISO 10383 Market Identifier Code (MIC) of the venue: four characters, letters and digits. e.g. `XTKS`.'
+        aliases:
+          - Market Identifier Code
+        pattern: ^[A-Z0-9]{4}$
+      name:
+        type: STRING
+        description: Name of the exchange. e.g. `Toronto Stock Exchange`.
+      countryCode:
+        type: STRING
+        description: Country where the exchange operates, as an ISO 3166-1 alpha-2 code. e.g. `US`.
+        pattern: ^[A-Z]{2}$
+    extensions:
+      display:
+        x: 360
+        'y': -55
+        colour: '#334155'
+      custom:
+        relate-examples:
+          ask: a stock exchange or trading venue named by its name, such as London Stock Exchange or New York Stock Exchange, or by its Market Identifier Code, such as XNYS; the market, not a listing on it
+          proper: true
+        tools:
+          - type: canonicalQuery
+            name: ticker-at-a-date
+            question: Ticker at a date
+            description: Resolves a ticker symbol on one exchange to the security it identified on a given date. Tickers are unique within an exchange at any one time but reassignable, so the same ticker can name different securities in different periods.
+            cypher: |-
+              MATCH (x:Exchange {mic: $mic})<-[:LISTED_ON]-(l:Listing {ticker: $ticker})-[:LISTS]->(s:Security)-[:ISSUED_BY]->(e:LegalEntity)
+              WHERE l.listingDate <= datetime($asOf)
+                AND (l.delistingDate IS NULL OR l.delistingDate > datetime($asOf))
+              RETURN s.securityId AS securityId, s.name AS security, e.name AS issuer,
+                     date(l.listingDate) AS listed, date(l.delistingDate) AS delisted,
+                     COLLECT { MATCH (x)<-[:LISTED_ON]-(o:Listing {ticker: $ticker})-[:LISTS]->(os:Security) WHERE o <> l
+                               RETURN os.name + ' (' + toString(date(o.listingDate)) + ' to ' +
+                                      coalesce(toString(date(o.delistingDate)), 'present') + ')' ORDER BY o.listingDate } AS otherHolders
+            parameters:
+              - name: mic
+                type: STRING
+                description: ISO 10383 Market Identifier Code of the exchange, e.g. 'XNYS'.
+                example: XNYS
+              - name: ticker
+                type: STRING
+                description: Ticker symbol as used on that exchange.
+                example: KVR
+              - name: asOf
+                type: STRING
+                description: Date to resolve at, as an ISO string 'YYYY-MM-DD'.
+                example: '2017-05-03'
+            category: query
+            teaches: A listing is active from listingDate up to, but not including, delistingDate. Use the trade date or position date of the record being resolved, never today's date, when reconciling historical data. An empty result means no listing used the ticker on that date; otherHolders on a non-empty result shows the ticker has been reassigned.
+            returns: 'One row per listing active on the date (normally one): securityId, security, issuer, listed, delisted, and otherHolders — every other security that has held the ticker on this exchange, with its listing period.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - ticker
+              - listing
+              - point in time
+              - exchange
+              - reconciliation
+            upstream:
+              file: QUERIES.md
+              heading: Ticker at a date
+              sample: 'Bundled sample data only: $mic = ''XNYS'', $ticker = ''KVR'', $asOf = ''2017-05-01'' returns 1 row: SEC-00543, Kestrel Vale Resources Common Stock (listed 2008-04-14, delisted 2019-06-28), with Korvara Robotics Common Stock as the other holder. With $asOf = ''2023-01-01'' it returns Korvara Robotics instead.'
+          - type: canonicalQuery
+            name: active-listings-of-matured-securities
+            question: Active listings of matured securities
+            description: Finds listings with no delisting date whose security matured on or before a given date. A matured bond has been repaid and should have been delisted; an active listing for it is a stale record that can misprice holdings or route orders to an instrument that no longer exists.
+            cypher: |-
+              MATCH (x:Exchange)<-[:LISTED_ON]-(l:Listing)-[:LISTS]->(s:Security)
+              WHERE l.delistingDate IS NULL
+                AND s.maturityDate IS NOT NULL
+                AND s.maturityDate <= datetime($asOf)
+              RETURN s.securityId AS securityId, s.name AS security, date(s.maturityDate) AS matured,
+                     x.mic AS mic, l.listingId AS listingId
+              ORDER BY matured, securityId
+            parameters:
+              - name: asOf
+                type: STRING
+                description: Date to test against, as an ISO string 'YYYY-MM-DD'. Start at the date of the data snapshot being checked.
+                example: '2026-10-30'
+            category: query
+            teaches: 'Securities with no maturity date (shares, fund units, perpetuals) are never reported. Allow a few days'' grace after maturity before treating a hit as a defect: exchanges delist on their own timetable.'
+            returns: 'One row per stale listing: securityId, security, matured (the maturity date), mic, listingId, ordered by maturity.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - listing
+              - maturity
+              - data quality
+              - stale data
+              - bonds
+            upstream:
+              file: QUERIES.md
+              heading: Active listings of matured securities
+              sample: 'Bundled sample data only: $asOf = ''2026-10-30'' returns 2 rows — Tessaly Water senior notes matured 2024-07-15 (XLON) and Rostova Shipping Finance senior notes matured 2025-03-03 (XLUX).'
+    description: A regulated market or other trading venue that lists securities, identified by its ISO 10383 Market Identifier Code.
+    aliases:
+      - Trading venue
+      - Stock exchange
+      - Market
+    reference: https://spec.edmcouncil.org/fibo/ontology/FBC/FunctionalEntities/Markets/Exchange
+  Listing:
+    label: Listing
+    properties:
+      listingId:
+        type: STRING
+        key: true
+        description: Identifier of the listing, unique within the dataset and stable across loads. e.g. `LST-00146`.
+        pattern: ^LST-[0-9]{5}$
+      ticker:
+        type: STRING
+        description: 'Ticker symbol on this exchange. Unique within the exchange at any one time but reassignable: after a delisting the exchange may give the same ticker to a different security. Empty where the exchange assigns none (many bond listings). e.g. `MM`.'
+        aliases:
+          - Ticker symbol
+          - Trading symbol
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesIdentification/TickerSymbol
+      listingDate:
+        type: ZONED DATETIME
+        description: Date the security was admitted to trading on this exchange. Only the calendar date carries meaning; the time is always midnight UTC. e.g. `2003-10-03T00:00:00Z`.
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesListings/hasListingDate
+      delistingDate:
+        type: ZONED DATETIME
+        description: Date the exchange delisted the security; empty while it is still listed. The listing is active on dates from listingDate up to, but not including, delistingDate. Only the calendar date carries meaning; the time is always midnight UTC. e.g. `2025-03-01T00:00:00Z`.
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesListings/hasDelistingDate
+      isPrimary:
+        type: BOOLEAN
+        description: True when this exchange is the security's home exchange, its primary market (typically, but not always, in the issuer's country); false for a secondary listing. e.g. `false`.
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesListings/hasHomeExchange
+    extensions:
+      display:
+        x: 245
+        'y': -55
+        colour: '#0891b2'
+      custom:
+        relate-examples:
+          ask: one exchange's listing record for a security, named by its listing id, such as LST-00384; the record of a security on one exchange, not the exchange or the security
+          proper: true
+          propose: true
+    description: 'One exchange''s catalogue entry for a security: the terms on which that exchange makes the security available, including the ticker symbol and the period it was listed. A security may have many listings, past and present; a delisted listing is kept with its delisting date, so tickers can be resolved as of any date.'
+    aliases:
+      - Exchange listing
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesListings/Listing
+  Fund:
+    label: Fund
+    properties:
+      fundId:
+        type: STRING
+        key: true
+        description: Identifier of the fund, unique within the dataset and stable across loads. e.g. `FND-018`.
+        pattern: ^FND-[0-9]{3}$
+      name:
+        type: STRING
+        must_exist: true
+        description: Name of the fund. e.g. `Shinonome Global Aggregate Bond Fund`.
+      fundType:
+        type: STRING
+        description: 'Kind of fund, using FIBO fund class labels: mutual fund (open-end, units issued and redeemed on demand), exchange-traded fund (units traded on an exchange), closed-end investment (fixed number of units after its initial offering), hedge fund (total-return fund, usually for qualified investors), fund of funds (invests mainly in other funds'' units) or pension fund. e.g. `exchange-traded fund`.'
+        one_of:
+          - mutual fund
+          - exchange-traded fund
+          - closed-end investment
+          - hedge fund
+          - fund of funds
+          - pension fund
+      domicile:
+        type: STRING
+        description: Country whose law the fund is constituted under, as an ISO 3166-1 alpha-2 code. e.g. `CH`.
+        pattern: ^[A-Z]{2}$
+      baseCurrency:
+        type: STRING
+        description: Currency the fund reports its net assets and holding values in, as an ISO 4217 code. e.g. `USD`.
+        pattern: ^[A-Z]{3}$
+      totalNetAssets:
+        type: FLOAT
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              parse: MONEY
+              ask: the fund's total net assets, a sum with its currency such as $2.4bn, never a holding's weight or the value of one position
+        description: Total net assets of the fund at the reporting date, in units of its base currency. e.g. `3300000000`.
+      reportingDate:
+        type: ZONED DATETIME
+        description: Date of the holdings snapshot that the fund's HOLDS relationships describe. Only the calendar date carries meaning; the time is always midnight UTC. e.g. `2026-10-30T00:00:00Z`.
+    extensions:
+      display:
+        x: 65
+        'y': 110
+        colour: '#059669'
+      custom:
+        relate-examples:
+          ask: an investment fund, ETF or fund of funds, named by its fund id, such as FND-002, or by a name ending in Fund, ETF or Fund of Funds, such as Aldermoor Global Allocation Fund of Funds; the fund, not the company that manages it
+          proper: true
+          propose: true
+        tools:
+          - type: canonicalQuery
+            name: fund-look-through-holdings
+            question: Fund look-through holdings
+            description: 'Expands a fund''s holdings through the units of every fund it holds, down to the underlying securities, and gives each its look-through weight: the product of the weights along the chain, summed where a security is reached by several chains.'
+            cypher: |-
+              MATCH p = (f:Fund {fundId: $fundId})-[:HOLDS|UNIT_OF*1..7]->(s:Security)
+              WHERE NOT (s)-[:UNIT_OF]->(:Fund)
+              WITH s, size(relationships(p)) AS hops,
+                   reduce(w = 100.0, r IN relationships(p) |
+                     CASE WHEN type(r) = 'HOLDS' THEN w * r.weightPct / 100.0 ELSE w END) AS pct
+              MATCH (s)-[:ISSUED_BY]->(issuer:LegalEntity)
+              RETURN s.securityId AS securityId, s.name AS security, s.securityType AS type, issuer.name AS issuer,
+                     round(sum(pct), 4) AS lookThroughPct,
+                     round(sum(CASE WHEN hops = 1 THEN pct ELSE 0.0 END), 4) AS directPct,
+                     min((hops - 1) / 2) AS minFundLayers
+              ORDER BY lookThroughPct DESC, securityId
+              LIMIT $limit
+            parameters:
+              - name: fundId
+                type: STRING
+                description: The fund to look through.
+                example: FND-002
+              - name: limit
+                type: INTEGER
+                description: Maximum rows to return. Start at 25, the size of a top-holdings page, and raise it for a full listing.
+                example: 25
+            category: query
+            teaches: The walk is bounded at seven relationships — three layers of fund units below the fund — which covers funds of funds and pension funds that hold them. Look-through weights are only as current as the oldest reportingDate in the chain; check the underlying funds' dates before relying on the result. Depositary receipts are shown as held; Look-through exposure by issuer group maps them to the underlying issuer.
+            returns: 'One row per underlying security, largest first: securityId, security, type, issuer, lookThroughPct (percent of the fund''s net assets), directPct (held by the fund itself), and minFundLayers (0 when the fund holds it directly, 1 when only through another fund''s units, and so on).'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - fund
+              - look-through
+              - holdings
+              - fund of funds
+              - exposure
+            upstream:
+              file: QUERIES.md
+              heading: Fund look-through holdings
+              sample: 'Bundled sample data only: $fundId = ''FND-002'' (Aldermoor Global Allocation Fund of Funds), $limit = 25 returns 25 rows led by Kairo Denki Holdings Ordinary Shares at 7.1% (3.5% direct plus 60% of the Aldermoor Japan Equity ETF''s 6.0%).'
+          - type: canonicalQuery
+            name: look-through-exposure-by-issuer-group
+            question: Look-through exposure by issuer group
+            description: Aggregates a fund's look-through holdings by the ultimate parent of each security's issuer, so that shares, bonds of financing subsidiaries, depositary receipts (mapped to the underlying share's issuer) and holdings inside other funds all count toward the same issuer group.
+            cypher: |-
+              MATCH p = (f:Fund {fundId: $fundId})-[:HOLDS|UNIT_OF*1..7]->(s:Security)
+              WHERE NOT (s)-[:UNIT_OF]->(:Fund)
+              WITH s, size(relationships(p)) AS hops,
+                   reduce(w = 100.0, r IN relationships(p) |
+                     CASE WHEN type(r) = 'HOLDS' THEN w * r.weightPct / 100.0 ELSE w END) AS pct
+              OPTIONAL MATCH (s)-[:REPRESENTS]->(u:Security)
+              WITH s, hops, pct, coalesce(u, s) AS exposed
+              MATCH (exposed)-[:ISSUED_BY]->(issuer:LegalEntity)
+              OPTIONAL MATCH (issuer)-[:DIRECTLY_CONSOLIDATED_BY*1..8]->(top:LegalEntity)
+                WHERE NOT (top)-[:DIRECTLY_CONSOLIDATED_BY]->()
+              WITH coalesce(top, issuer) AS grp, s, hops, pct
+              RETURN grp.entityId AS groupId, grp.name AS issuerGroup, grp.sector AS sector,
+                     round(sum(pct), 4) AS lookThroughPct,
+                     round(sum(CASE WHEN hops = 1 THEN pct ELSE 0.0 END), 4) AS directPct,
+                     count(DISTINCT s) AS securities
+              ORDER BY lookThroughPct DESC, groupId
+              LIMIT $limit
+            parameters:
+              - name: fundId
+                type: STRING
+                description: The fund to analyse.
+                example: FND-002
+              - name: limit
+                type: INTEGER
+                description: Maximum issuer groups to return. Start at 10, the usual length of a top-exposures report.
+                example: 10
+            category: query
+            teaches: A group whose lookThroughPct is far above its directPct is reached mostly through other funds and is invisible in the fund's own holdings report. Convertibles count toward their issuer's group, not the group they convert into. Bounded at seven relationships of HOLDS and UNIT_OF and eight levels of DIRECTLY_CONSOLIDATED_BY.
+            returns: 'One row per issuer group, largest first: groupId, issuerGroup, sector, lookThroughPct (percent of the fund''s net assets), directPct (the part held by the fund itself), securities (distinct securities contributing).'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - fund
+              - look-through
+              - issuer
+              - concentration
+              - exposure
+            upstream:
+              file: QUERIES.md
+              heading: Look-through exposure by issuer group
+              sample: 'Bundled sample data only: $fundId = ''FND-002'', $limit = 10 returns 10 rows led by Kairo Denki Holdings K.K. at 10.7% look-through against 3.5% direct, from 4 securities.'
+          - type: canonicalQuery
+            name: look-through-concentration-breaches
+            question: Look-through concentration breaches
+            description: Screens every fund for issuer groups whose look-through exposure exceeds a single-issuer limit, aggregating shares, bonds, depositary receipts and other funds' holdings to the ultimate parent. Government issuers are excluded, as diversification rules treat sovereign debt separately.
+            cypher: |-
+              MATCH p = (f:Fund)-[:HOLDS|UNIT_OF*1..7]->(s:Security)
+              WHERE NOT (s)-[:UNIT_OF]->(:Fund)
+              WITH f, s, size(relationships(p)) AS hops,
+                   reduce(w = 100.0, r IN relationships(p) |
+                     CASE WHEN type(r) = 'HOLDS' THEN w * r.weightPct / 100.0 ELSE w END) AS pct
+              OPTIONAL MATCH (s)-[:REPRESENTS]->(u:Security)
+              WITH f, s, hops, pct, coalesce(u, s) AS exposed
+              MATCH (exposed)-[:ISSUED_BY]->(issuer:LegalEntity)
+              OPTIONAL MATCH (issuer)-[:DIRECTLY_CONSOLIDATED_BY*1..8]->(top:LegalEntity)
+                WHERE NOT (top)-[:DIRECTLY_CONSOLIDATED_BY]->()
+              WITH f, coalesce(top, issuer) AS grp, s,
+                   sum(pct) AS secPct, sum(CASE WHEN hops = 1 THEN pct ELSE 0.0 END) AS secDirect
+              WHERE coalesce(grp.sector, '') <> 'Government'
+              WITH f, grp, sum(secPct) AS lookThrough, sum(secDirect) AS direct, max(secPct) AS largest, count(s) AS securities
+              WHERE lookThrough > $limitPct
+              RETURN f.fundId AS fundId, f.name AS fund, f.fundType AS fundType, grp.name AS issuerGroup,
+                     round(lookThrough, 4) AS lookThroughPct, round(direct, 4) AS directPct,
+                     round(largest, 4) AS largestSecurityPct, securities
+              ORDER BY lookThroughPct DESC, fundId
+            parameters:
+              - name: limitPct
+                type: INTEGER
+                description: Single-issuer limit, in percent of a fund's net assets. Start at 10, the ceiling diversified-fund regimes such as UCITS set for one issuer, and lower it to see what is approaching the limit.
+                example: 10
+            category: query
+            teaches: 'The breaches that matter most are those no single-line check sees: directPct under the limit (exposure through other funds), or largestSecurityPct well under it (exposure split across shares, receipts and subsidiaries'' bonds). Treat results as a screen against the fund''s own limits, not a regulatory finding: actual rules differ by regime, fund type and instrument. Scans every fund; anchor it to a list of fundIds on a large database.'
+            returns: 'One row per fund and issuer group over the limit, largest first: fundId, fund, fundType, issuerGroup, lookThroughPct, directPct (held by the fund itself, already aggregated to the group), largestSecurityPct (the largest single security''s look-through weight) and securities.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - fund
+              - concentration
+              - limit
+              - look-through
+              - compliance
+            upstream:
+              file: QUERIES.md
+              heading: Look-through concentration breaches
+              sample: 'Bundled sample data only: $limitPct = 10 returns 2 rows — FND-002 Aldermoor Global Allocation Fund of Funds in Kairo Denki Holdings K.K. at 10.7% (3.5% direct) and FND-006 Northgate Global Leaders Fund in Calder Brennan plc at 10.5% (largest security 4.0%).'
+          - type: canonicalQuery
+            name: affiliated-underwriting
+            question: Affiliated underwriting
+            description: Finds fund holdings of securities whose offering was underwritten by an entity in the same corporate group as the fund's manager. A manager buying the deals its own group's bank underwrote is a conflict of interest that many regimes restrict or require to be documented.
+            cypher: |-
+              MATCH (f:Fund)-[:MANAGED_BY]->(m:LegalEntity)-[:DIRECTLY_CONSOLIDATED_BY*0..8]->(top:LegalEntity)
+              WHERE NOT (top)-[:DIRECTLY_CONSOLIDATED_BY]->()
+              MATCH (f)-[h:HOLDS]->(s:Security)<-[:OFFERS]-(o:Offering)-[u:UNDERWRITTEN_BY]->(uw:LegalEntity)
+              WHERE EXISTS { (uw)-[:DIRECTLY_CONSOLIDATED_BY*0..8]->(top) }
+              RETURN f.name AS fund, m.name AS manager, top.name AS group, uw.name AS underwriter, u.role AS role,
+                     o.offeringId AS offeringId, date(o.closingDate) AS closed,
+                     s.securityId AS securityId, s.name AS security, h.weightPct AS weightPct
+              ORDER BY fund, securityId, underwriter
+            parameters: []
+            category: query
+            teaches: The holding records a position at the fund's reporting date, not a purchase in the offering itself; confirm from trade records whether the fund bought during the offering before treating a hit as a breach. Affiliation is common ultimate parent through DIRECTLY_CONSOLIDATED_BY, bounded at eight levels; minority stakes and joint ventures are not seen. Considers direct holdings only.
+            returns: 'One row per holding, offering and affiliated underwriter: fund, manager, group (their shared ultimate parent), underwriter, role, offeringId, closed, securityId, security, weightPct.'
+            prerequisites: None beyond the imported reference ontology.
+            tags:
+              - fund
+              - underwriting
+              - conflict of interest
+              - affiliate
+              - compliance
+            upstream:
+              file: QUERIES.md
+              heading: Affiliated underwriting
+              sample: 'Bundled sample data only: returns 3 rows, all under Brookline Financial Group plc — Brookline Sterling Corporate Bond Fund holding a Larchmont Insurance subordinated note and a Tessaly Water senior secured note bookrun by Brookline Capital Markets Limited, and Brookline Global Equity Fund holding Pellucid Health Common Stock co-managed by Brookline Securities LLC.'
+    description: 'A pooled investment vehicle with a portfolio of holdings: a mutual fund, exchange-traded fund, closed-end fund, hedge fund, fund of funds or pension fund. A fund''s units are securities in their own right, so a fund holding another fund''s units is how look-through chains are built.'
+    aliases:
+      - Collective investment vehicle
+      - Investment fund
+      - Portfolio
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/Pools/CollectiveInvestmentVehicle
+  Offering:
+    label: Offering
+    properties:
+      offeringId:
+        type: STRING
+        key: true
+        description: Identifier of the offering, unique within the dataset and stable across loads. e.g. `OFF-00046`.
+        pattern: ^OFF-[0-9]{5}$
+      offeringType:
+        type: STRING
+        extensions:
+          custom:
+            relate-examples:
+              extract: true
+              ask: the kind of offering, one of public offering, private offering or exempt offering
+        description: 'Kind of offering, using FIBO''s labels: public offering (registered for sale to the investing public), private offering (to a limited number of qualified investors), or exempt offering (excused from registration, as under Rule 144A or Regulation S). e.g. `public offering`.'
+        one_of:
+          - public offering
+          - private offering
+          - exempt offering
+      underwritingType:
+        type: STRING
+        description: 'Underwriting commitment, using FIBO''s offering types: firm commitment (the underwriters buy the whole issue and bear the risk of reselling it) or best efforts (they only undertake to sell as much as they can). e.g. `firm commitment`.'
+        one_of:
+          - firm commitment
+          - best efforts
+      closingDate:
+        type: ZONED DATETIME
+        description: Date the offering closed and the securities were delivered to investors. Only the calendar date carries meaning; the time is always midnight UTC. e.g. `2012-12-08T00:00:00Z`.
+    extensions:
+      display:
+        x: -20
+        'y': -110
+        colour: '#db2777'
+      custom:
+        relate-examples:
+          ask: an offering that sold a new issue of securities to investors, named by its offering id, such as OFF-00352; the sale, not the security it sold or its underwriters
+          proper: true
+          propose: true
+    description: 'A securities offering: the sale of one or more newly issued securities to investors on a closing date, distributed by one or more underwriters. It connects issuers to the banks that brought their securities to market.'
+    aliases:
+      - Securities offering
+      - Issuance
+      - Deal
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesIssuance/SecuritiesOffering
+relationships:
+  issuedBy:
+    type: ISSUED_BY
+    from:
+      node: Security
+      count: 1
+    to:
+      node: LegalEntity
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was issued by
+    description: The security was issued by this legal entity — for a bond the obligor, for a share the company, for a depositary receipt the depositary bank, for a fund unit the fund vehicle. Every security has exactly one issuer; an entity may issue many securities, or none.
+    reference: https://spec.edmcouncil.org/fibo/ontology/FBC/FinancialInstruments/FinancialInstruments/Issuer
+  directlyConsolidatedBy:
+    type: DIRECTLY_CONSOLIDATED_BY
+    from:
+      node: LegalEntity
+      max_count: 1
+    to:
+      node: LegalEntity
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is a subsidiary of
+    description: The entity reports this entity as its direct accounting consolidating parent, as in LEI Level 2 relationship records. Following these links upward reaches the group's ultimate parent, against which issuer exposure is aggregated. An entity reports at most one direct parent; a parent may have many subsidiaries.
+    aliases:
+      - Direct parent
+      - Subsidiary of
+    reference: https://spec.edmcouncil.org/fibo/ontology/BE/LegalEntities/LEIEntities/isDirectlyConsolidatedBy
+  identifiedBy:
+    type: IDENTIFIED_BY
+    from:
+      node: Security
+      min_count: 1
+    to:
+      node: Identifier
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is identified by
+    description: The security is identified by this market identifier. A security is expected to carry at least one identifier and usually carries several (an ISIN, a national number, a FIGI). An identifier is expected to identify exactly one security; one shared by two securities is a data-quality defect.
+  lists:
+    type: LISTS
+    from:
+      node: Listing
+      count: 1
+    to:
+      node: Security
+    extensions:
+      custom:
+        relate-examples:
+          phrase: lists
+    description: The listing makes this security available on its exchange. Every listing lists exactly one security; a security may have many listings across exchanges and over time, or none.
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesListings/lists
+  listedOn:
+    type: LISTED_ON
+    from:
+      node: Listing
+      count: 1
+    to:
+      node: Exchange
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is on
+    description: The listing is managed by this exchange. Every listing belongs to exactly one exchange; an exchange has many listings.
+  represents:
+    type: REPRESENTS
+    from:
+      node: Security
+      max_count: 1
+    to:
+      node: Security
+    properties:
+      multiplier:
+        type: FLOAT
+        must_exist: true
+        description: Number of underlying shares represented by one depositary receipt; fractional when one receipt is a fraction of a share (0.5 means two receipts per share). e.g. `0.25`.
+        reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Equities/DepositaryReceipts/hasMultiplier
+    extensions:
+      custom:
+        relate-examples:
+          phrase: represents
+    description: The depositary receipt is evidence of deposited shares of this underlying security, so holding the receipt is economic exposure to the underlying's issuer, not to the depositary bank that issued the receipt. A depositary receipt represents exactly one underlying security; an underlying may back several receipt programmes, or none.
+    aliases:
+      - Has traded share
+      - Underlying of
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Equities/DepositaryReceipts/hasTradedShare
+  convertibleInto:
+    type: CONVERTIBLE_INTO
+    from:
+      node: Security
+      max_count: 1
+    to:
+      node: Security
+    properties:
+      conversionRatio:
+        type: FLOAT
+        must_exist: true
+        description: 'Number of target shares received on converting one unit of the convertible: one bond of 1,000 in face amount, or one preferred share. e.g. `11.1240`.'
+    extensions:
+      custom:
+        relate-examples:
+          phrase: converts into
+    description: The convertible security can be converted, at the holder's option under its conversion terms, into this target security — usually the issuer's own common share, or for an exchangeable bond another issuer's share. A convertible converts into at most one target security; a target may be the conversion target of many convertibles.
+    aliases:
+      - Specifies conversion into
+      - Exchangeable into
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesIssuance/specifiesConversionInto
+  unitOf:
+    type: UNIT_OF
+    from:
+      node: Security
+      max_count: 1
+    to:
+      node: Fund
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is a unit of
+    description: 'The security is a unit (share class) of this fund: a proportional claim on the fund''s assets. A fund-unit security belongs to exactly one fund, and other securities to none; a fund may have several unit classes, or none that trade.'
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Funds/Funds/FundUnit
+  holds:
+    type: HOLDS
+    from:
+      node: Fund
+    to:
+      node: Security
+    properties:
+      weightPct:
+        type: FLOAT
+        must_exist: true
+        description: Market value of the position as a percentage of the fund's total net assets (0-100), at the fund's reporting date. Weights of one fund sum to at most 100; the rest is cash and other assets. Look-through weight is the product of weights along a chain of fund units. e.g. `1.31`.
+        aliases:
+          - Portfolio weight
+      marketValue:
+        type: FLOAT
+        description: Market value of the position at the fund's reporting date, in units of the fund's base currency. e.g. `19040000.00`.
+    extensions:
+      custom:
+        relate-examples:
+          phrase: holds
+    description: 'The fund holds a position in this security at its reporting date. Where the security is another fund''s unit, the holding is a look-through link: the fund is exposed to that fund''s holdings in proportion to its weight. A fund holds many securities; a security may be held by many funds, or none.'
+    aliases:
+      - Position
+      - Portfolio holding
+  managedBy:
+    type: MANAGED_BY
+    from:
+      node: Fund
+      count: 1
+    to:
+      node: LegalEntity
+    extensions:
+      custom:
+        relate-examples:
+          phrase: is managed by
+    description: The fund's portfolio is managed by this legal entity, its fund manager, which makes the investment decisions. Every fund has exactly one manager; a manager may manage many funds.
+    aliases:
+      - Fund manager
+      - Investment adviser
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Funds/Funds/FundManager
+  offers:
+    type: OFFERS
+    from:
+      node: Offering
+      min_count: 1
+    to:
+      node: Security
+    extensions:
+      custom:
+        relate-examples:
+          phrase: sold
+    description: The offering sold this newly issued security to investors. An offering offers at least one security; a security may come to market in several offerings (a re-opening or a follow-on), or in none recorded (shares that predate the data, government auctions).
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesIssuance/SecuritiesOffering
+  underwrittenBy:
+    type: UNDERWRITTEN_BY
+    from:
+      node: Offering
+      min_count: 1
+    to:
+      node: LegalEntity
+    properties:
+      role:
+        type: STRING
+        must_exist: true
+        description: 'The underwriter''s role in the syndicate, most senior first: bookrunner (runs the order book and allocates), lead manager, co-manager, or selling group member. e.g. `co-manager`.'
+        one_of:
+          - bookrunner
+          - lead manager
+          - co-manager
+          - selling group member
+    extensions:
+      custom:
+        relate-examples:
+          phrase: was underwritten by
+    description: The legal entity underwrote the offering — bought the securities from the issuer for resale, or sold them on the issuer's behalf. An offering has at least one underwriter and often a syndicate; an entity may underwrite many offerings.
+    aliases:
+      - Underwriter
+      - Syndicate member
+    reference: https://spec.edmcouncil.org/fibo/ontology/SEC/Securities/SecuritiesIssuance/isUnderwrittenBy
+extensions:
+  data_source_tables:
+    legal_entities.csv:
+      source: local
+      columns:
+        - name: entityId
+          type: string
+        - name: name
+          type: string
+        - name: lei
+          type: string
+        - name: countryCode
+          type: string
+        - name: sector
+          type: string
+    securities.csv:
+      source: local
+      columns:
+        - name: securityId
+          type: string
+        - name: name
+          type: string
+        - name: securityType
+          type: string
+        - name: cfiCode
+          type: string
+        - name: currency
+          type: string
+        - name: issueDate
+          type: string
+        - name: maturityDate
+          type: string
+        - name: couponRate
+          type: string
+        - name: seniority
+          type: string
+        - name: faceAmountOutstanding
+          type: string
+        - name: securityForm
+          type: string
+        - name: restriction
+          type: string
+        - name: issuerEntityId
+          type: string
+    identifiers.csv:
+      source: local
+      columns:
+        - name: securityId
+          type: string
+        - name: identifierId
+          type: string
+        - name: scheme
+          type: string
+        - name: value
+          type: string
+    exchanges.csv:
+      source: local
+      columns:
+        - name: mic
+          type: string
+        - name: name
+          type: string
+        - name: countryCode
+          type: string
+    listings.csv:
+      source: local
+      columns:
+        - name: listingId
+          type: string
+        - name: securityId
+          type: string
+        - name: mic
+          type: string
+        - name: ticker
+          type: string
+        - name: listingDate
+          type: string
+        - name: delistingDate
+          type: string
+        - name: isPrimary
+          type: string
+    funds.csv:
+      source: local
+      columns:
+        - name: fundId
+          type: string
+        - name: name
+          type: string
+        - name: fundType
+          type: string
+        - name: domicile
+          type: string
+        - name: baseCurrency
+          type: string
+        - name: totalNetAssets
+          type: string
+        - name: reportingDate
+          type: string
+        - name: managerEntityId
+          type: string
+    offerings.csv:
+      source: local
+      columns:
+        - name: offeringId
+          type: string
+        - name: offeringType
+          type: string
+        - name: underwritingType
+          type: string
+        - name: closingDate
+          type: string
+    entity_parents.csv:
+      source: local
+      columns:
+        - name: entityId
+          type: string
+        - name: parentEntityId
+          type: string
+    depositary_receipts.csv:
+      source: local
+      columns:
+        - name: securityId
+          type: string
+        - name: underlyingSecurityId
+          type: string
+        - name: multiplier
+          type: string
+    conversions.csv:
+      source: local
+      columns:
+        - name: securityId
+          type: string
+        - name: targetSecurityId
+          type: string
+        - name: conversionRatio
+          type: string
+    fund_units.csv:
+      source: local
+      columns:
+        - name: securityId
+          type: string
+        - name: fundId
+          type: string
+    holdings.csv:
+      source: local
+      columns:
+        - name: fundId
+          type: string
+        - name: securityId
+          type: string
+        - name: weightPct
+          type: string
+        - name: marketValue
+          type: string
+    offering_securities.csv:
+      source: local
+      columns:
+        - name: offeringId
+          type: string
+        - name: securityId
+          type: string
+    offering_underwriters.csv:
+      source: local
+      columns:
+        - name: offeringId
+          type: string
+        - name: entityId
+          type: string
+        - name: role
+          type: string
+  data_source_mappings:
+    mapping0:
+      - type: NODE
+        node: LegalEntity
+        table: legal_entities.csv
+        mode: MERGE
+        key:
+          - entityId
+        properties:
+          entityId:
+            column: entityId
+          name:
+            column: name
+          lei:
+            column: lei
+          countryCode:
+            column: countryCode
+          sector:
+            column: sector
+      - type: NODE
+        node: Security
+        table: securities.csv
+        mode: MERGE
+        key:
+          - securityId
+        properties:
+          securityId:
+            column: securityId
+          name:
+            column: name
+          securityType:
+            column: securityType
+          cfiCode:
+            column: cfiCode
+          currency:
+            column: currency
+          issueDate:
+            column: issueDate
+          maturityDate:
+            column: maturityDate
+          couponRate:
+            column: couponRate
+          seniority:
+            column: seniority
+          faceAmountOutstanding:
+            column: faceAmountOutstanding
+          securityForm:
+            column: securityForm
+          restriction:
+            column: restriction
+      - type: NODE
+        node: Identifier
+        table: identifiers.csv
+        mode: MERGE
+        key:
+          - identifierId
+        properties:
+          identifierId:
+            column: identifierId
+          scheme:
+            column: scheme
+          value:
+            column: value
+      - type: NODE
+        node: Exchange
+        table: exchanges.csv
+        mode: MERGE
+        key:
+          - mic
+        properties:
+          mic:
+            column: mic
+          name:
+            column: name
+          countryCode:
+            column: countryCode
+      - type: NODE
+        node: Listing
+        table: listings.csv
+        mode: MERGE
+        key:
+          - listingId
+        properties:
+          listingId:
+            column: listingId
+          ticker:
+            column: ticker
+          listingDate:
+            column: listingDate
+          delistingDate:
+            column: delistingDate
+          isPrimary:
+            column: isPrimary
+      - type: NODE
+        node: Fund
+        table: funds.csv
+        mode: MERGE
+        key:
+          - fundId
+        properties:
+          fundId:
+            column: fundId
+          name:
+            column: name
+          fundType:
+            column: fundType
+          domicile:
+            column: domicile
+          baseCurrency:
+            column: baseCurrency
+          totalNetAssets:
+            column: totalNetAssets
+          reportingDate:
+            column: reportingDate
+      - type: NODE
+        node: Offering
+        table: offerings.csv
+        mode: MERGE
+        key:
+          - offeringId
+        properties:
+          offeringId:
+            column: offeringId
+          offeringType:
+            column: offeringType
+          underwritingType:
+            column: underwritingType
+          closingDate:
+            column: closingDate
+      - type: RELATIONSHIP
+        relationship: issuedBy
+        table: securities.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Security
+          properties:
+            securityId:
+              column: securityId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: issuerEntityId
+      - type: RELATIONSHIP
+        relationship: directlyConsolidatedBy
+        table: entity_parents.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: parentEntityId
+      - type: RELATIONSHIP
+        relationship: identifiedBy
+        table: identifiers.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Security
+          properties:
+            securityId:
+              column: securityId
+        to_node:
+          label: Identifier
+          properties:
+            identifierId:
+              column: identifierId
+      - type: RELATIONSHIP
+        relationship: lists
+        table: listings.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Listing
+          properties:
+            listingId:
+              column: listingId
+        to_node:
+          label: Security
+          properties:
+            securityId:
+              column: securityId
+      - type: RELATIONSHIP
+        relationship: listedOn
+        table: listings.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Listing
+          properties:
+            listingId:
+              column: listingId
+        to_node:
+          label: Exchange
+          properties:
+            mic:
+              column: mic
+      - type: RELATIONSHIP
+        relationship: represents
+        table: depositary_receipts.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Security
+          properties:
+            securityId:
+              column: securityId
+        to_node:
+          label: Security
+          properties:
+            securityId:
+              column: underlyingSecurityId
+        properties:
+          multiplier:
+            column: multiplier
+      - type: RELATIONSHIP
+        relationship: convertibleInto
+        table: conversions.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Security
+          properties:
+            securityId:
+              column: securityId
+        to_node:
+          label: Security
+          properties:
+            securityId:
+              column: targetSecurityId
+        properties:
+          conversionRatio:
+            column: conversionRatio
+      - type: RELATIONSHIP
+        relationship: unitOf
+        table: fund_units.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Security
+          properties:
+            securityId:
+              column: securityId
+        to_node:
+          label: Fund
+          properties:
+            fundId:
+              column: fundId
+      - type: RELATIONSHIP
+        relationship: holds
+        table: holdings.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Fund
+          properties:
+            fundId:
+              column: fundId
+        to_node:
+          label: Security
+          properties:
+            securityId:
+              column: securityId
+        properties:
+          weightPct:
+            column: weightPct
+          marketValue:
+            column: marketValue
+      - type: RELATIONSHIP
+        relationship: managedBy
+        table: funds.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Fund
+          properties:
+            fundId:
+              column: fundId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: managerEntityId
+      - type: RELATIONSHIP
+        relationship: offers
+        table: offering_securities.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Offering
+          properties:
+            offeringId:
+              column: offeringId
+        to_node:
+          label: Security
+          properties:
+            securityId:
+              column: securityId
+      - type: RELATIONSHIP
+        relationship: underwrittenBy
+        table: offering_underwriters.csv
+        mode: MERGE
+        key: []
+        from_node:
+          label: Offering
+          properties:
+            offeringId:
+              column: offeringId
+        to_node:
+          label: LegalEntity
+          properties:
+            entityId:
+              column: entityId
+        properties:
+          role:
+            column: role
+  custom:
+    relate-examples:
+      family: studio
+      source:
+        repository: neo4j/studio-agent-use-cases
+        commit: b76f767e85c5853b7d70eb2bb3b10879d0e394a9
+        package: securities-reference-data
+        files:
+          - ONTOLOGY.json
+          - QUERIES.md
+          - human_description.md
+          - NOTICE.md
+      card:
+        title: 'Securities: Reference Data and Look-through Exposure'
+        category: Financial Services
+        description: Built on the EDM Council's FIBO Securities ontology, reconcile identifiers and listings, map every route to an issuer group, and see fund exposure and concentration through layers of funds, receipts and subsidiaries.
+      industry: Financial Services
+      about: data/ontologies/studio/securities-reference-data/human_description.md

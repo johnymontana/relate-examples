@@ -1,0 +1,102 @@
+# What example 01 adds to Neo4j's business-entities package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper; no kind here proposes identifiers, D26), the words the model reads
+# for each link (phrase), the two properties the model reads values for (D27: a company's legal form and
+# a trust's type, both from the package's own vocabularies), and example arguments for the package's
+# queries, taken from the records this example's memo narrates (the package's sample data: Larkspur
+# Freight Ltd is E-0218).
+package: business-entities
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: "Business Entities: Ownership and Control"
+  category: Financial Services
+  description: Built on the EDM Council's FIBO Business Entities ontology, trace ownership and control through layers of companies, trusts and boards to find the real owners, hidden links and circular structures a register of direct shareholders misses.
+industry: Financial Services
+nodes:
+  Person:
+    colour: "#2563eb"
+    proper: true
+    ask: a natural person who owns, directs, settles or benefits from companies and trusts, named by full name, such as Hugo Mensah; a human being, never a company or a trust
+  LegalEntity:
+    colour: "#d97706"
+    proper: true
+    ask: a company, partnership or LLC named by its registered name with its legal-form suffix, such as Driftwood Asset Management Ltd, Wealdmoor Group plc or Bayview Trustees Ltd, trust companies included; never a trust whose name ends in Trust
+    properties:
+      legalForm:
+        extract: true
+        ask: the legal form the text gives the company, such as a private limited company, a privately held company or a publicly held company
+  Trust:
+    colour: "#059669"
+    proper: true
+    ask: a trust or settlement, named by a name that ends in Trust, such as Ashworth Education Trust; the arrangement that holds the assets, never a trust company or another company whose name ends in Ltd
+    properties:
+      trustType:
+        extract: true
+        ask: the kind of trust the text says it is, such as an irrevocable trust, a revocable trust or a testamentary trust
+  Jurisdiction:
+    colour: "#7c3aed"
+    proper: true
+    ask: a country or territory with its own company register, such as Delaware, Luxembourg, Bermuda or the Isle of Man; the place a company is incorporated or a trust established, never a city
+  Address:
+    colour: "#db2777"
+    proper: true
+    ask: "a postal address of a registered office or a home: a street address or a named building, with its town, such as 27 Market Place, Leeds or Takamaka House, Victoria; never a town or country alone"
+relationships:
+  # The three OWNS links read as one phrase (the model is asked one relation per type), and so do the two TRUSTEE_OF links.
+  personOwns:
+    phrase: owns
+  entityOwns:
+    phrase: owns
+  trustOwns:
+    phrase: owns
+  directorOf:
+    phrase: is on the board of
+  officerOf:
+    phrase: is an officer of
+  trustorOf:
+    phrase: is the settlor of
+  beneficiaryOf:
+    phrase: is a beneficiary of
+  personTrusteeOf:
+    phrase: is trustee of
+  entityTrusteeOf:
+    phrase: is trustee of
+  incorporatedIn:
+    phrase: is incorporated in
+  establishedIn:
+    phrase: was established in
+  registeredAt:
+    phrase: has its registered office at
+  residesAt:
+    phrase: lives at
+  directlyConsolidatedBy:
+    phrase: reports as its direct parent
+  ultimatelyConsolidatedBy:
+    phrase: reports as its ultimate parent
+tools:
+  # The memo's entities by their records' ids: E-0218 Larkspur Freight Ltd, E-0216 Blue Lantern Holdings Ltd,
+  # E-0168 Pellingham Retail Group plc, E-0283 Coastway Hotels Ltd. 25 per cent is the threshold the memo applies
+  # (regulation 5); 50 a majority stake; Seagrape Place and Coralstone Chambers host 11 and 24 companies.
+  entity-overview:
+    args: {entityId: E-0218}
+  ownership-structure:
+    args: {entityId: E-0218}
+  corporate-group:
+    args: {entityId: E-0216, controlPct: 50}
+  ultimate-beneficial-owners:
+    args: {entityId: E-0218, minPct: 25}
+  trust-look-through:
+    args: {entityId: E-0283}
+  collective-ownership-by-household:
+    args: {minPct: 25}
+  control-without-ownership:
+    args: {entityId: E-0218, controlPct: 50, minPct: 25}
+  offshore-layering:
+    args: {minOffshoreLayers: 2}
+  shared-registered-addresses:
+    args: {minEntities: 10}
+  reported-versus-ownership-derived-parent:
+    args: {controlPct: 50}
+  how-two-entities-are-connected:
+    args: {fromEntityId: E-0168, toEntityId: E-0218}

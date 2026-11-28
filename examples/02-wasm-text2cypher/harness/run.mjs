@@ -12,13 +12,13 @@
  *                  issue count per validation set, the core issues, the legal relationships
  *   briefing.txt   both briefings (web/briefing.js), each checked against data/reference/
  *   ddl.cypher     the graph type and the DDL (web/ddl.js); the DDL is checked against data/reference/
- *   queries.txt    Relate 1.2.0 WASM: schema + demo graph loaded (web/load.js), then every canned query
+ *   queries.txt    Relate 1.3.0 WASM: schema + demo graph loaded (web/load.js), then every canned query
  *                  (both variants, with the A/B notes), the fallback and the ontology's cookbook,
  *                  validated (web/validate.js) and run; the graph type read back; the suggested
  *                  questions routed to their canned entries
  *   validate.txt   the validator on data/reference/validate.json's cases, checked against the Python
  *                  issues; the A/B notes on data/reference/compare.json's cases; engine notes from EXPLAIN
- *   probes.txt     P1…: the Relate 1.2.0 behaviours the example depends on, each a minimal repro
+ *   probes.txt     P1…: the Relate 1.3.0 behaviours the example depends on, each a minimal repro
  *                  (NOTES.md has one row per probe)
  *
  * A port that stops reproducing its data/reference/ file, or a probe that stops reproducing, prints
@@ -44,7 +44,7 @@ import { runVariant } from '../web/run.js';
 import { parseReply } from '../web/llm.js';
 
 const EX = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const RELATE = '1.2.0';
+const RELATE = '1.3.0';
 const SECTIONS = ['ontology', 'briefing', 'ddl', 'queries', 'validate', 'probes'];
 
 let failed = false;
@@ -56,7 +56,7 @@ const pin = (what) => {
 const read = (/** @type {string} */ rel) => fs.readFileSync(path.join(EX, rel), 'utf8');
 const readJson = (/** @type {string} */ rel) => JSON.parse(read(rel));
 
-/** Canonical JSON: object keys sorted (rows arrive with sorted keys already; this keeps nested maps stable). */
+/** Canonical JSON: object keys sorted (rows arrive in RETURN order, 01's R4; sorting makes the output independent of that order). */
 function canon(v) {
   if (Array.isArray(v)) return `[${v.map(canon).join(',')}]`;
   if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}`;
@@ -152,7 +152,7 @@ function ddlSection() {
 
 // ---- queries -------------------------------------------------------------------------------------
 
-/** A loaded store: Relate 1.2.0 WASM, the schema and the demo graph. */
+/** A loaded store: Relate 1.3.0 WASM, the schema and the demo graph. */
 async function loadedStore() {
   const R = await rw.loadNode(RELATE);
   const db = new R.RelateDb();
@@ -189,7 +189,7 @@ function showRun(r) {
 async function queriesSection() {
   const { db, graph, counts } = await loadedStore();
   const canned = readJson('data/canned.json');
-  const L = ['# Relate 1.2.0 WASM: the demo graph and every reference query', ''];
+  const L = ['# Relate 1.3.0 WASM: the demo graph and every reference query', ''];
   L.push(`engine: ${rw.version(db)}`);
   L.push(`loaded: ${counts.statements} schema statements, ${counts.nodes} nodes, ${counts.relationships} relationships (data/demo-graph.json: ${graph.nodes.length}, ${graph.edges.length})`);
   const n = rw.exec(db, 'MATCH (n) RETURN count(n) AS n').rows[0].n;
@@ -293,7 +293,7 @@ async function validateSection() {
 
 async function probesSection() {
   const R = await rw.loadNode(RELATE);
-  const L = ['# Relate 1.2.0 behaviours example 02 depends on (NOTES.md has one row per probe)', ''];
+  const L = ['# Relate 1.3.0 behaviours example 02 depends on (NOTES.md has one row per probe)', ''];
   /** @param {any} db @param {string} q */
   const env = (db, q) => JSON.parse(db.execute(q, null));
   /** @param {any} db @param {string} q */

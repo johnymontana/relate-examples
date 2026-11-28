@@ -1,0 +1,621 @@
+# Real Estate: example 01's curated ontology for residential sale documents (D20). Written for this
+# repository from create-context-graph's real-estate.yaml at 707b168 (Apache-2.0,
+# data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base (Person,
+# Organization, Location, Event, Object) is gone, and the parties are named for the part they play in
+# a sale (Buyer, Seller, RealEstateAgent, Brokerage, Lender, Inspector).
+#
+# The model reads each kind's label as words, and the store keys a mention's name without them, so the
+# labels are the words the documents use: Neighborhood in the American spelling of the documents and
+# the original; Residence and Defect rather than Property and Finding, which small-v1 read as any part
+# or attribute of a house (a panel, a breaker, "wood rot") and so took from the defects; and
+# RealEstateAgent rather than Agent, which it read as any person, inspectors included.
+#
+# Every kind carries the description a reader needs, aliases, a reference where schema.org has the
+# concept, realistic properties (identifiers with patterns, vocabularies with one_of), and under
+# extensions.custom.relate-examples the words the model reads (ask) and whether its mentions are proper
+# names (proper) or identifiers its key pattern proposes (propose, D26), and four properties are read
+# from the text as values (extract, D27). Every link says its direction
+# and cardinality and carries the phrase the model reads. The tools are the ontology's competency
+# questions, written for the graph the page extracts: entities carry name, display, key and their key
+# property; relationships carry p, claims, sentences and docs, and the trace (_Sentence, _Claim) holds
+# the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: real-estate
+name: Real Estate
+description: >-
+  Residential sales as agents, inspectors and closing staff write about them: the residence and the
+  neighborhood it is in, the listing that advertises it and the agent who listed it, the brokerages
+  agents work for, the sellers and buyers on each side and the agents who represent them, the lender a
+  buyer borrows from, and the inspections that examine a residence, who performed and ordered them,
+  and the defects they found. It answers who is selling and who is buying a home and through whom,
+  which defects an inspection reported and whether the sellers had disclosed them, which inspections a
+  lender required, what each inspector and brokerage handled, and what the source text says about each
+  fact. Of the figures a file states it reads four: a listing's asking price, the year a residence was
+  built, how a buyer pays and the date of an inspection. Sale prices, loan terms, repair costs,
+  appraisals, title, escrow and commissions are out of scope.
+nodes:
+  Residence:
+    label: Residence
+    description: >-
+      A house, condominium, townhouse or residential lot that is listed, inspected or sold, identified by
+      its street address ("7104 Pecan Glen Drive"), what an MLS calls a single-family residence or condo.
+      The residence is the property as a whole: its roof, panel and water heater are parts of it, and its
+      listing is the advertisement that offers it for sale.
+    aliases: [property, home, house, subject property, single-family residence]
+    reference: https://schema.org/Residence
+    properties:
+      name: {type: STRING, key: true, description: "The street address as the documents write it, without the city and ZIP code."}
+      propertyType: {type: STRING, one_of: [single-family, condominium, townhouse, duplex, manufactured, lot], description: "The kind of residence."}
+      yearBuilt: {type: INTEGER, description: "The year the main structure was built.", extensions: {custom: {relate-examples: {extract: true, ask: "the year the house was built, such as 1958"}}}}
+      livingArea: {type: INTEGER, description: "The heated living area, in square feet."}
+      bedrooms: {type: INTEGER, description: "The number of bedrooms."}
+      bathrooms: {type: FLOAT, description: "The number of bathrooms, a half bath counted as 0.5."}
+      parcelId: {type: STRING, pattern: "^[0-9]{5,10}$", description: "The county appraisal district's property ID, digits only."}
+    extensions:
+      display: {x: -120, y: 80, colour: "#b45309"}
+      custom:
+        relate-examples: {ask: "a home for sale named by its street address, a house number then a street name, such as 7104 Pecan Glen Drive", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-residence
+            category: lookup
+            question: Which residence has this address, and what does the store connect to it?
+            description: Finds residences whose address contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (p:Residence) WHERE toLower(p.name) CONTAINS toLower($address)
+              OPTIONAL MATCH (p)-[r]-(x:_Entity)
+              RETURN p.name AS residence, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY residence, link, other
+            parameters:
+              - {name: address, type: STRING, description: "Part of the street address.", example: Pecan Glen}
+          - type: canonicalQuery
+            name: residence-file
+            category: neighbourhood
+            question: Where is this residence, who is selling it, who is buying it, and which listing advertises it?
+            description: The residence with its neighborhood, its sellers, its buyers and the listings for it.
+            teaches: Several OPTIONAL MATCHes around one node, each collected with DISTINCT, give one row per residence however many sides the text names.
+            cypher: |-
+              MATCH (p:Residence) WHERE toLower(p.name) CONTAINS toLower($address)
+              OPTIONAL MATCH (p)-[:LOCATED_IN]->(n:Neighborhood)
+              OPTIONAL MATCH (s:Seller)-[:SELLS]->(p)
+              OPTIONAL MATCH (b:Buyer)-[:BUYS]->(p)
+              OPTIONAL MATCH (l:Listing)-[:LISTING_FOR]->(p)
+              RETURN p.name AS residence, collect(DISTINCT n.name) AS neighborhoods, collect(DISTINCT s.name) AS sellers,
+                     collect(DISTINCT b.name) AS buyers, collect(DISTINCT l.name) AS listings
+              ORDER BY residence
+            parameters:
+              - {name: address, type: STRING, description: "Part of the street address.", example: 7104 Pecan Glen}
+  Neighborhood:
+    label: Neighborhood
+    description: >-
+      A named neighborhood or subdivision of a city in which a residence lies ("Crestview"), as agents
+      and appraisers use the name. A neighborhood is an area, never a single residence, and not a county
+      or a public body such as an appraisal district.
+    aliases: [neighbourhood, subdivision, area, market area, historic district]
+    reference: https://schema.org/Place
+    properties:
+      name: {type: STRING, key: true, description: "The neighborhood's name, without its city."}
+      city: {type: STRING, description: "The city the neighborhood is in."}
+      state: {type: STRING, pattern: "^[A-Z]{2}$", description: "The state, as its two-letter postal code (TX)."}
+      zipCode: {type: STRING, pattern: "^[0-9]{5}$", description: "The main five-digit ZIP code of the neighborhood."}
+    extensions:
+      display: {x: -360, y: 200, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "a named neighborhood or subdivision of a city, an area of many streets and homes, such as Crestview", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: neighborhood-overview
+            category: aggregation
+            question: How many residences, listings, inspections and defects does each neighborhood have?
+            description: Per neighborhood, the residences in it and the listings, inspections and defects of those residences.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (n:Neighborhood)<-[:LOCATED_IN]-(p:Residence)
+              OPTIONAL MATCH (l:Listing)-[:LISTING_FOR]->(p)
+              OPTIONAL MATCH (i:Inspection)-[:INSPECTED]->(p)
+              OPTIONAL MATCH (i)-[:FOUND]->(f:Defect)
+              RETURN n.name AS neighborhood, count(DISTINCT p) AS residences, count(DISTINCT l) AS listings,
+                     count(DISTINCT i) AS inspections, count(DISTINCT f) AS defects
+              ORDER BY residences DESC, defects DESC, neighborhood
+  Listing:
+    label: Listing
+    description: >-
+      A residence's listing on the multiple listing service, the advertisement that offers it for sale,
+      identified by its MLS number ("MLS #6182237"). A listing is for one residence and is listed by one
+      agent; a report form or a title file is not a listing.
+    aliases: [MLS listing, listing agreement, MLS number, advertisement]
+    reference: https://schema.org/RealEstateListing
+    properties:
+      mlsNumber: {type: STRING, key: true, pattern: "^[0-9]{7}$", description: "The MLS number, seven digits (6182237)."}
+      name: {type: STRING, description: "The listing as a document names it."}
+      status: {type: STRING, one_of: [active, pending, sold, withdrawn, expired], description: "The listing's status on the MLS."}
+      listPrice: {type: FLOAT, description: "The asking price, in US dollars.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the asking price a listing sets for the home, a sum such as $489,000, not the price it sold for"}}}}
+      listDate: {type: DATE, description: "The date the listing went live."}
+      daysOnMarket: {type: INTEGER, description: "Days from the list date to a contract or to the document's date."}
+    extensions:
+      display: {x: -120, y: -120, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a home's listing for sale on the multiple listing service, named only by its MLS number, such as MLS #6182237", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: listing-by-mls-number
+            category: lookup
+            question: Which residence does this MLS number advertise, and who listed it for which brokerage?
+            description: The listing whose MLS number is the parameter, with its residence, its listing agent and that agent's brokerage.
+            teaches: An identifier the text states is the entity's key property (mlsNumber, read from its name "MLS #6182237"), so an exact match finds it.
+            cypher: |-
+              MATCH (l:Listing) WHERE l.mlsNumber = $mlsNumber
+              OPTIONAL MATCH (l)-[:LISTING_FOR]->(p:Residence)
+              OPTIONAL MATCH (l)-[:LISTED_BY]->(a:RealEstateAgent)
+              OPTIONAL MATCH (a)-[:WORKS_FOR]->(f:Brokerage)
+              RETURN l.name AS listing, l.mlsNumber AS mls, collect(DISTINCT p.name) AS residences,
+                     collect(DISTINCT a.name) AS agents, collect(DISTINCT f.name) AS brokerages
+            parameters:
+              - {name: mlsNumber, type: STRING, description: "An MLS number, seven digits.", example: "6182237"}
+  RealEstateAgent:
+    label: RealEstateAgent
+    description: >-
+      A licensed real estate agent or broker who lists a residence for its sellers or represents a buyer,
+      named in full ("Gwen Albrecht, a broker with Riverbend Realty Partners"). Agents are licensed
+      people who sell homes; inspectors and appraisers are not agents, and the brokerage is the firm
+      agents work for.
+    aliases: [agent, realtor, broker, listing agent, buyer's agent, sales agent]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The agent's full name."}
+      licenseNumber: {type: STRING, pattern: "^[0-9]{6,7}$", description: "The agent's state licence number, six or seven digits."}
+      role: {type: STRING, one_of: [sales agent, broker, team lead], description: "The agent's licence and role at the brokerage."}
+    extensions:
+      display: {x: 120, y: -240, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a realtor or broker, a person named in full who lists a home for sale or represents its buyer, such as Gwen Albrecht", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: both-sides-of-a-sale
+            category: path
+            question: Who is buying and who is selling each residence, and which agents and brokerages represent each side?
+            description: For every residence with a buyer and a seller, the buyer's agents and brokerages and the sellers' listing agents and brokerages.
+            teaches: One pattern can meet in the middle (buyer to residence from one side, seller to residence from the other); OPTIONAL MATCH then fans out to each side's agents.
+            cypher: |-
+              MATCH (b:Buyer)-[:BUYS]->(p:Residence)<-[:SELLS]-(s:Seller)
+              OPTIONAL MATCH (b)-[:REPRESENTED_BY]->(ba:RealEstateAgent)
+              OPTIONAL MATCH (ba)-[:WORKS_FOR]->(bf:Brokerage)
+              OPTIONAL MATCH (s)-[:LISTED_WITH]->(sa:RealEstateAgent)
+              OPTIONAL MATCH (sa)-[:WORKS_FOR]->(sf:Brokerage)
+              RETURN p.name AS residence, b.name AS buyer, collect(DISTINCT ba.name) AS buyer_agents,
+                     collect(DISTINCT bf.name) AS buyer_brokerages, collect(DISTINCT s.name) AS sellers,
+                     collect(DISTINCT sa.name) AS listing_agents, collect(DISTINCT sf.name) AS listing_brokerages
+              ORDER BY residence, buyer
+  Brokerage:
+    label: Brokerage
+    description: >-
+      A real estate brokerage or realty firm that agents work for and that holds the listing or buyer
+      agreement ("Riverbend Realty Partners"). A brokerage is a firm; its agents are people, and
+      inspection, pest control, title and lending companies are not brokerages.
+    aliases: [realty, real estate firm, brokerage firm, real estate office]
+    reference: https://schema.org/RealEstateAgent
+    properties:
+      name: {type: STRING, key: true, description: "The brokerage's name."}
+      licenseNumber: {type: STRING, pattern: "^[0-9]{6,7}$", description: "The brokerage's state licence number."}
+      city: {type: STRING, description: "The city of the brokerage's main office."}
+    extensions:
+      display: {x: 360, y: -240, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a real estate brokerage or realty firm that real estate agents work for, such as Riverbend Realty Partners", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: brokerage-book
+            category: aggregation
+            question: How many agents, listings and represented buyers does each brokerage have?
+            description: Per brokerage, the agents who work for it, the listings they listed and the buyers they represent.
+            teaches: Count DISTINCT after chained OPTIONAL MATCHes, or each listing is counted once per buyer.
+            cypher: |-
+              MATCH (f:Brokerage)
+              OPTIONAL MATCH (a:RealEstateAgent)-[:WORKS_FOR]->(f)
+              OPTIONAL MATCH (l:Listing)-[:LISTED_BY]->(a)
+              OPTIONAL MATCH (b:Buyer)-[:REPRESENTED_BY]->(a)
+              RETURN f.name AS brokerage, count(DISTINCT a) AS agents, count(DISTINCT l) AS listings, count(DISTINCT b) AS buyers
+              ORDER BY listings DESC, buyers DESC, brokerage
+  Buyer:
+    label: Buyer
+    description: >-
+      A person or entity buying a residence: the inspector's client during the option period, the
+      purchaser at closing ("Nadia Ferreira"). The buyer is on the other side of the sale from the
+      seller.
+    aliases: [purchaser, client, borrower, homebuyer, grantee]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The buyer's full name as the documents write it."}
+      financing: {type: STRING, one_of: [cash, conventional, FHA, VA, USDA], description: "How the buyer pays for the purchase: in cash, or with a conventional loan or a loan under the FHA, VA or USDA programs.", extensions: {custom: {relate-examples: {extract: true, ask: "how the buyer pays for the home, in cash or with a conventional, FHA, VA or USDA loan"}}}}
+      firstTimeBuyer: {type: BOOLEAN, description: "Whether the buyer is buying a first home."}
+    extensions:
+      display: {x: 120, y: -40, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a person buying a home: the inspector's client, or the purchaser at closing, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: a-buyers-purchase
+            category: neighbourhood
+            question: What is this buyer buying, who represents them, who lends to them, and which inspections did they order?
+            description: The buyer with the residences they are buying, their agents, their lenders and the inspections they ordered.
+            teaches: One node's neighbourhood comes back as collected lists, one OPTIONAL MATCH per link, so a link the text never states leaves an empty list rather than no row.
+            cypher: |-
+              MATCH (b:Buyer) WHERE toLower(b.name) CONTAINS toLower($buyer)
+              OPTIONAL MATCH (b)-[:BUYS]->(p:Residence)
+              OPTIONAL MATCH (b)-[:REPRESENTED_BY]->(a:RealEstateAgent)
+              OPTIONAL MATCH (b)-[:BORROWS_FROM]->(bank:Lender)
+              OPTIONAL MATCH (b)-[:ORDERED]->(i:Inspection)
+              RETURN b.name AS buyer, collect(DISTINCT p.name) AS buying, collect(DISTINCT a.name) AS agents,
+                     collect(DISTINCT bank.name) AS lenders, collect(DISTINCT i.name) AS inspections_ordered
+              ORDER BY buyer
+            parameters:
+              - {name: buyer, type: STRING, description: "Part of the buyer's name.", example: Ferreira}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Okafor}
+  Seller:
+    label: Seller
+    description: >-
+      A person or entity selling a residence they own, named in full ("Harold Petrakis"); the seller
+      signs the disclosure notice and lists the residence with an agent. The seller is the owner before
+      closing, the buyer after.
+    aliases: [vendor, owner, homeowner, grantor]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The seller's full name as the documents write it."}
+      ownedSince: {type: INTEGER, description: "The year the seller acquired the residence."}
+      occupancy: {type: STRING, one_of: [owner-occupied, tenant-occupied, vacant], description: "Who lived in the residence while it was for sale."}
+    extensions:
+      display: {x: -360, y: -40, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a person or owner selling a home, who signs the seller's disclosure, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Nadia Ferreira}
+  Lender:
+    label: Lender
+    description: >-
+      A bank, credit union or mortgage company that lends a buyer the money for a purchase and may set
+      conditions on it, such as an inspection ("Bexley Ridge Mortgage"). A lender finances the buyer; a
+      brokerage represents a side of the sale.
+    aliases: [mortgage lender, bank, credit union, mortgage company, originator]
+    reference: https://schema.org/BankOrCreditUnion
+    properties:
+      name: {type: STRING, key: true, description: "The lender's name."}
+      nmlsId: {type: STRING, pattern: "^[0-9]{4,7}$", description: "The lender's Nationwide Multistate Licensing System ID."}
+      lenderType: {type: STRING, one_of: [bank, credit union, mortgage company], description: "What kind of lender it is."}
+    extensions:
+      display: {x: 360, y: -40, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "a bank, credit union or mortgage company that lends a buyer the money for a purchase, such as Bexley Ridge Mortgage", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: lender-conditions
+            category: path
+            question: Which inspections did each lender require of the homes its borrowers are buying, and who performed them?
+            description: The chain borrower, lender, required inspection, with the residence inspected and the inspector.
+            teaches: A pattern can run through a node in the middle (the lender); the inspection's own links then come from OPTIONAL MATCH.
+            cypher: |-
+              MATCH (b:Buyer)-[:BORROWS_FROM]->(bank:Lender)-[:REQUIRED]->(i:Inspection)
+              OPTIONAL MATCH (i)-[:INSPECTED]->(p:Residence)
+              OPTIONAL MATCH (x:Inspector)-[:PERFORMED]->(i)
+              RETURN bank.name AS lender, b.name AS borrower, i.name AS inspection,
+                     collect(DISTINCT p.name) AS residences, collect(DISTINCT x.name) AS inspectors
+              ORDER BY lender, borrower, inspection
+  Inspection:
+    label: Inspection
+    description: >-
+      A home, wood-destroying insect, sewer or other inspection of a residence, identified by its report
+      number (HI-26-1142) and dated. An inspection is the visit and its report; what it found are
+      defects.
+    aliases: [home inspection, inspection report, WDI report, termite inspection, sewer scope]
+    properties:
+      reportNumber: {type: STRING, key: true, pattern: "^(HI|WDI|SS)-[0-9]{2}-[0-9]{4}$", description: "The report number: HI, WDI or SS for the kind of inspection, the year's last two digits and four digits (HI-26-1142)."}
+      name: {type: STRING, description: "The inspection as a document names it."}
+      inspectionType: {type: STRING, one_of: [general home, wood-destroying insect, sewer scope, roof, foundation, radon], description: "What the inspection examined."}
+      inspectedOn: {type: DATE, description: "The date of the inspection.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the inspection was carried out, such as October 9, 2026"}}}}
+      form: {type: STRING, description: "The report form or standard it follows (TREC REI 7-6, the Texas Official Wood Destroying Insect Report)."}
+    extensions:
+      display: {x: 120, y: 200, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a home, termite or sewer inspection of a property, identified by its report number, such as HI-26-1142", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: inspection-by-report-number
+            category: lookup
+            question: Which residence did this inspection examine, who performed and ordered it, and what did it find?
+            description: The inspection whose report number is the parameter, with its residence, inspector, client and defects.
+            teaches: The key property (reportNumber) is filled from the entity's name when the text gives the identifier, so an exact match works here.
+            cypher: |-
+              MATCH (i:Inspection) WHERE i.reportNumber = $reportNumber
+              OPTIONAL MATCH (i)-[:INSPECTED]->(p:Residence)
+              OPTIONAL MATCH (x:Inspector)-[:PERFORMED]->(i)
+              OPTIONAL MATCH (b:Buyer)-[:ORDERED]->(i)
+              OPTIONAL MATCH (i)-[:FOUND]->(f:Defect)
+              RETURN i.reportNumber AS report, collect(DISTINCT p.name) AS residences, collect(DISTINCT x.name) AS inspectors,
+                     collect(DISTINCT b.name) AS ordered_by, collect(DISTINCT f.name) AS defects
+            parameters:
+              - {name: reportNumber, type: STRING, description: "A report number such as HI-26-1142.", example: HI-26-1142}
+          - type: canonicalQuery
+            name: what-each-inspection-says
+            category: evidence
+            question: Which sentences say who performed and ordered each inspection, what it covered and what it found?
+            description: Every PERFORMED, ORDERED, INSPECTED and FOUND fact of an inspection, either way round, with its score and the sentences it was read from.
+            teaches: A relationship pattern may name several types (PERFORMED|ORDERED|INSPECTED|FOUND) and leave the direction open; a published relationship lists its evidence as sentence keys, so UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (i:Inspection)-[r:PERFORMED|ORDERED|INSPECTED|FOUND]-(x:_Entity)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN i.name AS inspection, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY inspection, link, other
+  Defect:
+    label: Defect
+    description: >-
+      A defect, damage or past repair that an inspection reports or a seller discloses, named as a short
+      noun phrase ("double-tapped breaker", "roof leak", "foundation repair"). A defect is the problem,
+      not the component it is in; texts name defects in lower case.
+    aliases: [finding, deficiency, inspection item, material defect, disclosed condition]
+    properties:
+      name: {type: STRING, key: true, description: "The defect as the report names it."}
+      system: {type: STRING, one_of: [structural, roof, exterior, electrical, plumbing, heating and cooling, appliances, wood-destroying insects], description: "The system the defect is reported under."}
+      severity: {type: STRING, one_of: [safety hazard, repair, maintenance, monitor], description: "How urgent the inspector rates it."}
+      location: {type: STRING, description: "Where in the residence it is (the north roof valley)."}
+    extensions:
+      display: {x: -120, y: 340, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a defect, damage or past repair in a house that an inspection reports or a seller discloses, such as roof leak, wood rot, termite damage or foundation repair"}
+        tools:
+          - type: canonicalQuery
+            name: defects-and-disclosures
+            category: path
+            question: Which defects did each inspection of a residence report, and had the residence's sellers disclosed them?
+            description: Every defect an inspection found, with the residence inspected and whether a seller of that residence disclosed the same defect.
+            teaches: Collect the sellers of a residence first, then test each defect against them; a defect no seller disclosed comes back false.
+            cypher: |-
+              MATCH (i:Inspection)-[:INSPECTED]->(p:Residence)
+              MATCH (i)-[:FOUND]->(f:Defect)
+              OPTIONAL MATCH (s:Seller)-[:SELLS]->(p)
+              WITH p, i, f, collect(DISTINCT s) AS sellers
+              OPTIONAL MATCH (d:Seller)-[:DISCLOSED]->(f)
+              WITH p, i, f, sellers, collect(DISTINCT d) AS disclosers
+              RETURN p.name AS residence, i.name AS inspection, f.name AS defect,
+                     any(x IN disclosers WHERE x IN sellers) AS disclosed_by_seller
+              ORDER BY residence, disclosed_by_seller, defect
+  Inspector:
+    label: Inspector
+    description: >-
+      A licensed home inspector, structural pest control applicator or other specialist who performs an
+      inspection and signs its report, named in full ("Darnell Okafor"). Inspectors examine a residence;
+      agents sell it.
+    aliases: [home inspector, pest inspector, WDI inspector, professional inspector]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The inspector's full name."}
+      licenseNumber: {type: STRING, pattern: "^[0-9]{4,7}$", description: "The inspector's state licence number."}
+      licenseType: {type: STRING, one_of: [professional inspector, real estate inspector, structural pest control applicator, plumber], description: "The licence the inspector works under."}
+    extensions:
+      display: {x: 360, y: 200, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a person named in full who inspects homes and writes the inspection report, such as Darnell Okafor", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: inspector-workload
+            category: aggregation
+            question: How many inspections, residences and defects is each inspector named for?
+            description: Per inspector, the inspections they performed, the residences those covered and the defects they reported.
+            teaches: An OPTIONAL MATCH from a variable another OPTIONAL MATCH left null matches nothing, so an inspector with no inspection still gets a row of zeros.
+            cypher: |-
+              MATCH (x:Inspector)
+              OPTIONAL MATCH (x)-[:PERFORMED]->(i:Inspection)
+              OPTIONAL MATCH (i)-[:INSPECTED]->(p:Residence)
+              OPTIONAL MATCH (i)-[:FOUND]->(f:Defect)
+              RETURN x.name AS inspector, count(DISTINCT i) AS inspections, count(DISTINCT p) AS residences, count(DISTINCT f) AS defects
+              ORDER BY inspections DESC, defects DESC, inspector
+relationships:
+  listingForResidence:
+    type: LISTING_FOR
+    description: >-
+      The listing advertises the residence for sale; exactly one residence per listing, and a residence
+      may have several listings over the years.
+    aliases: [advertises, is the listing for, offers, markets]
+    from: {node: Listing}
+    to: {node: Residence, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: advertises}
+  listingListedByAgent:
+    type: LISTED_BY
+    description: >-
+      The listing was entered and is managed by the agent, the listing agent; one listing agent per
+      listing, many listings per agent.
+    aliases: [was posted by, was entered by, is managed by]
+    from: {node: Listing}
+    to: {node: RealEstateAgent, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was listed by}
+  agentWorksForBrokerage:
+    type: WORKS_FOR
+    description: >-
+      The agent is licensed under and works for the brokerage; one brokerage per agent at a time, many
+      agents per brokerage.
+    aliases: [is with, is affiliated with, is sponsored by, is a broker at]
+    from: {node: RealEstateAgent}
+    to: {node: Brokerage, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: works for}
+  buyerRepresentedByAgent:
+    type: REPRESENTED_BY
+    description: >-
+      The buyer is represented by the agent, the buyer's agent under a buyer representation agreement;
+      usually one agent per buyer, many buyers per agent.
+    aliases: ["is the client of", "buyer's agent", works with]
+    from: {node: Buyer}
+    to: {node: RealEstateAgent}
+    extensions:
+      custom:
+        relate-examples: {phrase: is represented by}
+  sellerListedWithAgent:
+    type: LISTED_WITH
+    description: >-
+      The seller listed the residence with the agent, who represents the seller as listing agent; read
+      from the seller to the agent, usually one agent per seller.
+    aliases: [is represented by, hired, signed a listing agreement with]
+    from: {node: Seller}
+    to: {node: RealEstateAgent}
+    extensions:
+      custom:
+        relate-examples: {phrase: listed with}
+  sellerSellsResidence:
+    type: SELLS
+    description: >-
+      The seller is selling, or at closing sold, the residence they own; a residence may have several
+      sellers (joint owners), a seller usually one residence.
+    aliases: [sold, owns, conveyed, is the owner of]
+    from: {node: Seller}
+    to: {node: Residence}
+    extensions:
+      custom:
+        relate-examples: {phrase: is selling}
+  buyerBuysResidence:
+    type: BUYS
+    description: >-
+      The buyer is under contract for, or at closing bought, the residence; a residence may have several
+      buyers (joint purchasers), a buyer usually one residence.
+    aliases: [purchased, bought, is purchasing, is under contract for]
+    from: {node: Buyer}
+    to: {node: Residence}
+    extensions:
+      custom:
+        relate-examples: {phrase: is buying}
+  buyerBorrowsFromLender:
+    type: BORROWS_FROM
+    description: >-
+      The buyer finances the purchase with a loan from the lender; one lender per loan, many borrowers
+      per lender.
+    aliases: [is financed by, has a loan from, is financing with, borrowed from]
+    from: {node: Buyer}
+    to: {node: Lender}
+    extensions:
+      custom:
+        relate-examples: {phrase: borrows from}
+  residenceInNeighborhood:
+    type: LOCATED_IN
+    description: >-
+      The residence lies in the neighborhood; exactly one neighborhood per residence, many residences per
+      neighborhood.
+    aliases: [is in, is located in, sits in, is part of]
+    from: {node: Residence}
+    to: {node: Neighborhood, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is in}
+  inspectionOfResidence:
+    type: INSPECTED
+    description: >-
+      The inspection examined the residence; exactly one residence per inspection, many inspections per
+      residence.
+    aliases: [covers, examined, was carried out at, was performed at]
+    from: {node: Inspection}
+    to: {node: Residence, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: covered}
+  inspectorPerformedInspection:
+    type: PERFORMED
+    description: >-
+      The inspector performed the inspection and signed its report, read from the inspector; usually one
+      inspector per inspection, many inspections per inspector.
+    aliases: [conducted, signed, inspected, carried out]
+    from: {node: Inspector}
+    to: {node: Inspection}
+    extensions:
+      custom:
+        relate-examples: {phrase: performed}
+  buyerOrderedInspection:
+    type: ORDERED
+    description: >-
+      The buyer ordered the inspection and is its client, read from the buyer; one client per
+      inspection, and a buyer may order several inspections of one residence.
+    aliases: [commissioned, requested, booked, is the client of]
+    from: {node: Buyer}
+    to: {node: Inspection}
+    extensions:
+      custom:
+        relate-examples: {phrase: ordered}
+  inspectionFoundDefect:
+    type: FOUND
+    description: >-
+      The inspection reported the defect as a deficiency or condition of the residence; an inspection
+      reports many defects, and one defect may be reported by several inspections.
+    aliases: [reported, identified, noted, observed]
+    from: {node: Inspection}
+    to: {node: Defect}
+    extensions:
+      custom:
+        relate-examples: {phrase: found}
+  sellerDisclosedDefect:
+    type: DISCLOSED
+    description: >-
+      The seller disclosed the defect, in the seller's disclosure notice or in writing to the buyer;
+      many to many.
+    aliases: [reported, listed on the disclosure, told the buyer of]
+    from: {node: Seller}
+    to: {node: Defect}
+    extensions:
+      custom:
+        relate-examples: {phrase: disclosed}
+  lenderRequiredInspection:
+    type: REQUIRED
+    description: >-
+      The lender required the inspection as a condition of the loan (a wood-destroying insect report for
+      a VA loan, say); a lender may require several inspections, an inspection is usually required by
+      one lender.
+    aliases: [made a condition of the loan, called for, asked for]
+    from: {node: Lender}
+    to: {node: Inspection}
+    extensions:
+      custom:
+        relate-examples: {phrase: required}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Real Estate
+      card:
+        title: Real Estate
+        description: Follow a home sale from its listing and agents through the inspections, the defects they found and what the sellers disclosed.
+      source:
+        derived_from: create-context-graph's real-estate.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Buyer, Seller and Inspector,
+          Organization became Brokerage and Lender, and Agent became RealEstateAgent, a licensed person
+          working for a brokerage; Property became Residence; Listing, Inspection and Neighborhood keep
+          their meaning with new descriptions and properties; Transaction and its links gave way to the
+          buyer's and seller's own links to the residence; Defect, the disclosure and the lender's
+          conditions are new; the links were renamed for their meaning and given cardinalities; the tools
+          were written anew for an extracted graph.

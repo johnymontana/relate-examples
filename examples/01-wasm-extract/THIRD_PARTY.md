@@ -8,15 +8,17 @@ Shipped in `dist/` (what the GitHub Pages site serves for this example):
 
 | Path in `dist/` | Component | Licence |
 |---|---|---|
-| `assets/relate-1.2.0/`: `relate.js`, `relate_bg.wasm`, `trap.js`, `snippets/relate-wasm-dd0c6225f894802b/js/opfs.js`, `LICENSE.txt` | Relate 1.2.0, WASM build | Apache-2.0 (`LICENSE.txt`) |
+| `assets/relate-1.3.0/`: `relate.js`, `relate_bg.wasm`, `trap.js`, `snippets/relate-wasm-19215b5d5f97ddd6/js/opfs.js`, `LICENSE.txt` | Relate 1.3.0, WASM build | Apache-2.0 (`LICENSE.txt`) |
 | `assets/gliner-rs-4fa741e/`: `gliner_rs.js`, `gliner_rs_bg.wasm`, `LICENSE.txt`, `THIRD_PARTY-crates.txt` | gliner-rs v0.3.1, with the Rust crates it links (listed in `THIRD_PARTY-crates.txt`) | Apache-2.0; the crates MIT and/or Apache-2.0 for most, a few Unicode-3.0, Zlib, BSL-1.0, BSD-2-Clause or Unlicense (below) |
 | `assets/nvl-2.0.0/`: `nvl.js`, `HierarchicalLayout.worker.js`, their `.LEGAL.txt`, `NVL-LICENSE.txt`, the files the `.LEGAL.txt` refer to (`base.mjs.LICENSE.txt`, `dagre.esm.js.LEGAL.txt`), `THIRD_PARTY-npm.txt` and one `LICENSE-<package>-<version>.txt` per bundled npm package | NVL 2.0.0, with its bundled dependencies (only packages that put bytes into the bundle: NVL's `@segment/*` analytics packages are tree-shaken out and are neither shipped nor listed) | proprietary, used with Neo4j's permission (confirmed by the repository owner on 2026-10-08); the dependencies MIT, ISC, Unlicense |
 | `assets/js-yaml-4.3.2/`: `js-yaml.js`, `LICENSE.txt` | js-yaml 4.3.2 | MIT |
-| `assets/ontology-graph-spec-0.12.2/`: `ontology-graph-spec.js`, `LICENSE.txt`, `THIRD_PARTY.txt` | the Ontology Graph Spec SDK 0.12.2 (npm `@neo4j/ontology-graph-spec`), bundled into one module with the Kotlin libraries compiled into it (listed in `THIRD_PARTY.txt`) | Apache-2.0, the Kotlin libraries Apache-2.0 |
+| `assets/ontology-graph-spec-0.13.0/`: `ontology-graph-spec.js`, `LICENSE.txt`, `THIRD_PARTY.txt` | the Ontology Graph Spec SDK 0.13.0 (npm `@neo4j/ontology-graph-spec`), bundled into one module with the Kotlin libraries compiled into it (listed in `THIRD_PARTY.txt`) | Apache-2.0, the Kotlin libraries Apache-2.0 |
 | `data/LICENSE-edgextract.txt`, `data/SOURCE.md` | edgextract's licence, for the approach and the rules the page's modules port (below) | Apache-2.0 |
-| `data/ontologies/ogs/ccg/*.ontology.yaml`, `data/ontologies/ogs/SOURCE.md`, `data/ontologies/ccg/_base.yaml`, `data/ontologies/ccg/LICENSE-create-context-graph.txt`, `data/ontologies/ccg/SOURCE.md` | create-context-graph's domain ontologies, converted to Ontology Graph Spec 1.1, and their base, verbatim | Apache-2.0 |
+| `data/ontologies/ccg/_base.yaml`, `data/ontologies/ccg/LICENSE-create-context-graph.txt`, `data/ontologies/ccg/SOURCE.md` | create-context-graph's POLE+O base, verbatim, for a create-context-graph file pasted or loaded into the page | Apache-2.0 |
 | `data/ontology-spec/`: `ontology-graph-spec.schema.json`, `LICENSE-graph-spec.txt`, `SOURCE.md` | the Neo4j Ontology Graph Specification 1.1.0's JSON Schema, verbatim (also carried in `ogs.js`) | Apache-2.0 |
-| `data/samples/ccg/*.md` | 27 synthetic documents written for this example from create-context-graph's document templates; the people, organisations, identifiers, events and sites are fictional, the cities and regions real | this repository's licence |
+| `data/ontologies/ogs/studio/*.ontology.yaml`, `data/ontologies/ogs/SOURCE.md`, `data/ontologies/studio/<package>/human_description.md` and `NOTICE.md`, `data/ontologies/studio/SOURCE.md`, `data/ontologies/studio/manifest.json` | Neo4j's solution packages from studio-agent-use-cases at `b76f767`, each with this repository's overlay applied (below) | used with Neo4j's permission (confirmed by the repository owner on 2026-11-26); the parts drawn from FIBO MIT (EDM Council), with their notices in `NOTICE.md`; the overlays this repository's licence |
+| `data/ontologies/domains/*.ontology.yaml`, `data/ontologies/domains/SOURCE.md` | the curated domain ontologies, written for this example (ADR-0019) | this repository's licence |
+| `data/samples/domains/**/*.md`, `data/samples/studio/**/*.md` | synthetic documents written for this example; the studio ones narrate their package's synthetic sample data, with its names and identifiers | this repository's licence |
 | `data/ontologies/index.json`, `data/samples/samples.json` | the picker's lists (`build.mjs`, this repository) | this repository's licence |
 | the page's modules (`app.js`, `worker.js`, …), `assets/lib-<sha8>/` (`lib/replay.mjs`, `lib/relate_wasm.mjs`, `lib/ogs.mjs`), `queries/` | this repository; `split.js`, `names.js` and parts of `pipeline.js` port edgextract's rules; `ogs.js` carries the spec's schema | this repository's licence; the ports keep edgextract's attribution |
 
@@ -24,8 +26,10 @@ Not shipped:
 - the GLiNER2.5 weights, which the page fetches from the Hugging Face Hub;
 - the harness's fixtures (`harness/fixtures.mjs`), edge cases written for this example after edgextract's golden set, and
   `harness/fixtures/*.draft.ontology.yaml`, two documents as the last draft-format build of this example had them;
-- the create-context-graph samples' gold files and distractors (`data/samples/ccg/*.gold.json`,
-  `distractors.json`), which only the Node harness reads;
+- the documents' gold files (`data/samples/**/*.gold.json`) and the held-out documents
+  (`data/samples/heldout/`), which only the Node harness reads;
+- create-context-graph's 27 domain files (`data/ontologies/ccg/<domain>.yaml`), which the harness
+  converts in memory for its fixtures and checks;
 - `data/reference/`;
 - the development tools.
 
@@ -59,9 +63,9 @@ Not shipped:
   create-context-graph's `ontology.py` `_merge_base` does (a reimplementation, not a copy), and
   converts each file to an Ontology Graph Spec 1.1 document that carries all of it: properties,
   agent tools, document templates, decision traces, demo scenarios, the system prompt and the
-  visualization settings. `dist/` ships the 27 converted documents
-  (`data/ontologies/ogs/ccg/`, derived works under the same licence) and `_base.yaml` (for a
-  file pasted or loaded into the page), not the 27 originals.
+  visualization settings. The page no longer bundles them (ADR-0019): `dist/` ships only
+  `_base.yaml` (for a create-context-graph file pasted or loaded into the page), and the harness
+  converts the 27 in memory for its fixtures and the format checks.
 - **Source:** [neo4j-labs/create-context-graph](https://github.com/neo4j-labs/create-context-graph),
   `src/create_context_graph/domains/`, at commit `707b168d9509cbf1b919b82940285d1df4c6810d`
   (`707b168`, 2026-09-04). [`data/ontologies/ccg/SOURCE.md`](data/ontologies/ccg/SOURCE.md) maps
@@ -71,23 +75,18 @@ Not shipped:
   "Copyright 2026 Neo4j Labs" after its terms and conditions. That `LICENSE`, copied unchanged from the commit, travels with the
   files as `data/ontologies/ccg/LICENSE-create-context-graph.txt`, in the repo and in `dist/`.
 
-## The create-context-graph samples (`data/samples/ccg/`)
+## The documents (`data/samples/domains/`, `data/samples/studio/`, `data/samples/heldout/`)
 
-- **What:** 27 short markdown documents, one per domain, each with its gold labels
-  (`<domain>.gold.json`, edgextract's golden-label format: `{entities: [{name, type}],
-  relations: [{source, target, type}]}`), and `distractors.json`, the one hedged or negated
-  claim per document that the gold leaves out on purpose.
-- **Source:** written for this example, each from one of create-context-graph's document
-  templates for its domain (the template's id is in the document's front matter, `template:`;
-  its prompt is in the domain's YAML under `document_templates`). They are **synthetic**: the
-  people, organisations, identifiers and events in them are fictional, and so are the sites they
-  are set at (a reserve, a hotel, a well), while the cities and regions they mention are real
-  (Edinburgh, Norwich, Porto, the Douro Valley, Laikipia, …). No text is copied from
-  create-context-graph. Each front matter marks it `synthetic: true`, with a note (its "every name
-  is fictional" means those people, organisations, identifiers, events and sites, not the cities
-  and regions).
-- **Licence:** this repository's. The templates they follow are create-context-graph's
-  (Apache-2.0, above).
+- **What:** 49 markdown documents (a primary for each of the 40 ontologies, 9 companions) and 12
+  held-out ones, each with its gold labels (`.gold.json`, gold v2: entities with aliases, relations
+  with how the text states them, distractors by family, property values).
+- **Source:** written for this example, in the genre a practitioner would read (a compliance memo,
+  a discharge summary, a penetration-test report). They are **synthetic**: every person,
+  organisation, account, identifier and event is fictional; places, public authorities and public
+  scientific, medical and regulatory vocabulary are real. The solution packages' documents use their
+  package's own synthetic sample data (names and identifiers), so their facts agree with its
+  records. Each front matter marks it `synthetic: true`, with a note on what it was written from.
+- **Licence:** this repository's.
 
 ## GLiNER2.5 weights
 
@@ -139,16 +138,16 @@ Not shipped:
 
 ## Relate
 
-- **What:** Relate 1.2.0's WASM bundle: `relate.js`, `relate_bg.wasm`, `trap.js`
-  and `snippets/relate-wasm-<hash>/js/opfs.js`. The native 1.2.0 CLI and Python binding,
+- **What:** Relate 1.3.0's WASM bundle: `relate.js`, `relate_bg.wasm`, `trap.js`
+  and `snippets/relate-wasm-<hash>/js/opfs.js`. The native 1.3.0 CLI and Python binding,
   the repository's engine, run the round trips in `harness/native.py`, and are not shipped.
-- **Source:** npm's `@relate/relate-wasm@1.2.0` (provenance-signed), installed by `npm ci`
+- **Source:** npm's `@relate/relate-wasm@1.3.0` (provenance-signed), installed by `npm ci`
   from `package-lock.json`, whose sha512 integrity is the pin.
 - **Licence:** Apache-2.0 (the package's `license` field). The package ships no licence file, so
-  Relate's `LICENSE` at tag `v1.2.0` of [relatedb/relate](https://github.com/relatedb/relate) is
+  Relate's `LICENSE` at tag `v1.3.0` of [relatedb/relate](https://github.com/relatedb/relate) is
   committed as `data/LICENSE-relate.txt` (`build.mjs` checks its sha256) and served beside the
-  bundle as `assets/relate-1.2.0/LICENSE.txt`. The deployed site serves a copy of the pinned bundle
-  under `assets/relate-1.2.0/`.
+  bundle as `assets/relate-1.3.0/LICENSE.txt`. The deployed site serves a copy of the pinned bundle
+  under `assets/relate-1.3.0/`.
 
 ## NVL (Neo4j Visualization Library) 2.0.0
 
@@ -184,6 +183,24 @@ Not shipped:
   - `safe-buffer` (MIT, Feross Aboukhadijeh);
   - lodash (MIT).
 
+## Neo4j's solution packages (`data/ontologies/studio/`)
+
+- **What:** 13 packages of Neo4j's studio-agent-use-cases: each package's Ontology Graph Spec
+  document (`ONTOLOGY.json`), its queries (`QUERIES.md`), its description (`human_description.md`)
+  and, for the four that draw on FIBO, its source notice (`NOTICE.md`), verbatim. The page ships
+  each document with this repository's overlay applied (`data/ontologies/ogs/studio/`, made by
+  `harness/convert.mjs`), and the description and notice beside it.
+- **Source:** [neo4j/studio-agent-use-cases](https://github.com/neo4j/studio-agent-use-cases), commit
+  `b76f767e85c5853b7d70eb2bb3b10879d0e394a9`, vendored by `harness/vendor-studio.mjs`, which checks
+  every file against `manifest.json`. [`data/ontologies/studio/SOURCE.md`](data/ontologies/studio/SOURCE.md)
+  has the details. Three packages are written against the specification's 1.0.0, whose schema
+  (`data/ontology-spec/ontology-graph-spec-1.0.0.schema.json`, in the repository only) the harness
+  pins against 1.1.0's.
+- **Licence:** the repository has no licence file; the packages are used with Neo4j's permission,
+  confirmed by the repository owner on 2026-11-26 (ADR-0020). The FIBO-derived parts are MIT, from
+  the EDM Council, and their `NOTICE.md` lists the FIBO files and their copyright notices. The
+  overlays (`*.overlay.yaml`) are this repository's.
+
 ## The Ontology Graph Specification 1.1 schema (`data/ontology-spec/`)
 
 - **What:** the JSON Schema (draft 2020-12) of the Neo4j Ontology Graph Specification 1.1.0, the
@@ -191,21 +208,22 @@ Not shipped:
   `data/ontology-spec/ontology-graph-spec.schema.json`. `web/ogs.js` carries the same schema as a
   JavaScript object (pinned equal to the file in `expected/ontology.txt`) and interprets it.
 - **Source:** [neo4j/ontology-graph-spec](https://github.com/neo4j/ontology-graph-spec), tag
-  `release/v0.12.2`, commit `30e9122cb035e58b8e0c51e090f1dad2c66a26f9` (2026-11-23), the same bytes
-  <https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json> serves.
+  `release/v0.13.0`, commit `d3b4ec6de7d570139e3ba3aef5d64990155440e4` (2026-11-26), the same bytes
+  <https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json> serves (and the same blobs as at the
+  previous pin, `release/v0.12.2`: the schema did not change).
   [`data/ontology-spec/SOURCE.md`](data/ontology-spec/SOURCE.md) has the blob hashes.
 - **Licence:** Apache-2.0. The repository's `LICENSE`, copied unchanged, travels with the schema
   as `data/ontology-spec/LICENSE-graph-spec.txt`, in the repo and in `dist/`. No NOTICE file.
 
-## The Ontology Graph Spec SDK 0.12.2
+## The Ontology Graph Spec SDK 0.13.0
 
 - **What:** the spec's official library. Through `lib/ogs.mjs` it decodes every ontology document
   and runs its core validation, in the page, the worker and the Node harness.
-- **Source:** npm, `@neo4j/ontology-graph-spec@0.12.2` (pinned in `package.json` and
+- **Source:** npm, `@neo4j/ontology-graph-spec@0.13.0` (pinned in `package.json` and
   `package-lock.json`), built from [neo4j/ontology-graph-spec](https://github.com/neo4j/ontology-graph-spec)
-  at tag `release/v0.12.2`. The package is Kotlin/JS output spread over 13 modules; `npm run vendor`
+  at tag `release/v0.13.0`. The package is Kotlin/JS output spread over 13 modules; `npm run vendor`
   bundles them with esbuild into `web/vendor/ontology-graph-spec.js`, which `dist/` serves as
-  `assets/ontology-graph-spec-0.12.2/ontology-graph-spec.js`.
+  `assets/ontology-graph-spec-0.13.0/ontology-graph-spec.js`.
 - **Licence:** Apache-2.0. The npm package ships no licence file and its metadata names none: the
   repository's `LICENSE` (the same text as `data/ontology-spec/LICENSE-graph-spec.txt`) travels as
   `LICENSE.txt` beside the bundle. The Kotlin libraries compiled into it are Apache-2.0:
@@ -236,5 +254,5 @@ None of these is shipped:
   against;
 - Python `gliner2` 2.0.0 (Apache-2.0) and torch: only in `harness/reference.py`'s uv side env
   (`./run.sh --reference`);
-- the native Relate 1.2.0 CLI and the `relate-db` 1.2.0 Python binding (Apache-2.0), the
+- the native Relate 1.3.0 CLI and the `relate-db` 1.3.0 Python binding (Apache-2.0), the
   repository's engine: the native section.

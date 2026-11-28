@@ -1,0 +1,584 @@
+# Golf Sports: example 01's curated ontology for tournament golf as tours, clubs and golf writers
+# record it (D20). Written for this repository from create-context-graph's golf-sports.yaml at 707b168
+# (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, and the people and bodies are named for
+# what the game calls them (Player, Caddie, Club, Sponsor, Tour).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper). Every link says its direction and cardinality and carries the
+# phrase the model reads. The tools are the ontology's competency questions, written for the graph the
+# page extracts: entities carry name, display and key; relationships carry p, claims, sentences and
+# docs, and the trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: golf-sports
+name: Golf Sports
+description: >-
+  Tournament golf as a tour's media office, a tournament director or a golf writer records it: the
+  tournaments a tour sanctions, the clubs that host them and the courses and holes they are played
+  over, the rounds of each event and who led after them, the players in the field with their caddies,
+  clubs and tour memberships, the holes where they made birdies and dropped shots, and the sponsors
+  behind players and events. It answers who won a tournament and where, who caddies for whom, who led
+  after each round and on which course that round was played, which holes gave up birdies and which
+  cost shots, and which sponsors back which players and events, with the sentences behind each fact.
+  Scores, world rankings and handicap indexes are properties a document may state but the
+  extractor does not keep; equipment, coaches, rules officials and broadcasters are out of scope.
+nodes:
+  Player:
+    label: Player
+    description: >-
+      A golfer in a tournament's field, professional or amateur, named in full on first mention and by
+      surname after ("Mara Kessler", "Kessler"). A player hits the shots; the caddie beside her does not.
+    aliases: [golfer, professional, amateur, competitor, champion]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The player's full name as the documents write it."}
+      status: {type: STRING, one_of: [professional, amateur], description: "Whether the player plays for prize money; a leaderboard marks an amateur (a)."}
+      nationality: {type: STRING, pattern: "^[A-Z]{3}$", description: "The country the player represents, in the three capitals a leaderboard uses (GER, SCO, JPN)."}
+      worldRanking: {type: INTEGER, description: "The player's position in the world ranking in the week of the event."}
+      handicapIndex: {type: FLOAT, description: "An amateur's World Handicap System index; a plus handicap is stored as a negative number (+2.4 as -2.4)."}
+    extensions:
+      display: {x: -200, y: 0, colour: "#1d4ed8"}
+      custom:
+        relate-examples: {ask: "a person who plays golf in a tournament, professional or amateur, named in full such as Mara Kessler or by surname such as Kessler", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-player
+            category: lookup
+            question: Who is this player, and what does the store connect to her?
+            description: Finds players whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, and a surname alone is its own mention, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (p:Player) WHERE toLower(p.name) CONTAINS toLower($player)
+              OPTIONAL MATCH (p)-[r]-(x:_Entity)
+              RETURN p.name AS player, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY player, link, other
+            parameters:
+              - {name: player, type: STRING, description: "Part of the player's name.", example: Okabe}
+          - type: canonicalQuery
+            name: a-players-team
+            category: neighbourhood
+            question: Who caddies for this player, who sponsors her, and which club and tour does she belong to?
+            description: Each matching player with her caddies, her sponsors, the club she represents and the tours she is a member of.
+            teaches: Four independent neighbourhoods of one node come back as four collected lists; OPTIONAL MATCH keeps the player when the text names none of one.
+            cypher: |-
+              MATCH (p:Player) WHERE toLower(p.name) CONTAINS toLower($player)
+              OPTIONAL MATCH (c:Caddie)-[:CADDIES_FOR]->(p)
+              OPTIONAL MATCH (s:Sponsor)-[:SPONSORS]->(p)
+              OPTIONAL MATCH (p)-[:REPRESENTS]->(cl:Club)
+              OPTIONAL MATCH (p)-[:MEMBER_OF]->(t:Tour)
+              RETURN p.name AS player, collect(DISTINCT c.name) AS caddies, collect(DISTINCT s.name) AS sponsors,
+                     collect(DISTINCT cl.name) AS clubs, collect(DISTINCT t.name) AS tours
+              ORDER BY player
+            parameters:
+              - {name: player, type: STRING, description: "Part of the player's name.", example: Rourke}
+  Caddie:
+    label: Caddie
+    description: >-
+      The person who carries a player's bag during a round and advises on yardages, clubs and lines,
+      named in full ("Declan Furey"). A caddie works for one player at a time and never plays the shots.
+    aliases: [caddy, bagman, looper]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The caddie's full name."}
+      nationality: {type: STRING, pattern: "^[A-Z]{3}$", description: "The caddie's country, in a leaderboard's three capitals (IRL)."}
+      since: {type: INTEGER, description: "The year the caddie started working for the current player."}
+    extensions:
+      display: {x: -380, y: 120, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a caddie: the person who carries a player's bag in a tournament, named in full such as Declan Furey", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: who-caddies-for-whom
+            category: evidence
+            question: Which sentences say who caddies for each player?
+            description: Every CADDIES_FOR fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (c:Caddie)-[r:CADDIES_FOR]->(p:Player)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN c.name AS caddie, p.name AS player, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY player, caddie
+  Club:
+    label: Club
+    description: >-
+      A golf club as an institution: the members' club, resort or proprietary club that owns one or more
+      courses and hosts events, usually named with "Golf Club" ("Ardmorran Golf Club"). It is never the
+      implement a player swings (a driver, a 3-wood), and it is not one of its courses.
+    aliases: [golf club, members club, host club, resort, venue]
+    reference: https://schema.org/SportsClub
+    properties:
+      name: {type: STRING, key: true, description: "The club's name, with Golf Club when the text gives it."}
+      clubType: {type: STRING, one_of: [members, proprietary, resort, municipal], description: "How the club is owned and run."}
+      founded: {type: INTEGER, description: "The year the club was founded."}
+      county: {type: STRING, description: "The county or region the club is in (County Donegal)."}
+    extensions:
+      display: {x: 380, y: 300, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "a members' golf club or golf resort that owns golf courses and hosts tournaments, named like Ardmorran Golf Club", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: a-clubs-courses-and-events
+            category: neighbourhood
+            question: Which courses does this club own, which of their holes do the documents name, and which tournaments and players does the club host and send?
+            description: Each course of the matching club with its named holes, and the tournaments the club hosts and the players who represent it.
+            teaches: OPTIONAL MATCH through a second hop (course, then hole) keeps a course whose holes the text never names.
+            cypher: |-
+              MATCH (cl:Club) WHERE toLower(cl.name) CONTAINS toLower($club)
+              OPTIONAL MATCH (c:Course)-[:BELONGS_TO]->(cl)
+              OPTIONAL MATCH (h:Hole)-[:PART_OF]->(c)
+              OPTIONAL MATCH (t:Tournament)-[:HOSTED_BY]->(cl)
+              OPTIONAL MATCH (p:Player)-[:REPRESENTS]->(cl)
+              RETURN cl.name AS club, c.name AS course, collect(DISTINCT h.name) AS holes,
+                     collect(DISTINCT t.name) AS tournaments, collect(DISTINCT p.name) AS players
+              ORDER BY club, course
+            parameters:
+              - {name: club, type: STRING, description: "Part of the club's name.", example: Ardmorran}
+  Course:
+    label: Course
+    description: >-
+      An eighteen-hole golf course or links, named by its own name, often with "Course" or "Links" ("the
+      Sandhill Course"). A club may own several courses, and a tournament may be played over more than one.
+    aliases: [golf course, links, layout, track]
+    reference: https://schema.org/GolfCourse
+    properties:
+      name: {type: STRING, key: true, description: "The course's own name, without the club's."}
+      par: {type: INTEGER, description: "The course's par for eighteen holes (72)."}
+      yardage: {type: INTEGER, description: "The course's length in yards from the tees the event uses.", extensions: {custom: {relate-examples: {extract: true, ask: "the length of the golf course in yards, a figure such as 6,742 yards"}}}}
+      courseRating: {type: FLOAT, description: "The World Handicap System course rating, in strokes (74.1)."}
+      slopeRating: {type: INTEGER, description: "The slope rating, 55 to 155, where 113 is average."}
+      courseType: {type: STRING, one_of: [links, parkland, heathland, desert, mountain], description: "The kind of ground the course is laid out on."}
+      opened: {type: INTEGER, description: "The year the course opened."}
+    extensions:
+      display: {x: 200, y: 180, colour: "#15803d"}
+      custom:
+        relate-examples: {ask: "a golf course or links layout with its own name, such as the Sandhill Course", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: rounds-on-each-clubs-courses
+            category: path
+            question: Which rounds were played on each club's courses?
+            description: The chain round, course, club, with the rounds grouped by the course they were played on.
+            teaches: A three-node pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (r:Round)-[:PLAYED_ON]->(c:Course)-[:BELONGS_TO]->(cl:Club)
+              RETURN cl.name AS club, c.name AS course, collect(DISTINCT r.name) AS rounds
+              ORDER BY club, course
+  Hole:
+    label: Hole
+    description: >-
+      One hole of a course, named by its number ("the 17th", "the 18th hole") and sometimes by a nickname.
+      A hole belongs to one course, so the 17th of one course is not the 17th of another.
+    aliases: [golf hole, par 3, par 4, par 5]
+    properties:
+      name: {type: STRING, key: true, description: "The hole as the documents name it (17th)."}
+      number: {type: INTEGER, description: "The hole's number on the card, 1 to 18."}
+      par: {type: INTEGER, description: "The hole's par: 3, 4 or 5."}
+      yardage: {type: INTEGER, description: "The hole's length in yards from the tees the event uses.", extensions: {custom: {relate-examples: {extract: true, ask: "the length of the single hole in yards, a figure such as 418 yards"}}}}
+      strokeIndex: {type: INTEGER, description: "The hole's stroke index on the card, from 1 (hardest) to 18."}
+      scoringAverage: {type: FLOAT, description: "The field's average score on the hole for the week (3.38)."}
+    extensions:
+      display: {x: -60, y: 260, colour: "#ca8a04"}
+      custom:
+        relate-examples: {ask: "a hole on a golf course, written as an ordinal number such as the 17th or the 18th hole", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: where-the-winner-scored
+            category: path
+            question: Where did the winner of this tournament make birdies and drop shots, and on which course is each hole?
+            description: The tournament's winner, every hole the winner birdied or bogeyed, and the course each hole is on.
+            teaches: Start from the tournament, walk to its winner, then fan out; a type alternative ([:A|B]) and type(r) tell the two kinds of score apart.
+            cypher: |-
+              MATCH (p:Player)-[:WON]->(t:Tournament) WHERE toLower(t.name) CONTAINS toLower($tournament)
+              MATCH (p)-[s:BIRDIED|BOGEYED]->(h:Hole)
+              OPTIONAL MATCH (h)-[:PART_OF]->(c:Course)
+              RETURN t.name AS tournament, p.name AS winner, type(s) AS score, h.name AS hole, collect(DISTINCT c.name) AS courses
+              ORDER BY score, hole
+            parameters:
+              - {name: tournament, type: STRING, description: "Part of the tournament's title.", example: Atlantic Shore}
+          - type: canonicalQuery
+            name: hardest-holes
+            category: aggregation
+            question: Which holes cost players shots, and which gave up birdies?
+            description: Per hole, how many players the documents say bogeyed it and how many birdied it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (h:Hole)
+              OPTIONAL MATCH (g:Player)-[:BOGEYED]->(h)
+              OPTIONAL MATCH (b:Player)-[:BIRDIED]->(h)
+              RETURN h.name AS hole, count(DISTINCT g) AS bogeyed_by, count(DISTINCT b) AS birdied_by
+              ORDER BY bogeyed_by DESC, birdied_by, hole
+  Tournament:
+    label: Tournament
+    description: >-
+      A golf tournament or championship, named by its title, often with Open, Championship or Classic
+      ("the Atlantic Shore Open"). It is played in rounds over one or more courses, and a tour sanctions it.
+    aliases: [event, championship, open, classic, tour event]
+    reference: https://schema.org/SportsEvent
+    properties:
+      name: {type: STRING, key: true, description: "The tournament's title, without the year."}
+      season: {type: INTEGER, description: "The season (year) of the edition a document describes."}
+      startDate: {type: DATE, description: "The day the first round is played."}
+      endDate: {type: DATE, description: "The day the final round is played."}
+      format: {type: STRING, one_of: [stroke play, match play, stableford, pro-am], description: "How the tournament is scored."}
+      purse: {type: FLOAT, description: "The total prize fund, in the currency below (2500000).", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the total prize fund of the tournament, an amount such as €2.5 million"}}}}
+      currency: {type: STRING, pattern: "^[A-Z]{3}$", description: "The purse's currency, ISO 4217 (EUR)."}
+      fieldSize: {type: INTEGER, description: "The number of players who start the first round."}
+    extensions:
+      display: {x: 60, y: -180, colour: "#9333ea"}
+      custom:
+        relate-examples: {ask: "a golf tournament or championship, named by its title such as the Atlantic Shore Open", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: tournament-at-a-glance
+            category: lookup
+            question: Who won this tournament, where is it played, who hosts and sanctions it, and who sponsors it?
+            description: The matching tournament with its winners, its courses, its host clubs, the tours that sanction it and its sponsors.
+            teaches: Five OPTIONAL MATCHes multiply rows; collect(DISTINCT …) folds them back into one row per tournament.
+            cypher: |-
+              MATCH (t:Tournament) WHERE toLower(t.name) CONTAINS toLower($tournament)
+              OPTIONAL MATCH (w:Player)-[:WON]->(t)
+              OPTIONAL MATCH (t)-[:HELD_ON]->(c:Course)
+              OPTIONAL MATCH (t)-[:HOSTED_BY]->(cl:Club)
+              OPTIONAL MATCH (t)-[:SANCTIONED_BY]->(tour:Tour)
+              OPTIONAL MATCH (s:Sponsor)-[:SPONSORS]->(t)
+              RETURN t.name AS tournament, collect(DISTINCT w.name) AS winners, collect(DISTINCT c.name) AS courses,
+                     collect(DISTINCT cl.name) AS hosts, collect(DISTINCT tour.name) AS tours, collect(DISTINCT s.name) AS sponsors
+            parameters:
+              - {name: tournament, type: STRING, description: "Part of the tournament's title.", example: Atlantic Shore}
+          - type: canonicalQuery
+            name: the-field
+            category: aggregation
+            question: How many players do the documents put in each tournament, and who won it?
+            description: Per tournament, the players said to have played in or won it, and its winners.
+            teaches: A type alternative ([:A|B]) counts a winner once even when the text also says she played; count(DISTINCT …) does the rest.
+            cypher: |-
+              MATCH (t:Tournament)
+              OPTIONAL MATCH (p:Player)-[:COMPETED_IN|WON]->(t)
+              OPTIONAL MATCH (w:Player)-[:WON]->(t)
+              RETURN t.name AS tournament, count(DISTINCT p) AS players, collect(DISTINCT w.name) AS winners
+              ORDER BY players DESC, tournament
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Kessler}
+  Round:
+    label: Round
+    description: >-
+      One round of a tournament, in which each player still in the field plays eighteen holes, named by
+      its place in the event ("the first round", "the final round"). It is a stage of one tournament,
+      not one player's score.
+    aliases: [stage, opening round, closing round, R1, R4]
+    properties:
+      name: {type: STRING, key: true, description: "The round as the documents name it (third round)."}
+      number: {type: INTEGER, description: "The round's place in the tournament, 1 to 4."}
+      playedOn: {type: DATE, description: "The day the round was played, or began when it was suspended overnight.", extensions: {custom: {relate-examples: {extract: true, ask: "the day the round was played, a full date such as 18 Jun 2026"}}}}
+      status: {type: STRING, one_of: [completed, suspended, reduced, cancelled], description: "Whether the round was played in full."}
+      scoringAverage: {type: FLOAT, description: "The field's average score for the round (71.8)."}
+    extensions:
+      display: {x: 240, y: -20, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "a round of a golf tournament, such as the opening round, the second round or the final round"}
+        tools:
+          - type: canonicalQuery
+            name: leader-after-each-round
+            category: path
+            question: Who led after each round of this tournament, and on which courses was that round played?
+            description: The chain leader, round, tournament for the matching tournament, with each round's courses.
+            teaches: A pattern can run through a node in the middle (the round) and still filter on its far end (the tournament).
+            cypher: |-
+              MATCH (ld:Player)-[:LED]->(r:Round)-[:ROUND_OF]->(t:Tournament)
+              WHERE toLower(t.name) CONTAINS toLower($tournament)
+              OPTIONAL MATCH (r)-[:PLAYED_ON]->(c:Course)
+              RETURN t.name AS tournament, r.name AS stage, collect(DISTINCT ld.name) AS leaders, collect(DISTINCT c.name) AS courses
+              ORDER BY stage
+            parameters:
+              - {name: tournament, type: STRING, description: "Part of the tournament's title.", example: Atlantic Shore}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Corcoran}
+  Sponsor:
+    label: Sponsor
+    description: >-
+      A company that pays to back a tournament or a player: a title sponsor, an equipment or apparel
+      maker or another commercial partner, named by its brand ("Brennock Assurance"). A title sponsor's
+      name may also stand inside a tournament's title.
+    aliases: [title sponsor, partner, backer, equipment maker, endorser]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The sponsor's brand name."}
+      sponsorType: {type: STRING, one_of: [title, presenting, official partner, equipment, apparel, personal], description: "What the sponsorship is."}
+      sector: {type: STRING, description: "The sponsor's line of business (insurance)."}
+    extensions:
+      display: {x: -360, y: -180, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a company or brand that backs a golf tournament or a player commercially, such as a title sponsor, a watchmaker or an equipment maker, named by its brand", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-each-sponsor-backs
+            category: aggregation
+            question: How many tournaments and players does each sponsor back?
+            description: Per sponsor, the tournaments and the players it sponsors, counted and named.
+            teaches: One link type with two legal pairs (SPONSORS to a tournament or a player) is read with a label on the far end.
+            cypher: |-
+              MATCH (s:Sponsor)
+              OPTIONAL MATCH (s)-[:SPONSORS]->(t:Tournament)
+              OPTIONAL MATCH (s)-[:SPONSORS]->(p:Player)
+              RETURN s.name AS sponsor, count(DISTINCT t) AS tournaments, count(DISTINCT p) AS players,
+                     collect(DISTINCT t.name) + collect(DISTINCT p.name) AS backs
+              ORDER BY tournaments DESC, players DESC, sponsor
+  Tour:
+    label: Tour
+    description: >-
+      A professional golf tour: the circuit that sanctions a season of tournaments, ranks its members on
+      an order of merit and decides who may play, named in full ("the Meridian Tour"). Its members are
+      players, and it is never a single event.
+    aliases: [circuit, professional tour, golf tour]
+    reference: https://schema.org/SportsOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The tour's name."}
+      level: {type: STRING, one_of: [main, developmental, senior, amateur], description: "Where the tour stands in the game's ladder."}
+      field: {type: STRING, one_of: [men, women, mixed], description: "Who the tour's events are for."}
+      meritRanking: {type: STRING, description: "The name of the tour's season-long ranking (order of merit)."}
+    extensions:
+      display: {x: -120, y: -320, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a professional golf tour, the circuit that sanctions tournaments and whose members play them, named in full such as the Meridian Tour", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: tour-members-and-events
+            category: neighbourhood
+            question: Which players are members of each tour, and which tournaments does it sanction?
+            description: Each tour with its members and the tournaments it sanctions.
+            teaches: Two independent neighbourhoods of one node come back as two collected lists.
+            cypher: |-
+              MATCH (tour:Tour)
+              OPTIONAL MATCH (p:Player)-[:MEMBER_OF]->(tour)
+              OPTIONAL MATCH (t:Tournament)-[:SANCTIONED_BY]->(tour)
+              RETURN tour.name AS tour, collect(DISTINCT p.name) AS members, collect(DISTINCT t.name) AS events
+              ORDER BY tour
+relationships:
+  caddieCaddiesForPlayer:
+    type: CADDIES_FOR
+    description: >-
+      The caddie carries the player's bag; a caddie works for one player at a time, and a player has one
+      caddie at a time, though either may change over a career.
+    aliases: [carries the bag for, is on the bag for, loops for, works for]
+    from: {node: Caddie}
+    to: {node: Player}
+    extensions:
+      custom:
+        relate-examples: {phrase: caddies for}
+  playerCompetedInTournament:
+    type: COMPETED_IN
+    description: >-
+      The player played in the tournament, whatever her finish; many to many. A winner's WON link says
+      more, and a text that only names a player who withdrew asserts neither.
+    aliases: [played in, teed up in, made the cut in, entered, was in the field of]
+    from: {node: Player}
+    to: {node: Tournament}
+    extensions:
+      custom:
+        relate-examples: {phrase: played in}
+  playerWonTournament:
+    type: WON
+    description: >-
+      The player won the tournament in the edition a document describes; one winner per edition, and a
+      player may win many tournaments.
+    aliases: [captured, claimed, lifted the trophy at, is champion of]
+    from: {node: Player}
+    to: {node: Tournament}
+    extensions:
+      custom:
+        relate-examples: {phrase: won}
+  playerLedRound:
+    type: LED
+    description: >-
+      The player led, or shared the lead, after the round; a round has one leader or several tied, and a
+      player may lead after many rounds.
+    aliases: [led after, was the leader after, held the lead after, topped the leaderboard after]
+    from: {node: Player}
+    to: {node: Round, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: led after}
+  playerBirdiedHole:
+    type: BIRDIED
+    description: >-
+      The player made a birdie (one under par) on the hole in the event a document describes; many to
+      many, since a hole gives up birdies to many players.
+    aliases: [birdied, made birdie at, made a birdie on, picked up a shot at]
+    from: {node: Player}
+    to: {node: Hole}
+    extensions:
+      custom:
+        relate-examples: {phrase: made a birdie at}
+  playerBogeyedHole:
+    type: BOGEYED
+    description: >-
+      The player dropped one or more shots on the hole (a bogey or worse) in the event a document
+      describes; many to many.
+    aliases: [made bogey at, dropped a shot at, double-bogeyed, made a double bogey at]
+    from: {node: Player}
+    to: {node: Hole}
+    extensions:
+      custom:
+        relate-examples: {phrase: bogeyed}
+  playerRepresentsClub:
+    type: REPRESENTS
+    description: >-
+      The player represents the club, as an amateur member or as the professional attached to it; at
+      most one club per player, many players per club.
+    aliases: [is attached to, plays out of, is a member of, plays for]
+    from: {node: Player, max_count: 1}
+    to: {node: Club}
+    extensions:
+      custom:
+        relate-examples: {phrase: represents}
+  playerMemberOfTour:
+    type: MEMBER_OF
+    description: >-
+      The player holds membership (a card) on the tour; a player may be a member of more than one tour,
+      and a tour has many members.
+    aliases: [is a member of, has a card on, joined]
+    from: {node: Player}
+    to: {node: Tour}
+    extensions:
+      custom:
+        relate-examples: {phrase: plays on}
+  tournamentHeldOnCourse:
+    type: HELD_ON
+    description: >-
+      The tournament is played over the course; a tournament uses one course or several, and a course
+      may host many tournaments.
+    aliases: [is played over, was played at, is staged on, is held at]
+    from: {node: Tournament, min_count: 1}
+    to: {node: Course}
+    extensions:
+      custom:
+        relate-examples: {phrase: is played over}
+  tournamentHostedByClub:
+    type: HOSTED_BY
+    description: >-
+      The club hosts the tournament at its venue, usually over its own courses; one host club per
+      edition, and a club may host many tournaments.
+    aliases: [is hosted by, is staged by, is held at, returns to]
+    from: {node: Tournament}
+    to: {node: Club}
+    extensions:
+      custom:
+        relate-examples: {phrase: is hosted by}
+  tournamentSanctionedByTour:
+    type: SANCTIONED_BY
+    description: >-
+      The tour sanctions the tournament, which counts for its order of merit; a tournament may be
+      co-sanctioned by two tours, and a tour sanctions many tournaments.
+    aliases: [is an event on, is co-sanctioned by, counts for, is part of the schedule of]
+    from: {node: Tournament}
+    to: {node: Tour}
+    extensions:
+      custom:
+        relate-examples: {phrase: is sanctioned by}
+  roundOfTournament:
+    type: ROUND_OF
+    description: >-
+      The round is one of the tournament's rounds; every round belongs to exactly one tournament, which
+      usually has four.
+    aliases: [is a round of, of, is part of]
+    from: {node: Round, count: 1}
+    to: {node: Tournament}
+    extensions:
+      custom:
+        relate-examples: {phrase: is a round of}
+  roundPlayedOnCourse:
+    type: PLAYED_ON
+    description: >-
+      The round was played on the course; a round of a multi-course event is shared between several
+      courses, and a course is used by many rounds.
+    aliases: [was played over, was played at, was staged on]
+    from: {node: Round, min_count: 1}
+    to: {node: Course}
+    extensions:
+      custom:
+        relate-examples: {phrase: was played on}
+  courseBelongsToClub:
+    type: BELONGS_TO
+    description: >-
+      The course belongs to the club, which owns and runs it; a course belongs to at most one club, and a
+      club may own several courses.
+    aliases: [is owned by, is one of the courses of, is the course of]
+    from: {node: Course, max_count: 1}
+    to: {node: Club}
+    extensions:
+      custom:
+        relate-examples: {phrase: belongs to}
+  holeOnCourse:
+    type: PART_OF
+    description: >-
+      The hole is one of the course's holes; every hole is on exactly one course, which has eighteen.
+    aliases: [is on, is a hole of, is the signature hole of]
+    from: {node: Hole, count: 1}
+    to: {node: Course}
+    extensions:
+      custom:
+        relate-examples: {phrase: is on}
+  sponsorSponsorsTournament:
+    type: SPONSORS
+    description: >-
+      The sponsor backs the tournament, as title sponsor or partner; a tournament has one title sponsor
+      and may have many partners, and a sponsor may back many tournaments.
+    aliases: [is title sponsor of, backs, presents, has sponsored]
+    from: {node: Sponsor}
+    to: {node: Tournament}
+    extensions:
+      custom:
+        relate-examples: {phrase: sponsors}
+  sponsorSponsorsPlayer:
+    type: SPONSORS
+    description: >-
+      The sponsor backs the player under a personal or equipment contract; a player may have several
+      sponsors, and a sponsor several players.
+    aliases: [endorses, backs, signed, has sponsored]
+    from: {node: Sponsor}
+    to: {node: Player}
+    extensions:
+      custom:
+        relate-examples: {phrase: sponsors}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Sports & Gaming
+      card:
+        title: Golf Sports
+        description: Follow a golf tournament from its tour and host club to its courses, holes and rounds, and the players, caddies and sponsors in its field.
+      source:
+        derived_from: create-context-graph's golf-sports.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base is gone; the original's Player, Course, Hole, Tournament and Round keep their
+          meaning with new descriptions and properties (a Round is now a stage of a tournament, not one
+          player's scorecard), Handicap became a property of Player, and Caddie, Club, Sponsor and Tour are
+          new; the links were renamed for their meaning and given cardinalities, and the tools were written
+          anew for an extracted graph.

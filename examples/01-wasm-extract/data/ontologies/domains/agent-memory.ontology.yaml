@@ -1,0 +1,628 @@
+# Agent Memory: example 01's curated ontology for the write-ups engineers keep about an AI agent in
+# production (D20). Written for this repository from create-context-graph's agent-memory.yaml at
+# 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, and the parties are named for what the
+# domain calls them (User, StaffMember, Agent).
+#
+# Every kind carries the description a reader needs, aliases, a reference where schema.org has the
+# concept, realistic properties (identifiers with patterns, vocabularies with one_of), and under
+# extensions.custom.relate-examples the words the model reads (ask) and whether its mentions are proper
+# names (proper) or identifiers its key pattern proposes (propose, D26). Every link says its direction
+# and cardinality and carries the phrase the model reads. The tools are the ontology's competency
+# questions, written for the graph the page extracts: entities carry name, display, key and their key
+# property; relationships carry p, claims, sentences and docs, and the trace (_Sentence, _Claim) holds
+# the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: agent-memory
+name: Agent Memory
+description: >-
+  An AI agent in production as the engineers who run it write about it: the agents a team deploys,
+  the users they serve and the people who take over from them, the sessions and messages of each
+  conversation, the tools an agent can call and every call it made, and the memories it writes,
+  recalls and supersedes, with the preferences and the things in the user's world those memories are
+  about. It answers what an agent remembers about a user and where each memory came from, which
+  memories a session recalled and which it wrote, which message led to which tool call and what that
+  call acted on, which memory replaced which, which preferences a memory records that the user never
+  stated, and who a session was escalated to. Prompts, model weights, embeddings, token counts and
+  latency over time are out of scope: a document may give them, the extractor does not keep them.
+nodes:
+  Agent:
+    label: Agent
+    description: >-
+      An AI agent or assistant a team deploys to talk to users or act for them, named by its product
+      name ("Marlow") and sometimes by its deployment id. An agent is software; the people who
+      supervise it are staff members.
+    aliases: [assistant, bot, chatbot, AI agent, copilot]
+    reference: https://schema.org/SoftwareApplication
+    properties:
+      name: {type: STRING, key: true, description: "The agent's product name as the team writes it."}
+      agentId: {type: STRING, pattern: "^agt-[a-z0-9-]{3,40}$", description: "The deployment's id in the agent registry, agt- and a slug (agt-marlow-support)."}
+      model: {type: STRING, description: "The language model the deployment runs on, as the registry names it."}
+      version: {type: STRING, pattern: "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$", description: "The deployed release, as major.minor (4.2)."}
+      status: {type: STRING, one_of: [active, shadow, paused, retired], description: "Whether the deployment serves users, runs in shadow beside another, or is stopped."}
+    extensions:
+      display: {x: -240, y: -260, colour: "#8b5cf6"}
+      custom:
+        relate-examples: {ask: "an AI agent or assistant deployed to talk to users or act for them, named by its product name such as Marlow", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Marlow}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Marlow}
+  User:
+    label: User
+    description: >-
+      A person an agent serves in a session (a customer, a patient, a member), named in full or by
+      the id the memory store keeps for them (usr-20417). Users talk to the agent; staff members run it.
+    aliases: [customer, end user, account holder, caller]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The user's full name as the account holds it."}
+      userId: {type: STRING, pattern: "^usr-[0-9]{5}$", description: "The user's id in the memory store, usr- and five digits."}
+      locale: {type: STRING, description: "The user's language and region as a BCP 47 tag (en-GB)."}
+      memoryConsent: {type: BOOLEAN, description: "Whether the user agreed to the agent keeping memories between sessions."}
+    extensions:
+      display: {x: 240, y: -260, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a customer or other person the agent serves in a session, named in full or by a user id such as usr-20417", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-user
+            category: lookup
+            question: Who is this user, and what does the store connect to them?
+            description: Finds users whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (u:User) WHERE toLower(u.name) CONTAINS toLower($user)
+              OPTIONAL MATCH (u)-[r]-(x:_Entity)
+              RETURN u.name AS user, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY user, link, other
+            parameters:
+              - {name: user, type: STRING, description: "Part of the user's name.", example: Halloran}
+          - type: canonicalQuery
+            name: what-the-agent-remembers-about-a-user
+            category: neighbourhood
+            question: Which memories are about this user, what does each record or refer to, and which have been replaced?
+            description: Each memory about the user, with the preference it records, the things it refers to and any newer memory that supersedes it.
+            teaches: OPTIONAL MATCH keeps a memory in the answer even when it records no preference and nothing has replaced it.
+            cypher: |-
+              MATCH (m:Memory)-[:ABOUT]->(u:User) WHERE toLower(u.name) CONTAINS toLower($user)
+              OPTIONAL MATCH (m)-[:RECORDS]->(p:Preference)
+              OPTIONAL MATCH (m)-[:REFERENCES]->(e:Item)
+              OPTIONAL MATCH (newer:Memory)-[:SUPERSEDES]->(m)
+              RETURN u.name AS user, m.name AS memory, collect(DISTINCT p.name) AS records,
+                     collect(DISTINCT e.name) AS refers_to, collect(DISTINCT newer.name) AS superseded_by
+              ORDER BY memory
+            parameters:
+              - {name: user, type: STRING, description: "Part of the user's name.", example: Ines Halloran}
+  StaffMember:
+    label: StaffMember
+    description: >-
+      A person on the staff of the business that runs the agent: a support specialist who takes over
+      escalated sessions, or an engineer who reviews and corrects what the agent remembers, named in
+      full, often with a role. Staff members operate the agent; users are the people it serves.
+    aliases: [operator, human agent, support specialist, reviewer, on-call engineer, human in the loop]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The staff member's full name."}
+      role: {type: STRING, one_of: [support specialist, team lead, agent engineer, trust and safety reviewer], description: "What the staff member does for the deployment."}
+      team: {type: STRING, description: "The team the staff member belongs to (returns)."}
+    extensions:
+      display: {x: 400, y: -60, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a person on the staff running the agent who takes over escalated sessions or reviews its memories, such as a support specialist or engineer", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: staff-workload
+            category: aggregation
+            question: How many sessions were escalated to each staff member, and how many memories did each flag?
+            description: Per staff member, the sessions handed to them and the memories they flagged for review.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each session is counted once per flagged memory.
+            cypher: |-
+              MATCH (o:StaffMember)
+              OPTIONAL MATCH (s:Session)-[:ESCALATED_TO]->(o)
+              OPTIONAL MATCH (m:Memory)-[:FLAGGED_BY]->(o)
+              RETURN o.name AS staff_member, count(DISTINCT s) AS escalations, count(DISTINCT m) AS flagged
+              ORDER BY escalations DESC, flagged DESC, staff_member
+  Session:
+    label: Session
+    description: >-
+      One conversation between a user and an agent, from the user's first message to the close,
+      identified by its session id (ses-40218). A session is the unit memory is recalled into and
+      written from; its messages are the turns inside it.
+    aliases: [conversation, chat, thread, contact]
+    reference: https://schema.org/Conversation
+    properties:
+      sessionId: {type: STRING, key: true, pattern: "^ses-[0-9]{5}$", description: "The session id, ses- and five digits."}
+      name: {type: STRING, description: "The session as a document names it."}
+      channel: {type: STRING, one_of: [web chat, email, voice, messaging app, API], description: "Where the user reached the agent."}
+      startedAt: {type: ZONED DATETIME, description: "When the user's first message arrived, ISO 8601 with offset."}
+      endedAt: {type: ZONED DATETIME, description: "When the session closed, ISO 8601 with offset."}
+      outcome: {type: STRING, one_of: [resolved, escalated, abandoned, ongoing], description: "How the session ended."}
+      turns: {type: INTEGER, description: "The number of messages in the session."}
+    extensions:
+      display: {x: 0, y: -100, colour: "#6366f1"}
+      custom:
+        relate-examples: {ask: "one conversation between a user and an agent, identified by a session id such as ses-40218", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: session-overview
+            category: neighbourhood
+            question: Who took part in this session, who was it escalated to, and which memories did it recall and write?
+            description: The session's agent, user and staff member, with the memories recalled into it and those written from it.
+            teaches: The key property (sessionId) is filled from the name when the text gives the id, so an exact match works beside CONTAINS.
+            cypher: |-
+              MATCH (s:Session) WHERE s.sessionId = $session OR toLower(s.name) CONTAINS toLower($session)
+              OPTIONAL MATCH (a:Agent)-[:HANDLED]->(s)
+              OPTIONAL MATCH (u:User)-[:OPENED]->(s)
+              OPTIONAL MATCH (s)-[:ESCALATED_TO]->(o:StaffMember)
+              OPTIONAL MATCH (r:Memory)-[:RECALLED_IN]->(s)
+              OPTIONAL MATCH (w:Memory)-[:WRITTEN_IN]->(s)
+              RETURN s.name AS session, collect(DISTINCT a.name) AS agents, collect(DISTINCT u.name) AS users,
+                     collect(DISTINCT o.name) AS escalated_to, collect(DISTINCT r.name) AS recalled, collect(DISTINCT w.name) AS written
+            parameters:
+              - {name: session, type: STRING, description: "A session id.", example: ses-40218}
+  Message:
+    label: Message
+    description: >-
+      One message in a session, written by the user or the agent, identified by its message id
+      (msg-3305) and kept word for word in the transcript. Messages are what memories are drawn from
+      and what tool calls answer.
+    aliases: [turn, utterance, chat message, reply]
+    reference: https://schema.org/Message
+    properties:
+      messageId: {type: STRING, key: true, pattern: "^msg-[0-9]{4}$", description: "The message id, msg- and four digits."}
+      name: {type: STRING, description: "The message as a document names it."}
+      role: {type: STRING, one_of: [user, agent, tool, system], description: "Who wrote it: the user, the agent, a tool's result or the system."}
+      text: {type: STRING, description: "The message's words as the transcript keeps them."}
+      turn: {type: INTEGER, description: "The message's position in its session, from 1."}
+      sentAt: {type: ZONED DATETIME, description: "When the message was sent, ISO 8601 with offset."}
+    extensions:
+      display: {x: 0, y: 140, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "one message in a session, written by the user or the agent, identified by a message id such as msg-3305", proper: true, propose: true}
+  Memory:
+    label: Memory
+    description: >-
+      Something the agent stored to use in later sessions (a fact, an event or a note), identified by
+      its memory id (mem-1180) and quoted by its content. A memory records a preference or refers to
+      things; it is not the preference or the thing itself.
+    aliases: [memory record, stored memory, memory entry, note]
+    properties:
+      memoryId: {type: STRING, key: true, pattern: "^mem-[0-9]{4}$", description: "The memory id, mem- and four digits."}
+      name: {type: STRING, description: "The memory as a document names it."}
+      content: {type: STRING, description: "The memory's text, one sentence that stands on its own."}
+      memoryType: {type: STRING, one_of: [episodic, semantic, procedural], description: "Whether it records what happened, a fact about the user or their world, or how to do a task."}
+      slot: {type: STRING, description: "The slot a memory fills (delivery address); a newer memory in the same slot supersedes the older."}
+      status: {type: STRING, one_of: [current, superseded, deleted], description: "Whether recall may still return it.", extensions: {custom: {relate-examples: {extract: true, ask: "whether recall may still return the memory, current, superseded or deleted"}}}}
+      importance: {type: FLOAT, description: "The writer's score for how much the memory matters, 0 to 1.", extensions: {custom: {relate-examples: {extract: true, ask: "the importance score the writer gave the memory, such as 0.9 when the text says its importance was 0.9, never a recall score"}}}}
+      writtenOn: {type: DATE, description: "The date the memory was written.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the memory was written, such as 14 August 2026"}}}}
+      createdAt: {type: ZONED DATETIME, description: "When the memory was written, ISO 8601 with offset."}
+    extensions:
+      display: {x: 240, y: 140, colour: "#10b981"}
+      custom:
+        relate-examples: {ask: "a memory the agent stored about a user or their world, identified by a memory id such as mem-1180", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: where-a-memory-came-from
+            category: path
+            question: Which message was this memory drawn from, in which session, and who opened that session?
+            description: The chain memory, message, session, user, for every memory whose name holds the text.
+            teaches: A provenance question is a path; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (m:Memory)-[:DERIVED_FROM]->(msg:Message)
+              WHERE toLower(m.name) CONTAINS toLower($memory)
+              OPTIONAL MATCH (msg)-[:SENT_IN]->(s:Session)
+              OPTIONAL MATCH (u:User)-[:OPENED]->(s)
+              RETURN m.name AS memory, msg.name AS message, s.name AS session, collect(DISTINCT u.name) AS opened_by
+              ORDER BY memory, message
+            parameters:
+              - {name: memory, type: STRING, description: "A memory id.", example: mem-1402}
+          - type: canonicalQuery
+            name: what-replaced-what
+            category: path
+            question: Which older memories does this memory supersede, step by step?
+            description: The chain of SUPERSEDES links back from a memory, up to four steps.
+            teaches: A bounded variable-length pattern (*1..4) walks a chain without risking an unbounded search.
+            cypher: |-
+              MATCH p = (m:Memory)-[:SUPERSEDES*1..4]->(:Memory)
+              WHERE toLower(m.name) CONTAINS toLower($memory)
+              RETURN m.name AS memory, [n IN nodes(p) | n.name] AS chain, length(p) AS steps
+              ORDER BY steps
+            parameters:
+              - {name: memory, type: STRING, description: "A memory id.", example: mem-2231}
+          - type: canonicalQuery
+            name: memory-facts-and-their-sentences
+            category: evidence
+            question: Which sentences say what each memory records, where it came from and what it replaced?
+            description: Every extracted fact from a memory to another entity, with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (m:Memory)-[r]->(x:_Entity)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN m.name AS memory, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY memory, link, other
+          - type: canonicalQuery
+            name: facts-in-more-than-one-document
+            category: cross-document
+            question: Which facts do two or more documents both state?
+            description: Every extracted relationship whose evidence spans more than one document, with the documents' titles.
+            teaches: A relationship's docs list holds every document that supports it; size() over it finds the corroborated facts.
+            cypher: |-
+              MATCH (a:_Entity)-[r]->(b:_Entity) WHERE size(r.docs) > 1
+              MATCH (d:_Document) WHERE d.id IN r.docs
+              RETURN a.name AS source, type(r) AS link, b.name AS target, collect(d.title) AS documents
+              ORDER BY link, source, target
+  Preference:
+    label: Preference
+    description: >-
+      How a user likes to be served, as they stated it (a contact channel, a language, a delivery
+      window), named in lower case by what is preferred ("email-only contact"). The user holds the
+      preference; a memory only records it, rightly or not.
+    aliases: [user preference, stated preference, contact preference, setting]
+    properties:
+      name: {type: STRING, key: true, description: "The preference as the documents phrase it."}
+      category: {type: STRING, one_of: [contact channel, language, delivery, tone, privacy, resolution], description: "What the preference governs."}
+      statedOn: {type: DATE, description: "The date the user last stated it."}
+    extensions:
+      display: {x: 420, y: 260, colour: "#84cc16"}
+      custom:
+        relate-examples: {ask: "how a user likes to be served, such as a contact channel, a language or a delivery window, named by what is preferred"}
+        tools:
+          - type: canonicalQuery
+            name: preferences-stated-and-recorded
+            category: neighbourhood
+            question: Which preferences does this user hold, and which memories record each?
+            description: Each preference the user states, with the memories that record it (none when the agent never stored it).
+            teaches: Start from what the user said and look for the memory; an empty list is a preference the agent will not recall.
+            cypher: |-
+              MATCH (u:User)-[:PREFERS]->(p:Preference) WHERE toLower(u.name) CONTAINS toLower($user)
+              OPTIONAL MATCH (m:Memory)-[:RECORDS]->(p)
+              RETURN u.name AS user, p.name AS preference, collect(DISTINCT m.name) AS recorded_by
+              ORDER BY preference
+            parameters:
+              - {name: user, type: STRING, description: "Part of the user's name.", example: Halloran}
+          - type: canonicalQuery
+            name: preferences-nobody-stated
+            category: path
+            question: Which memories record a preference that the user they are about never stated, and who flagged them?
+            description: Every memory about a user that records a preference the user is not known to hold, with the staff members who flagged it.
+            teaches: NOT EXISTS over a pattern finds what is missing, here the PREFERS link that would justify a recorded preference.
+            cypher: |-
+              MATCH (u:User)<-[:ABOUT]-(m:Memory)-[:RECORDS]->(p:Preference)
+              WHERE NOT EXISTS { MATCH (u)-[:PREFERS]->(p) }
+              OPTIONAL MATCH (m)-[:FLAGGED_BY]->(o:StaffMember)
+              RETURN u.name AS user, m.name AS memory, p.name AS preference, collect(DISTINCT o.name) AS flagged_by
+              ORDER BY user, memory
+  Item:
+    label: Item
+    description: >-
+      A named or numbered thing the business tracks for the user, which messages mention, memories refer
+      to and tool calls act on: an order, a product, a booking, a device or a support case ("order
+      CV-55102", "Kettlewise K2"); agent-memory systems call these entities. The user, the agent and its
+      tools are not items, and a place or an address is part of a memory's content, not an item.
+    aliases: [entity, named entity, thing, record, object of interest]
+    reference: https://schema.org/Thing
+    properties:
+      name: {type: STRING, key: true, description: "The item as the documents name it."}
+      itemType: {type: STRING, one_of: [order, product, booking, device, case, other], description: "What sort of thing it is."}
+      externalId: {type: STRING, description: "The id the business's own systems give it (CV-55102), when it has one."}
+    extensions:
+      display: {x: 0, y: 340, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a named or numbered thing the business tracks for the user, such as an order, a product, a booking or a support case", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: where-an-item-comes-up
+            category: neighbourhood
+            question: Which messages mention this item, which memories refer to it, and which tool calls acted on it?
+            description: The item with the messages, memories and tool calls one link away.
+            teaches: Three independent neighbourhoods of one node come back as three collected lists.
+            cypher: |-
+              MATCH (e:Item) WHERE toLower(e.name) CONTAINS toLower($item)
+              OPTIONAL MATCH (msg:Message)-[:MENTIONS]->(e)
+              OPTIONAL MATCH (m:Memory)-[:REFERENCES]->(e)
+              OPTIONAL MATCH (c:ToolCall)-[:ACTED_ON]->(e)
+              RETURN e.name AS item, collect(DISTINCT msg.name) AS mentioned_in, collect(DISTINCT m.name) AS remembered_in,
+                     collect(DISTINCT c.name) AS acted_on_by
+              ORDER BY item
+            parameters:
+              - {name: item, type: STRING, description: "Part of the item's name.", example: Kettlewise}
+  Tool:
+    label: Tool
+    description: >-
+      A function or API an agent is allowed to call, registered with it and named by its function name
+      in snake case ("lookup_order"). A tool is the capability; each use of it is a tool call.
+    aliases: [function, action, API, plugin, skill]
+    properties:
+      functionName: {type: STRING, key: true, pattern: "^[a-z][a-z0-9]*(_[a-z0-9]+)+$", description: "The function name the agent calls: lower case words joined by underscores (lookup_order)."}
+      name: {type: STRING, description: "The tool as a document names it."}
+      purpose: {type: STRING, description: "What the tool does, in a line."}
+      effect: {type: STRING, one_of: [read-only, writes], description: "Whether a call only reads data or changes something (a refund, a replacement)."}
+      needsApproval: {type: BOOLEAN, description: "Whether a person must approve some calls before they run."}
+    extensions:
+      display: {x: -420, y: -40, colour: "#ef4444"}
+      custom:
+        relate-examples: {ask: "a function or API the agent is allowed to call, named by its function name such as lookup_order", propose: true}
+        tools:
+          - type: canonicalQuery
+            name: tool-usage
+            category: aggregation
+            question: Which agents can call each tool, and how often was it called?
+            description: Per tool, the agents allowed to call it and the number of calls made to it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (t:Tool)
+              OPTIONAL MATCH (a:Agent)-[:CAN_USE]->(t)
+              OPTIONAL MATCH (c:ToolCall)-[:INVOKED]->(t)
+              RETURN t.name AS tool, collect(DISTINCT a.name) AS agents, count(DISTINCT c) AS calls
+              ORDER BY calls DESC, tool
+  ToolCall:
+    label: ToolCall
+    description: >-
+      One call an agent made to a tool during a session, with its arguments and result, identified by
+      its call id (call-8811). A user's message usually triggers it, and it acts on the things its
+      arguments name.
+    aliases: [tool call, function call, tool invocation, action]
+    reference: https://schema.org/Action
+    properties:
+      callId: {type: STRING, key: true, pattern: "^call-[0-9]{4}$", description: "The call id, call- and four digits."}
+      name: {type: STRING, description: "The call as a document names it."}
+      status: {type: STRING, one_of: [success, error, refused, timeout], description: "How the call ended.", extensions: {custom: {relate-examples: {extract: true, ask: "how the tool call ended, success, error, refused or timeout"}}}}
+      arguments: {type: STRING, description: "The arguments as the trace records them, as JSON."}
+      latencyMs: {type: INTEGER, description: "The call's wall time, in milliseconds."}
+      calledAt: {type: ZONED DATETIME, description: "When the call was made, ISO 8601 with offset."}
+    extensions:
+      display: {x: -260, y: 220, colour: "#f97316"}
+      custom:
+        relate-examples: {ask: "one call the agent made to a tool during a session, identified by a call id such as call-8811", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: from-message-to-item
+            category: path
+            question: Which messages led, through which tool calls and tools, to an action on this item?
+            description: The chain message, tool call, item, with the tool each call invoked, for every item whose name holds the text.
+            teaches: A pattern can read from both ends towards the middle; the call is the node the two links share.
+            cypher: |-
+              MATCH (msg:Message)<-[:TRIGGERED_BY]-(c:ToolCall)-[:ACTED_ON]->(e:Item)
+              WHERE toLower(e.name) CONTAINS toLower($item)
+              OPTIONAL MATCH (c)-[:INVOKED]->(t:Tool)
+              RETURN e.name AS item, msg.name AS message, c.name AS call, collect(DISTINCT t.name) AS tools
+              ORDER BY call
+            parameters:
+              - {name: item, type: STRING, description: "Part of the item's name.", example: CV-55102}
+relationships:
+  agentHandledSession:
+    type: HANDLED
+    description: >-
+      The agent ran the session and answered the user's messages; one agent per session in this
+      ontology, many sessions per agent.
+    aliases: [ran, answered, served]
+    from: {node: Agent}
+    to: {node: Session, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: handled}
+  userOpenedSession:
+    type: OPENED
+    description: >-
+      The user started the session with their first message; exactly one user per session, many
+      sessions per user.
+    aliases: [started, began, contacted support in]
+    from: {node: User}
+    to: {node: Session, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: opened}
+  sessionEscalatedToStaffMember:
+    type: ESCALATED_TO
+    description: >-
+      The session was handed from the agent to the staff member, who took it over; a session is
+      escalated to one staff member or none, a staff member takes many.
+    aliases: [was handed to, was transferred to, was passed to]
+    from: {node: Session, max_count: 1}
+    to: {node: StaffMember}
+    extensions:
+      custom:
+        relate-examples: {phrase: was escalated to}
+  messageSentInSession:
+    type: SENT_IN
+    description: >-
+      The message was sent in the session; exactly one session per message, many messages per session.
+    aliases: [was posted in, belongs to, is a turn of]
+    from: {node: Message, count: 1}
+    to: {node: Session}
+    extensions:
+      custom:
+        relate-examples: {phrase: was sent in}
+  messageMentionsItem:
+    type: MENTIONS
+    description: >-
+      The message names the item, by name or number; many to many.
+    aliases: [names, refers to, asks about]
+    from: {node: Message}
+    to: {node: Item}
+    extensions:
+      custom:
+        relate-examples: {phrase: mentions}
+  toolCallInvokedTool:
+    type: INVOKED
+    description: >-
+      The call was a call to the tool; exactly one tool per call, many calls per tool.
+    aliases: [called, was a call to, ran]
+    from: {node: ToolCall, count: 1}
+    to: {node: Tool}
+    extensions:
+      custom:
+        relate-examples: {phrase: invoked}
+  toolCallTriggeredByMessage:
+    type: TRIGGERED_BY
+    description: >-
+      The message led the agent to make the call; at most one triggering message per call (a call the
+      agent makes on its own has none), and a message may trigger several calls.
+    aliases: [was prompted by, answered, was made in response to]
+    from: {node: ToolCall, max_count: 1}
+    to: {node: Message}
+    extensions:
+      custom:
+        relate-examples: {phrase: was triggered by}
+  toolCallActedOnItem:
+    type: ACTED_ON
+    description: >-
+      The call read or changed the item its arguments name (looked up an order, replaced a product); a
+      call may act on several items, an item may be acted on by many calls.
+    aliases: [looked up, fetched, changed, was run against]
+    from: {node: ToolCall}
+    to: {node: Item}
+    extensions:
+      custom:
+        relate-examples: {phrase: acted on}
+  agentCanUseTool:
+    type: CAN_USE
+    description: >-
+      The tool is registered with the agent, which may call it; many to many.
+    aliases: [can call, has access to, is given]
+    from: {node: Agent}
+    to: {node: Tool}
+    extensions:
+      custom:
+        relate-examples: {phrase: can call}
+  memoryWrittenInSession:
+    type: WRITTEN_IN
+    description: >-
+      The memory was written during, or when closing, the session; exactly one session per memory, many
+      memories per session.
+    aliases: [was stored in, was saved in, was created in]
+    from: {node: Memory, count: 1}
+    to: {node: Session}
+    extensions:
+      custom:
+        relate-examples: {phrase: was written in}
+  memoryRecalledInSession:
+    type: RECALLED_IN
+    description: >-
+      Recall returned the memory into the session's context; a memory may be recalled in many sessions,
+      a session recalls several memories.
+    aliases: [was retrieved in, was loaded into, surfaced in]
+    from: {node: Memory}
+    to: {node: Session}
+    extensions:
+      custom:
+        relate-examples: {phrase: was recalled in}
+  memoryDerivedFromMessage:
+    type: DERIVED_FROM
+    description: >-
+      The memory was drawn from what the message says: its provenance. A memory comes from one or more
+      messages, or from none when the agent inferred it; a message may yield several memories.
+    aliases: [was drawn from, was taken from, is based on]
+    from: {node: Memory}
+    to: {node: Message}
+    extensions:
+      custom:
+        relate-examples: {phrase: came from}
+  memoryAboutUser:
+    type: ABOUT
+    description: >-
+      The memory is about the user and may be recalled only into that user's sessions; at most one user
+      per memory, many memories per user.
+    aliases: [concerns, belongs to, is scoped to]
+    from: {node: Memory, max_count: 1}
+    to: {node: User}
+    extensions:
+      custom:
+        relate-examples: {phrase: is about}
+  memoryReferencesItem:
+    type: REFERENCES
+    description: >-
+      The memory's content names the item; many to many, and two memories that refer to one item are
+      two steps apart.
+    aliases: [mentions, names, is linked to]
+    from: {node: Memory}
+    to: {node: Item}
+    extensions:
+      custom:
+        relate-examples: {phrase: refers to}
+  memoryRecordsPreference:
+    type: RECORDS
+    description: >-
+      The memory stores the preference, whether or not the user stated it; at most one preference per
+      memory, a preference may be recorded by several memories.
+    aliases: [stores, captures, notes]
+    from: {node: Memory, max_count: 1}
+    to: {node: Preference}
+    extensions:
+      custom:
+        relate-examples: {phrase: records}
+  userPrefersPreference:
+    type: PREFERS
+    description: >-
+      The user holds the preference, as they stated it in a message or on their account; many to many.
+    aliases: [asked for, likes, wants]
+    from: {node: User}
+    to: {node: Preference}
+    extensions:
+      custom:
+        relate-examples: {phrase: prefers}
+  memorySupersedesMemory:
+    type: SUPERSEDES
+    description: >-
+      The newer memory replaced the older one, which recall should no longer return; read from the
+      newer to the older, at most one each way.
+    aliases: [replaced, overrode, updated]
+    from: {node: Memory, max_count: 1}
+    to: {node: Memory, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: supersedes}
+  memoryFlaggedByStaffMember:
+    type: FLAGGED_BY
+    description: >-
+      The staff member marked the memory as wrong or unsafe to recall, pending review; a memory may be
+      flagged by several staff members, a staff member flags many memories.
+    aliases: [was reported by, was challenged by, was marked by]
+    from: {node: Memory}
+    to: {node: StaffMember}
+    extensions:
+      custom:
+        relate-examples: {phrase: was flagged by}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Software & AI
+      card:
+        title: Agent Memory
+        description: Trace what an AI agent remembered about a user to the messages, sessions and tool calls behind it.
+      source:
+        derived_from: create-context-graph's agent-memory.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone, and so is Conversation, folded into Session;
+          User, StaffMember, Message, Tool and Preference are new; Entity became Item, the things the
+          business tracks; Agent, Session, Memory and ToolCall keep their meaning with new descriptions
+          and properties; the links were rewritten for provenance (a memory's message and session),
+          recall and supersession, and given cardinalities; the tools were written anew for an
+          extracted graph.

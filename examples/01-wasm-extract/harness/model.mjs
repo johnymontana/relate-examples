@@ -25,6 +25,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { MODEL_FILES, checkSchema, extractRaw, loadModel, memoryBytes, normalize, utf16Index } from '../web/gliner.js';
 import { parseOntology } from '../web/ontology.js';
 import { modelSchema } from '../web/pipeline.js';
+import { ccgConversions } from './convert.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXAMPLE = resolve(HERE, '..');
@@ -108,7 +109,8 @@ say(`weights    ${ref.model.repo} @ ${MODEL_REV.slice(0, 7)}, every file matches
 say(`reference  data/reference/gliner2-small.json: gliner2 ${ref.versions.gliner2}, torch ${ref.versions.torch} (CPU, ${ref.torch_threads} thread), the same weights`);
 say(`schema     the page's for create-context-graph's Financial Services (pipeline.modelSchema): entities ${ref.schema.entities.map(([id, d]) => (d ? `${id} ("${d}")` : id)).join(', ')};`);
 say(`           relations ${ref.schema.relations.map((r) => `"${r}"`).join(', ')}`);
-const fsSchema = checkSchema(modelSchema(parseOntology(readFileSync(join(EXAMPLE, 'data/ontologies/ogs/ccg/financial-services.ontology.yaml'), 'utf8'))).schema);
+// create-context-graph's Financial Services as the page converts it (harness/convert.mjs ccgConversions), the reference's schema
+const fsSchema = checkSchema(modelSchema(ccgConversions().find((c) => c.o.id === 'financial-services').o).schema);
 const refSchema = checkSchema({ entities: ref.schema.entities.map(([id, description]) => ({ id, description })), relations: ref.schema.relations, threshold: ref.options.threshold });
 const sameSchema = JSON.stringify(fsSchema) === JSON.stringify(refSchema);
 say(`           the same as the page asks now: ${sameSchema ? 'yes' : 'NO: re-record the fixture (./run.sh --reference)'}`);

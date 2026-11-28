@@ -9,7 +9,7 @@ agent-memory-graph, version 1: "Agent memory graph" (https://neo4j.com/docs/onto
 4 labels, 22 properties, 5 relationship types, 2 indexes, 5 invariants, 8 questions
 constraints as written: 22 PROPERTY_TYPE, 4 UNIQUE; and must_exist on 19 properties
 
-### The specification's SDK (@neo4j/ontology-graph-spec 0.12.2, through lib/ogs.mjs)
+### The specification's SDK (@neo4j/ontology-graph-spec 0.13.0, through lib/ogs.mjs)
 validation set core: no issues
 validation set labelled: no issues
 validation set consistentSchema: no issues
@@ -25,7 +25,7 @@ fields of the document that the SDK's encoding of it does not have:
 every other field is one the specification has: yes
 every label, property and relationship type has a description: yes (31; the longest is 488 characters of the 1024 allowed)
 
-## The document and the engine (Relate 1.2.0 WASM, after web/memory.js SCHEMA)
+## The document and the engine (Relate 1.3.0 WASM, after web/memory.js SCHEMA)
 property types (PROPERTY_TYPE): 22 in the document, 22 in the engine, the same: yes
 required properties (must_exist): 19 in the document, 19 in the engine, the same: yes
 uniqueness constraints (UNIQUE), with their names: 4 in the document, 4 in the engine, the same: yes
@@ -106,7 +106,7 @@ entity kinds the scripts use: event, module, person, place, project, repository,
 ### Writes the graph type allows and the document forbids (the team store after its scripted turns)
 a replaced memory made current again: MATCH (m:Memory) WHERE NOT m.current SET m.current = true
   the engine accepts it: yes; rules then broken: 2
-    one-current-memory-per-slot: current 2, slot "checkout rewrite/database"
+    one-current-memory-per-slot: slot "checkout rewrite/database", current 2
     replaced-means-not-current: id "db-postgres"
 a property the document does not declare: MATCH (e:Entity {key: 'dana'}) SET e.note = 'on holiday'
   the engine accepts it: yes; rules then broken: 1

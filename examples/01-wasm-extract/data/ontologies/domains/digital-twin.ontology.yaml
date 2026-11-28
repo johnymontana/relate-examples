@@ -1,0 +1,595 @@
+# Digital Twin: example 01's curated ontology for reliability and maintenance documents about plant
+# equipment watched by a digital twin (D20). Written for this repository from create-context-graph's
+# digital-twin.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the
+# inherited POLE+O base (Person, Organization, Location, Event, Object) is gone, and the things are
+# named for what a reliability engineer calls them (Plant, System, Asset, Component, Sensor, Alert,
+# FailureMode, WorkOrder, Technician, DigitalTwin).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: digital-twin
+name: Digital Twin
+description: >-
+  Plant equipment as reliability and maintenance engineers write about it when a digital twin watches
+  it: the plants and the systems they run, the tagged assets in each system and the process flow
+  between them, the components inside an asset, the sensors that monitor it and the twin that mirrors
+  it, the alerts sensors and twins raise, the failure modes those alerts point to and how one failure
+  mode leads to the next, and the work orders and technicians that answer them. It answers what an
+  asset is part of and what lies downstream of it, which sensor or twin saw a failure first, which
+  component suffered which failure mode, the chain from root cause to effect, which alerts no work
+  order answered, and who did the work. Readings, trends and model residuals are out of scope (they
+  live in the historian, not in prose), and so are spare parts, costs and the operator's own corporate
+  structure.
+nodes:
+  Plant:
+    label: Plant
+    description: >-
+      An industrial site that runs systems and employs maintenance staff (a works, refinery, mill or
+      power station), named in full as its operator names it ("Greythorpe Works"). A plant is the top
+      of the asset hierarchy; a system is one functional part of it.
+    aliases: [site, works, facility, installation, mill, station]
+    reference: https://schema.org/Place
+    properties:
+      name: {type: STRING, key: true, description: "The plant's name as the documents write it."}
+      plantCode: {type: STRING, pattern: "^[A-Z]{3}$", description: "The operator's three-letter site code (GTW)."}
+      sector: {type: STRING, one_of: [chemicals, power, water, oil and gas, pharmaceuticals, food and drink], description: "The industry the plant serves."}
+      region: {type: STRING, description: "The region the plant is in (Teesside)."}
+    extensions:
+      display: {x: -360, y: -220, colour: "#4338ca"}
+      custom:
+        relate-examples: {ask: "a whole industrial site such as a works, refinery, mill or power station, named in full (Greythorpe Works), never a unit or system inside it", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: plant-systems-and-staff
+            category: neighbourhood
+            question: Which systems does each plant run, and which technicians are based there?
+            description: Each plant with the systems that belong to it and the technicians based at it.
+            teaches: Two independent neighbourhoods of one node come back as two collected lists.
+            cypher: |-
+              MATCH (p:Plant)
+              OPTIONAL MATCH (s:System)-[:BELONGS_TO]->(p)
+              OPTIONAL MATCH (t:Technician)-[:BASED_AT]->(p)
+              RETURN p.name AS plant, collect(DISTINCT s.name) AS systems, collect(DISTINCT t.name) AS technicians
+              ORDER BY plant
+  System:
+    label: System
+    description: >-
+      A functional group of assets that does one job for a plant (cooling water, compressed air, a
+      reactor train), named by its title or its code ("Unit 3 Cooling Water System", CW-3). A system is
+      made of assets; it is not itself a machine with a tag.
+    aliases: [process system, unit, train, loop, circuit]
+    properties:
+      name: {type: STRING, key: true, description: "The system's title as the documents write it."}
+      systemCode: {type: STRING, pattern: "^[A-Z]{2,3}-[0-9]{1,2}$", description: "The system's code in the plant's hierarchy, letters, a dash and one or two digits (CW-3)."}
+      systemType: {type: STRING, one_of: [cooling water, process, utilities, electrical, control, safety], description: "What the system does."}
+      criticality: {type: STRING, one_of: [low, medium, high, safety-critical], description: "The criticality the plant's risk assessment gives the system."}
+    extensions:
+      display: {x: -360, y: -20, colour: "#8b5cf6"}
+      custom:
+        relate-examples: {ask: "a functional system of a plant, such as a cooling water, compressed air or process system, named by its title or a code such as CW-3", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: assets-in-a-system
+            category: neighbourhood
+            question: Which assets make up this system, and what does each one feed?
+            description: The assets that are part of every system whose name holds the text, each with the assets it feeds.
+            teaches: OPTIONAL MATCH keeps an asset in the answer even when the text says nothing about what it feeds.
+            cypher: |-
+              MATCH (a:Asset)-[:PART_OF]->(s:System) WHERE toLower(s.name) CONTAINS toLower($system)
+              OPTIONAL MATCH (a)-[:FEEDS]->(d:Asset)
+              RETURN s.name AS system, a.name AS asset, a.tag AS tag, collect(DISTINCT d.name) AS feeds
+              ORDER BY system, asset
+            parameters:
+              - {name: system, type: STRING, description: "Part of the system's name.", example: Cooling Water}
+  Asset:
+    label: Asset
+    description: >-
+      A maintainable piece of equipment with its own tag (a pump, motor, heat exchanger, compressor or
+      vessel), identified by its equipment tag ("P-301B", "the duty pump P-301B"). An asset is part of
+      one system; its components are the parts replaced inside it.
+    aliases: [equipment, equipment unit, machine, pump, heat exchanger, reactor]
+    properties:
+      tag: {type: STRING, key: true, pattern: "^[A-Z]{1,2}-[0-9]{3}[A-Z]?$", description: "The equipment tag: one or two letters for the class (P pump, E exchanger, R reactor), a dash, three digits and an optional train letter (P-301B)."}
+      name: {type: STRING, description: "The asset as a document names it."}
+      assetClass: {type: STRING, one_of: [pump, motor, heat exchanger, compressor, fan, vessel, reactor, cooling tower], description: "The ISO 14224 equipment class."}
+      dutyRole: {type: STRING, one_of: [duty, standby, single], description: "Whether the asset runs, waits as the standby, or has no spare."}
+      status: {type: STRING, one_of: [running, standby, degraded, tripped, out of service], description: "The asset's state when the document was written."}
+      installedOn: {type: DATE, description: "The date the asset was commissioned."}
+    extensions:
+      display: {x: -120, y: -20, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a whole piece of plant equipment with its own tag, such as a pump, motor, heat exchanger or reactor, identified by an equipment tag such as P-301B", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: asset-by-tag
+            category: lookup
+            question: Which asset has this tag, and what does the store connect to it?
+            description: The asset whose equipment tag is the parameter, with every entity one link away.
+            teaches: The key property (tag) is filled from the entity's name when the text gives the tag, so an exact match works here.
+            cypher: |-
+              MATCH (a:Asset) WHERE a.tag = $tag
+              OPTIONAL MATCH (a)-[r]-(x:_Entity)
+              RETURN a.name AS asset, a.tag AS tag, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY link, other
+            parameters:
+              - {name: tag, type: STRING, description: "An equipment tag.", example: P-301B}
+          - type: canonicalQuery
+            name: asset-health-picture
+            category: neighbourhood
+            question: What is fitted to this asset, what watches it, and which twin mirrors it?
+            description: Every asset whose name holds the text, with its components, the sensors that monitor it and its digital twin.
+            teaches: Three OPTIONAL MATCHes around one node, each collected DISTINCT, so one list never multiplies another.
+            cypher: |-
+              MATCH (a:Asset) WHERE toLower(a.name) CONTAINS toLower($asset)
+              OPTIONAL MATCH (c:Component)-[:FITTED_TO]->(a)
+              OPTIONAL MATCH (s:Sensor)-[:MONITORS]->(a)
+              OPTIONAL MATCH (t:DigitalTwin)-[:MIRRORS]->(a)
+              RETURN a.name AS asset, collect(DISTINCT c.name) AS components, collect(DISTINCT s.name) AS sensors,
+                     collect(DISTINCT t.name) AS twins
+              ORDER BY asset
+            parameters:
+              - {name: asset, type: STRING, description: "Part of the asset's name or tag.", example: P-301B}
+          - type: canonicalQuery
+            name: downstream-of-an-asset
+            category: path
+            question: What lies downstream of this asset, and how far?
+            description: Every chain of FEEDS links out of the asset with this tag, up to four steps.
+            teaches: A bounded variable-length pattern (*1..4) walks the process flow without risking an unbounded search.
+            cypher: |-
+              MATCH p = (a:Asset)-[:FEEDS*1..4]->(:Asset)
+              WHERE a.tag = $tag
+              RETURN a.name AS asset, [n IN nodes(p) | n.name] AS flow, length(p) AS steps
+              ORDER BY steps
+            parameters:
+              - {name: tag, type: STRING, description: "An equipment tag.", example: P-301B}
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: P-301B}
+  Component:
+    label: Component
+    description: >-
+      A part of an asset that is inspected, repaired or replaced on its own (a bearing, mechanical seal,
+      impeller, coupling or shaft), named in lower case by its position or function ("the drive-end
+      bearing"). A component sits inside one asset and has no equipment tag of its own.
+    aliases: [part, maintainable item, subunit, spare]
+    properties:
+      name: {type: STRING, key: true, description: "The component as the documents name it."}
+      componentType: {type: STRING, one_of: [bearing, mechanical seal, impeller, coupling, shaft, casing, wear ring], description: "The ISO 14224 maintainable item the component is."}
+      lastReplacedOn: {type: DATE, description: "The date the component was last replaced."}
+    extensions:
+      display: {x: -120, y: 200, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "a part inside a pump or other equipment that is replaced on its own, such as the drive-end bearing, mechanical seal, impeller or coupling"}
+  Sensor:
+    label: Sensor
+    description: >-
+      An instrument that measures one variable on an asset and streams it to the historian and the
+      twin (a vibration, temperature, pressure or level transmitter), identified by its instrument tag
+      (VT-3012). A sensor measures; an alert is what its readings set off.
+    aliases: [transmitter, instrument, probe, transducer]
+    properties:
+      tag: {type: STRING, key: true, pattern: "^[FLPTVZ]T-[0-9]{4}$", description: "The instrument tag: the measured variable's letter (F, L, P, T, V or Z), T for transmitter, a dash and four digits (VT-3012)."}
+      name: {type: STRING, description: "The sensor as a document names it."}
+      variable: {type: STRING, one_of: [flow, level, pressure, temperature, vibration, position], description: "What the sensor measures."}
+      unit: {type: STRING, description: "The engineering unit of its readings (mm/s RMS, °C, barg, %)."}
+      alarmLimit: {type: FLOAT, description: "The reading at which the control system raises its alarm, in the sensor's unit."}
+    extensions:
+      display: {x: 120, y: -160, colour: "#10b981"}
+      custom:
+        relate-examples: {ask: "a vibration, temperature, pressure, flow or level transmitter on plant equipment, identified by an instrument tag such as VT-3012", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: alerts-per-sensor
+            category: aggregation
+            question: How many alerts did each sensor trigger, and what does it monitor?
+            description: Per sensor, the assets it monitors and the number of alerts it triggered.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (s:Sensor)
+              OPTIONAL MATCH (s)-[:MONITORS]->(a:Asset)
+              OPTIONAL MATCH (s)-[:TRIGGERED]->(al:Alert)
+              RETURN s.name AS sensor, collect(DISTINCT a.name) AS monitors, count(DISTINCT al) AS alerts
+              ORDER BY alerts DESC, sensor
+  Alert:
+    label: Alert
+    description: >-
+      A notification that a reading or a model has crossed a limit (a twin's anomaly alert, a control
+      system alarm or a trip), identified by its number (AL-20931) and dated. An alert reports a
+      symptom; the failure mode is what the symptom points to.
+    aliases: [alarm, anomaly, trip, notification, event]
+    properties:
+      alertId: {type: STRING, key: true, pattern: "^AL-[0-9]{5}$", description: "The alert number, AL- and five digits."}
+      name: {type: STRING, description: "The alert as a document names it."}
+      alertType: {type: STRING, one_of: [anomaly, alarm, trip], description: "What raised it: a twin's model (anomaly) or the control system (alarm, trip).", extensions: {custom: {relate-examples: {extract: true, ask: "the type of the alert, anomaly (raised by a twin's model), alarm or trip"}}}}
+      severity: {type: STRING, one_of: [advisory, warning, high, critical], description: "The severity the alert was raised at."}
+      raisedAt: {type: LOCAL DATETIME, description: "When the alert was raised, in the plant's local time."}
+      status: {type: STRING, one_of: [open, acknowledged, closed], description: "Where the alert stands."}
+    extensions:
+      display: {x: 360, y: -160, colour: "#ef4444"}
+      custom:
+        relate-examples: {ask: "an anomaly alert, alarm or trip raised on plant equipment by a sensor or a digital twin, identified by a number such as AL-20931", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: from-alert-to-failed-part
+            category: path
+            question: Which sensor saw each failure first, and which part of which asset had failed?
+            description: The chain sensor, alert, failure mode, component, asset, for every alert that indicated a failure mode a component suffered.
+            teaches: A five-node pattern reads as a sentence; each hop is a link the ontology declares, in its direction.
+            cypher: |-
+              MATCH (s:Sensor)-[:TRIGGERED]->(al:Alert)-[:INDICATES]->(f:FailureMode)<-[:SUFFERED]-(c:Component)-[:FITTED_TO]->(a:Asset)
+              RETURN al.name AS alert, s.name AS sensor, f.name AS failure_mode, c.name AS component, a.name AS asset
+              ORDER BY alert, component
+          - type: canonicalQuery
+            name: alerts-and-their-answers
+            category: aggregation
+            question: Which alerts did no work order answer, and which twin raised them?
+            description: Per alert, the twins that raised it and the number of work orders that addressed it, unanswered alerts first.
+            teaches: count() over an OPTIONAL MATCH that found nothing is 0, so the alerts nobody answered sort first.
+            cypher: |-
+              MATCH (al:Alert)
+              OPTIONAL MATCH (w:WorkOrder)-[:ADDRESSES]->(al)
+              OPTIONAL MATCH (t:DigitalTwin)-[:RAISED]->(al)
+              RETURN al.name AS alert, collect(DISTINCT t.name) AS raised_by_twin, count(DISTINCT w) AS work_orders
+              ORDER BY work_orders, alert
+  FailureMode:
+    label: FailureMode
+    description: >-
+      How a component or asset fails, or what makes it fail, in a reliability engineer's terms (bearing
+      fatigue, seal face damage, shaft misalignment, cavitation, external leakage), named in lower case
+      and sometimes with its ISO 14224 code (ELP). Failure modes chain: one mode's effect is the next
+      mode's cause.
+    aliases: [failure mechanism, failure cause, damage mechanism, defect, fault]
+    properties:
+      name: {type: STRING, key: true, description: "The failure mode as the documents name it."}
+      code: {type: STRING, pattern: "^[A-Z]{3}$", description: "The ISO 14224 failure mode code, three letters (ELP for external leakage of process medium, VIB for vibration)."}
+      role: {type: STRING, one_of: [root cause, mechanism, failure mode, effect], description: "Where the mode sits in the chain a root-cause analysis draws."}
+    extensions:
+      display: {x: 240, y: 200, colour: "#b45309"}
+      custom:
+        relate-examples: {ask: "a way equipment or a part fails, or the damage or fault that makes it fail, such as bearing fatigue, cavitation, shaft misalignment or external leakage"}
+        tools:
+          - type: canonicalQuery
+            name: failure-chain
+            category: path
+            question: What did this failure mode lead to, step by step?
+            description: Every chain of LED_TO links out of a failure mode whose name holds the text, up to four steps.
+            teaches: Reading LED_TO from cause to effect walks a root-cause analysis forward; nodes(p) lists the chain in order.
+            cypher: |-
+              MATCH p = (f:FailureMode)-[:LED_TO*1..4]->(:FailureMode)
+              WHERE toLower(f.name) CONTAINS toLower($mode)
+              RETURN f.name AS cause, [n IN nodes(p) | n.name] AS chain, length(p) AS steps
+              ORDER BY steps
+            parameters:
+              - {name: mode, type: STRING, description: "Part of the failure mode's name.", example: misalignment}
+          - type: canonicalQuery
+            name: why-each-part-failed
+            category: evidence
+            question: Which sentences say which part suffered which failure mode?
+            description: Every SUFFERED fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (c:Component)-[r:SUFFERED]->(f:FailureMode)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN c.name AS component, f.name AS failure_mode, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY component, failure_mode
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: bearing fatigue}
+  WorkOrder:
+    label: WorkOrder
+    description: >-
+      A maintenance job raised against an asset in the plant's maintenance system (an inspection,
+      repair, replacement or alignment), identified by its number (WO-418207). Technicians carry a
+      work order out; an alert is often what prompts it.
+    aliases: [job, maintenance order, job card, work request]
+    properties:
+      workOrderId: {type: STRING, key: true, pattern: "^WO-[0-9]{6}$", description: "The work order number, WO- and six digits."}
+      name: {type: STRING, description: "The work order as a document names it."}
+      orderType: {type: STRING, one_of: [corrective, preventive, predictive, inspection, modification], description: "The kind of maintenance the order is for.", extensions: {custom: {relate-examples: {extract: true, ask: "the kind of maintenance the work order is for, corrective, preventive, predictive, inspection or modification"}}}}
+      raisedOn: {type: DATE, description: "The date the order was raised.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the work order was raised, such as 14 Mar 2026"}}}}
+      closedOn: {type: DATE, description: "The date the order was closed.", extensions: {custom: {relate-examples: {extract: true, ask: "the date the work order was closed, such as 16 Mar 2026"}}}}
+    extensions:
+      display: {x: 120, y: 340, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a maintenance work order or job raised against plant equipment, identified by a number such as WO-418207", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: work-orders-on-an-asset
+            category: neighbourhood
+            question: Which work orders were raised against this asset, what did each one answer and replace, and who carried it out?
+            description: Each work order raised against the asset with this tag, with the alerts it addressed, the components it replaced and its technicians.
+            teaches: Start from the asset and fan out from each work order; OPTIONAL MATCH on each side keeps an order whose alert or parts the text leaves out.
+            cypher: |-
+              MATCH (w:WorkOrder)-[:RAISED_AGAINST]->(a:Asset) WHERE a.tag = $tag
+              OPTIONAL MATCH (w)-[:ADDRESSES]->(al:Alert)
+              OPTIONAL MATCH (w)-[:REPLACED]->(c:Component)
+              OPTIONAL MATCH (w)-[:CARRIED_OUT_BY]->(t:Technician)
+              RETURN w.name AS work_order, collect(DISTINCT al.name) AS addressed, collect(DISTINCT c.name) AS replaced,
+                     collect(DISTINCT t.name) AS technicians
+              ORDER BY work_order
+            parameters:
+              - {name: tag, type: STRING, description: "An equipment tag.", example: P-301B}
+  Technician:
+    label: Technician
+    description: >-
+      A person who carries out maintenance at a plant (a mechanical fitter, instrument technician or
+      electrician), named in full ("Ewan Harcourt"). Technicians do the work orders; the engineers who
+      analyse a failure are not technicians.
+    aliases: [fitter, mechanic, maintenance technician, craftsperson, instrument technician]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The technician's full name."}
+      trade: {type: STRING, one_of: [mechanical, instrument, electrical, multi-skilled], description: "The technician's trade."}
+      contractor: {type: BOOLEAN, description: "True for a contract or agency technician, false for the operator's own staff."}
+    extensions:
+      display: {x: -320, y: 300, colour: "#db2777"}
+      custom:
+        relate-examples: {ask: "a maintenance technician, fitter or instrument technician who carries out work on plant equipment, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: technician-workload
+            category: aggregation
+            question: How many work orders did each technician carry out, and how many parts did they replace?
+            description: Per technician, the plant they are based at, the work orders they carried out and the components those orders replaced.
+            teaches: Count DISTINCT after chained OPTIONAL MATCHes, or each work order is counted once per part it replaced.
+            cypher: |-
+              MATCH (t:Technician)
+              OPTIONAL MATCH (t)-[:BASED_AT]->(p:Plant)
+              OPTIONAL MATCH (w:WorkOrder)-[:CARRIED_OUT_BY]->(t)
+              OPTIONAL MATCH (w)-[:REPLACED]->(c:Component)
+              RETURN t.name AS technician, collect(DISTINCT p.name) AS based_at, count(DISTINCT w) AS work_orders,
+                     count(DISTINCT c) AS parts_replaced
+              ORDER BY work_orders DESC, technician
+  DigitalTwin:
+    label: DigitalTwin
+    description: >-
+      The live virtual model of an asset that runs beside it on the plant's data, compares its readings
+      with what a physics-based or data-driven model predicts, and raises an anomaly alert when the two
+      part. It is identified by a twin id (DT-0417); the twin is software, the asset it mirrors is steel.
+    aliases: [twin, asset twin, virtual model, digital replica]
+    properties:
+      twinId: {type: STRING, key: true, pattern: "^DT-[0-9]{4}$", description: "The twin's id on the asset performance platform, DT- and four digits."}
+      name: {type: STRING, description: "The twin as a document names it."}
+      modelType: {type: STRING, one_of: [physics-based, data-driven, hybrid], description: "How the twin predicts what the asset should be doing."}
+      modelVersion: {type: STRING, description: "The version of the twin's model that raised the alerts the document describes."}
+    extensions:
+      display: {x: -120, y: -260, colour: "#14b8a6"}
+      custom:
+        relate-examples: {ask: "the live virtual model of a piece of equipment that watches its data and raises anomaly alerts, identified by a twin id such as DT-0417", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: what-each-twin-caught
+            category: neighbourhood
+            question: What does each twin mirror, which alerts did it raise, and which failure modes did they point to?
+            description: Each digital twin with the assets it mirrors, the alerts it raised and the failure modes those alerts indicated.
+            teaches: An OPTIONAL MATCH can start from a node another OPTIONAL MATCH found; when that one found nothing, this one finds nothing too.
+            cypher: |-
+              MATCH (t:DigitalTwin)
+              OPTIONAL MATCH (t)-[:MIRRORS]->(a:Asset)
+              OPTIONAL MATCH (t)-[:RAISED]->(al:Alert)
+              OPTIONAL MATCH (al)-[:INDICATES]->(f:FailureMode)
+              RETURN t.name AS twin, collect(DISTINCT a.name) AS mirrors, collect(DISTINCT al.name) AS alerts,
+                     collect(DISTINCT f.name) AS failure_modes
+              ORDER BY twin
+relationships:
+  systemBelongsToPlant:
+    type: BELONGS_TO
+    description: >-
+      The system is one of the plant's systems; every system belongs to exactly one plant, and a plant
+      runs many systems.
+    aliases: [is a system of, serves, is at]
+    from: {node: System, count: 1}
+    to: {node: Plant}
+    extensions:
+      custom:
+        relate-examples: {phrase: belongs to}
+  assetPartOfSystem:
+    type: PART_OF
+    description: >-
+      The asset is part of the system; every asset is part of exactly one system in this ontology, and a
+      system holds many assets.
+    aliases: [is in, sits in, belongs to the system]
+    from: {node: Asset, count: 1}
+    to: {node: System}
+    extensions:
+      custom:
+        relate-examples: {phrase: is part of}
+  componentFittedToAsset:
+    type: FITTED_TO
+    description: >-
+      The component is fitted inside the asset; every component is fitted to exactly one asset, and an
+      asset has many components.
+    aliases: [is installed in, is a component of, is a part of]
+    from: {node: Component, count: 1}
+    to: {node: Asset}
+    extensions:
+      custom:
+        relate-examples: {phrase: is fitted to}
+  assetFeedsAsset:
+    type: FEEDS
+    description: >-
+      Process fluid or energy flows from the first asset to the second, read downstream; many to many,
+      since a header joins several pumps to several users.
+    aliases: [supplies, discharges to, serves, is upstream of]
+    from: {node: Asset}
+    to: {node: Asset}
+    extensions:
+      custom:
+        relate-examples: {phrase: feeds}
+  sensorMonitorsAsset:
+    type: MONITORS
+    description: >-
+      The sensor measures a variable on the asset; every sensor monitors exactly one asset, and an asset
+      has many sensors.
+    aliases: [measures, is mounted on, is on, watches]
+    from: {node: Sensor, count: 1}
+    to: {node: Asset}
+    extensions:
+      custom:
+        relate-examples: {phrase: monitors}
+  sensorTriggeredAlert:
+    type: TRIGGERED
+    description: >-
+      The sensor's reading set the alert off; an alarm or trip has one sensor, a twin's anomaly alert
+      one or more, and a sensor triggers many alerts over time.
+    aliases: [set off, raised, tripped on]
+    from: {node: Sensor}
+    to: {node: Alert}
+    extensions:
+      custom:
+        relate-examples: {phrase: triggered}
+  twinMirrorsAsset:
+    type: MIRRORS
+    description: >-
+      The digital twin is the virtual model of the asset; every twin mirrors exactly one asset, and an
+      asset has at most one twin.
+    aliases: [models, is the twin of, represents]
+    from: {node: DigitalTwin, count: 1}
+    to: {node: Asset, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: mirrors}
+  twinRaisedAlert:
+    type: RAISED
+    description: >-
+      The twin's model raised the anomaly alert; an alert is raised by at most one twin, and a twin
+      raises many alerts.
+    aliases: [flagged, issued, generated]
+    from: {node: DigitalTwin}
+    to: {node: Alert, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: raised}
+  alertIndicatesFailureMode:
+    type: INDICATES
+    description: >-
+      The alert pointed to the failure mode, by the twin's diagnosis or the engineer's reading of it;
+      many to many.
+    aliases: [pointed to, signalled, was diagnosed as]
+    from: {node: Alert}
+    to: {node: FailureMode}
+    extensions:
+      custom:
+        relate-examples: {phrase: indicated}
+  componentSufferedFailureMode:
+    type: SUFFERED
+    description: >-
+      The component failed by, or was damaged by, the failure mode, as inspection found it; many to
+      many.
+    aliases: [failed by, showed, was damaged by, had]
+    from: {node: Component}
+    to: {node: FailureMode}
+    extensions:
+      custom:
+        relate-examples: {phrase: suffered}
+  failureModeLedToFailureMode:
+    type: LED_TO
+    description: >-
+      The first failure mode caused the second, read from cause to effect; a mode may have several causes
+      and several effects.
+    aliases: [caused, resulted in, produced, gave rise to]
+    from: {node: FailureMode}
+    to: {node: FailureMode}
+    extensions:
+      custom:
+        relate-examples: {phrase: led to}
+  workOrderRaisedAgainstAsset:
+    type: RAISED_AGAINST
+    description: >-
+      The work order was raised against the asset in the maintenance system; every work order has
+      exactly one asset, and an asset has many work orders.
+    aliases: [was raised on, is for, was booked against]
+    from: {node: WorkOrder, count: 1}
+    to: {node: Asset}
+    extensions:
+      custom:
+        relate-examples: {phrase: was raised against}
+  workOrderAddressesAlert:
+    type: ADDRESSES
+    description: >-
+      The work order was raised to deal with the alert; a work order may address several alerts, and an
+      alert may be answered by several orders or by none.
+    aliases: [answered, responded to, was raised for]
+    from: {node: WorkOrder}
+    to: {node: Alert}
+    extensions:
+      custom:
+        relate-examples: {phrase: addressed}
+  workOrderReplacedComponent:
+    type: REPLACED
+    description: >-
+      The work order took the component out and fitted a new one; a work order may replace several
+      components, and a component is replaced by many orders over its life.
+    aliases: [renewed, changed, swapped]
+    from: {node: WorkOrder}
+    to: {node: Component}
+    extensions:
+      custom:
+        relate-examples: {phrase: replaced}
+  workOrderCarriedOutByTechnician:
+    type: CARRIED_OUT_BY
+    description: >-
+      The technician did the work the order describes; a work order has one or more technicians, and a
+      technician carries out many orders.
+    aliases: [was done by, was completed by, was worked by]
+    from: {node: WorkOrder}
+    to: {node: Technician}
+    extensions:
+      custom:
+        relate-examples: {phrase: was carried out by}
+  technicianBasedAtPlant:
+    type: BASED_AT
+    description: >-
+      The technician works from the plant; every technician is based at exactly one plant, and a plant
+      has many technicians.
+    aliases: [works at, is stationed at, works on site at]
+    from: {node: Technician, count: 1}
+    to: {node: Plant}
+    extensions:
+      custom:
+        relate-examples: {phrase: is based at}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Manufacturing
+      card:
+        title: Digital Twin
+        description: Follow a failure from the sensor and the twin that saw it, through the failure modes inside the asset, to the work orders and technicians that answered it.
+      source:
+        derived_from: create-context-graph's digital-twin.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Technician and Location became
+          Plant; Asset, Sensor, Alert and System keep their meaning with new descriptions and properties;
+          MaintenanceRecord became WorkOrder; Reading was dropped (readings are numbers in the historian,
+          not things a text names); Component, FailureMode and DigitalTwin are new; the links were renamed
+          for their meaning and given cardinalities; the tools were written anew for an extracted graph.

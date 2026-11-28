@@ -1,0 +1,635 @@
+# Cybersecurity: example 01's curated ontology for security operations, incident response and threat
+# intelligence documents (D20). Written for this repository from create-context-graph's cybersecurity.yaml
+# at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, and the kinds are named for what a security
+# team calls them (Analyst, Account, ThreatActor, Malware, Technique, Indicator).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept (MITRE ATT&CK, the CVE programme, schema.org), realistic properties
+# (identifiers with patterns, vocabularies with one_of), and under extensions.custom.relate-examples the
+# words the model reads (ask) and whether its mentions are proper names (proper) or identifiers its key
+# pattern proposes (propose, D26). Every link says its direction and cardinality and carries the phrase
+# the model reads. The tools are the ontology's competency questions, written for the graph the page
+# extracts: entities carry name, display, key and their key property; relationships carry p, claims,
+# sentences and docs, and the trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: cybersecurity
+name: Cybersecurity
+description: >-
+  Security operations as a SOC, an incident response team and a threat intelligence desk write about
+  it: the assets an organisation runs and the vulnerabilities that affect them, the alerts its
+  monitoring raises and the analysts who triage them, the incidents those alerts become, the accounts
+  an intruder steals and the hosts it reaches with them, and the threat actors, malware, ATT&CK
+  techniques and indicators of compromise behind an attack, with the controls meant to stop it. It
+  answers which assets a CVE affects and what mitigates it, which alerts led to an incident and who
+  handled them, what an incident touched, which actor it is attributed to and what that actor exploits,
+  deploys and uses, and which techniques no alert detected, with the sentence behind each fact. Log
+  events, network flows, scan results and the organisation's structure outside security are out of
+  scope: a document names them, the extractor does not keep them.
+nodes:
+  Asset:
+    label: Asset
+    description: >-
+      A host, appliance or application in the organisation's own estate (a server, firewall, VPN
+      gateway, domain controller or workstation), usually named by its hostname ("VPN-GW-02"). An asset
+      is something the organisation runs and defends, not the vendor product it is an instance of.
+    aliases: [host, system, server, device, endpoint, appliance]
+    properties:
+      hostname: {type: STRING, key: true, pattern: "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$", description: "The asset's hostname as the asset register writes it, upper case with hyphens (FS-ARCH-01)."}
+      name: {type: STRING, description: "The asset as a document names it."}
+      assetType: {type: STRING, one_of: [server, workstation, firewall, VPN gateway, domain controller, application, cloud resource], description: "What kind of asset it is."}
+      criticality: {type: STRING, one_of: [critical, high, medium, low], description: "The business criticality recorded in the asset register."}
+      environment: {type: STRING, one_of: [production, disaster recovery, staging, development, lab], description: "The environment the asset belongs to."}
+      internetFacing: {type: BOOLEAN, description: "Whether the asset is reachable from the internet."}
+    extensions:
+      display: {x: -60, y: 160, colour: "#0ea5e9"}
+      custom:
+        relate-examples: {ask: "one host the organisation runs (a server, firewall, VPN gateway or domain controller), written as its hostname, such as VPN-GW-02 or FS-ARCH-01", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: asset-exposure
+            category: aggregation
+            question: Which assets carry the most exposure, and which controls protect them?
+            description: Per asset, the vulnerabilities that affect it, the malware found on it and the controls that protect it.
+            teaches: Three OPTIONAL MATCHes from one node multiply rows, so count DISTINCT and collect DISTINCT.
+            cypher: |-
+              MATCH (a:Asset)
+              OPTIONAL MATCH (v:Vulnerability)-[:AFFECTS]->(a)
+              OPTIONAL MATCH (m:Malware)-[:FOUND_ON]->(a)
+              OPTIONAL MATCH (c:Control)-[:PROTECTS]->(a)
+              RETURN a.name AS asset, count(DISTINCT v) AS vulnerabilities, count(DISTINCT m) AS malware_found,
+                     collect(DISTINCT c.name) AS protected_by
+              ORDER BY malware_found DESC, vulnerabilities DESC, asset
+  Vulnerability:
+    label: Vulnerability
+    description: >-
+      A flaw in software or firmware that an attacker can use, identified by its CVE number
+      (CVE-2024-21887) and sometimes by a nickname. A vulnerability belongs to a product version;
+      it affects the assets that run that version.
+    aliases: [CVE, flaw, bug, security weakness]
+    reference: https://www.cve.org/
+    properties:
+      cveId: {type: STRING, key: true, pattern: "^CVE-[0-9]{4}-[0-9]{4,7}$", description: "The CVE identifier, CVE-, the year and four to seven digits."}
+      name: {type: STRING, description: "The vulnerability as a document names it."}
+      vulnClass: {type: STRING, one_of: [authentication bypass, command injection, remote code execution, out-of-bounds write, information disclosure, privilege escalation], description: "The kind of flaw."}
+      cvssScore: {type: FLOAT, description: "The CVSS v3 base score, 0.0 to 10.0.", extensions: {custom: {relate-examples: {extract: true, ask: "the CVSS base score the vulnerability carries, a number from 0.0 to 10.0 such as 9.1"}}}}
+      knownExploited: {type: BOOLEAN, description: "Whether CISA's Known Exploited Vulnerabilities catalogue lists it."}
+      publishedOn: {type: DATE, description: "The date the CVE record was published."}
+    extensions:
+      display: {x: 160, y: 300, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a software vulnerability, identified by its CVE number, such as CVE-2024-21887", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: cve-exposure
+            category: lookup
+            question: Which assets does this CVE affect, what mitigates it, and who exploits it?
+            description: The vulnerability whose CVE number is the parameter, with the assets it affects, the controls that mitigate it and the threat actors that exploit it.
+            teaches: The key property (cveId) is filled from the entity's name when the text gives the identifier, so an exact match works here.
+            cypher: |-
+              MATCH (v:Vulnerability) WHERE v.cveId = $cve
+              OPTIONAL MATCH (v)-[:AFFECTS]->(a:Asset)
+              OPTIONAL MATCH (c:Control)-[:MITIGATES]->(v)
+              OPTIONAL MATCH (t:ThreatActor)-[:EXPLOITS]->(v)
+              RETURN v.name AS vulnerability, v.cveId AS cve, collect(DISTINCT a.name) AS affects,
+                     collect(DISTINCT c.name) AS mitigated_by, collect(DISTINCT t.name) AS exploited_by
+            parameters:
+              - {name: cve, type: STRING, description: "A CVE identifier.", example: CVE-2024-21887}
+  Technique:
+    label: Technique
+    description: >-
+      A MITRE ATT&CK technique or sub-technique: a way an attacker achieves a goal, identified by its
+      ATT&CK ID (T1003.001) and named by its ATT&CK name ("LSASS Memory"). A technique is a behaviour;
+      the malware or tool that carries it out is a separate kind.
+    aliases: [ATT&CK technique, sub-technique, TTP, tradecraft]
+    reference: https://attack.mitre.org/techniques/enterprise/
+    properties:
+      techniqueId: {type: STRING, key: true, pattern: "^T[0-9]{4}(?:\\.[0-9]{3})?$", description: "The ATT&CK technique ID, T and four digits, with a sub-technique's three digits after a dot (T1505.003)."}
+      name: {type: STRING, description: "The technique as a document names it."}
+      tactic: {type: STRING, one_of: [initial-access, execution, persistence, privilege-escalation, defense-evasion, credential-access, discovery, lateral-movement, collection, command-and-control, exfiltration, impact], description: "The ATT&CK tactic the technique serves."}
+    extensions:
+      display: {x: 380, y: -100, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a MITRE ATT&CK technique, identified by its ID, such as T1190 or T1003.001, or named by its ATT&CK name", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: detection-coverage
+            category: aggregation
+            question: How many alerts detected each technique, and which actors use it?
+            description: Per technique, the alerts that detected it and the threat actors known to use it; techniques with no alert come first.
+            teaches: A count of zero from an OPTIONAL MATCH is the gap a detection engineer is looking for.
+            cypher: |-
+              MATCH (t:Technique)
+              OPTIONAL MATCH (al:Alert)-[:DETECTED]->(t)
+              OPTIONAL MATCH (ta:ThreatActor)-[:USES]->(t)
+              RETURN t.name AS technique, count(DISTINCT al) AS alerts, collect(DISTINCT ta.name) AS used_by
+              ORDER BY alerts, technique
+  Malware:
+    label: Malware
+    description: >-
+      A named piece of malicious software or an attacker's tool: a web shell, backdoor, loader,
+      ransomware family, or a dual-use tool such as Mimikatz or Rclone run by an intruder. Malware is
+      software found on a host; the technique it carries out is a separate kind.
+    aliases: [implant, web shell, backdoor, ransomware, tool, malware family]
+    reference: https://attack.mitre.org/software/
+    properties:
+      name: {type: STRING, key: true, description: "The malware family or tool's name."}
+      malwareType: {type: STRING, one_of: [web shell, backdoor, loader, ransomware, credential dumper, exfiltration tool, remote access tool], description: "What the software does."}
+      attackSoftwareId: {type: STRING, pattern: "^S[0-9]{4}$", description: "The ATT&CK software ID, S and four digits (S0002), when ATT&CK lists it."}
+    extensions:
+      display: {x: 260, y: 80, colour: "#be185d"}
+      custom:
+        relate-examples: {ask: "a named piece of malware or hacking tool that runs on a host, such as a web shell, backdoor, ransomware, Mimikatz or Cobalt Strike", proper: true}
+  Indicator:
+    label: Indicator
+    description: >-
+      An indicator of compromise: an observable that ties activity to an attack, such as an IP address,
+      a domain name or a file hash, written as it appears in logs and feeds. An indicator is evidence of
+      malware or an intruder, not a host the organisation runs.
+    aliases: [IOC, indicator of compromise, observable, IP address, domain, file hash]
+    properties:
+      value: {type: STRING, key: true, pattern: "^(?:[0-9]{1,3}(?:\\.[0-9]{1,3}){3}|[a-f0-9]{64}|[a-z0-9-]+(?:\\.[a-z0-9-]+)*\\.(?:com|net|org))$", description: "The indicator as written: an IPv4 address in dotted quads, a SHA-256 hash in lower-case hex, or a domain name."}
+      name: {type: STRING, description: "The indicator as a document names it."}
+      indicatorType: {type: STRING, one_of: [ipv4, domain, sha256, url], description: "What kind of observable it is."}
+      firstSeen: {type: DATE, description: "The date the indicator was first seen."}
+    extensions:
+      display: {x: 380, y: 240, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "an indicator of compromise: an IP address, domain name or file hash tied to an attack, such as 198.51.100.77", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: from-indicator-to-actor
+            category: path
+            question: Which threat actor does each indicator lead to, through which malware, and in which incidents was it seen?
+            description: The chain indicator, malware, threat actor, with the incidents each indicator was observed in.
+            teaches: Arrows point the way the ontology declares them, so a path can meet in the middle (Malware) from both sides.
+            cypher: |-
+              MATCH (ind:Indicator)-[:ASSOCIATED_WITH]->(m:Malware)<-[:DEPLOYS]-(ta:ThreatActor)
+              OPTIONAL MATCH (ind)-[:OBSERVED_IN]->(i:Incident)
+              RETURN ind.name AS indicator, m.name AS malware, ta.name AS actor, collect(DISTINCT i.name) AS seen_in
+              ORDER BY indicator, malware, actor
+  Alert:
+    label: Alert
+    description: >-
+      A notification raised by a security tool (EDR, the SIEM, a proxy or an integrity checker) that
+      something on a host needs a look, identified by its alert number (ALR-77134). An alert is a
+      signal that an analyst triages; an incident is what the team opens when the signal is real.
+    aliases: [detection, alarm, SIEM alert, EDR alert, notable event]
+    properties:
+      alertId: {type: STRING, key: true, pattern: "^ALR-[0-9]{5}$", description: "The alert number, ALR- and five digits."}
+      name: {type: STRING, description: "The alert as a document names it."}
+      source: {type: STRING, one_of: [EDR, SIEM, IDS, web proxy, integrity checker, firewall, user report], description: "The tool that raised the alert.", extensions: {custom: {relate-examples: {extract: true, ask: "the kind of tool that raised the alert, such as EDR, web proxy, firewall or integrity checker"}}}}
+      severity: {type: STRING, one_of: [critical, high, medium, low], description: "The severity the tool or the analyst assigned.", extensions: {custom: {relate-examples: {extract: true, ask: "the severity the alert was rated, critical, high, medium or low"}}}}
+      disposition: {type: STRING, one_of: [escalated, false positive, benign, duplicate], description: "How triage closed the alert."}
+      raisedAt: {type: ZONED DATETIME, description: "When the alert fired, in UTC."}
+    extensions:
+      display: {x: -260, y: -60, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "a security alert raised by EDR, a SIEM or another monitoring tool, identified by an alert number such as ALR-77134", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: alerts-to-attribution
+            category: path
+            question: Which alerts led to an incident attributed to a threat actor, and on which assets did they fire?
+            description: Every alert escalated to an incident that is attributed to an actor, with the assets the alert fired on.
+            teaches: A chain of two hops is one pattern; the side branch (the assets) stays optional so an alert with no named host still answers.
+            cypher: |-
+              MATCH (al:Alert)-[:ESCALATED_TO]->(i:Incident)-[:ATTRIBUTED_TO]->(ta:ThreatActor)
+              OPTIONAL MATCH (al)-[:FIRED_ON]->(a:Asset)
+              RETURN al.name AS alert, collect(DISTINCT a.name) AS fired_on, i.name AS incident, ta.name AS actor
+              ORDER BY alert
+          - type: canonicalQuery
+            name: how-alerts-were-handled
+            category: evidence
+            question: Which sentences say who triaged each alert and where it was escalated?
+            description: Every TRIAGED_BY and ESCALATED_TO fact with its score and the sentences it was read from.
+            teaches: A relationship pattern can name several types (TRIAGED_BY|ESCALATED_TO); type(r) says which one matched.
+            cypher: |-
+              MATCH (al:Alert)-[r:TRIAGED_BY|ESCALATED_TO]->(x:_Entity)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN al.name AS alert, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY alert, link, other
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Pale Cormorant}
+  Incident:
+    label: Incident
+    description: >-
+      A security incident the response team opened and worked to closure, identified by its incident
+      number (INC-2025-0031). One or more alerts are escalated to it; it impacts assets, compromises
+      accounts and may be attributed to a threat actor.
+    aliases: [security incident, case, intrusion, breach, compromise]
+    properties:
+      incidentId: {type: STRING, key: true, pattern: "^INC-[0-9]{4}-[0-9]{4}$", description: "The incident number, INC-, the year and four digits."}
+      name: {type: STRING, description: "The incident as a document names it."}
+      category: {type: STRING, one_of: [data theft, ransomware, account compromise, malware, phishing, denial of service, unauthorised access], description: "What kind of incident it was."}
+      severity: {type: STRING, one_of: [SEV1, SEV2, SEV3, SEV4], description: "The severity the incident commander set.", extensions: {custom: {relate-examples: {extract: true, ask: "the severity level the incident was rated, SEV1 to SEV4, such as SEV2"}}}}
+      status: {type: STRING, one_of: [open, contained, eradicated, recovered, closed], description: "Where the incident stands."}
+      openedAt: {type: ZONED DATETIME, description: "When the incident was opened, in UTC."}
+    extensions:
+      display: {x: 0, y: -140, colour: "#e11d48"}
+      custom:
+        relate-examples: {ask: "a security incident opened by the response team, identified by an incident number such as INC-2025-0031", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: find-an-incident
+            category: lookup
+            question: What is this incident, and what does the store connect to it?
+            description: Finds incidents whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (i:Incident) WHERE toLower(i.name) CONTAINS toLower($incident)
+              OPTIONAL MATCH (i)-[r]-(x:_Entity)
+              RETURN i.name AS incident, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY incident, link, other
+            parameters:
+              - {name: incident, type: STRING, description: "Part of the incident's number or name.", example: INC-2025-0031}
+          - type: canonicalQuery
+            name: incident-scope
+            category: neighbourhood
+            question: Who led this incident, which alerts became it, and which assets and accounts did it touch?
+            description: The incident with its lead, the alerts escalated to it, the assets it impacted and the accounts compromised in it.
+            teaches: Four independent neighbourhoods of one node come back as four collected lists.
+            cypher: |-
+              MATCH (i:Incident) WHERE toLower(i.name) CONTAINS toLower($incident)
+              OPTIONAL MATCH (i)-[:LED_BY]->(lead:Analyst)
+              OPTIONAL MATCH (al:Alert)-[:ESCALATED_TO]->(i)
+              OPTIONAL MATCH (i)-[:IMPACTED]->(a:Asset)
+              OPTIONAL MATCH (acct:Account)-[:COMPROMISED_IN]->(i)
+              RETURN i.name AS incident, collect(DISTINCT lead.name) AS led_by, collect(DISTINCT al.name) AS alerts,
+                     collect(DISTINCT a.name) AS assets, collect(DISTINCT acct.name) AS accounts
+              ORDER BY incident
+            parameters:
+              - {name: incident, type: STRING, description: "Part of the incident's number or name.", example: INC-2025-0031}
+  ThreatActor:
+    label: ThreatActor
+    description: >-
+      A named threat actor, intrusion set or criminal group that carries out attacks ("Pale
+      Cormorant"), as threat intelligence tracks it. A threat actor is the adversary; the people
+      who defend against it are analysts.
+    aliases: [threat actor, adversary, threat group, intrusion set, APT, attacker]
+    reference: https://attack.mitre.org/groups/
+    properties:
+      name: {type: STRING, key: true, description: "The name the organisation tracks the actor under."}
+      actorType: {type: STRING, one_of: [state-sponsored, criminal, hacktivist, insider, unknown], description: "What kind of adversary it is."}
+      motivation: {type: STRING, one_of: [financial, espionage, disruption, ideology, unknown], description: "Why it attacks."}
+      activeSince: {type: INTEGER, description: "The year the actor was first reported."}
+    extensions:
+      display: {x: 240, y: -300, colour: "#78350f"}
+      custom:
+        relate-examples: {ask: "a named threat actor, hacking group or criminal gang that carries out cyber attacks", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: actor-tradecraft
+            category: neighbourhood
+            question: What does this threat actor exploit, deploy and use?
+            description: The actor with the vulnerabilities it exploits, the malware it deploys and the ATT&CK techniques it uses.
+            teaches: Three OPTIONAL MATCHes from one node, each collected DISTINCT, answer a profile in one row.
+            cypher: |-
+              MATCH (ta:ThreatActor) WHERE toLower(ta.name) CONTAINS toLower($actor)
+              OPTIONAL MATCH (ta)-[:EXPLOITS]->(v:Vulnerability)
+              OPTIONAL MATCH (ta)-[:DEPLOYS]->(m:Malware)
+              OPTIONAL MATCH (ta)-[:USES]->(t:Technique)
+              RETURN ta.name AS actor, collect(DISTINCT v.name) AS exploits, collect(DISTINCT m.name) AS deploys,
+                     collect(DISTINCT t.name) AS uses
+              ORDER BY actor
+            parameters:
+              - {name: actor, type: STRING, description: "Part of the actor's name.", example: Cormorant}
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Pale Cormorant}
+          - type: canonicalQuery
+            name: facts-in-more-than-one-document
+            category: cross-document
+            question: Which facts do two or more documents both state?
+            description: Every extracted relationship whose evidence spans more than one document, with the documents' titles.
+            teaches: A relationship's docs list holds every document that supports it; size() over it finds the corroborated facts.
+            cypher: |-
+              MATCH (a:_Entity)-[r]->(b:_Entity) WHERE size(r.docs) > 1
+              MATCH (d:_Document) WHERE d.id IN r.docs
+              RETURN a.name AS source, type(r) AS link, b.name AS target, collect(d.title) AS documents
+              ORDER BY link, source, target
+  Control:
+    label: Control
+    description: >-
+      A security control in the organisation's control register (a patch or vendor mitigation, an EDR
+      service, multi-factor authentication, an access policy), identified by its control number
+      (CTL-019). A control protects assets and mitigates vulnerabilities; whether it was in place is
+      often the point of a review.
+    aliases: [security control, safeguard, countermeasure, mitigation, compensating control]
+    properties:
+      controlId: {type: STRING, key: true, pattern: "^CTL-[0-9]{3}$", description: "The control number in the register, CTL- and three digits."}
+      name: {type: STRING, description: "The control as a document names it."}
+      controlType: {type: STRING, one_of: [preventive, detective, corrective, compensating], description: "What the control does."}
+      status: {type: STRING, one_of: [implemented, partially implemented, planned, failed], description: "The control's state at the time the document describes."}
+      framework: {type: STRING, description: "The framework clause the control answers to, as written (ISO/IEC 27001 A.8.8)."}
+    extensions:
+      display: {x: -220, y: 320, colour: "#10b981"}
+      custom:
+        relate-examples: {ask: "a security control in the organisation's register, such as a patch, EDR service or MFA, identified by a control number such as CTL-019", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: mitigated-but-unprotected
+            category: path
+            question: Which controls mitigate a vulnerability on an asset, and is the control actually protecting that asset?
+            description: Every control, vulnerability and affected asset in a chain, with whether the text says the control protects the asset.
+            teaches: An OPTIONAL MATCH on the closing edge turns a missing relationship into a false flag instead of a missing row.
+            cypher: |-
+              MATCH (c:Control)-[:MITIGATES]->(v:Vulnerability)-[:AFFECTS]->(a:Asset)
+              OPTIONAL MATCH (c)-[p:PROTECTS]->(a)
+              RETURN c.name AS control, v.name AS vulnerability, a.name AS asset, p IS NOT NULL AS protects
+              ORDER BY control, vulnerability, asset
+  Analyst:
+    label: Analyst
+    description: >-
+      A person on the security team who triages alerts, leads or works incidents, or writes threat
+      intelligence: a SOC analyst, incident responder, incident commander or intelligence analyst,
+      usually named with a role ("Leila Haddad, a tier-2 SOC analyst"). Analysts are defenders; the
+      people behind an attack are a threat actor.
+    aliases: [SOC analyst, incident responder, incident commander, handler, threat intelligence analyst]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The analyst's full name."}
+      role: {type: STRING, one_of: [SOC analyst, incident responder, incident commander, threat intelligence analyst, vulnerability manager], description: "The analyst's role on the security team."}
+      tier: {type: INTEGER, description: "The analyst's SOC tier, 1 to 3."}
+    extensions:
+      display: {x: -320, y: -260, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a person named in full who works on the security team, such as a SOC analyst, incident responder or threat intelligence analyst", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: analyst-workload
+            category: aggregation
+            question: How many alerts has each analyst triaged, and how many incidents have they led?
+            description: Per analyst, the alerts they triaged and the incidents they led.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each alert is counted once per incident.
+            cypher: |-
+              MATCH (an:Analyst)
+              OPTIONAL MATCH (al:Alert)-[:TRIAGED_BY]->(an)
+              OPTIONAL MATCH (i:Incident)-[:LED_BY]->(an)
+              RETURN an.name AS analyst, count(DISTINCT al) AS alerts_triaged, count(DISTINCT i) AS incidents_led
+              ORDER BY alerts_triaged DESC, incidents_led DESC, analyst
+  Account:
+    label: Account
+    description: >-
+      A user, administrator or service account in the organisation's directory, named by its login
+      ("svc-vpnldap", "adm-dbrennan"). An account is a credential an intruder can steal and use; the
+      person it belongs to is not modelled.
+    aliases: [user account, service account, admin account, credential, login]
+    properties:
+      name: {type: STRING, key: true, description: "The account's login name as the directory writes it."}
+      accountType: {type: STRING, one_of: [user, administrator, service], description: "What the account is for."}
+      privileged: {type: BOOLEAN, description: "Whether the account holds administrative rights in the directory."}
+    extensions:
+      display: {x: -360, y: 140, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a user, administrator or service account named by its login, such as svc-backup or adm-jsmith"}
+        tools:
+          - type: canonicalQuery
+            name: stolen-accounts
+            category: path
+            question: Which accounts were compromised in each incident, and which assets were they used to reach?
+            description: Every account compromised in an incident, with the assets the account accessed.
+            teaches: Reading out from the incident through the account answers where an intruder went with stolen credentials.
+            cypher: |-
+              MATCH (acct:Account)-[:COMPROMISED_IN]->(i:Incident)
+              OPTIONAL MATCH (acct)-[:ACCESSED]->(a:Asset)
+              RETURN i.name AS incident, acct.name AS account, collect(DISTINCT a.name) AS accessed
+              ORDER BY incident, account
+relationships:
+  vulnerabilityAffectsAsset:
+    type: AFFECTS
+    description: >-
+      The vulnerability is present on the asset, because the asset runs an affected version; many to
+      many: a CVE affects many assets, an asset carries many CVEs.
+    aliases: [is present on, impacts, is exposed on]
+    from: {node: Vulnerability}
+    to: {node: Asset}
+    extensions:
+      custom:
+        relate-examples: {phrase: affects}
+  actorExploitsVulnerability:
+    type: EXPLOITS
+    description: >-
+      The threat actor is known to exploit the vulnerability, in this attack or elsewhere; many to many.
+    aliases: [abuses, weaponises, targets]
+    from: {node: ThreatActor}
+    to: {node: Vulnerability}
+    extensions:
+      custom:
+        relate-examples: {phrase: exploits}
+  actorUsesTechnique:
+    type: USES
+    description: >-
+      The threat actor is known to use the ATT&CK technique; many to many, as ATT&CK's group pages list them.
+    aliases: [employs, relies on, is known for]
+    from: {node: ThreatActor}
+    to: {node: Technique}
+    extensions:
+      custom:
+        relate-examples: {phrase: uses}
+  actorDeploysMalware:
+    type: DEPLOYS
+    description: >-
+      The threat actor deploys the malware or tool on its victims' hosts; many to many: an actor runs
+      several tools, and a dual-use tool serves several actors.
+    aliases: [installs, plants, drops, runs]
+    from: {node: ThreatActor}
+    to: {node: Malware}
+    extensions:
+      custom:
+        relate-examples: {phrase: deploys}
+  malwareFoundOnAsset:
+    type: FOUND_ON
+    description: >-
+      The malware or tool was found on the asset during an investigation; many to many.
+    aliases: [was discovered on, was planted on, was installed on, was recovered from]
+    from: {node: Malware}
+    to: {node: Asset}
+    extensions:
+      custom:
+        relate-examples: {phrase: was found on}
+  indicatorAssociatedWithMalware:
+    type: ASSOCIATED_WITH
+    description: >-
+      The indicator belongs to the malware: its command-and-control address, a domain it calls, or the
+      hash of one of its files; an indicator usually points to one malware family, a family has many.
+    aliases: [belongs to, is a command-and-control address of, is a hash of, points to]
+    from: {node: Indicator}
+    to: {node: Malware}
+    extensions:
+      custom:
+        relate-examples: {phrase: is associated with}
+  indicatorObservedInIncident:
+    type: OBSERVED_IN
+    description: >-
+      The indicator was seen in the incident's evidence (logs, images, traffic); many to many: an
+      indicator can recur across incidents.
+    aliases: [was seen in, appeared in, was found in]
+    from: {node: Indicator}
+    to: {node: Incident}
+    extensions:
+      custom:
+        relate-examples: {phrase: was observed in}
+  alertFiredOnAsset:
+    type: FIRED_ON
+    description: >-
+      The alert was raised about activity on the asset; an alert names one host as a rule, a host
+      raises many alerts.
+    aliases: [was raised on, triggered on, was generated by, flagged]
+    from: {node: Alert}
+    to: {node: Asset, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: fired on}
+  alertDetectedTechnique:
+    type: DETECTED
+    description: >-
+      The alert detected behaviour of the ATT&CK technique, as its detection rule is mapped; an alert
+      maps to one or two techniques, a technique to many alerts.
+    aliases: [flagged, caught, is mapped to]
+    from: {node: Alert}
+    to: {node: Technique}
+    extensions:
+      custom:
+        relate-examples: {phrase: detected}
+  alertTriagedByAnalyst:
+    type: TRIAGED_BY
+    description: >-
+      The analyst triaged the alert, deciding whether to close or escalate it; one triaging analyst
+      per alert, many alerts per analyst.
+    aliases: [was handled by, was reviewed by, was closed by]
+    from: {node: Alert}
+    to: {node: Analyst, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was triaged by}
+  alertEscalatedToIncident:
+    type: ESCALATED_TO
+    description: >-
+      The alert was escalated to, or added to, the incident; at most one incident per alert, many
+      alerts per incident.
+    aliases: [was added to, became, was raised to, opened]
+    from: {node: Alert}
+    to: {node: Incident, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was escalated to}
+  incidentLedByAnalyst:
+    type: LED_BY
+    description: >-
+      The analyst led the response to the incident as its incident commander or lead responder; one
+      lead per incident, many incidents per analyst over time.
+    aliases: [was run by, was commanded by, was assigned to]
+    from: {node: Incident}
+    to: {node: Analyst, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was led by}
+  incidentAttributedToActor:
+    type: ATTRIBUTED_TO
+    description: >-
+      The intelligence team attributes the incident to the threat actor, at some stated confidence; at
+      most one actor per incident, many incidents per actor.
+    aliases: [is blamed on, was carried out by, is linked to]
+    from: {node: Incident}
+    to: {node: ThreatActor, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is attributed to}
+  incidentImpactedAsset:
+    type: IMPACTED
+    description: >-
+      The asset was compromised or otherwise touched by the intruder in the incident; an incident
+      impacts one or more assets, an asset may appear in several incidents.
+    aliases: [involved, compromised, touched, affected]
+    from: {node: Incident}
+    to: {node: Asset, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: impacted}
+  accountCompromisedInIncident:
+    type: COMPROMISED_IN
+    description: >-
+      The account's credentials were stolen or misused in the incident; many to many over time, though
+      one incident usually compromises a handful of accounts.
+    aliases: [was stolen in, was misused in, was taken over in]
+    from: {node: Account}
+    to: {node: Incident}
+    extensions:
+      custom:
+        relate-examples: {phrase: was compromised in}
+  accountAccessedAsset:
+    type: ACCESSED
+    description: >-
+      The account was used to log on to the asset; many to many. A document records it when the
+      access matters, as in lateral movement.
+    aliases: [logged on to, signed in to, connected to, was used on]
+    from: {node: Account}
+    to: {node: Asset}
+    extensions:
+      custom:
+        relate-examples: {phrase: accessed}
+  controlProtectsAsset:
+    type: PROTECTS
+    description: >-
+      The control is in place on the asset and protects it; many to many: an EDR service protects
+      every server it is installed on.
+    aliases: [covers, is deployed on, guards, is enforced on]
+    from: {node: Control}
+    to: {node: Asset}
+    extensions:
+      custom:
+        relate-examples: {phrase: protects}
+  controlMitigatesVulnerability:
+    type: MITIGATES
+    description: >-
+      The control reduces or removes the risk of the vulnerability (a patch fixes it, a vendor
+      workaround or signature blocks its exploitation); many to many.
+    aliases: [fixes, remediates, blocks, compensates for]
+    from: {node: Control}
+    to: {node: Vulnerability}
+    extensions:
+      custom:
+        relate-examples: {phrase: mitigates}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Cybersecurity
+      card:
+        title: Cybersecurity
+        description: Follow an intrusion from the vulnerability and the first alert through the incident to the threat actor, its malware and the controls that should have stopped it.
+      source:
+        derived_from: create-context-graph's cybersecurity.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; User became Account and Person became Analyst,
+          Organization and Location are dropped, and Technique, Malware and Indicator are new, after MITRE
+          ATT&CK and threat-intelligence practice; Asset, Vulnerability, Alert, Incident, ThreatActor and
+          Control keep their meaning with new descriptions, identifiers and properties; the links were
+          renamed for their meaning (TRIGGERED became ESCALATED_TO, TARGETS became FIRED_ON, USES now
+          joins an actor to a technique and EXPLOITS to a vulnerability) and given cardinalities, and
+          DEPENDS_ON, BELONGS_TO, OWNS and ORIGINATES_FROM are dropped; the tools were written anew for an
+          extracted graph.

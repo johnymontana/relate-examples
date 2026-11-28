@@ -1,0 +1,643 @@
+# GIS & Cartography: example 01's curated ontology for cadastral survey and public-sector GIS documents
+# (D20). Written for this repository from create-context-graph's gis-cartography.yaml at 707b168
+# (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O base
+# (Person, Organization, Location, Event, Object) is gone, and the parties are named for what the
+# domain calls them (Surveyor, Landowner, Authority).
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Every link
+# says its direction and cardinality and carries the phrase the model reads. The tools are the
+# ontology's competency questions, written for the graph the page extracts: entities carry name,
+# display, key and their key property; relationships carry p, claims, sentences and docs, and the
+# trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: gis-cartography
+name: GIS & Cartography
+description: >-
+  Cadastral survey and public-sector mapping as a county's surveyors and GIS staff write about it: the
+  land parcels on the cadastral map and the landowners who hold them, the boundary lines that bound
+  them, the surveys that retrace those lines and the surveyors who conduct them, the monuments that
+  mark the corners on the ground, the physical features (roads, creeks, ditches, buildings) that
+  boundaries follow or that encroach across them, the datums positions are referenced to, the GIS
+  layers that map parcels and features and the map projects built from those layers, and the public
+  authorities that record surveys and maintain the layers. It answers who surveyed a parcel and which
+  earlier survey they retraced, which monuments were recovered or set and which corners they mark, who
+  owns the adjoining parcels, what encroaches, whether a layer sits on a different datum from the
+  survey, and what the source text says about each fact. Coordinates, bearings, distances and areas
+  are out of scope: a report states them, the extractor keeps them only in its sentences.
+nodes:
+  Surveyor:
+    label: Surveyor
+    description: >-
+      A person who conducts or signs a land survey: a licensed professional land surveyor, a party chief
+      or a survey technician, named in full and often with a license number ("Marisol Ortega, PLS
+      38214"). A surveyor is a person; the office or firm they work for is an authority or goes unnamed.
+    aliases: [land surveyor, professional land surveyor, PLS, party chief, county surveyor]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The surveyor's full name as the documents write it."}
+      license: {type: STRING, pattern: "^[0-9]{4,6}$", description: "The surveyor's professional land surveyor license number, four to six digits (38214)."}
+      role: {type: STRING, one_of: [licensed surveyor, party chief, survey technician, county surveyor], description: "The surveyor's role on the survey."}
+    extensions:
+      display: {x: -360, y: -240, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a person who conducts or signs a land survey, such as a licensed land surveyor or party chief, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-surveyor
+            category: lookup
+            question: Who is this surveyor, whom do they work for, and which surveys did they conduct?
+            description: Finds surveyors whose name contains the text, with their employer and the surveys they conducted.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (v:Surveyor) WHERE toLower(v.name) CONTAINS toLower($surveyor)
+              OPTIONAL MATCH (v)-[:EMPLOYED_BY]->(a:Authority)
+              OPTIONAL MATCH (v)-[:CONDUCTED]->(s:Survey)
+              RETURN v.name AS surveyor, collect(DISTINCT a.name) AS employer, collect(DISTINCT s.name) AS surveys
+              ORDER BY surveyor
+            parameters:
+              - {name: surveyor, type: STRING, description: "Part of the surveyor's name.", example: Ortega}
+  Survey:
+    label: Survey
+    description: >-
+      A land survey as a job and a record: a boundary, retracement, control or topographic survey, or the
+      land survey plat that records one, identified by its survey or plat number (TCS-2026-014) or named
+      by its year and surveyor ("the 1998 Haskins survey"). A survey is the work and its record, not the
+      person who did it or the office that files it.
+    aliases: [boundary survey, land survey plat, plat, retracement, resurvey, field survey]
+    properties:
+      surveyNumber: {type: STRING, key: true, pattern: "^[A-Z]{2,4}-[0-9]{4}-[0-9]{3,4}$", description: "The survey or plat number: two to four capitals, the year and a serial (TCS-2026-014, LSP-1998-0412)."}
+      name: {type: STRING, description: "The survey as a document names it."}
+      surveyType: {type: STRING, one_of: [boundary, retracement, control, topographic, ALTA/NSPS, subdivision], description: "The kind of survey.", extensions: {custom: {relate-examples: {extract: true, ask: "the kind of survey, such as a boundary survey or a retracement"}}}}
+      fieldDates: {type: STRING, description: "The dates of the field work, as the report gives them."}
+      recordedOn: {type: DATE, description: "The date the plat was filed or deposited with the recording office.", extensions: {custom: {relate-examples: {extract: true, ask: "the date a survey plat was filed with the Clerk and Recorder, not the date of a report, such as June 3, 1998"}}}}
+      receptionNumber: {type: STRING, pattern: "^[0-9]{8,11}$", description: "The recording office's reception number for the filed plat."}
+    extensions:
+      display: {x: -120, y: -240, colour: "#ea580c"}
+      custom:
+        relate-examples: {ask: "a land survey or survey plat, identified by a survey number such as TCS-2026-014", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: survey-lineage-of-a-parcel
+            category: path
+            question: Which surveys cover this parcel, who conducted them, and which earlier surveys does each retrace?
+            description: Every survey of the parcel with its surveyors and the chain of earlier surveys it retraced, up to four steps back.
+            teaches: A bounded variable-length pattern (*1..4) walks a chain of retracements without risking an unbounded search.
+            cypher: |-
+              MATCH (s:Survey)-[:COVERS]->(p:Parcel) WHERE p.parcelNumber = $parcel
+              OPTIONAL MATCH (v:Surveyor)-[:CONDUCTED]->(s)
+              OPTIONAL MATCH (s)-[:RETRACED*1..4]->(e:Survey)
+              RETURN s.name AS survey, collect(DISTINCT v.name) AS surveyors, collect(DISTINCT e.name) AS retraces
+              ORDER BY survey
+            parameters:
+              - {name: parcel, type: STRING, description: "A parcel number as the text writes it.", example: 0412-180-007}
+          - type: canonicalQuery
+            name: monuments-found-and-set
+            category: aggregation
+            question: How many monuments did each survey set, and how many earlier ones did it recover?
+            description: Per survey, the monuments it set and the monuments it recovered from earlier work.
+            teaches: Count DISTINCT after two OPTIONAL MATCHes, or each set monument is counted once per recovered one.
+            cypher: |-
+              MATCH (s:Survey)
+              OPTIONAL MATCH (s)-[:SET]->(a:SurveyMonument)
+              OPTIONAL MATCH (s)-[:RECOVERED]->(b:SurveyMonument)
+              RETURN s.name AS survey, count(DISTINCT a) AS monuments_set, count(DISTINCT b) AS monuments_recovered
+              ORDER BY monuments_set DESC, monuments_recovered DESC, survey
+          - type: canonicalQuery
+            name: what-each-survey-did
+            category: evidence
+            question: Which sentences say what each survey covered, retraced, set, recovered, was referenced to or was filed with?
+            description: Every fact whose source is a survey, with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (s:Survey)-[r]->(x:_Entity) WHERE type(r) IN ['COVERS', 'RETRACED', 'SET', 'RECOVERED', 'REFERENCED_TO', 'FILED_WITH']
+              UNWIND r.sentences AS k
+              MATCH (t:_Sentence {key: k})
+              RETURN s.name AS survey, type(r) AS link, x.name AS other, round(r.p * 1000) / 1000 AS score, t.text AS evidence
+              ORDER BY survey, link, other
+  Parcel:
+    label: Parcel
+    description: >-
+      A cadastral land parcel, lot or tract: the unit of ownership on the cadastral map, identified by its
+      parcel number (0412-180-007) and sometimes named ("the Willow Bend Open Space"). A parcel is land
+      held under one title; a physical feature on it, such as a barn or a creek, is a feature.
+    aliases: [lot, tract, land parcel, tax parcel, property]
+    reference: https://schema.org/Place
+    properties:
+      parcelNumber: {type: STRING, key: true, pattern: "^[0-9]{4}-[0-9]{3}-[0-9]{3}$", description: "The county parcel number, four, three and three digits (0412-180-007)."}
+      name: {type: STRING, description: "The parcel as a document names it."}
+      areaAcres: {type: FLOAT, description: "The parcel's area in acres, as surveyed.", extensions: {custom: {relate-examples: {extract: true, ask: "the parcel's area in acres, such as a tract of 18.62 acres"}}}}
+      landUse: {type: STRING, one_of: [residential, agricultural, open space, commercial, right-of-way, public], description: "The parcel's land use class."}
+      legalDescription: {type: STRING, description: "The parcel's legal description as the vesting deed gives it."}
+    extensions:
+      display: {x: -120, y: -40, colour: "#16a34a"}
+      custom:
+        relate-examples: {ask: "a cadastral land parcel or lot, identified by a parcel number such as 0412-180-007", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-parcel
+            category: lookup
+            question: Which parcel has this number, who owns it, and which layer maps it?
+            description: The parcel whose number is the parameter, with its owners of record and the GIS layers it is mapped in.
+            teaches: The key property (parcelNumber) is filled from the entity's name when the text gives the number, so an exact match works here.
+            cypher: |-
+              MATCH (p:Parcel) WHERE p.parcelNumber = $parcel
+              OPTIONAL MATCH (p)-[:OWNED_BY]->(o:Landowner)
+              OPTIONAL MATCH (p)-[:MAPPED_IN]->(l:Layer)
+              RETURN p.name AS parcel, p.parcelNumber AS number, collect(DISTINCT o.name) AS owners, collect(DISTINCT l.name) AS layers
+            parameters:
+              - {name: parcel, type: STRING, description: "A parcel number as the text writes it.", example: 0412-180-007}
+          - type: canonicalQuery
+            name: boundaries-and-neighbors
+            category: neighbourhood
+            question: What bounds this parcel, which parcels adjoin it and who owns them, and which monuments mark its corners?
+            description: The parcel's boundary lines, its adjoining parcels with their owners, and the monuments at its corners.
+            teaches: ADJOINS is stated in whichever direction the text names the parcels, so an undirected pattern finds a neighbor either way round.
+            cypher: |-
+              MATCH (p:Parcel) WHERE p.parcelNumber = $parcel
+              OPTIONAL MATCH (p)-[:BOUNDED_BY]->(b:Boundary)
+              OPTIONAL MATCH (p)-[:ADJOINS]-(q:Parcel)
+              OPTIONAL MATCH (q)-[:OWNED_BY]->(o:Landowner)
+              OPTIONAL MATCH (m:SurveyMonument)-[:MARKS]->(p)
+              RETURN p.name AS parcel, collect(DISTINCT b.name) AS bounded_by, collect(DISTINCT q.name) AS adjoiners,
+                     collect(DISTINCT o.name) AS adjoining_owners, collect(DISTINCT m.name) AS corner_monuments
+            parameters:
+              - {name: parcel, type: STRING, description: "A parcel number as the text writes it.", example: 0412-180-007}
+          - type: canonicalQuery
+            name: what-the-documents-say-about
+            category: evidence
+            question: What do the documents say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: 0412-180-007}
+  Boundary:
+    label: Boundary
+    description: >-
+      A legal or administrative line that bounds parcels: a section line, a road right-of-way line, a city
+      limit or a district boundary, named by what it is and where ("the north line of Section 14", "the
+      Alder Springs city limit"). A boundary is a line in law; the road, ditch or fence it may follow on
+      the ground is a feature.
+    aliases: [boundary line, section line, right-of-way line, city limit, property line, district boundary]
+    properties:
+      name: {type: STRING, key: true, description: "The boundary as the documents name it."}
+      boundaryType: {type: STRING, one_of: [section line, right-of-way line, municipal limit, parcel line, district boundary, riparian line], description: "What kind of line it is."}
+      status: {type: STRING, one_of: [record, surveyed, disputed], description: "Whether the line is as recorded, confirmed on the ground, or in dispute."}
+    extensions:
+      display: {x: -120, y: 160, colour: "#dc2626"}
+      custom:
+        relate-examples: {ask: "a legal boundary line that bounds parcels, named by what it is and where, such as the north line of a section or the city limit of a town", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-a-boundary-follows
+            category: neighbourhood
+            question: Which parcels does this boundary bound, and which feature on the ground does it follow?
+            description: Each boundary whose name holds the text, with the parcels it bounds and the features it follows.
+            teaches: A boundary's two neighborhoods, the parcels on one side and the ground features on the other, come back as two collected lists.
+            cypher: |-
+              MATCH (b:Boundary) WHERE toLower(b.name) CONTAINS toLower($boundary)
+              OPTIONAL MATCH (p:Parcel)-[:BOUNDED_BY]->(b)
+              OPTIONAL MATCH (b)-[:FOLLOWS]->(f:Feature)
+              RETURN b.name AS boundary, collect(DISTINCT p.name) AS parcels, collect(DISTINCT f.name) AS follows
+              ORDER BY boundary
+            parameters:
+              - {name: boundary, type: STRING, description: "Part of the boundary's name.", example: city limit}
+  SurveyMonument:
+    label: SurveyMonument
+    description: >-
+      A survey monument or control point: a physical mark (a capped rebar, a brass disk, a stone, a mag
+      nail) that fixes a parcel corner or a surveyed position, identified by its point number (MON-1,
+      CP-101). A survey monument is the mark on the ground, not a landmark or a building; the corner it
+      marks belongs to a parcel.
+    aliases: [monument, corner monument, survey marker, control point, pin, cap, benchmark]
+    properties:
+      monumentId: {type: STRING, key: true, pattern: "^(MON|CP)-[0-9]{1,3}$", description: "The point number in the survey's monument table, MON- or CP- and one to three digits (MON-4)."}
+      name: {type: STRING, description: "The monument as a document names it."}
+      monumentType: {type: STRING, one_of: [rebar and cap, aluminum cap, brass disk, stone, mag nail, benchmark], description: "What the mark is."}
+      condition: {type: STRING, one_of: [recovered, set, disturbed, not found], description: "Its state at the time of the survey."}
+      stamping: {type: STRING, description: "The license number or text stamped on its cap (PLS 17488)."}
+      northing: {type: FLOAT, description: "Its grid northing, in US survey feet."}
+      easting: {type: FLOAT, description: "Its grid easting, in US survey feet."}
+    extensions:
+      display: {x: -360, y: -40, colour: "#a16207"}
+      custom:
+        relate-examples: {ask: "a survey monument or control point: a capped rebar, disk or nail set at a parcel corner, identified by a point number such as MON-1", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: who-fixed-each-corner
+            category: path
+            question: For each corner of this parcel, which monument marks it, which survey set it and who conducted that survey?
+            description: The chain surveyor, survey, monument, parcel for every monument that marks a corner of the parcel, with the surveys that later recovered it.
+            teaches: Start from the parcel and walk back along each link in its declared direction; OPTIONAL MATCH keeps a monument whose setting survey the text leaves out.
+            cypher: |-
+              MATCH (m:SurveyMonument)-[:MARKS]->(p:Parcel) WHERE p.parcelNumber = $parcel
+              OPTIONAL MATCH (s:Survey)-[:SET]->(m)
+              OPTIONAL MATCH (v:Surveyor)-[:CONDUCTED]->(s)
+              OPTIONAL MATCH (r:Survey)-[:RECOVERED]->(m)
+              RETURN m.name AS monument, collect(DISTINCT s.name) AS set_by, collect(DISTINCT v.name) AS surveyors,
+                     collect(DISTINCT r.name) AS recovered_by
+              ORDER BY monument
+            parameters:
+              - {name: parcel, type: STRING, description: "A parcel number as the text writes it.", example: 0412-180-007}
+  Feature:
+    label: Feature
+    description: >-
+      A named physical feature on the ground: a road, creek, irrigation ditch, fence, trail or building
+      ("Mill Creek", "County Road 38E", "the Brandt barn"). A feature is what a surveyor can walk to; the
+      legal line that runs along it is a boundary.
+    aliases: [physical feature, improvement, structure, watercourse, road, ditch]
+    properties:
+      name: {type: STRING, key: true, description: "The feature's name."}
+      featureType: {type: STRING, one_of: [road, watercourse, ditch, fence, building, trail, utility], description: "What kind of feature it is."}
+      geometryType: {type: STRING, one_of: [point, line, polygon], description: "How a GIS layer draws it."}
+      accuracyFeet: {type: FLOAT, description: "The positional accuracy of its mapped location, in feet."}
+    extensions:
+      display: {x: 120, y: 160, colour: "#0284c7"}
+      custom:
+        relate-examples: {ask: "a named physical feature on the ground: a road, creek, ditch, fence, barn or other building", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: encroachments
+            category: neighbourhood
+            question: Which features encroach on a parcel, who owns that parcel, and who owns the parcels next to it?
+            description: Every feature that encroaches on a parcel, with the parcel's owner and the owners of its adjoining parcels.
+            teaches: A pattern can continue past an OPTIONAL MATCH's first hop ((p)-[:ADJOINS]-(q)-[:OWNED_BY]->(n)), and the whole chain is optional together.
+            cypher: |-
+              MATCH (f:Feature)-[:ENCROACHES_ON]->(p:Parcel)
+              OPTIONAL MATCH (p)-[:OWNED_BY]->(o:Landowner)
+              OPTIONAL MATCH (p)-[:ADJOINS]-(q:Parcel)-[:OWNED_BY]->(n:Landowner)
+              RETURN f.name AS feature, p.name AS parcel, collect(DISTINCT o.name) AS owner, collect(DISTINCT n.name) AS neighbors
+              ORDER BY feature, parcel
+  Datum:
+    label: Datum
+    description: >-
+      A geodetic or vertical datum, or a reference frame, that positions and heights are referenced to,
+      named by its acronym and realization ("NAD 83(2011)", "NAVD 88"). Two datums of one family, such as
+      NAD 83(HARN) and NAD 83(2011), are different datums.
+    aliases: [geodetic datum, vertical datum, reference frame, horizontal datum, coordinate reference system]
+    properties:
+      name: {type: STRING, key: true, description: "The datum's name with its realization, as NGS writes it."}
+      datumType: {type: STRING, one_of: [horizontal, vertical, reference frame], description: "What the datum fixes."}
+      epsg: {type: STRING, pattern: "^EPSG:[0-9]{4,5}$", description: "Its EPSG code, where one is registered (EPSG:6318)."}
+    extensions:
+      display: {x: 120, y: -360, colour: "#0d9488"}
+      custom:
+        relate-examples: {ask: "a geodetic or vertical datum, named by acronym and realization, such as NAD 83(2011), NAD 83(HARN) or NAVD 88", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: datum-mismatch
+            category: path
+            question: Is a parcel mapped in a layer on a different datum from the survey that covers it?
+            description: Every parcel whose survey and whose GIS layer are referenced to different datums, with both datums.
+            teaches: Two MATCH clauses that share variables join on them; the WHERE then compares what each side reached.
+            cypher: |-
+              MATCH (s:Survey)-[:COVERS]->(p:Parcel)-[:MAPPED_IN]->(l:Layer)
+              MATCH (s)-[:REFERENCED_TO]->(sd:Datum), (l)-[:REFERENCED_TO]->(ld:Datum)
+              WHERE sd.name <> ld.name
+              RETURN p.name AS parcel, s.name AS survey, sd.name AS survey_datum, l.name AS layer, ld.name AS layer_datum
+              ORDER BY parcel, survey, survey_datum
+  Layer:
+    label: Layer
+    description: >-
+      A GIS data layer or map service that holds parcels or features, named by its title ("the Cadastral
+      Fabric layer", "the Hydrography layer"). A layer is the dataset; the parcels and features drawn in
+      it are their own kinds.
+    aliases: [GIS layer, data layer, feature class, map service, dataset, parcel fabric]
+    reference: https://schema.org/Dataset
+    properties:
+      name: {type: STRING, key: true, description: "The layer's title."}
+      layerType: {type: STRING, one_of: [vector, raster, feature service, map image service], description: "How the layer is stored or served."}
+      geometryType: {type: STRING, one_of: [point, line, polygon], description: "The geometry of its features."}
+      sourceScale: {type: STRING, description: "The scale of the source it was compiled from (1:4,800)."}
+      featureCount: {type: INTEGER, description: "The number of features it holds."}
+    extensions:
+      display: {x: 120, y: -40, colour: "#7c3aed"}
+      custom:
+        relate-examples: {ask: "a GIS data layer or map service, named by its title", proper: true}
+  MapProject:
+    label: MapProject
+    description: >-
+      A cartographic project or map product built from GIS layers: an atlas, a web map, a map series or a
+      plan set, named by its title ("the Open Space Atlas 2027"). A map project uses layers; it does not
+      hold data of its own.
+    aliases: [map project, atlas, web map, map series, cartographic project]
+    reference: https://schema.org/Map
+    properties:
+      name: {type: STRING, key: true, description: "The project's title."}
+      projectType: {type: STRING, one_of: [atlas, web map, map series, cadastral map, plan set], description: "What the project produces."}
+      status: {type: STRING, one_of: [planning, data collection, cartography, review, published], description: "Where the project stands."}
+      scale: {type: STRING, description: "Its publication scale (1:12,000)."}
+    extensions:
+      display: {x: 360, y: -40, colour: "#ca8a04"}
+      custom:
+        relate-examples: {ask: "a map project or map product built from GIS layers, such as an atlas or web map, named by its title", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-a-map-project-draws-on
+            category: neighbourhood
+            question: Which layers does this map project include, who maintains them, what do they hold, and on which datum?
+            description: Each layer of the project with its maintaining authority, its datum, and the parcels and features mapped in it.
+            teaches: A pattern over _Entity finds whatever kinds a link joins (MAPPED_IN holds parcels and features alike) without naming each kind.
+            cypher: |-
+              MATCH (m:MapProject)-[:INCLUDES]->(l:Layer) WHERE toLower(m.name) CONTAINS toLower($project)
+              OPTIONAL MATCH (l)-[:MAINTAINED_BY]->(a:Authority)
+              OPTIONAL MATCH (l)-[:REFERENCED_TO]->(d:Datum)
+              OPTIONAL MATCH (x:_Entity)-[:MAPPED_IN]->(l)
+              RETURN m.name AS project, l.name AS layer, collect(DISTINCT a.name) AS maintained_by,
+                     collect(DISTINCT d.name) AS datum, collect(DISTINCT x.name) AS holds
+              ORDER BY layer
+            parameters:
+              - {name: project, type: STRING, description: "Part of the project's title.", example: Atlas}
+  Authority:
+    label: Authority
+    description: >-
+      A public body or office that records surveys, maintains GIS data, licenses surveyors or publishes
+      datums: a county surveyor's office, a clerk and recorder, a GIS division or the National Geodetic
+      Survey. An authority is an office; the surveyors who work in it are surveyors.
+    aliases: [agency, county office, recording office, GIS department, public authority]
+    reference: https://schema.org/GovernmentOrganization
+    properties:
+      name: {type: STRING, key: true, description: "The authority's name."}
+      authorityType: {type: STRING, one_of: [county office, municipal office, state agency, federal agency, licensing board], description: "What level of government it is."}
+      jurisdiction: {type: STRING, description: "The county, city or state it acts for."}
+    extensions:
+      display: {x: 360, y: -240, colour: "#b91c1c"}
+      custom:
+        relate-examples: {ask: "a public office or agency, such as a county recorder, a GIS division or the National Geodetic Survey", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-each-authority-holds
+            category: aggregation
+            question: For each authority, how many surveyors work for it, how many surveys were filed with it, and how many layers does it maintain?
+            description: Per authority, its surveyors, the surveys filed with it and the layers it maintains.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (a:Authority)
+              OPTIONAL MATCH (v:Surveyor)-[:EMPLOYED_BY]->(a)
+              OPTIONAL MATCH (s:Survey)-[:FILED_WITH]->(a)
+              OPTIONAL MATCH (l:Layer)-[:MAINTAINED_BY]->(a)
+              RETURN a.name AS authority, count(DISTINCT v) AS surveyors, count(DISTINCT s) AS surveys_filed, count(DISTINCT l) AS layers
+              ORDER BY surveyors DESC, surveys_filed DESC, layers DESC, authority
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: TCS-2026-014}
+  Landowner:
+    label: Landowner
+    description: >-
+      The owner of record of a parcel: a person, family trust, company or public body named as grantee in
+      the vesting deed ("the Brandt Family Trust", "Tamarack County"). A landowner holds title; the office
+      that records the deed is an authority.
+    aliases: [owner, owner of record, record owner, grantee, adjoiner]
+    properties:
+      name: {type: STRING, key: true, description: "The owner's name as the deed or the report gives it."}
+      ownerType: {type: STRING, one_of: [individual, trust, company, public body], description: "What kind of owner it is."}
+      vestingDeed: {type: STRING, description: "The reception number of the deed that vests title in the owner."}
+    extensions:
+      display: {x: -360, y: 160, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "the owner of record of a land parcel: a person, family trust, company or public body", proper: true}
+relationships:
+  surveyorConductedSurvey:
+    type: CONDUCTED
+    description: >-
+      The surveyor conducted the survey: ran its field work or signed its plat; a survey has one or more
+      surveyors, and a surveyor conducts many surveys.
+    aliases: [performed, ran the field work for, signed, made]
+    from: {node: Surveyor}
+    to: {node: Survey}
+    extensions:
+      custom:
+        relate-examples: {phrase: conducted}
+  surveyorEmployedByAuthority:
+    type: EMPLOYED_BY
+    description: >-
+      The surveyor works for the authority (a county surveyor's office, say); one employer per surveyor in
+      this ontology, many surveyors per authority.
+    aliases: [works for, is a deputy of, is on the staff of]
+    from: {node: Surveyor}
+    to: {node: Authority, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: works for}
+  surveyCoversParcel:
+    type: COVERS
+    description: >-
+      The survey covers the parcel: it locates the parcel's boundaries on the ground; a survey covers one
+      or more parcels, and a parcel is covered by many surveys over time.
+    aliases: [is a survey of, surveys, locates]
+    from: {node: Survey}
+    to: {node: Parcel}
+    extensions:
+      custom:
+        relate-examples: {phrase: covers}
+  surveyRetracedSurvey:
+    type: RETRACED
+    description: >-
+      The later survey retraced the earlier one: it followed the earlier survey's lines and monuments to
+      find where they are; read from the later survey to the earlier, many to many.
+    aliases: [followed, resurveyed, retraces, relied on]
+    from: {node: Survey}
+    to: {node: Survey}
+    extensions:
+      custom:
+        relate-examples: {phrase: retraced}
+  referencedToDatum:
+    type: REFERENCED_TO
+    description: >-
+      The survey's positions, or the layer's coordinates, are referenced to the datum; a survey may use a
+      horizontal and a vertical datum, a layer usually one, and a datum serves many.
+    aliases: [is on, uses, is based on, is projected on]
+    from: {node: Survey}
+    to: {node: Datum, max_count: 2}
+    extensions:
+      custom:
+        relate-examples: {phrase: is referenced to}
+  layerReferencedToDatum:
+    type: REFERENCED_TO
+    description: >-
+      The layer's coordinates are referenced to the datum; one datum per layer in this ontology, many
+      layers per datum.
+    aliases: [is on, is held in, uses]
+    from: {node: Layer}
+    to: {node: Datum, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is referenced to}
+  surveyFiledWithAuthority:
+    type: FILED_WITH
+    description: >-
+      The survey's plat was filed with, deposited with or recorded by the authority; one recording office
+      per survey, many surveys per office.
+    aliases: [was deposited with, was recorded with, was recorded by]
+    from: {node: Survey}
+    to: {node: Authority, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was filed with}
+  surveySetMonument:
+    type: SET
+    description: >-
+      The survey set the monument: placed it on the ground as new; exactly one setting survey per
+      monument, many monuments per survey.
+    aliases: [placed, monumented, established, installed]
+    from: {node: Survey}
+    to: {node: SurveyMonument}
+    extensions:
+      custom:
+        relate-examples: {phrase: set}
+  surveyRecoveredMonument:
+    type: RECOVERED
+    description: >-
+      The survey recovered the monument: found an earlier survey's mark and accepted it; a monument may be
+      recovered by many later surveys.
+    aliases: [found, located, held, accepted]
+    from: {node: Survey}
+    to: {node: SurveyMonument}
+    extensions:
+      custom:
+        relate-examples: {phrase: recovered}
+  monumentMarksParcel:
+    type: MARKS
+    description: >-
+      The monument marks a corner of the parcel; a monument marks one or more parcels' common corner, and a
+      parcel has one monument per monumented corner.
+    aliases: [marks the corner of, is at the corner of, monuments]
+    from: {node: SurveyMonument}
+    to: {node: Parcel}
+    extensions:
+      custom:
+        relate-examples: {phrase: marks a corner of}
+  parcelBoundedByBoundary:
+    type: BOUNDED_BY
+    description: >-
+      The parcel is bounded by the boundary line on one of its sides; a parcel has several boundaries, and a
+      boundary bounds parcels on both of its sides.
+    aliases: [is bounded on the north by, abuts, lies along, is limited by]
+    from: {node: Parcel}
+    to: {node: Boundary}
+    extensions:
+      custom:
+        relate-examples: {phrase: is bounded by}
+  parcelAdjoinsParcel:
+    type: ADJOINS
+    description: >-
+      The parcel adjoins the other parcel: they share a boundary line; recorded in the direction the text
+      names them, so read it either way; many to many.
+    aliases: [abuts, borders, is next to, neighbors]
+    from: {node: Parcel}
+    to: {node: Parcel}
+    extensions:
+      custom:
+        relate-examples: {phrase: adjoins}
+  boundaryFollowsFeature:
+    type: FOLLOWS
+    description: >-
+      The boundary line follows the feature on the ground (a city limit along a ditch, a line along a
+      creek); a boundary follows at most a few features, a feature may carry several boundaries.
+    aliases: [runs along, is the centerline of, coincides with]
+    from: {node: Boundary}
+    to: {node: Feature}
+    extensions:
+      custom:
+        relate-examples: {phrase: follows}
+  featureEncroachesOnParcel:
+    type: ENCROACHES_ON
+    description: >-
+      The feature (a building, fence or ditch) crosses onto the parcel from outside its boundary; a feature
+      may encroach on several parcels, a parcel suffer several encroachments.
+    aliases: [crosses onto, intrudes on, extends over, overlaps]
+    from: {node: Feature}
+    to: {node: Parcel}
+    extensions:
+      custom:
+        relate-examples: {phrase: encroaches on}
+  parcelOwnedByLandowner:
+    type: OWNED_BY
+    description: >-
+      The parcel is owned by the landowner of record; one or more owners per parcel, many parcels per owner.
+    aliases: [belongs to, is held by, is vested in, is titled to]
+    from: {node: Parcel}
+    to: {node: Landowner, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is owned by}
+  parcelMappedInLayer:
+    type: MAPPED_IN
+    description: >-
+      The parcel is mapped in the GIS layer as one of its polygons; a parcel sits in one cadastral layer,
+      and a layer maps many parcels.
+    aliases: [is drawn in, is shown in, appears in, is a polygon of]
+    from: {node: Parcel}
+    to: {node: Layer}
+    extensions:
+      custom:
+        relate-examples: {phrase: is mapped in}
+  featureMappedInLayer:
+    type: MAPPED_IN
+    description: >-
+      The feature is mapped in the GIS layer; a feature usually sits in one layer, and a layer maps many
+      features.
+    aliases: [is drawn in, is shown in, appears in]
+    from: {node: Feature}
+    to: {node: Layer}
+    extensions:
+      custom:
+        relate-examples: {phrase: is mapped in}
+  layerMaintainedByAuthority:
+    type: MAINTAINED_BY
+    description: >-
+      The layer is maintained by the authority, which edits and publishes it; one maintainer per layer, many
+      layers per authority.
+    aliases: [is kept by, is published by, is managed by, is edited by]
+    from: {node: Layer}
+    to: {node: Authority, count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is maintained by}
+  mapProjectIncludesLayer:
+    type: INCLUDES
+    description: >-
+      The map project includes the layer as one of its sources; a project includes several layers, and a
+      layer serves many projects.
+    aliases: [uses, draws on, is built from, shows]
+    from: {node: MapProject}
+    to: {node: Layer}
+    extensions:
+      custom:
+        relate-examples: {phrase: includes}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Public Sector
+      card:
+        title: GIS & Cartography
+        description: Follow a land parcel from the surveys and monuments that fix its corners to the GIS layers and map projects that draw it.
+      source:
+        derived_from: create-context-graph's gis-cartography.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base is gone: Person became Surveyor and Landowner, Organization became Authority;
+          Coordinate became SurveyMonument, the marks a survey sets and recovers; Survey, Boundary, Feature, Layer
+          and MapProject keep their meaning with new descriptions and properties, Boundary narrowed to the
+          legal lines that bound parcels; Parcel and Datum are new. The links were renamed for their meaning
+          (CONTAINS and PART_OF_LAYER became MAPPED_IN, DEFINES became MARKS, SURVEYED_BY became COVERS,
+          BORDERS and OVERLAPS gave way to ADJOINS between parcels) and given cardinalities; the tools were
+          written anew for an extracted graph.

@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * memory.js: an agent's memory as a graph in Relate 1.2.0, and the statements that write and read it.
+ * memory.js: an agent's memory as a graph in Relate 1.3.0, and the statements that write and read it.
  *
  * The engine worker (the page) and harness/run.mjs (Node) both call createMemory(db, exec), so the
  * page runs exactly the statements the regression run checks. Nothing here touches the DOM.
@@ -36,7 +36,7 @@
  */
 import { DIMS, terms, words } from './embed.js';
 
-export const RELATE = '1.2.0';
+export const RELATE = '1.3.0';
 
 /** The entity key for a name: its folded words ("Tomás" -> "tomas"), so a name matches however it is typed. @param {string} name */
 export const entityKey = (name) => words(name).join(' ');
@@ -111,6 +111,9 @@ CALL (new) {
 SET old.current = false, old.supersededAt = new.at
 MERGE (new)-[:SUPERSEDES]->(old)
 RETURN count(old) AS superseded`;
+
+/** A full-text query that holds no word and so finds nothing; an empty query is refused (M4). */
+export const NO_WORDS = '%';
 
 /**
  * recall: one statement.
@@ -292,13 +295,14 @@ export function createMemory(db, exec, { onCall } = {}) {
     /**
      * What the memory holds on a question: [] when the question has neither a vector nor a
      * content word. Without a vector the vector search finds nothing (a zero vector: M3) and the
-     * full-text search carries on.
+     * full-text search carries on; without a content word the full-text search gets `NO_WORDS`,
+     * because an empty query is refused (M4).
      * @param {{question: string, vector?: number[]|null, k?: number, limit?: number, floor?: number}} input
      */
     recall({ question, vector = null, k = RECALL_DEFAULTS.k, limit = RECALL_DEFAULTS.limit, floor = RECALL_DEFAULTS.floor }) {
       const t = terms(question);
       if (!t && !vector) return [];
-      const rows = run('recall', false, RECALL, { vector: vector ?? new Array(DIMS).fill(0), terms: t, k, limit, floor }).rows;
+      const rows = run('recall', false, RECALL, { vector: vector ?? new Array(DIMS).fill(0), terms: t || NO_WORDS, k, limit, floor }).rows;
       for (const r of rows) r.by = [...r.by].sort();   // collect() keeps no order worth relying on
       return rows;
     },

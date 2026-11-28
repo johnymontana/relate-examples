@@ -1,0 +1,147 @@
+# What example 01 adds to Neo4j's retail-banking package (web/studio.js, D21). The package's own files
+# sit beside this one, verbatim; this file is this repository's. It only adds: a colour per kind, the
+# description the model reads for each kind (ask, at most 240 characters), whether a kind's mentions are
+# proper names (proper) and whether its identifiers' pattern proposes them (propose, D26), the words the
+# model reads for each link (phrase), patterns for the identifiers the documents state, the properties
+# whose values the model reads (D27), and example arguments for the package's queries, taken from the
+# records this example's investigation narrates (the package's sample data: Priya Collins is CUS10869).
+package: retail-banking
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: Retail Banking Fraud
+  category: Financial Services
+  description: Follow money, people and devices together to expose transaction rings, money mules, account takeovers and synthetic identities.
+industry: Financial Services
+nodes:
+  Customer:
+    colour: "#2563eb"
+    proper: true
+    ask: a bank customer who holds an account, named by full name, such as Priya Collins; a person, never an account, a device or a bank
+    pattern:
+      customerId: "^CUS[0-9]{5}$"
+  Account:
+    colour: "#d97706"
+    proper: true
+    propose: true
+    ask: a bank account, named by sort code and number, such as 12-34-56 24563467, or by IBAN, such as LT169404837175302881
+    pattern:
+      accountNumber: "^(?:[0-9]{2}-[0-9]{2}-[0-9]{2} [0-9]{8}|[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30})$"
+  Transaction:
+    colour: "#dc2626"
+    proper: true
+    propose: true
+    ask: a single payment between two accounts, named by its transaction reference, such as TXN4719
+    pattern:
+      transactionId: "^TXN[0-9]{3,6}$"
+    properties:
+      amount:
+        extract: true
+        parse: MONEY
+        ask: the sum of money the payment moved, such as £4,800.00
+  Country:
+    colour: "#0891b2"
+    proper: true
+    ask: a country where an account is held or an address or IP address is located, such as Lithuania or the United Kingdom
+  Email:
+    colour: "#7c3aed"
+    proper: true
+    propose: true
+    ask: an email address a customer gave the bank, such as priya.collins10@example.net
+    pattern:
+      address: "^[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}$"
+  # Not proposed: the documents write numbers spaced (+44 7700 900561), as people do, so no one token is a
+  # number; and the package's E.164 form, digits after a plus, has no canonical name (names.js: opaque).
+  Phone:
+    colour: "#db2777"
+    proper: true
+    ask: a telephone number a customer gave the bank, written in international form, such as +44 7700 900561
+  Address:
+    colour: "#059669"
+    proper: true
+    ask: a postal address where a customer lives, with house number, street, town and postcode, such as 78 Ivy Court, Nottingham NG2 5EW
+  Passport:
+    colour: "#65a30d"
+    proper: true
+    ask: a passport presented as proof of identity, named by issuing country and number, such as GB:983208276
+  DrivingLicense:
+    colour: "#ca8a04"
+    proper: true
+    ask: a driving licence presented as proof of identity, named by its licence number, such as ELLIS012181I99DJ
+  Session:
+    colour: "#334155"
+    proper: true
+    propose: true
+    ask: one login or login attempt on online or mobile banking, named by its session number, such as SESS004521
+    pattern:
+      sessionId: "^SESS[0-9]{6}$"
+    properties:
+      status:
+        extract: true
+        ask: how the login ended, one of success, failed, suspicious or timeout
+  Device:
+    colour: "#9333ea"
+    proper: true
+    propose: true
+    ask: a phone, computer or tablet a customer banks from, named by its device fingerprint, such as DEV-45b24a72d3
+    pattern:
+      deviceId: "^DEV-[0-9a-f]{10}$"
+    properties:
+      deviceType:
+        extract: true
+        ask: what kind of device it is, one of mobile, desktop or tablet
+  IP:
+    colour: "#ea580c"
+    proper: true
+    propose: true
+    ask: a network IP address a login connected from, such as 203.0.113.254 or 2001:db8:5c75:c395::46
+    pattern:
+      ipAddress: "^(?:[0-9]{1,3}(?:\\.[0-9]{1,3}){3}|[0-9a-f]{1,4}(?::[0-9a-f]{0,4}){2,7})$"
+relationships:
+  hasAccount:
+    phrase: holds
+  performs:
+    phrase: sent
+  benefitsTo:
+    phrase: was paid to
+  isHosted:
+    phrase: is held in
+  hasEmail:
+    phrase: registered
+  hasPhone:
+    phrase: gave
+  hasAddress:
+    phrase: lives at
+  hasPassport:
+    phrase: presented
+  hasDrivingLicense:
+    phrase: provided
+  addressLocatedIn:
+    phrase: is located in
+  ipLocatedIn:
+    phrase: is located in
+  hasSession:
+    phrase: started
+  sessionUsesDevice:
+    phrase: ran on
+  usesIp:
+    phrase: connected from
+tools:
+  # The thresholds each query's @params starts at. The investigation's mule account, 12-34-56 24563467
+  # (opened 2 November 2023, seven senders, 95 per cent passed on), is what Mule account finds at these;
+  # DEV-45b24a72d3 ran sessions for four customers; 19 December 2023 is the memo's date, closing its window.
+  synthetic-identity-clusters:
+    args: {minSharedTypes: 2}
+  project-identity-links-requires-gds:
+    args: {minSharedTypes: 2}
+  identity-clusters-with-wcc-requires-gds:
+    args: {minClusterSize: 3}
+  mule-account:
+    args: {maxAccountAgeDays: 90, minSenders: 5, maxDwellHours: 48, minPassThrough: 0.5}
+  cross-layer-ring:
+    args: {minLinkTypes: 1}
+  account-takeover:
+    args: {windowHours: 24, minPriorSessions: 3, paymentTypes: [FASTER_PAYMENT, SWIFT]}
+  payment-to-a-high-risk-jurisdiction:
+    args: {windowEnd: "2023-12-19T00:00:00Z", windowDays: 30, minRatio: 0.9, maxRatio: 1.1, minIntermediaries: 1}
+  device-sharing:
+    args: {minCustomers: 3}

@@ -1,0 +1,555 @@
+# Personal Knowledge: example 01's curated ontology for the notes a person keeps in a personal
+# knowledge base (D20). Written for this repository from create-context-graph's personal-knowledge.yaml
+# at 707b168 (Apache-2.0, data/ontologies/ccg/), which it replaces in the page: the inherited POLE+O
+# base (Person, Organization, Location, Event, Object) is gone, the people are the writer's contacts and
+# the organisations they work at, Bookmark became Book, and the meetings a weekly review looks back on
+# are a kind of their own.
+#
+# Every kind carries the description a reader needs, aliases, a reference where an established
+# vocabulary has the concept, realistic properties (identifiers with patterns, vocabularies with
+# one_of), and under extensions.custom.relate-examples the words the model reads (ask) and whether its
+# mentions are proper names (proper) or identifiers its key pattern proposes (propose, D26). Topics are
+# named in lower case, so they are not proper; a journal entry is named by its date, as a vault names
+# its daily notes, so its key pattern proposes it. Every link says its direction and cardinality and
+# carries the phrase the model reads. The tools are the ontology's competency questions, written for
+# the graph the page extracts: entities carry name, display, key and their key property; relationships
+# carry p, claims, sentences and docs, and the trace (_Sentence, _Claim) holds the words behind each fact.
+schema: https://neo4j.com/docs/ontology-graph-spec/1.1.0/schema.json
+version: "2"
+id: personal-knowledge
+name: Personal Knowledge
+description: >-
+  A personal knowledge base as its owner writes it up in daily notes, meeting notes and weekly
+  reviews: the contacts the writer keeps in touch with and the organisations they work at, the
+  projects the writer pursues and who collaborates on them or commissioned them, the meetings held
+  about them, the notes written along the way with the topics they are about, the books they draw on
+  and who recommended those books, and the dated journal entries that mention people and reflect on
+  topics. It answers who the writer knows at an organisation and who introduced whom, what a project
+  has gathered in notes, meetings and people, which notes a book fed and where they were filed, which
+  topics the week kept returning to, and what the source text says about each fact. Tasks, calendars,
+  habits and the content of the notes themselves are out of scope: a review names them, the extractor
+  does not keep them.
+nodes:
+  Contact:
+    label: Contact
+    description: >-
+      A person the writer knows and keeps in touch with (a friend, colleague, client contact, mentor
+      or tradesperson), named in full or, once introduced, by first name ("Hannah Okafor", "Hannah").
+      A contact is someone in the writer's own network, never the author of a book the writer reads.
+    aliases: [person, friend, colleague, mentor, connection, acquaintance]
+    reference: https://schema.org/Person
+    properties:
+      name: {type: STRING, key: true, description: "The contact's full name as the notes write it."}
+      relationship: {type: STRING, one_of: [friend, colleague, client, mentor, family, tradesperson, acquaintance], description: "How the writer knows the contact."}
+      email: {type: STRING, description: "The contact's e-mail address, as written in the contact note (name@example.org)."}
+      lastContacted: {type: DATE, description: "The day the writer last spoke to or wrote to the contact."}
+    extensions:
+      display: {x: -200, y: -100, colour: "#0891b2"}
+      custom:
+        relate-examples: {ask: "a person in the writer's own network, such as a friend, colleague, client contact, mentor or tradesperson, named by first name and surname together; never the author of a book", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: find-a-contact
+            category: lookup
+            question: Who is this contact, and what does the vault connect to them?
+            description: Finds contacts whose name contains the text, with every entity one link away.
+            teaches: Extracted names keep the text's spelling, so match with toLower and CONTAINS rather than equality.
+            cypher: |-
+              MATCH (c:Contact) WHERE toLower(c.name) CONTAINS toLower($contact)
+              OPTIONAL MATCH (c)-[r]-(x:_Entity)
+              RETURN c.name AS contact, type(r) AS link, x.kind AS kind, x.name AS other
+              ORDER BY contact, link, other
+            parameters:
+              - {name: contact, type: STRING, description: "Part of the contact's name.", example: Hannah}
+          - type: canonicalQuery
+            name: how-i-was-introduced
+            category: path
+            question: Through whom did the writer come to know this contact?
+            description: The chain of introductions that ends at the contact, up to three steps back.
+            teaches: A bounded variable-length pattern (*1..3) walks a chain of one relationship type without risking an unbounded search.
+            cypher: |-
+              MATCH p = (first:Contact)-[:INTRODUCED*1..3]->(c:Contact)
+              WHERE toLower(c.name) CONTAINS toLower($contact)
+              RETURN c.name AS contact, first.name AS introduced_by, [n IN nodes(p) | n.name] AS chain, length(p) AS steps
+              ORDER BY steps DESC, introduced_by
+            parameters:
+              - {name: contact, type: STRING, description: "Part of the contact's name.", example: Owen Pritchard}
+          - type: canonicalQuery
+            name: claims-waiting-about-a-name
+            category: review
+            question: What has the extraction found about this name that still waits for a verdict?
+            description: The claims in the review band whose head or tail text holds the name, with the rule that holds them there.
+            teaches: Claims the gate is unsure of stay in the trace (_Claim, band review) until someone accepts or rejects them.
+            cypher: |-
+              MATCH (c:_Claim) WHERE c.band = 'review' AND (c.htext CONTAINS $name OR c.ttext CONTAINS $name)
+              RETURN c.htext AS head, c.rel AS link, c.ttext AS tail, round(c.p * 1000) / 1000 AS score, c.rule AS why
+              ORDER BY score DESC, head
+            parameters:
+              - {name: name, type: STRING, description: "A name as the text writes it.", example: Danny Achebe}
+  Organisation:
+    label: Organisation
+    description: >-
+      A company, studio, charity, trust, library or club that a contact works at or that commissions a
+      project from the writer, named in full ("Harbourside Community Trust"). An organisation is never
+      a project, even when a project carries its name.
+    aliases: [company, employer, client, studio, charity, trust]
+    reference: https://schema.org/Organization
+    properties:
+      name: {type: STRING, key: true, description: "The organisation's name as the notes write it."}
+      orgType: {type: STRING, one_of: [company, studio, charity, trust, library, university, public body, club], description: "What kind of organisation it is."}
+      city: {type: STRING, description: "The city the organisation is based in."}
+      website: {type: STRING, description: "The organisation's website, as a URL (https://example.org)."}
+    extensions:
+      display: {x: -380, y: -260, colour: "#4f46e5"}
+      custom:
+        relate-examples: {ask: "a company, charity, trust, library, co-operative or other organisation that a contact works at or that commissions a project, named in full", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: who-i-know-at
+            category: neighbourhood
+            question: Who does the writer know at this organisation, and what has it commissioned?
+            description: Each organisation whose name holds the text, with the contacts who work there and the projects it commissioned.
+            teaches: Two independent neighbourhoods of one node come back as two collected lists.
+            cypher: |-
+              MATCH (o:Organisation) WHERE toLower(o.name) CONTAINS toLower($organisation)
+              OPTIONAL MATCH (c:Contact)-[:WORKS_AT]->(o)
+              OPTIONAL MATCH (p:Project)-[:COMMISSIONED_BY]->(o)
+              RETURN o.name AS organisation, collect(DISTINCT c.name) AS people, collect(DISTINCT p.name) AS projects
+              ORDER BY organisation
+            parameters:
+              - {name: organisation, type: STRING, description: "Part of the organisation's name.", example: Harbourside}
+  Project:
+    label: Project
+    description: >-
+      A piece of work with an outcome that the writer is pursuing, for a client or for themselves (a
+      study, a build, a newsletter), named in title case ("the Garden Studio Build"). A project ends;
+      a topic does not.
+    aliases: [side project, client project, piece of work, initiative]
+    reference: https://schema.org/Project
+    properties:
+      name: {type: STRING, key: true, description: "The project's name as the notes write it."}
+      status: {type: STRING, one_of: [planning, active, paused, completed, archived], description: "Where the project stands."}
+      projectType: {type: STRING, one_of: [client, personal, writing, learning], description: "Whom the project is for."}
+      startedOn: {type: DATE, description: "The day work on the project began."}
+      deadline: {type: DATE, description: "The day the project is due to finish.", extensions: {custom: {relate-examples: {extract: true, ask: "the day the project is due or its report is due, such as 18 December 2026"}}}}
+      budget: {type: FLOAT, description: "The project's budget in pounds.", extensions: {custom: {relate-examples: {extract: true, parse: MONEY, ask: "the budget or fee of the project, a sum of money such as £9,500"}}}}
+    extensions:
+      display: {x: 0, y: -260, colour: "#8b5cf6"}
+      custom:
+        relate-examples: {ask: "a piece of work with an outcome that the writer pursues over weeks or months, such as a client study, a build or a newsletter, named in title case", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: project-at-a-glance
+            category: neighbourhood
+            question: Who commissioned this project, who works on it, and which notes and meetings has it gathered?
+            description: The project with the organisation that commissioned it, its collaborators, the notes filed under it and the meetings that discussed it.
+            teaches: OPTIONAL MATCH keeps the project in the answer when the text names no collaborator, note or meeting for it; collect(DISTINCT …) folds the repeats several OPTIONAL MATCHes make.
+            cypher: |-
+              MATCH (p:Project) WHERE toLower(p.name) CONTAINS toLower($project)
+              OPTIONAL MATCH (p)-[:COMMISSIONED_BY]->(o:Organisation)
+              OPTIONAL MATCH (c:Contact)-[:COLLABORATES_ON]->(p)
+              OPTIONAL MATCH (n:Note)-[:BELONGS_TO]->(p)
+              OPTIONAL MATCH (m:Meeting)-[:DISCUSSED]->(p)
+              RETURN p.name AS project, collect(DISTINCT o.name) AS commissioned_by, collect(DISTINCT c.name) AS collaborators,
+                     collect(DISTINCT n.name) AS notes, collect(DISTINCT m.name) AS meetings
+              ORDER BY project
+            parameters:
+              - {name: project, type: STRING, description: "Part of the project's name.", example: Wayfinding}
+          - type: canonicalQuery
+            name: who-works-on-what-and-where-it-says-so
+            category: evidence
+            question: Which sentences say who collaborates on each project?
+            description: Every COLLABORATES_ON fact with its score and the sentences it was read from.
+            teaches: A published relationship lists its evidence as sentence keys; UNWIND them and match the _Sentence nodes to read the words.
+            cypher: |-
+              MATCH (c:Contact)-[r:COLLABORATES_ON]->(p:Project)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN p.name AS project, c.name AS contact, round(r.p * 1000) / 1000 AS score, s.text AS evidence
+              ORDER BY project, contact
+  Meeting:
+    label: Meeting
+    description: >-
+      A meeting, call, workshop or site visit the writer held with other people, named as its meeting
+      note is titled ("the Wayfinding Kickoff"). A meeting happens on one day; the project it discusses
+      runs on.
+    aliases: [call, catch-up, kickoff, workshop, site visit, one-to-one]
+    reference: https://schema.org/Event
+    properties:
+      name: {type: STRING, key: true, description: "The meeting as its meeting note is titled."}
+      meetingType: {type: STRING, one_of: [kickoff, call, one-to-one, workshop, site visit, social], description: "What kind of meeting it was."}
+      heldOn: {type: DATE, description: "The day the meeting took place.", extensions: {custom: {relate-examples: {extract: true, ask: "the day the meeting took place, such as 17 November 2026"}}}}
+      place: {type: STRING, description: "Where the meeting was held, or the call software used."}
+    extensions:
+      display: {x: -380, y: 60, colour: "#2563eb"}
+      custom:
+        relate-examples: {ask: "a meeting, call, kickoff, walkthrough, workshop or site visit the writer holds with other people on one day, named as its meeting note is titled", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: meetings-and-who-came
+            category: neighbourhood
+            question: Who attended each meeting, and which project did it discuss?
+            description: Every meeting with the contacts who attended it and the projects it discussed.
+            teaches: The pattern names each link in its declared direction, contact to meeting and meeting to project.
+            cypher: |-
+              MATCH (m:Meeting)
+              OPTIONAL MATCH (c:Contact)-[:ATTENDED]->(m)
+              OPTIONAL MATCH (m)-[:DISCUSSED]->(p:Project)
+              RETURN m.name AS meeting, collect(DISTINCT c.name) AS attendees, collect(DISTINCT p.name) AS projects
+              ORDER BY meeting
+  Note:
+    label: Note
+    description: >-
+      A note in the writer's knowledge base, named by its title, which is often a short claim in
+      sentence case and often linked in double square brackets ("[[Landmarks beat maps]]"). A note is
+      written by the writer; a book is read.
+    aliases: [permanent note, evergreen note, literature note, zettel, page]
+    reference: https://schema.org/NoteDigitalDocument
+    properties:
+      name: {type: STRING, key: true, description: "The note's title as the vault writes it."}
+      noteType: {type: STRING, one_of: [fleeting, literature, permanent, reference, project], description: "The note's role in the knowledge base."}
+      path: {type: STRING, description: "The note's file path in the vault (notes/landmarks-beat-maps.md)."}
+      createdOn: {type: DATE, description: "The day the note was created."}
+    extensions:
+      display: {x: 60, y: 40, colour: "#f59e0b"}
+      custom:
+        relate-examples: {ask: "the title of a note in the writer's notes app, a short statement in sentence case such as Atomic notes travel further, usually inside double square brackets", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: note-trail
+            category: path
+            question: Where do the links out of this note lead?
+            description: Every trail of LINKS_TO links from the note, up to three notes on.
+            teaches: nodes(p) lists a path's notes in order, so a list comprehension turns a trail into its titles.
+            cypher: |-
+              MATCH p = (n:Note)-[:LINKS_TO*1..3]->(:Note)
+              WHERE toLower(n.name) CONTAINS toLower($note)
+              RETURN n.name AS note, [x IN nodes(p) | x.name] AS trail, length(p) AS steps
+              ORDER BY steps, note
+            parameters:
+              - {name: note, type: STRING, description: "Part of the note's title.", example: Signs should answer}
+          - type: canonicalQuery
+            name: what-the-vault-says-about
+            category: evidence
+            question: What do the notes say about this name, fact by fact?
+            description: Every extracted fact about an entity whose name holds the text, with the sentence behind it.
+            teaches: Any entity's facts and evidence come back through one pattern over _Entity, whatever its kind.
+            cypher: |-
+              MATCH (e:_Entity)-[r]-(x:_Entity) WHERE toLower(e.name) CONTAINS toLower($name)
+              UNWIND r.sentences AS k
+              MATCH (s:_Sentence {key: k})
+              RETURN e.name AS entity, type(r) AS link, x.name AS other, s.text AS evidence
+              ORDER BY link, other
+            parameters:
+              - {name: name, type: STRING, description: "Part of a name.", example: Leila Haddad}
+  Book:
+    label: Book
+    description: >-
+      A book the writer is reading, has read or means to read, named by its title and often set in
+      italics ("*Reading the Street*"). Notes draw on books; the author is a property, not a contact.
+    aliases: [title, reading, read]
+    reference: https://schema.org/Book
+    properties:
+      name: {type: STRING, key: true, description: "The book's title."}
+      author: {type: STRING, description: "The book's author, as the cover gives the name."}
+      isbn: {type: STRING, pattern: "^97[89][0-9]{10}$", description: "The book's ISBN-13, thirteen digits without hyphens."}
+      readingStatus: {type: STRING, one_of: [to read, reading, finished, abandoned], description: "Where the writer is with the book."}
+    extensions:
+      display: {x: 340, y: -120, colour: "#d946ef"}
+      custom:
+        relate-examples: {ask: "a book the writer reads or means to read, named by its title, often in italics", proper: true}
+        tools:
+          - type: canonicalQuery
+            name: what-a-book-fed
+            category: path
+            question: Which notes did this book feed, which projects are they filed under, and who recommended it?
+            description: The chain book, note, project for every book whose title holds the text, with the book's recommenders.
+            teaches: Start from the book and walk against DRAWS_ON to the notes, then along BELONGS_TO to their projects; OPTIONAL MATCH keeps a note filed under no project.
+            cypher: |-
+              MATCH (b:Book)<-[:DRAWS_ON]-(n:Note) WHERE toLower(b.name) CONTAINS toLower($book)
+              OPTIONAL MATCH (n)-[:BELONGS_TO]->(p:Project)
+              OPTIONAL MATCH (b)-[:RECOMMENDED_BY]->(c:Contact)
+              RETURN b.name AS book, n.name AS note, collect(DISTINCT p.name) AS projects, collect(DISTINCT c.name) AS recommended_by
+              ORDER BY book, note
+            parameters:
+              - {name: book, type: STRING, description: "Part of the book's title.", example: Reading the Street}
+          - type: canonicalQuery
+            name: whose-recommendations-turned-into-notes
+            category: aggregation
+            question: Whose book recommendations has the writer acted on, and how many notes came of them?
+            description: Per contact, the books they recommended and the notes that draw on those books.
+            teaches: Count DISTINCT after an OPTIONAL MATCH, or each book is counted once per note that draws on it.
+            cypher: |-
+              MATCH (b:Book)-[:RECOMMENDED_BY]->(c:Contact)
+              OPTIONAL MATCH (n:Note)-[:DRAWS_ON]->(b)
+              RETURN c.name AS contact, count(DISTINCT b) AS books, count(DISTINCT n) AS notes
+              ORDER BY books DESC, notes DESC, contact
+  Topic:
+    label: Topic
+    description: >-
+      A subject or field the writer reads, writes and thinks about, usually named in lower case
+      ("wayfinding", "spaced repetition"). Topics sit in a hierarchy, a narrower topic falling under a
+      broader one, and never end as a project does.
+    aliases: [subject, theme, tag, area of interest, field]
+    reference: https://schema.org/DefinedTerm
+    properties:
+      name: {type: STRING, key: true, description: "The topic as the notes name it."}
+      category: {type: STRING, one_of: [design, technology, science, craft, writing, health, personal], description: "The broad area the topic belongs to."}
+      tag: {type: STRING, pattern: "^#[a-z0-9-]+$", description: "The tag the vault uses for the topic, a hash and lower-case words joined by hyphens (#spaced-repetition)."}
+    extensions:
+      display: {x: 320, y: 180, colour: "#10b981"}
+      custom:
+        relate-examples: {ask: "a subject or field of knowledge the writer studies and tags notes with, named in a word or two, usually in lower case, such as typography, habit formation or beekeeping"}
+        tools:
+          - type: canonicalQuery
+            name: notes-under-a-topic
+            category: path
+            question: Which notes are about this topic or any topic that falls under it?
+            description: The topic, the narrower topics up to three levels below it, and every note about one of them.
+            teaches: Collect the topic with its narrower topics into one list, then UNWIND it to match the notes about each.
+            cypher: |-
+              MATCH (t:Topic) WHERE toLower(t.name) CONTAINS toLower($topic)
+              OPTIONAL MATCH (sub:Topic)-[:SUBTOPIC_OF*1..3]->(t)
+              WITH t, [t] + collect(DISTINCT sub) AS topics
+              UNWIND topics AS x
+              MATCH (n:Note)-[:TAGGED]->(x)
+              RETURN t.name AS topic, x.name AS via, n.name AS note
+              ORDER BY topic, via, note
+            parameters:
+              - {name: topic, type: STRING, description: "Part of the topic's name.", example: service design}
+          - type: canonicalQuery
+            name: what-the-week-kept-returning-to
+            category: aggregation
+            question: Which topics do the notes, the books and the journal keep returning to?
+            description: Per topic, the notes about it, the books that cover it and the journal entries that reflect on it.
+            teaches: After an aggregating RETURN, ORDER BY may use only what the RETURN projects.
+            cypher: |-
+              MATCH (t:Topic)
+              OPTIONAL MATCH (n:Note)-[:TAGGED]->(t)
+              OPTIONAL MATCH (b:Book)-[:COVERS]->(t)
+              OPTIONAL MATCH (j:JournalEntry)-[:REFLECTS_ON]->(t)
+              RETURN t.name AS topic, count(DISTINCT n) AS notes, count(DISTINCT b) AS books, count(DISTINCT j) AS journal_entries
+              ORDER BY notes DESC, books DESC, journal_entries DESC, topic
+  JournalEntry:
+    label: JournalEntry
+    description: >-
+      A dated entry in the writer's daily journal, named as the vault names its daily notes, by the
+      date in the form 2026-11-17, often in double square brackets. A journal entry belongs to one day;
+      a note may be revised for years.
+    aliases: [daily note, journal, diary entry, daily page]
+    properties:
+      entryDate: {type: STRING, key: true, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", description: "The daily note's name, the date as YYYY-MM-DD (2026-11-17)."}
+      name: {type: STRING, description: "The entry as a document names it."}
+      mood: {type: STRING, one_of: [great, good, neutral, low, difficult], description: "The mood the writer recorded for the day.", extensions: {custom: {relate-examples: {extract: true, ask: "how the writer says the day was, one of great, good, neutral, low or difficult"}}}}
+      wordCount: {type: INTEGER, description: "The entry's length in words."}
+    extensions:
+      display: {x: -120, y: 220, colour: "#ec4899"}
+      custom:
+        relate-examples: {ask: "a dated entry in the writer's daily journal, named by its date in the form 2026-11-17, often in double square brackets", proper: true, propose: true}
+        tools:
+          - type: canonicalQuery
+            name: journal-entry-by-date
+            category: lookup
+            question: Whom does the journal entry for this day mention, and what does it reflect on?
+            description: The journal entry whose date is the parameter, with the contacts it mentions and the topics it reflects on.
+            teaches: An identifier the text states is the entity's key property (entryDate, from its name), so an exact match finds it.
+            cypher: |-
+              MATCH (j:JournalEntry) WHERE j.entryDate = $date
+              OPTIONAL MATCH (j)-[:MENTIONS]->(c:Contact)
+              OPTIONAL MATCH (j)-[:REFLECTS_ON]->(t:Topic)
+              RETURN j.entryDate AS entry, collect(DISTINCT c.name) AS people, collect(DISTINCT t.name) AS topics
+            parameters:
+              - {name: date, type: STRING, description: "A journal entry's date, YYYY-MM-DD.", example: "2026-11-19"}
+          - type: canonicalQuery
+            name: people-in-the-journal
+            category: aggregation
+            question: Who comes up most often in the journal?
+            description: Per contact, the journal entries that mention them.
+            teaches: Group by the contact and count the entries; collect gathers their dates beside the count.
+            cypher: |-
+              MATCH (j:JournalEntry)-[:MENTIONS]->(c:Contact)
+              RETURN c.name AS contact, count(DISTINCT j) AS entries, collect(DISTINCT j.entryDate) AS dates
+              ORDER BY entries DESC, contact
+relationships:
+  contactWorksAtOrganisation:
+    type: WORKS_AT
+    description: >-
+      The contact works at the organisation, as staff, partner or volunteer; one current employer per
+      contact in this ontology, many contacts per organisation.
+    aliases: [works for, is at, is a partner at, joined, volunteers at]
+    from: {node: Contact}
+    to: {node: Organisation, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: works at}
+  contactIntroducedContact:
+    type: INTRODUCED
+    description: >-
+      The first contact introduced the writer to the second, read from the introducer to the person
+      introduced; a contact is introduced once, an introducer may introduce many.
+    aliases: [introduced me to, put me in touch with, connected me with]
+    from: {node: Contact}
+    to: {node: Contact, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: introduced}
+  contactCollaboratesOnProject:
+    type: COLLABORATES_ON
+    description: >-
+      The contact works on the project with the writer (draws, builds, proofreads, co-writes); many to
+      many.
+    aliases: [works on, helps with, is building, proofreads, co-writes]
+    from: {node: Contact}
+    to: {node: Project}
+    extensions:
+      custom:
+        relate-examples: {phrase: collaborates on}
+  projectCommissionedByOrganisation:
+    type: COMMISSIONED_BY
+    description: >-
+      The organisation commissioned the project and pays for it; at most one commissioner per project,
+      and a personal project has none.
+    aliases: [was commissioned by, is for, is paid for by, was ordered by]
+    from: {node: Project}
+    to: {node: Organisation, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: was commissioned by}
+  noteBelongsToProject:
+    type: BELONGS_TO
+    description: >-
+      The note is filed under the project it serves; at most one project per note in this ontology,
+      many notes per project.
+    aliases: [is filed under, is part of, is for]
+    from: {node: Note}
+    to: {node: Project, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: belongs to}
+  noteTaggedTopic:
+    type: TAGGED
+    description: >-
+      The note is about the topic and carries its tag; a note has one or more topics, a topic many
+      notes.
+    aliases: [is tagged, is tagged with, is about, covers]
+    from: {node: Note}
+    to: {node: Topic, min_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: is about}
+  noteDrawsOnBook:
+    type: DRAWS_ON
+    description: >-
+      The note takes an idea, a quotation or an argument from the book; a note may draw on several
+      books, and a book feed many notes.
+    aliases: [comes from, is a literature note on, cites, quotes]
+    from: {node: Note}
+    to: {node: Book}
+    extensions:
+      custom:
+        relate-examples: {phrase: draws on}
+  noteLinksToNote:
+    type: LINKS_TO
+    description: >-
+      The first note links to the second, read from the note that holds the link to the note it points
+      to; many to many.
+    aliases: [points to, references, is linked to]
+    from: {node: Note}
+    to: {node: Note}
+    extensions:
+      custom:
+        relate-examples: {phrase: links to}
+  bookCoversTopic:
+    type: COVERS
+    description: >-
+      The book treats the topic at length; a book covers one or more topics, a topic is covered by many
+      books.
+    aliases: [is about, deals with, explains]
+    from: {node: Book}
+    to: {node: Topic}
+    extensions:
+      custom:
+        relate-examples: {phrase: covers}
+  bookRecommendedByContact:
+    type: RECOMMENDED_BY
+    description: >-
+      The contact recommended, lent or gave the book to the writer; usually one recommender per book,
+      many books per contact.
+    aliases: [was suggested by, was lent by, was a gift from]
+    from: {node: Book}
+    to: {node: Contact}
+    extensions:
+      custom:
+        relate-examples: {phrase: was recommended by}
+  contactAttendedMeeting:
+    type: ATTENDED
+    description: >-
+      The contact took part in the meeting with the writer; one or more contacts per meeting, many
+      meetings per contact.
+    aliases: [joined, came to, was at, took part in]
+    from: {node: Contact}
+    to: {node: Meeting}
+    extensions:
+      custom:
+        relate-examples: {phrase: attended}
+  meetingDiscussedProject:
+    type: DISCUSSED
+    description: >-
+      The meeting was held about the project, or spent its time on it; a meeting discusses one or more
+      projects, a project many meetings.
+    aliases: [was about, went through, reviewed, covered]
+    from: {node: Meeting}
+    to: {node: Project}
+    extensions:
+      custom:
+        relate-examples: {phrase: discussed}
+  journalEntryMentionsContact:
+    type: MENTIONS
+    description: >-
+      The journal entry names the contact, writing about time spent with them or about them; many to
+      many.
+    aliases: [is about, talks about, names]
+    from: {node: JournalEntry}
+    to: {node: Contact}
+    extensions:
+      custom:
+        relate-examples: {phrase: mentions}
+  journalEntryReflectsOnTopic:
+    type: REFLECTS_ON
+    description: >-
+      The journal entry thinks through the topic; an entry may reflect on several topics, a topic
+      recur in many entries.
+    aliases: [is about, thinks through, writes about]
+    from: {node: JournalEntry}
+    to: {node: Topic}
+    extensions:
+      custom:
+        relate-examples: {phrase: reflects on}
+  topicSubtopicOfTopic:
+    type: SUBTOPIC_OF
+    description: >-
+      The first topic is narrower than the second and falls under it in the writer's topic index; read
+      from the narrower to the broader topic, which a topic has at most one of.
+    aliases: [falls under, is part of, is a branch of, is a kind of]
+    from: {node: Topic}
+    to: {node: Topic, max_count: 1}
+    extensions:
+      custom:
+        relate-examples: {phrase: falls under}
+extensions:
+  custom:
+    relate-examples:
+      family: domains
+      industry: Personal Productivity
+      card:
+        title: Personal Knowledge
+        description: Follow a week in a personal knowledge base from its projects and meetings to the people, notes, books and topics behind them.
+      source:
+        derived_from: create-context-graph's personal-knowledge.yaml at 707b168 (Apache-2.0, data/ontologies/ccg/)
+        changed: >-
+          The POLE+O base and the pole extension are gone; Person became Contact, Organization became
+          Organisation, Bookmark became Book, and Meeting is a new kind; Note, Project, Topic and
+          JournalEntry keep their meaning with new descriptions and properties, and a journal entry is
+          named by its date; KNOWS became INTRODUCED, WORKED_ON COLLABORATES_ON, RELATED_TO SUBTOPIC_OF,
+          REFERENCES DRAWS_ON, and the links were given cardinalities; the tools were written anew for an
+          extracted graph.

@@ -2,7 +2,7 @@
 
 Runnable examples for [Relate](https://github.com/relatedb/relate), an embedded openCypher graph
 database: one binary, and a database that is a directory, a single `.rl` file or `:memory:`. Every
-example targets **Relate 1.2.0**: the `relate` CLI, the `relate-db` Python binding and the
+example targets **Relate 1.3.0**: the `relate` CLI, the `relate-db` Python binding and the
 `@relate/relate-wasm` npm package (the WebAssembly build). Each example runs offline and checks its
 own output against committed `expected/` files.
 
@@ -15,7 +15,7 @@ them.
 
 | | Example | Live |
 |---|---|---|
-| 01 | [`examples/01-wasm-extract/`](examples/01-wasm-extract/): markdown to a knowledge graph entirely in a browser tab. An ontology (one of create-context-graph's 27 domains, or your own Ontology Graph Spec 1.1 document, read with the official SDK) decides what is legal, GLiNER2.5 (gliner-rs compiled to WebAssembly) scores every candidate, cutoffs you own sort them into keep, review or drop, and Relate's WASM build holds everything in the browser's OPFS. A read-only Cypher console, NVL graphs, and a download that native Relate opens. | <https://johnymontana.github.io/relate-examples/01-wasm-extract/> |
+| 01 | [`examples/01-wasm-extract/`](examples/01-wasm-extract/): markdown to a knowledge graph entirely in a browser tab. An ontology (one of 40 bundled ones: 27 curated domains and 13 of Neo4j's solution packages, each with synthetic documents; or your own Ontology Graph Spec 1.1 document, read with the official SDK) decides which kinds, links and property values are legal, GLiNER2.5 (gliner-rs compiled to WebAssembly) scores every candidate, cutoffs you own sort them into keep, review or drop, and Relate's WASM build holds everything in the browser's OPFS. A read-only Cypher console, NVL graphs, and a download that native Relate opens. | <https://johnymontana.github.io/relate-examples/01-wasm-extract/> |
 | 02 | [`examples/02-wasm-text2cypher/`](examples/02-wasm-text2cypher/): ontology-grounded Text2Cypher entirely in a browser tab. A language model on your own GPU (WebLLM, Qwen3.5 2B or 4B) writes two queries per question, one from a bare schema and one from an Ontology Graph Spec document's descriptions, vocabularies and cookbook. The ontology's static checks and Relate's planner vet them, and Relate's WASM build runs them on a graph held under a graph type derived from the same ontology; the page says what the ontology changed. Without WebGPU it uses reference queries. | <https://johnymontana.github.io/relate-examples/02-wasm-text2cypher/> |
 | 03 | [`examples/03-wasm-agent-memory/`](examples/03-wasm-agent-memory/): the Relate playground as an agent's memory, in Relate's own brand. A scripted chat on one side, and on the other the memory it fills, drawn as a graph with NVL: the agent stores what it learns in Relate's WASM build, under a graph type that refuses a malformed memory, and recalls it in a later session with one statement that combines vector search, full-text search and graph hops. The page highlights the paths that statement returned. The vectors come from a real embedding model (all-MiniLM-L6-v2): computed ahead of time for the scripted conversations, so there is nothing to download but the page, and in the tab for the questions you type. The shape of the memory is also written down as an Ontology Graph Spec document, which the page draws, searches and checks the store against. | <https://johnymontana.github.io/relate-examples/03-wasm-agent-memory/> |
 
@@ -25,8 +25,8 @@ macOS or Linux, with `curl`, [uv](https://docs.astral.sh/uv/), Node 20 or later 
 [rustup](https://rustup.rs/).
 
 ```bash
-curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI; `relate --version`'s first line must be "Relate v1.2.0"
-uv sync                                             # the project env: relate-db 1.2.0 and pytest (uv.lock)
+curl -sSfL https://relatedb.ai/install.sh | bash   # the relate CLI; `relate --version`'s first line must be "Relate v1.3.0"
+uv sync                                             # the project env: relate-db 1.3.0 and pytest (uv.lock)
 rustup toolchain install 1.97.1 --profile minimal --target wasm32-unknown-unknown
 scripts/build-gliner-wasm.sh                        # example 01: gliner-rs v0.3.1 built to WASM into .cache/gliner-wasm/
 scripts/fetch-gliner.sh small                       # example 01: GLiNER2.5-small-v1 weights into .cache/gliner/ (304 MB)

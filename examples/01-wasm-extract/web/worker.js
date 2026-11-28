@@ -80,7 +80,7 @@
  * Error codes: no-store, no-model, locked (R11: another tab holds the store; the page offers
  * the handover), trap (the instance is gone, R14: the page replaces this worker, committed data
  * survives, R24), blocked (an ontology edit the data breaks, O5), ontology (invalid YAML), format
- * (a restore input that is not Relate 1.2.0's, or that 1.2.0 cannot open, X5), engine (an error
+ * (a restore input that is not Relate 1.3.0's, or that 1.3.0 cannot open, X5), engine (an error
  * envelope), lent, busy, usage, error.
  *
  * Engine facts this worker leans on: no transaction control (R2), so every write is an idempotent
@@ -110,8 +110,8 @@ import { splitSentences } from './split.js';
 import * as store from './store.js';
 
 const ASSETS = new URL('./assets/', import.meta.url);
-const RELATE = '1.2.0';
-const GLUE = 'relate-1.2.0/relate.js';
+const RELATE = '1.3.0';
+const GLUE = 'relate-1.3.0/relate.js';
 const GLINER_GLUE = 'gliner-rs-4fa741e/gliner_rs.js';
 const GLINER_WASM = 'gliner-rs-4fa741e/gliner_rs_bg.wasm';
 /** How long a reopen retries `storage locked` (R11: about 2 s in Chromium after a terminate mid-call). */
@@ -312,6 +312,9 @@ RETURN s.doc AS doc, count(s) AS n`, { schema }).map((r) => [r.doc, Number(r.n)]
       kinds: onto.kinds.map((k) => ({
         ...k, description: kinds.get(k.id)?.description ?? '', color: kinds.get(k.id)?.color ?? null,
         pole: kinds.get(k.id)?.pole ?? null, origin: kinds.get(k.id)?.origin ?? 'own', ask: kinds.get(k.id)?.ask ?? null,
+        unasked: kinds.get(k.id)?.unasked ?? null, askMode: kinds.get(k.id)?.askMode ?? null, proper: kinds.get(k.id)?.proper ?? false,
+        propose: kinds.get(k.id)?.propose ?? false, keyProp: kinds.get(k.id)?.keyProp ?? null,
+        attributes: (kinds.get(k.id)?.attributes ?? []).map((a) => a.prop),
       })),
       links: onto.links.map((l) => ({ ...l, ask: links.get(l.id)?.ask ?? l.phrase })),
       colors: kindColors(c.ontology),
@@ -787,7 +790,7 @@ RETURN count(DISTINCT s) AS n`, { cut })[0]?.n ?? 0)
         ro = await mod.RelateDb.open(`opfs://${name}`, true);
       } catch (e) {
         // The guard checks the files' framing (X5), not every byte: a snapshot that passes it and
-        // still fails to open is not Relate 1.2.0's, or is damaged. The leftover store goes (finally).
+        // still fails to open is not Relate 1.3.0's, or is damaged. The leftover store goes (finally).
         const text = e instanceof Error ? e.message : String(e);
         if (LOCKED.test(text) || cl.isTrap(e)) throw e;
         throw new WorkerError('format', `${fileName} passed the format check, but Relate ${RELATE} could not open it ` +
@@ -898,7 +901,19 @@ RETURN d.title AS document, s.idx AS idx, s.text AS sentence, m.text AS text, m.
        m.start - s.start AS start, m.end - s.start AS end
 ORDER BY document, idx, start
 LIMIT 200`, { key: m.node });
-      return { what: 'node', title: `${e.name} (${e.kind})`, properties: { ...e, docs: named(e.docs) }, evidence: evidence.map((x) => ({ ...x, spans: [[x.start, x.end]] })) };
+      // D27: the values read from the text for the entity: the kept ones publish wrote (_OF), each with its sentence,
+      // and the property as the entity now carries it (the best kept value, typed).
+      const values = q(`MATCH (a:_Attribute)-[:_OF]->(e:_Entity {key: $key}) WHERE $key IS NOT NULL
+MATCH (a)-[:_IN]->(s:_Sentence)
+OPTIONAL MATCH (d:_Document {id: a.doc})
+RETURN a.prop AS prop, a.text AS text, a.p AS p, a.via AS via, toString(properties(e)[a.prop]) AS stored, toString(a.value) AS value,
+       d.title AS document, s.idx AS idx, s.text AS sentence, a.start - s.start AS start, a.end - s.start AS end
+ORDER BY prop, p DESC, document, idx`, { key: m.node });
+      return {
+        what: 'node', title: `${e.name} (${e.kind})`, properties: { ...e, docs: named(e.docs) },
+        evidence: evidence.map((x) => ({ ...x, spans: [[x.start, x.end]] })),
+        values: values.map((x) => ({ ...x, spans: [[x.start, x.end]] })),
+      };
     }
     const r = m.rel ?? {};
     if (typeof r.a !== 'string' || typeof r.b !== 'string' || typeof r.type !== 'string') throw new WorkerError('usage', 'details: {node} or {rel: {a, type, b}}');

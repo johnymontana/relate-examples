@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // @ts-check
-// The bundled ontologies as Ontology Graph Spec 1.1 documents (web/convert.js, web/ogs.js):
-// data/ontologies/ogs/ccg/<domain>.ontology.yaml from create-context-graph's 27 domain files (with
-// _base.yaml). The originals stay where they are (data/ontologies/ccg/) for provenance; the page and
-// the harnesses load the documents.
+// The solution packages as the page's Ontology Graph Spec 1.1 documents (web/studio.js, web/ogs.js):
+// data/ontologies/ogs/studio/<package>.ontology.yaml from each vendored package and its overlay
+// (data/ontologies/studio/, D21). ccgConversions() converts create-context-graph's 27 domain files
+// (data/ontologies/ccg/, with _base.yaml) in memory, as the editor converts a pasted one, for the
+// harness's fixtures and format checks; they are no longer written (ADR-0019).
 //   node harness/convert.mjs           write data/ontologies/ogs/ (only files that changed)
 //   node harness/convert.mjs --check   write nothing; exit 1 naming every committed document that is
 //                                      not byte for byte a fresh conversion of its original, and any file
@@ -16,7 +17,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { EXTENSIONS, custom, isMap, loadText, toolsOf } from '../web/ogs.js';
 import { CCG_DEFAULT_COLOR, CCG_DEFAULT_ICON, CCG_DISPLAY, PROPERTY_TYPES } from '../web/convert.js';
-import { parseOntology } from '../web/ontology.js';
+import { fromDocument, parseOntology } from '../web/ontology.js';
+import { fromStudioPackage } from '../web/studio.js';
 
 export const EX = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const ONTOLOGIES = join(EX, 'data', 'ontologies');
@@ -26,6 +28,14 @@ export const ONTOLOGIES = join(EX, 'data', 'ontologies');
  * in file order. source and file are relative to data/ontologies/.
  */
 export function conversions() {
+  const out = [];
+  if (existsSync(join(ONTOLOGIES, 'ogs', 'ccg'))) out.push(...ccgConversions());
+  out.push(...studioConversions());
+  return out;
+}
+
+/** create-context-graph's 27 domain files converted (with _base.yaml): the converter's test corpus (D20). */
+export function ccgConversions() {
   const bases = { _base: readFileSync(join(ONTOLOGIES, 'ccg', '_base.yaml'), 'utf8') };
   const out = [];
   for (const f of readdirSync(join(ONTOLOGIES, 'ccg')).filter((x) => x.endsWith('.yaml') && !x.startsWith('_')).sort()) {
@@ -34,6 +44,40 @@ export function conversions() {
     if (`${o.id}.yaml` !== f) throw new Error(`convert.mjs: ${source} holds the ontology ${o.id}; the file is named after its id`);
     out.push({ group: 'ccg', source, file: `ogs/ccg/${o.id}.ontology.yaml`, text: o.yaml, o });
   }
+  return out;
+}
+
+/**
+ * Neo4j's solution packages (data/ontologies/studio/<package>/, vendored by harness/vendor-studio.mjs),
+ * each with its overlay (<package>.overlay.yaml), converted by web/studio.js (D21): {group: 'studio',
+ * source, file, text, o, report, upstream, overlay}. A package without an overlay is not bundled.
+ */
+export function studioConversions() {
+  const dir = join(ONTOLOGIES, 'studio');
+  if (!existsSync(join(dir, 'manifest.json'))) return [];
+  const m = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
+  /** @type {any[] & {errors?: Map<string, string>}} */
+  const out = [];
+  // A package whose overlay does not convert is not thrown: it is listed in out.errors, so one broken overlay
+  // never stops the others (the command line and domain.mjs report it; harness/ontology.mjs fails on any).
+  const errors = new Map();
+  for (const pkg of [...new Set(Object.keys(m.files).map((f) => f.split('/')[0]))].sort()) {
+    const ovFile = join(dir, `${pkg}.overlay.yaml`);
+    if (!existsSync(ovFile)) continue;
+    try {
+      const overlay = loadText(readFileSync(ovFile, 'utf8'), `studio/${pkg}.overlay.yaml`);
+      const ontology = readFileSync(join(dir, pkg, 'ONTOLOGY.json'), 'utf8');
+      const queries = readFileSync(join(dir, pkg, 'QUERIES.md'), 'utf8');
+      const files = Object.keys(m.files).filter((f) => f.startsWith(`${pkg}/`)).map((f) => f.slice(pkg.length + 1));
+      const { doc, report } = fromStudioPackage({ ontology, queries, overlay, source: { repository: m.repository, commit: m.commit, package: pkg, files } });
+      const o = fromDocument(doc);
+      if (o.id !== pkg) throw new Error(`studio/${pkg} holds the ontology ${o.id}; the package is named after its id`);
+      out.push({ group: 'studio', source: `studio/${pkg}/ONTOLOGY.json`, file: `ogs/studio/${pkg}.ontology.yaml`, text: o.yaml, o, report, upstream: JSON.parse(ontology), overlay });
+    } catch (e) {
+      errors.set(pkg, `data/ontologies/studio/${pkg}.overlay.yaml: ${String(/** @type {any} */ (e)?.message ?? e)}`);
+    }
+  }
+  out.errors = errors;
   return out;
 }
 
@@ -182,8 +226,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     }
     console.log(`convert.mjs: the ${conversions().length} documents in data/ontologies/ogs/ are fresh conversions`);
   } else {
+    // --only <id>: write that package's or domain's document alone (parallel writers each touch their own)
+    const oi = process.argv.indexOf('--only');
+    const only = oi > 0 ? process.argv[oi + 1] : null;
+    const mine = (/** @type {{file: string}} */ c) => !only || c.file.endsWith(`/${only}.ontology.yaml`);
     let wrote = 0;
-    for (const c of conversions()) {
+    for (const [pkg, why] of studioConversions().errors ?? []) if (!only || pkg === only) console.error(`convert.mjs: ${pkg} not converted: ${why}`);
+    for (const c of conversions().filter(mine)) {
       const path = join(ONTOLOGIES, c.file);
       if (existsSync(path) && readFileSync(path, 'utf8') === c.text) continue;
       mkdirSync(dirname(path), { recursive: true });
@@ -191,6 +240,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       wrote++;
       console.log(`wrote data/ontologies/${c.file}`);
     }
-    console.log(`convert.mjs: ${wrote} written, ${conversions().length - wrote} unchanged`);
+    console.log(`convert.mjs: ${wrote} written, ${conversions().filter(mine).length - wrote} unchanged`);
   }
 }

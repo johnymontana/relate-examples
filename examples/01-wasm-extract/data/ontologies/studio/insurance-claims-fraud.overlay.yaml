@@ -1,0 +1,59 @@
+# What example 01 adds to Neo4j's insurance-claims-fraud package (web/studio.js, D21). The package's
+# own files sit beside this one, verbatim; this file is this repository's. It only adds: a colour per
+# kind, the description the model reads for each kind (ask, at most 240 characters), whether a kind's
+# mentions are proper names (proper) and whether its identifiers' pattern proposes them (propose, D26),
+# the words the model reads for each link (phrase), patterns for identifiers the documents state, and
+# example arguments for the package's queries, in the words of this example's documents.
+package: insurance-claims-fraud
+# From the package's SKILL.md front matter (neo4j-card-*), at the vendored commit.
+card:
+  title: Insurance Claims Fraud
+  category: Insurance
+  description: Uncover fraud rings and suspicious claims through the connections between claimants, doctors, vehicles, and claims.
+industry: Insurance
+nodes:
+  Claimant:
+    colour: "#2563eb"
+    proper: true
+    ask: a person who filed an insurance claim for an accident or injury, named by full name; the person seeking payment, not the insurer's staff
+  MedicalProfessional:
+    colour: "#059669"
+    proper: true
+    ask: a doctor, physiotherapist or other clinician who assessed or treated a claimant's injury, usually named with a title such as Dr.
+  Claim:
+    colour: "#d97706"
+    proper: true
+    propose: true
+    ask: an insurance claim for a motor or personal-injury incident, named by its claim reference, such as CL-004417
+    pattern:
+      claimID: "^CL-[0-9]{6}$"
+    properties:
+      amountClaimed:
+        extract: true
+        parse: MONEY
+        ask: the amount of money sought on the claim, a sum such as £28,449
+      date:
+        extract: true
+        parse: DATE
+        ask: the date of the incident the claim relates to, such as 9 January 2024
+  Vehicle:
+    colour: "#7c3aed"
+    proper: true
+    propose: true
+    ask: a motor vehicle named in a claim, identified by its 17-character vehicle identification number (VIN)
+    pattern:
+      VIN: "^[A-HJ-NPR-Z0-9]{17}$"
+relationships:
+  hasClaim:
+    phrase: filed
+  treatedBy:
+    phrase: was assessed by
+  owns:
+    phrase: owns
+  involvedIn:
+    phrase: was involved in
+  treats:
+    phrase: treats
+tools:
+  medical-professionals-with-unusual-patterns:
+    args: {minClaims: 1, minTotal: 50000}
