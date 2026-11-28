@@ -43,7 +43,6 @@
  *   data/samples/                   samples.json and the samples it lists (domains/<id>/<x>.md, studio/<id>/<x>.md);
  *                                   data/LICENSE-edgextract.txt and data/SOURCE.md (the ported splitter and name
  *                                   rules are edgextract's)
- *   queries/                        the saved queries (queries/*.cypher) and index.json
  *   THIRD_PARTY.md
  *
  * The page's modules keep the import specifiers that work in Node (`../../../lib/replay.mjs`,
@@ -752,9 +751,6 @@ export function plan() {
   }
   add('data/LICENSE-edgextract.txt', { from: path.join(dataDir, 'LICENSE-edgextract.txt') });
   add('data/SOURCE.md', { from: path.join(dataDir, 'SOURCE.md') });
-  const queries = fs.readdirSync(path.join(EX, 'queries')).filter((f) => f.endsWith('.cypher')).sort(cmp);
-  for (const f of queries) add(`queries/${f}`, { from: path.join(EX, 'queries', f) });
-  add('queries/index.json', { data: () => Buffer.from(`${JSON.stringify(queries, null, 2)}\n`) });
   add('THIRD_PARTY.md', { from: path.join(EX, 'THIRD_PARTY.md') });
   return new Map([...files].sort((a, b) => cmp(a[0], b[0])));
 }

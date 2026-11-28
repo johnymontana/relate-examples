@@ -404,14 +404,17 @@ async function summaryLine(page) {
   }));
 }
 
-/** One console query through the UI (D11's lease): its status line, category, rows. */
+/**
+ * One console query through the UI (D11's lease): its status line, category, rows. `saved` names a
+ * queries/*.cypher file, typed into the editor without its comment header (the page's list holds the
+ * ontology's tools, not these files).
+ */
 async function consoleUi(page, query, { saved = '' } = {}) {
   await page.click(tid('tab-console'));
-  if (saved) await page.selectOption(tid('saved-queries'), saved);
-  else {
-    await page.selectOption(tid('saved-queries'), '');
-    await page.fill(tid('console-input'), query);
-  }
+  const q = saved ? savedQueries().find((x) => x.file === saved) : null;
+  if (saved && !q) throw new Error(`no queries/${saved}`);
+  await page.selectOption(tid('saved-queries'), '');
+  await page.fill(tid('console-input'), q ? q.src.split('\n').filter((l) => !l.startsWith('//')).join('\n').trim() : query);
   await page.$eval(tid('console-status'), (e) => { delete e.dataset.code; });
   await page.click(tid('console-run'));
   await page.waitForFunction(() => document.querySelector('[data-testid="console-status"]').dataset.code, null, { timeout: 60000 });
@@ -1178,6 +1181,29 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const tCtx = { kinds: tOnto.types, links: tOnto.relations, procedures: tProcs, indexes: storeIndexNames(store.LOOKUP_INDEXES, [...store.STORE_CONSTRAINTS, ...ONTOLOGY_CONSTRAINTS, store.STORE_FULLTEXT]) };
     for (const t of tFlat) say(`  ${t.anchor} ${t.name} [${t.predict}]: ${t.note}`);
     say(`  each note equals web/console.js toolCompat's in Node: ${yes(tFlat.every((t, i) => t.note === toolCompat(tOnto.tools[i], tCtx).text), "the page's tool notes = Node's")}`);
+    // The editor's "Ontology tool" list: the same tools (those with a query to load), grouped by element, in document order.
+    const tAnchor = (/** @type {any} */ t) => (t.anchor.kind === 'node' ? t.anchor.label : `[:${t.anchor.type}]`);
+    const tLoadable = tOnto.tools.filter((/** @type {any} */ t) => t.type === 'canonicalQuery' && typeof t.cypher === 'string' && t.cypher.trim() !== '');
+    const tOpts = await page.$$eval(`${tid('saved-queries')} optgroup`, (gs) => gs.map((g) => ({
+      label: /** @type {HTMLOptGroupElement} */ (g).label, names: [...g.querySelectorAll('option')].map((o) => (o.textContent ?? '').split(':')[0]),
+    })));
+    const tOptFlat = tOpts.flatMap((g) => g.names.map((n) => `${g.label.replace(/ \((?:node|relationship)\)$/, '')}/${n}`));
+    say(`the editor's "Ontology tool" list holds the ${tOptFlat.length} tools with a query, by element: ${tOpts.map((g) => `${g.label} ${g.names.length}`).join(', ')}: ` +
+      `${yes(JSON.stringify(tOptFlat) === JSON.stringify(tLoadable.map((/** @type {any} */ t) => `${tAnchor(t)}/${t.name}`)), "the editor's list holds the ontology's tools in document order")}`);
+    // Chosen there, a tool loads as its card's "Load into editor" does: its query, its line, its example values; Run applies its checks.
+    const tAcc = tOnto.tools.find((/** @type {any} */ t) => t.name === 'account-by-number');
+    const tAccVal = await page.$eval(tid('saved-queries'), (s, n) => [.../** @type {HTMLSelectElement} */ (s).options].find((o) => (o.textContent ?? '').startsWith(`${n}:`))?.value ?? '', tAcc.name);
+    await page.selectOption(tid('saved-queries'), tAccVal);
+    const tAccEditor = await page.$eval(tid('console-input'), (e) => /** @type {HTMLTextAreaElement} */ (e).value);
+    const tAccDoc = await text(page, 'query-doc');
+    const tAccParam = await page.$eval(tid('param-accountId'), (e) => /** @type {HTMLInputElement} */ (e).value).catch(() => null);
+    await page.$eval(tid('console-status'), (e) => { delete e.dataset.code; });
+    await page.click(tid('console-run'));
+    await page.waitForFunction(() => document.querySelector('[data-testid="console-status"]').dataset.code, null, { timeout: 60000 });
+    const tAccRun = await page.$eval(tid('console-status'), (e) => ({ code: e.dataset.code ?? '', rows: Number(e.dataset.rows ?? -1) }));
+    say(`choosing ${tAcc.name} there loads its query and its line (${JSON.stringify(tAccDoc.slice(0, 40))}…), with $accountId = ${JSON.stringify(tAccParam)} (its example); ` +
+      `Run: ${tAccRun.code}, ${tAccRun.rows} row(s): ${yes(tAccEditor === tAcc.cypher.trim() && tAccDoc.startsWith(`Tool ${tAcc.name} on ${tAnchor(tAcc)}`) && tAccParam === 'ACC-2207' && tAccRun.code === 'ok',
+      "a tool chosen in the editor's list loads with its example values and runs")}`);
     /** One tool card, by anchor and name. @param {string} anchor @param {string} name */
     const tCard = (anchor, name) => `${tid('tool-group')}[data-anchor="${anchor}"] ${tid('tool')}[data-tool="${name}"]`;
     /** Open a card, run it with its inputs as they are, and wait for its status. */
@@ -1225,6 +1251,8 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
     const tEditor = await page.$eval(tid('console-input'), (e) => /** @type {HTMLTextAreaElement} */ (e).value);
     say(`Run ${tDv.anchor.label}'s ${tDv.name} with $client = ${JSON.stringify(CLICK.title)}: ${tr0.code}, ${tr0.rows} rows (lease, read-only); the editor holds the tool's query: ` +
       `${yes(tr0.code === 'ok' && tr0.rows > 0 && tEditor === tDv.cypher.trim(), 'a tool run returns rows')}`);
+    const tChosen = await page.$eval(tid('saved-queries'), (s) => (/** @type {HTMLSelectElement} */ (s).selectedOptions[0]?.textContent ?? '').split(':')[0]);
+    say(`  the editor's "Ontology tool" list shows it: ${JSON.stringify(tChosen)}: ${yes(tChosen === tDv.name, "a tool run from its card is chosen in the editor's list")}`);
     say(`  "Hide the example's bookkeeping" ${tHideBefore ? 'CHECKED' : 'unchecked'} (the default): the table shows ${tOff.rows} rows, ${JSON.stringify(tOff.hidden.text)}; NVL draws ${tOff.cv.nodes} nodes and ` +
       `${tOff.cv.rels} relationships: ${yes(!tHideBefore && tOff.rows === tr0.rows && tOff.hidden.n === 0 && tOff.cv.nodes > 0 && tOff.cv.rels > 0, "the console shows every row by default")}`);
     await page.click(tid('console-hide-bookkeeping'));
@@ -1423,6 +1451,12 @@ RETURN p.n AS n, p.text AS text ORDER BY n`, { text: newSentence });
         'a store switch clears the side panel, the summary line and step 3\'s last result')}`);
     say(`the Document box holds ${JSON.stringify(switched.doc)} (${JSON.stringify(switched.title)}); step 1 says ${JSON.stringify(switched.about)}; the empty graph tab: ${switched.empty}: ` +
       `${yes(switched.doc === 'the Software Engineering sample' && switched.title === OTHER && switched.empty === 'extract', 'the domain picker opens the ontology, its store and its sample')}`);
+    // The console's "Ontology tool" list follows the store's ontology, nothing chosen.
+    const swTools = env.ontologies.get(OTHER).tools.filter((/** @type {any} */ t) => t.type === 'canonicalQuery' && typeof t.cypher === 'string' && t.cypher.trim() !== '').map((/** @type {any} */ t) => t.name);
+    const swList = await page.$$eval(`${tid('saved-queries')} optgroup option`, (os) => os.map((o) => (o.textContent ?? '').split(':')[0]));
+    const swValue = await page.$eval(tid('saved-queries'), (e) => /** @type {HTMLSelectElement} */ (e).value);
+    say(`the console's "Ontology tool" list now holds ${OTHER}'s ${swList.length} tools, none chosen: ` +
+      `${yes(swList.length > 0 && JSON.stringify(swList) === JSON.stringify(swTools) && swValue === '', "the editor's tool list follows the store's ontology")}`);
 
     // ---- a crash mid-section ----------------------------------------------------------------------------------------------
     say();

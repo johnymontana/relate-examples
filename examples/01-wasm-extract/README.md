@@ -54,7 +54,7 @@ Three numbered steps on the left, six tabs on the right.
 | Review | Claims and mentions in the review band, each with one sentence on why it is there. Verdicts survive re-gating and re-extraction; the latest one wins. |
 | Ontology | The ontology as a picture (kinds as nodes, links between the kinds they may join) and its document in an editor, validated live (the spec's schema, the Ontology Graph Spec SDK, then the page's rules). Paste or load a document (YAML or JSON), a create-context-graph file, or a document in the draft format earlier builds used (both converted), then **Apply**. When existing data breaks the new graph type, **Rebuild the graph with it** appears. A store whose document differs from the bundled one of the same id offers **Re-apply the bundled one**. |
 | Cutoffs | Keep/drop cutoffs per kind and per link, and the type, relation and pole margins. Each change re-runs the gate in Cypher over the stored candidates; the model is never called again. A pair you move is marked **set by you**; **Reset to the defaults** undoes that. |
-| Console | Cypher against the live store, read-only, with the saved queries from `queries/`, a field per `$parameter`, results as a table (first 1,000 rows) and as an NVL graph (at most 1,000 nodes and 3,000 relationships). **Hide the example's bookkeeping** leaves out the extraction's own records. **Ontology tools** lists and runs the ontology's example queries. A query still running after 10 s is stopped. |
+| Console | Cypher against the live store, read-only, with the open ontology's tools in the **Ontology tool** list (choosing one loads its query and its example values), a field per `$parameter`, results as a table (first 1,000 rows) and as an NVL graph (at most 1,000 nodes and 3,000 relationships). **Hide the example's bookkeeping** leaves out the extraction's own records. **Ontology tools** lists and runs the ontology's example queries. A query still running after 10 s is stopped. |
 | Store | Every store in this browser, storage use, the documents in the open store (each with **Forget**), **Download database (.relate.tar)**, **Download dump.json**, restore from a `.tar`, the native commands for the download, and **Empty this store**. |
 
 Banners: **Lock** (another tab holds the store; **Move it to this tab** hands it over through a
@@ -539,7 +539,10 @@ first `MATCH` (67) (`web/convert.js` `toolAnchor`).
 
 - **The Console tab** lists the open store's tools by element (Financial Services: Client 4,
   Account 3, Decision 2), each with its description, Cypher (**Copy**, **Load into editor**),
-  parameter inputs and **Run**. Only `canonicalQuery` tools run.
+  parameter inputs and **Run**. Only `canonicalQuery` tools run. The editor's **Ontology tool** list
+  holds the same tools, grouped by element: choosing one loads it as **Load into editor** does (its
+  query, its description and note, its example values), and a tool loaded or run from a card or the
+  side panel shows there too. The list follows the store's ontology.
 - **The graph's side panel** lists the tools on a clicked entity's kind. The entity's name goes into
   at most one parameter, one the query compares with a name-like property of that kind
   (`console.js` `prefillChoice`); a tool whose parameters then all have a value runs (**Run with
@@ -764,7 +767,7 @@ the site ships it too, linked from the page's footer, with each licence beside w
 | `web/` | the page: `index.html`, `style.css`, `app.js`; `worker.js` (engine worker); `console.js` (console worker, and the tools' checks and the bookkeeping filter); `pipeline.js`, `store.js` (the gate), `ontology.js`, `ogs.js` (the reader and writer, on lib/ogs.mjs and the SDK), `convert.js` (create-context-graph to the spec's format, tool placement), `studio.js` (a solution package and its overlay to a document), `values.js` (property values read from text, parsed by type), `markdown.js` (the About drawer's markdown), `split.js` and `names.js` (edgextract's rules), `gliner.js`, `models.js`, `graphview.js`, `tonvl.js`, `export.js`, `opfs.js`, `tar.js`; `vendor-entry.mjs` (the NVL bundle's entry) |
 | `build.mjs`, `site.json` | `npm run build` → `dist/`; the site contract |
 | `harness/` | `probes.mjs`, `model.mjs`, `ontology.mjs`, `run.mjs` (the Node sections), `infer.mjs` (the model pool), `fixtures.mjs` (edge-case documents and the generic document; `fixtures/`: two draft-format documents of the last draft build); `convert.mjs` (writes `data/ontologies/ogs/studio/`, `--check`, `--only <package>`); `vendor-studio.mjs` (vendors the solution packages, `--check`); `corpus.mjs` (the corpus: gold v2, lint, scoring, the bar; `--merge`); `domain.mjs` (one ontology end to end: `--lint`, `--show`); `drive.mjs` (Chromium, `--smoke`; with `--screenshot screenshot.png` against a local `./run.sh --site` it retakes the picture on the Pages index); `native.py`; `serve.mjs` (`--dev`; `--site` is lib/serve.mjs); `reference.py` (`--reference`) |
-| `queries/` | `01`-`08` the console's saved queries; `audit-1`…`audit-6` the 0-row audits; `report-keys-displays` a report for `audit.txt`. Each documents its parameters as `// @param name TYPE <json example> description`. |
+| `queries/` | `01`-`08` reference queries on a store (the browser section types `01` and `05` into the console; `native.txt` runs them all on WASM and natively); `audit-1`…`audit-6` the 0-row audits; `report-keys-displays` a report for `audit.txt`. Each documents its parameters as `// @param name TYPE <json example> description`. |
 | `data/ontologies/domains/` | the 27 curated domains, Ontology Graph Spec 1.1 documents written for this example (ADR-0019) |
 | `data/ontologies/studio/` | Neo4j's 13 solution packages, verbatim, each with this example's overlay, `manifest.json` and `SOURCE.md` (ADR-0020) |
 | `data/ontologies/ogs/studio/` | each package with its overlay applied, as the page loads it (generated by `harness/convert.mjs`) |

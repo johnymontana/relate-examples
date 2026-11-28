@@ -143,7 +143,10 @@ the tools section lists 15 tools of the financial-services document, by node: Cl
   Decision decisions-before-this-one [rows]: On an extracted graph: can return rows.
   Policy policies-applied-and-breached [rows]: On an extracted graph: can return rows.
   each note equals web/console.js toolCompat's in Node: yes
+the editor's "Ontology tool" list holds the 15 tools with a query, by element: Client (node) 4, Advisor (node) 1, Firm (node) 1, Account (node) 3, Security (node) 1, Issuer (node) 1, Transaction (node) 1, Decision (node) 2, Policy (node) 1: yes
+choosing account-by-number there loads its query and its line ("Tool account-by-number on Account: The a"…), with $accountId = "ACC-2207" (its example); Run: ok, 1 row(s): yes
 Run Client's client-in-graph-and-text with $client = "Arjun Mehta": ok, 7 rows (lease, read-only); the editor holds the tool's query: yes
+  the editor's "Ontology tool" list shows it: "client-in-graph-and-text": yes
   "Hide the example's bookkeeping" unchecked (the default): the table shows 7 rows, ""; NVL draws 8 nodes and 7 relationships: yes
   checked: the table shows 3 rows, "4 of 7 rows hidden (bookkeeping)."; NVL draws 4 nodes and 3 relationships; remembered as ex01.consoleHideBookkeeping = 1: yes
   the console's table columns: entity, link, other
@@ -177,6 +180,7 @@ software-engineering opens ex01-kg-software-engineering (ontology Software Engin
 the store picker (Store tab) lists: ex01-kg-financial-services, ex01-kg-financial-services-restored-1, ex01-kg-from-native-restored-1, ex01-kg-software-engineering
 before it, the sample again (0 model calls), its summary line shown, and the side panel showed "Arjun Mehta"; after the switch: the hint, "Click a node or a relationship to see wh…"; the summary line gone, step 3's last result gone: yes
 the Document box holds "the Software Engineering sample" ("software-engineering"); step 1 says "Trace an incident back through the deployment, release and pull request behind it to the engineers, teams and services involved."; the empty graph tab: extract: yes
+the console's "Ontology tool" list now holds software-engineering's 13 tools, none chosen: yes
 
 ## the engine worker terminated mid-section, then resumed (R24, D9)
 step 3's button read "Extract “crash-notes”"; killed after section 1 of 2

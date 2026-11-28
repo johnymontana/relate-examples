@@ -284,7 +284,6 @@ const state = {
    * @type {{sample: any|null, head: string, body: string, titleBy: 'sample'|'auto'|'user', fileName: string}}
    */
   doc: { sample: null, head: '', body: '', titleBy: 'auto', fileName: '' },
-  /** @type {Array<{file: string, text: string, title: string, doc: string, params: Array<{name: string, type: string, example: any, text: string}>}>} */ queries: [],
   model: { which: models.DEFAULT_MODEL, /** @type {any} */ loaded: null, loading: false },
   /** @type {string|null} */ lastDoc: null,
   /** @type {{text: string, title: string}|null} */ lastJob: null,
@@ -654,7 +653,7 @@ for (const b of document.querySelectorAll('[role="tab"]')) {
   });
 }
 
-// ---- data: ontologies, samples, queries ------------------------------------------------------------
+// ---- data: ontologies and samples --------------------------------------------------------------
 
 /** @param {string} url */
 async function text(url) {
@@ -682,8 +681,6 @@ async function loadData() {
     return { file, group: g.id, yaml, sha: o.sha, id: o.id, title: o.title || o.id, format: o.format, meta: o.meta, about: o.about, doc: o.doc };
   })));
   state.samples = JSON.parse(await text('data/samples/samples.json'));
-  const qfiles = /** @type {string[]} */ (JSON.parse(await text('queries/index.json')));
-  state.queries = await Promise.all(qfiles.map(async (file) => parseQuery(file, await text(`queries/${file}`))));
 }
 
 /** An ontology's primary sample, else its first one, else null. @param {string|undefined} oid */
@@ -700,40 +697,6 @@ function companionSamples(oid) {
 const INDUSTRY_ORDER = ['Financial Services', 'Insurance', 'Healthcare & Life Sciences', 'Manufacturing', 'Cybersecurity', 'Energy', 'Software & AI',
   'Public Sector', 'Legal', 'Media', 'Education', 'Real Estate', 'Consumer & Retail', 'Travel & Hospitality', 'Science & Environment',
   'Sports & Gaming', 'Personal Productivity', 'Industry Agnostic'];
-
-/**
- * A saved query's header: the first comment line is its title, the others its description,
- * `// @param name TYPE <json example> description` its parameters.
- * @param {string} file @param {string} src
- */
-function parseQuery(file, src) {
-  const lines = src.split('\n');
-  const head = [];
-  for (const l of lines) {
-    if (!l.startsWith('//')) break;
-    head.push(l.replace(/^\/\/ ?/, ''));
-  }
-  /** @type {Array<{name: string, type: string, example: any, text: string}>} */
-  const params = [];
-  const doc = [];
-  for (const l of head.slice(1)) {
-    const m = /^@param\s+(\w+)\s+(\w+)\s+(.*)$/.exec(l);
-    if (!m) { doc.push(l); continue; }
-    const [, name, type, rest] = m;
-    let example = null;
-    let after = rest;
-    // The example is one JSON value; the description follows it.
-    for (let i = rest.length; i > 0; i--) {
-      try {
-        example = JSON.parse(rest.slice(0, i));
-        after = rest.slice(i).trim();
-        break;
-      } catch { /* shorter */ }
-    }
-    params.push({ name, type: type.toUpperCase(), example, text: after });
-  }
-  return { file, text: src, title: head[0] ?? file, doc: doc.join(' '), params };
-}
 
 // ---- stores and ontologies -------------------------------------------------------------------------
 
@@ -2417,16 +2380,45 @@ async function runConsole(query, params = {}, { strict = false } = {}) {
   return { ...res, leaseMs: Math.round(performance.now() - t0) };
 }
 
-function renderSavedQueries() {
+/** A tool the editor can load: a canonicalQuery with a query (the others say why on their cards). @param {any} t */
+const loadable = (t) => t.type === 'canonicalQuery' && typeof t.cypher === 'string' && t.cypher.trim() !== '';
+/** A tool's option in the editor's list: its index among state.tools. @param {any} t */
+const toolOption = (t) => String(state.tools.indexOf(t));
+
+/**
+ * The editor's list of the open store's ontology tools (state.tools), grouped by the element each
+ * sits on, in document order as in the tools section; choosing one loads it as its card's "Load into
+ * editor" does. Drawn again with the tools section, when the ontology changes.
+ */
+function renderToolQueries() {
   const sel = $('#saved-queries');
-  for (const q of state.queries) sel.append(h('option', { value: q.file, text: `${q.file.replace(/\.cypher$/, '')}: ${q.title}` }));
+  sel.replaceChildren(h('option', { value: '', text: '(type your own)' }));
+  const tools = state.tools.filter(loadable);
+  if (!tools.length) {
+    sel.append(h('option', { value: '', disabled: true, text: state.tools.length ? '(no tool of this ontology has a query to load)' : '(this ontology has no tools)' }));
+    return;
+  }
+  /** @type {Map<string, HTMLElement>} */
+  const groups = new Map();
+  for (const t of tools) {
+    const label = `${anchorName(t)} (${t.anchor.kind})`;
+    if (!groups.has(label)) groups.set(label, h('optgroup', { label }));
+    const about = String(t.question || t.description || '').trim();
+    groups.get(label)?.append(h('option', { value: toolOption(t), title: about, text: about ? `${t.name}: ${about.length > 90 ? `${about.slice(0, 89)}…` : about}` : t.name }));
+  }
+  sel.append(...groups.values());
+  sel.value = state.editorTool ? toolOption(state.editorTool) : '';
 }
 $('#saved-queries').addEventListener('change', () => {
-  const q = state.queries.find((x) => x.file === $('#saved-queries').value);
-  state.editorTool = null;
-  $('#query-doc').textContent = q ? `${q.title}. ${q.doc}` : '';
-  if (q) $('#console-input').value = q.text.split('\n').filter((l) => !l.startsWith('//')).join('\n').trim();
-  renderParams();
+  const t = state.tools[Number($('#saved-queries').value)];
+  if ($('#saved-queries').value === '' || !t) {
+    state.editorTool = null;
+    $('#query-doc').textContent = '';
+    renderParams();
+    return;
+  }
+  const card = toolCards.get(t);
+  if (card) loadTool(t, card);
 });
 $('#console-input').addEventListener('input', () => {
   // A tool's description and note hold only while the editor holds its query unchanged.
@@ -2440,14 +2432,13 @@ const paramValues = new Map();
 const editorTool = () => (state.editorTool && $('#console-input').value.trim() === String(state.editorTool.cypher ?? '').trim() ? state.editorTool : null);
 function renderParams() {
   const box = $('#console-params');
-  const q = state.queries.find((x) => x.file === $('#saved-queries').value);
   const tool = editorTool();
   const tparams = tool ? toolParams(tool) : [];
   const names = cypherParams($('#console-input').value);
   box.replaceChildren();
   for (const name of names) {
     const tp = tparams.find((p) => p.name === name);
-    const doc = q?.params.find((p) => p.name === name) ?? (tp ? { name, type: tp.type, example: tp.hint ?? tp.default ?? '', text: tp.description } : undefined);
+    const doc = tp ? { name, type: tp.type, example: tp.hint ?? tp.default ?? '', text: tp.description } : undefined;
     const initial = paramValues.get(name) ?? (doc ? (typeof doc.example === 'string' ? doc.example : JSON.stringify(doc.example)) : '');
     const input = h('input', { type: 'text', id: `console-param-${name}`, value: initial, 'data-testid': `param-${name}`, 'data-name': name, 'data-type': doc?.type ?? 'ANY', placeholder: doc?.type ?? 'a JSON value, or text' });
     input.addEventListener('input', () => paramValues.set(name, input.value));
@@ -2650,6 +2641,7 @@ function renderTools(o) {
   $('#tools-box').dataset.count = String(state.tools.length);
   if (!state.tools.length) {
     $('#tools-about').textContent = `The ${o.title} document has no tools. An Ontology Graph Spec 1.1 document can give a node or a relationship tools (example queries for agents); create-context-graph's domains bring theirs.`;
+    renderToolQueries();
     return;
   }
   const fam = state.ontologies.find((x) => x.id === o.id && x.sha === o.sha)?.about?.family;
@@ -2676,6 +2668,7 @@ function renderTools(o) {
     }
     list.append(sec);
   }
+  renderToolQueries();
   if (state.procedures === null) ensureConsole().catch(() => {}); // the notes check procedures against SHOW PROCEDURES
 }
 
@@ -2776,7 +2769,7 @@ function toolInputs(card) {
 
 /** Put a tool's query and its typed values into the console's editor (its checks then apply to the editor's Run). @param {any} t @param {HTMLElement} card */
 function loadTool(t, card) {
-  $('#saved-queries').value = '';
+  $('#saved-queries').value = toolOption(t); // the editor's list shows the tool its query came from
   $('#console-input').value = String(t.cypher).trim();
   state.editorTool = t;
   for (const [k, v] of Object.entries(toolInputs(card))) paramValues.set(k, v);
@@ -3362,7 +3355,6 @@ async function main() {
     }
     $('#domain-select').append(group);
   }
-  renderSavedQueries();
   renderParams();
   await renderModelChoices();
   const stores = await refreshStoreList();
